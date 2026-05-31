@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+.uv-python/
+
+# Node / frontend
+node_modules/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Data blobs — keep large/secret data out of git (track READMEs and small fixtures only)
+data/**
+!data/README.md
+!data/**/
+*.parquet
+*.duckdb
+*.db
+
+# Personal scratch — not part of the canonical workspace
+ThomasOssen/
+
+# Claude Code local (per-user) settings
+.claude/settings.local.json
+
+# OS / editor cruft
+.DS_Store
+*.swp

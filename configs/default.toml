@@ -1,0 +1,30 @@
+# Default economic configuration for the volatility platform.
+#
+# Four sections, each independently versioned. Bump a section's `version` when
+# you change how that part behaves; the change shows up in that section's hash
+# and in the overall config_hash, so historical results stay reproducible and
+# traceable to the exact settings that produced them.
+#
+# This file holds economics only. Environment settings (where data lives, which
+# host) are passed to the app separately and never enter the config hash.
+
+[universe]
+version = "2026.05.31"
+underlyings = ["AAPL", "MSFT", "SPY"]
+exchange = "SMART"
+
+[qc_threshold]
+version = "2026.05.31"
+max_spread_pct = 0.05          # reject quotes wider than 5% of mid
+max_quote_age_seconds = 30.0   # an option quote older than this is stale
+min_chain_count = 6            # minimum eligible calls+puts per maturity
+
+[solver]
+version = "2026.05.31"
+iv_tolerance = 1e-8            # implied-vol inversion convergence tolerance
+max_iterations = 100
+
+[scenario]
+version = "2026.05.31"
+spot_shocks = [-0.10, -0.05, 0.0, 0.05, 0.10]   # fractional spot moves
+vol_shocks = [-0.05, 0.0, 0.05]                  # absolute vol moves

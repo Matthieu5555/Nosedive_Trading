@@ -4,9 +4,54 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
+    "duckdb>=1.5.3",
     "fastapi>=0.136.3",
     "numpy>=2.4.6",
     "pandas>=3.0.3",
     "polars>=1.41.2",
+    "pyarrow>=24.0.0",
+    "pytz>=2026.2",
     "uvicorn>=0.48.0",
 ]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.155.1",
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "ruff>=0.15.15",
+]
+
+# --- Quality gate configuration -------------------------------------------
+# The full gate is: uv run ruff check . && uv run mypy . && uv run pytest -q
+# Top-level packages live under src/; pythonpath/mypy_path make
+# `from contracts import ...` resolve without an editable install step.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+explicit_package_bases = true
+namespace_packages = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

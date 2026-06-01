@@ -7,7 +7,7 @@ top-level area, update this file in the same change.
 
 | Area | Path | What it owns | Start here |
 |------|------|--------------|------------|
-| Backend | `backend/` | Python service and quant logic (FastAPI, numpy/pandas/polars). Currently a skeleton. | `backend/README.md` |
+| Backend | `backend/` | Python service and quant logic (FastAPI, numpy/pandas/polars). Foundation landed: typed contracts, config/provenance, DuckDB-over-Parquet storage, fixtures, quality gate. | `backend/README.md` |
 | Frontend | `frontend/` | JS/Vite app. Not scaffolded yet. | `frontend/README.md` |
 | Research | `research/` | Notebooks and experiments. Reproducibility and as-of discipline rules. | `research/README.md` |
 | Data | `data/` | Shared datasets (parquet/duckdb). Large/secret data stays out of git. | `data/README.md` |

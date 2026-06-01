@@ -36,6 +36,12 @@ Do not search blind. The map exists so you don't have to.
 
 See `.agent/conventions.md`. It is not restated here so it cannot drift from here.
 
+## Voice
+
+How to write when talking to people — chat replies, plans, PRs, summaries: plain,
+direct, honest prose with minimal markdown. See `.agent/voice.md`. This applies to
+every agent, every response.
+
 ## Domain vocabulary
 
 See `.agent/glossary.md` before guessing what a domain term means. Wrong guesses
@@ -52,14 +58,12 @@ a choice the next agent would otherwise have to reverse-engineer.
 There is no single repo-wide verify command yet, because backend and frontend
 verify differently. Run the relevant app's gate and report what actually ran.
 
-**backend/** (Python, uv, Python 3.13):
+**backend/** (Python, uv, Python 3.13) — the full gate is wired:
 ```
-cd backend && uv run pytest -q
+cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q
 ```
-Note: the test/lint/typecheck toolchain is **not wired yet** — `pytest`, `ruff`,
-and `mypy` are not in `backend/pyproject.toml` as of this writing. Adding them is
-the first quality task. The intended full gate, once tooling exists, is
-`uv run ruff check . && uv run mypy . && uv run pytest -q`.
+`ruff`, `mypy`, and `pytest` (with `hypothesis`) are dev dependencies in
+`backend/pyproject.toml`, and the gate runs green on the current foundation.
 
 **frontend/** (Vite/JS): not scaffolded yet. Once it exists, the gate is
 `cd frontend && npm run lint && npm test`.

@@ -8,6 +8,12 @@ wheels/
 .venv/
 .uv-python/
 
+# Coverage (data + reports; the committed branch-coverage floor is in pyproject.toml)
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # Node / frontend
 node_modules/
 

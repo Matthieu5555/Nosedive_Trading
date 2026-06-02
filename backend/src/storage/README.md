@@ -36,7 +36,18 @@ a `dictionary<string>` column that collides with the file's real `date32` one.
 
 - **Write-ahead validation.** Every record is validated (`contracts.validation`)
   before a single byte is written; a malformed record is rejected at the door with
-  an explicit `ContractValidationError`, never coerced.
+  an explicit `ContractValidationError`, never coerced. That includes the
+  provenance stamp: its wellformedness is checked by `provenance.validate_stamp`, so
+  a stamp whose hash no longer matches its contents is refused.
+- **All-or-nothing batches.** A `write` validates every record and rejects internal
+  duplicate keys, then *prepares* every touched partition — including the
+  append-only collision check — before committing any of them. Each partition is
+  written to a temporary file and renamed into place only once all are staged. So a
+  collision or a write failure in a later partition leaves every earlier one
+  unchanged instead of half-writing the batch. (`test_a_failed_append_only_batch_
+  leaves_every_partition_unchanged`, `test_a_write_that_fails_partway_commits_
+  nothing`.) The one case not claimed is a process crash *between* the final
+  renames.
 - **Append-only layers** (`raw_market_events`, `instrument_master`): writing a row
   whose primary key already exists on disk is refused with `AppendOnlyViolation`.
   Raw observations are immutable once written. (`test_append_only_*`.)
@@ -45,8 +56,6 @@ a `dictionary<string>` column that collides with the file's real `date32` one.
   the raw layer or any other partition. (`test_recomputing_a_derived_partition_
   leaves_the_raw_layer_byte_unchanged`, `test_delete_partition_isolates_to_that_
   partition`.)
-- A single write batch with a duplicate primary key is rejected before any write
-  (`DuplicateKeyInBatch`).
 
 ## Schema evolution and backfill compatibility
 
@@ -54,11 +63,18 @@ The data is append-mostly and partitions are written over months, so old
 partitions must stay readable as the contracts grow. The rules, and what enforces
 each:
 
-1. **Additive, nullable only.** New fields are added to the *end* of a contract and
-   must be nullable. A partition written before the field existed reads back with
-   that field as `None`; the rest of the row is intact. Reads use DuckDB
-   `union_by_name`, and `serialization.from_row` fills any column absent from a row
-   with `None`. (`test_old_partition_missing_a_new_nullable_column_stays_readable`.)
+1. **Additive, nullable only — and enforced on read.** A new field is added to the
+   *end* of a contract and must be `Optional`. A partition written before it existed
+   reads back with that field as `None`, the rest of the row intact
+   (`test_from_row_fills_an_absent_optional_column_with_none`). This is enforced in
+   code, not just documented: `serialization.from_row` defaults an absent-or-null
+   value to `None` *only* for an `Optional` field. A *required* field that comes back
+   absent or null is refused with `SchemaCompatibilityError` rather than used to
+   build an invalid instance — e.g. an `IvPoint` with `k=None` when `k` is a required
+   float (`test_reading_a_partition_missing_a_required_column_is_refused`,
+   `test_from_row_refuses_an_absent_required_column`). Reads use DuckDB
+   `union_by_name`, so a column present in some partitions is simply null in the ones
+   that predate it.
 2. **No in-place removal or rename.** Removing or renaming a column silently changes
    the meaning of historical partitions. A rename is a new (nullable) column plus a
    one-off backfill, not an edit to the existing one.
@@ -79,6 +95,15 @@ Workstream A and routed through it, never edited in place by a consumer.
 ## Reading and lineage
 
 `read(table, trade_date=?, underlying=?)` returns contract instances (optionally
-scoped to one partition). `raw_events_for(derived_record)` answers "which raw
-records produced this?" in one query by selecting the event ids off the record's
-provenance stamp. (`test_lineage_resolves_raw_records_for_a_derived_object`.)
+scoped to one partition).
+
+Lineage reads the typed source references off a record's provenance stamp
+(`provenance.SourceRecordRef`) and resolves each by its *full* primary key — so a
+reference to one raw event never pulls back another that merely shares one key
+field, e.g. a different session with the same event id. `source_records_for(record)`
+is the general form: it returns the matching source records grouped by table, for
+any source table, not only raw events. `raw_events_for(record)` is the
+raw-market-events slice of that — the headline "which raw records produced this?"
+question. (`test_lineage_resolves_raw_records_for_a_derived_object`,
+`test_lineage_does_not_conflate_the_same_event_id_across_sessions`,
+`test_source_records_for_resolves_a_non_raw_source_by_full_key`.)

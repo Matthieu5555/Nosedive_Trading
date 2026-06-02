@@ -34,7 +34,7 @@ from contracts import (
     SurfaceGrid,
     SurfaceParameters,
 )
-from provenance import ProvenanceStamp, stamp
+from provenance import ProvenanceStamp, SourceRecordRef, source_ref, stamp
 
 CODE_VERSION = "0.1.0-fixture"
 CONFIG_HASH = "cfg-hash-0"
@@ -68,13 +68,23 @@ INSTRUMENT_KEY = UNDERLYING_KEY.canonical()
 CONTRACT_KEY = OPTION_KEY.canonical()
 
 
-def make_stamp(source_record_ids: tuple[str, ...] = ("evt-1", "evt-2")) -> ProvenanceStamp:
-    """A valid provenance stamp pointing at the given source record ids."""
+# The raw events the baseline derived records trace back to, keyed exactly as the
+# raw-event table is — (session_id, event_id) — so lineage resolves to one row.
+_DEFAULT_SOURCE_RECORDS = (
+    source_ref("raw_market_events", "sess-1", "evt-1"),
+    source_ref("raw_market_events", "sess-1", "evt-2"),
+)
+
+
+def make_stamp(
+    source_records: tuple[SourceRecordRef, ...] = _DEFAULT_SOURCE_RECORDS,
+) -> ProvenanceStamp:
+    """A valid provenance stamp pointing at the given source records."""
     return stamp(
         calc_ts=CALC_TS,
         code_version=CODE_VERSION,
         config_hash=CONFIG_HASH,
-        source_record_ids=source_record_ids,
+        source_records=source_records,
         source_timestamps=(SNAPSHOT_TS,),
     )
 

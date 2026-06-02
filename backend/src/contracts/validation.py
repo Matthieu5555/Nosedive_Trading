@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import math
 
+from provenance import ProvenanceValidationError, validate_stamp
+
 from .errors import ContractValidationError
 from .registry import (
     datetime_field_names,
@@ -82,14 +84,16 @@ def validate_record(table: str, record: object) -> None:
             raise ContractValidationError(
                 table, "provenance", None, "derived record must carry a provenance stamp"
             )
-        if not getattr(prov, "config_hash", ""):
+        # The stamp's own wellformedness — tz-aware timestamps, non-empty version
+        # and config fields, and a hash that matches its contents — is owned by the
+        # provenance module. Delegate to it so the rule lives once, and surface any
+        # failure as the contract-layer error the write path already expects.
+        try:
+            validate_stamp(prov)
+        except ProvenanceValidationError as exc:
             raise ContractValidationError(
-                table, "provenance", prov, "provenance stamp must carry a config_hash"
-            )
-        if not getattr(prov, "code_version", ""):
-            raise ContractValidationError(
-                table, "provenance", prov, "provenance stamp must carry a code_version"
-            )
+                table, "provenance", prov, f"provenance stamp is invalid: {exc.reason}"
+            ) from exc
 
 
 def validate(record: object) -> None:

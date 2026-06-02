@@ -1,0 +1,32 @@
+{
+  "aggregate_stamp_hash": "4fe284fa605df686dad6ddb7319409bf2a94d29f1d370f795fb3597b7ff77efe",
+  "first_scenario_stamp_hash": "4658cf4fda2cdc4017a8a2c7bc2f139e5ff851e43a29f7736410e45e992df13d",
+  "net_delta": 850.5961603346599,
+  "net_gamma": 30.488290866529866,
+  "net_theta": -5993.659088383189,
+  "net_vega": 15244.145433264934,
+  "scenario_pnl": {
+    "crash_spot-0.0500_vol+0.0500|AAPL|OPT|C|100": -1213.7512444080248,
+    "crash_spot-0.0500_vol+0.0500|AAPL|OPT|C|105": -168.33953118082377,
+    "crash_spot-0.0500_vol+0.0500|AAPL|OPT|P|100": -1868.1243777959892,
+    "roll_1d|AAPL|OPT|C|100": -21.24145098076724,
+    "roll_1d|AAPL|OPT|C|105": -5.84433632413166,
+    "roll_1d|AAPL|OPT|P|100": 10.62072549038362,
+    "spot_+0.0500|AAPL|OPT|C|100": 3045.4953905221037,
+    "spot_+0.0500|AAPL|OPT|C|105": 630.5696361833375,
+    "spot_+0.0500|AAPL|OPT|P|100": 952.2523047389517,
+    "spot_-0.0500|AAPL|OPT|C|100": -2078.7009404176333,
+    "spot_-0.0500|AAPL|OPT|C|105": -366.46450365641397,
+    "spot_-0.0500|AAPL|OPT|P|100": -1435.6495297911815,
+    "vol_+0.0500|AAPL|OPT|C|100": 985.814911793192,
+    "vol_+0.0500|AAPL|OPT|C|105": 275.54327626035797,
+    "vol_+0.0500|AAPL|OPT|P|100": -492.907455896596,
+    "vol_-0.0500|AAPL|OPT|C|100": -986.4312306676162,
+    "vol_-0.0500|AAPL|OPT|C|105": -258.8275321075126,
+    "vol_-0.0500|AAPL|OPT|P|100": 493.2156153338116
+  },
+  "scenario_result_count": 18,
+  "scenario_version": "scn-1+18bfc305386a",
+  "worst_case_scenario": "spot_-0.0500",
+  "worst_case_total": -3880.8149738652287
+}

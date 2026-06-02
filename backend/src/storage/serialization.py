@@ -9,6 +9,12 @@ the original frozen objects.
 
 The codec is driven entirely by the dataclass type hints, so there is no
 hand-maintained per-field mapping to fall out of sync with the contracts.
+
+Reading enforces the schema-evolution rule rather than just trusting it: a value
+that is absent or null is accepted only for an ``Optional`` field (it becomes
+``None``); a missing *required* field raises :class:`SchemaCompatibilityError`
+instead of silently constructing an invalid contract instance. This applies at
+both levels — top-level columns and the fields of a nested JSON bundle.
 """
 
 from __future__ import annotations
@@ -19,6 +25,8 @@ from datetime import UTC, date, datetime
 from typing import Any, cast, get_args, get_origin
 
 from contracts.registry import resolved_field_types, unwrap_optional
+
+from .errors import SchemaCompatibilityError
 
 
 def _is_dataclass_type(annotation: object) -> bool:
@@ -50,6 +58,21 @@ def _jsonify(value: Any, annotation: object) -> Any:
     return value
 
 
+def _checked_raw(owner: type, name: str, mapping: dict[str, Any], annotation: object) -> Any:
+    """Fetch one field's raw value from a stored mapping, enforcing the null rule.
+
+    A value that is absent or null is fine for an ``Optional`` field (returned as
+    ``None``) and refused for a required one — the single place the additive-
+    nullable schema-evolution rule is enforced, shared by top-level columns and
+    nested JSON bundles.
+    """
+    _, is_optional = unwrap_optional(annotation)
+    raw = mapping.get(name)
+    if raw is None and not is_optional:
+        raise SchemaCompatibilityError(owner, name)
+    return raw
+
+
 def _unjsonify(raw: Any, annotation: object) -> Any:
     """Rebuild a typed value from JSON-safe primitives."""
     inner, _ = unwrap_optional(annotation)
@@ -58,7 +81,12 @@ def _unjsonify(raw: Any, annotation: object) -> Any:
     if _is_dataclass_type(inner):
         cls = cast(type, inner)
         field_types = resolved_field_types(cls)
-        return cls(**{name: _unjsonify(raw[name], typ) for name, typ in field_types.items()})
+        return cls(
+            **{
+                name: _unjsonify(_checked_raw(cls, name, raw, typ), typ)
+                for name, typ in field_types.items()
+            }
+        )
     if inner is datetime:
         return datetime.fromisoformat(raw)
     if inner is date:
@@ -100,13 +128,15 @@ def to_row(contract: type, record: object) -> dict[str, Any]:
 def from_row(contract: type, row: dict[str, Any]) -> object:
     """Rebuild a contract instance from a storage row.
 
-    Columns absent from ``row`` (an older partition written before a nullable
-    column was added) are filled with ``None``, so old data stays readable.
+    A column that is absent or null fills its field with ``None`` only when the
+    field is ``Optional`` — the additive-nullable case, where an older partition
+    predates a new nullable column. A missing *required* field raises
+    :class:`SchemaCompatibilityError` rather than constructing an invalid instance.
     """
     kwargs: dict[str, Any] = {}
     for name, annotation in resolved_field_types(contract).items():
         inner, _ = unwrap_optional(annotation)
-        raw = row.get(name)
+        raw = _checked_raw(contract, name, row, annotation)
         if _is_json_field(inner):
             kwargs[name] = None if raw is None else _unjsonify(json.loads(raw), annotation)
         else:

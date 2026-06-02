@@ -7,7 +7,7 @@ top-level area, update this file in the same change.
 
 | Area | Path | What it owns | Start here |
 |------|------|--------------|------------|
-| Backend | `backend/` | Python service and quant logic (FastAPI, numpy/pandas/polars). Foundation landed: typed contracts, config/provenance, DuckDB-over-Parquet storage, fixtures, quality gate. | `backend/README.md` |
+| Backend | `backend/` | Python service and quant logic (FastAPI, numpy/pandas/polars). Foundation (A): typed contracts, config/provenance, DuckDB-over-Parquet storage, fixtures, quality gate. Market-data plane (B): broker-agnostic connectivity, the instrument universe, and the append-only collector in `src/{connectivity,universe,collectors}` (each with a README). Analytics core (C): the pure-function quant heart — pricing engine, snapshot builder, forward/carry, IV solver, volatility surface in `src/{pricing,snapshots,forwards,iv,surfaces}` (each with a README). Risk engine (D): portfolio Greeks, monetized sensitivities, aggregation, broker reconciliation, and the scenario stress engine in `src/risk` (README + ADR 0006), built on C's frozen pricer. | `backend/README.md` |
 | Frontend | `frontend/` | JS/Vite app. Not scaffolded yet. | `frontend/README.md` |
 | Research | `research/` | Notebooks and experiments. Reproducibility and as-of discipline rules. | `research/README.md` |
 | Data | `data/` | Shared datasets (parquet/duckdb). Large/secret data stays out of git. | `data/README.md` |

@@ -31,8 +31,9 @@ import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from contracts.registry import spec_for_table
+from contracts.registry import TableSpec, spec_for_table
 from contracts.validation import validate_record
+from provenance import canonical_primary_key
 
 from .errors import AppendOnlyViolation, DuplicateKeyInBatch
 from .partitioning import (
@@ -65,12 +66,15 @@ class ParquetStore:
 
     # -- writing ----------------------------------------------------------
     def write(self, table: str, records: Sequence[object]) -> None:
-        """Validate and persist a batch of records for one table.
+        """Validate and persist a batch of records for one table — all or nothing.
 
         Append-only tables reject any primary key that already exists on disk;
         other tables replace each touched partition with the records supplied for
-        it (recompute semantics). Raises before writing anything if the batch is
-        internally inconsistent or any record is malformed.
+        it (recompute semantics). Every record is validated, the batch is checked
+        for internal duplicate keys, and every touched partition is fully prepared
+        — including the append-only collision check — before a single byte is
+        written. A failure in a later partition therefore cannot leave an earlier
+        one already changed: nothing is committed until the whole batch is ready.
         """
         if not records:
             return
@@ -91,26 +95,37 @@ class ParquetStore:
             grouped[(trade_date_of(record), underlying_of(record))].append(record)
 
         schema = arrow_schema(spec.contract)
+        prepared: list[tuple[Path, pa.Table]] = []
         for (trade_date, underlying), partition_records in grouped.items():
-            self._write_partition(
-                table, spec.append_only, schema, trade_date, underlying, partition_records
+            path = partition_file(self.root, table, trade_date, underlying)
+            new_table = self._prepare_partition(
+                table, spec, schema, trade_date, underlying, partition_records
             )
+            prepared.append((path, new_table))
+        self._commit(prepared)
 
-    def _write_partition(
+    def _prepare_partition(
         self,
         table: str,
-        append_only: bool,
+        spec: TableSpec,
         schema: pa.Schema,
         trade_date: date,
         underlying: str,
         records: list[object],
-    ) -> None:
-        spec = spec_for_table(table)
+    ) -> pa.Table:
+        """Build the Arrow table to land for one partition, touching no files.
+
+        For an append-only table this reads the existing partition, rejects any
+        primary-key collision, and returns the existing rows concatenated with the
+        new ones. For other tables it returns just the new rows (replace
+        semantics). It mutates nothing, so a collision is surfaced in the prepare
+        phase, before any partition in the batch is committed.
+        """
         path = partition_file(self.root, table, trade_date, underlying)
         new_rows = [to_row(spec.contract, record) for record in records]
         new_table = _rows_to_arrow(new_rows, schema)
 
-        if append_only and path.exists():
+        if spec.append_only and path.exists():
             # Read only the file's own columns. trade_date and underlying are also
             # stored as real columns inside the file, so pyarrow must NOT re-infer
             # them from the Hive-style directory names: that produces dictionary
@@ -129,8 +144,37 @@ class ParquetStore:
                     raise AppendOnlyViolation(table, key)
             new_table = pa.concat_tables([existing, new_table])
 
-        path.parent.mkdir(parents=True, exist_ok=True)
-        pq.write_table(new_table, path)
+        return new_table
+
+    def _commit(self, prepared: list[tuple[Path, pa.Table]]) -> None:
+        """Write every prepared partition by staging to temp files, then renaming.
+
+        Each partition is written to a temporary file first; only once every temp
+        file is on disk are they renamed into place. So a failure during the write
+        phase — a serialization error, a full disk — leaves the store exactly as it
+        was: the temporaries are removed and no target file is touched. Renames are
+        per-file atomic on the same filesystem; the one gap we do not claim to
+        survive is a crash *between* the final renames.
+        """
+        staged: list[tuple[Path, Path]] = []
+        committed = False
+        try:
+            for path, new_table in prepared:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temp = path.parent / f"{path.name}.tmp"
+                # Record before writing, so a half-written temp is still cleaned up.
+                staged.append((temp, path))
+                pq.write_table(new_table, temp)
+            for temp, path in staged:
+                temp.replace(path)
+            committed = True
+        finally:
+            # On any failure (write error, interrupt) drop the staged temporaries,
+            # leaving every target file as it was. A rename already done has moved
+            # its temp away, so unlinking it is a harmless no-op.
+            if not committed:
+                for temp, _ in staged:
+                    temp.unlink(missing_ok=True)
 
     # -- reading ----------------------------------------------------------
     def _partition_files(
@@ -197,34 +241,39 @@ class ParquetStore:
             shutil.rmtree(target)
 
     # -- lineage ----------------------------------------------------------
-    def raw_events_for(self, derived_record: object) -> list[Any]:
-        """Return the raw events that produced a derived record — in one query.
+    def source_records_for(self, record: object) -> dict[str, list[Any]]:
+        """Return the source records that produced a record, grouped by table.
 
-        Reads the source record ids off the derived record's provenance stamp and
-        selects exactly those rows from the raw-event layer.
+        Reads the typed source references off the record's provenance stamp and
+        resolves each one by its *full* primary key, so a reference to one raw
+        event never pulls back another that merely shares a single key field — a
+        different session with the same event id, say. This is the deep lineage
+        question ("which source records, in any table, produced this?"); tables
+        with no match are omitted, and a record with no provenance resolves to an
+        empty mapping.
         """
-        provenance = getattr(derived_record, "provenance", None)
+        provenance = getattr(record, "provenance", None)
         if provenance is None:
-            return []
-        ids = list(provenance.source_record_ids)
-        if not ids:
-            return []
-        files = self._partition_files("raw_market_events", None, None)
-        if not files:
-            return []
-        connection = duckdb.connect()
-        try:
-            connection.execute("SET TimeZone='UTC'")
-            relation = connection.execute(
-                "SELECT * FROM read_parquet(?, union_by_name=true, hive_partitioning=false) "
-                "WHERE event_id IN (SELECT unnest(?::VARCHAR[]))",
-                [[str(path) for path in files], ids],
-            )
-            column_names = [description[0] for description in relation.description]
-            rows = [
-                dict(zip(column_names, values, strict=True)) for values in relation.fetchall()
+            return {}
+        wanted: dict[str, set[tuple[str, ...]]] = defaultdict(set)
+        for ref in provenance.source_records:
+            wanted[ref.table].add(tuple(ref.primary_key))
+        resolved: dict[str, list[Any]] = {}
+        for source_table, keys in wanted.items():
+            matches = [
+                candidate
+                for candidate in self.read(source_table)
+                if canonical_primary_key(primary_key_of(source_table, candidate)) in keys
             ]
-        finally:
-            connection.close()
-        spec = spec_for_table("raw_market_events")
-        return [from_row(spec.contract, row) for row in rows]
+            if matches:
+                resolved[source_table] = matches
+        return resolved
+
+    def raw_events_for(self, derived_record: object) -> list[Any]:
+        """Return the raw events that produced a derived record.
+
+        The raw-market-events slice of :meth:`source_records_for` — the headline
+        "which raw records produced this?" lineage question. Returns an empty list
+        when the record has no raw-event lineage.
+        """
+        return self.source_records_for(derived_record).get("raw_market_events", [])

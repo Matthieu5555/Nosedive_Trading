@@ -54,3 +54,12 @@ no remotes), so absorbing it into the umbrella cost no history.
 - The verify gate is documented per-app in `AGENTS.md`, not centralized, because
   backend and frontend verify differently. The backend test/lint/typecheck
   toolchain (`pytest`/`ruff`/`mypy`) is not wired yet — first quality task.
+
+## Update 2026-05-31: skills live in-repo, not in `~/.claude/skills/`
+
+The decision above (line 28) put the skills in `~/.claude/skills/`. That was
+wrong for a shared `devs`-group, multi-agent workspace: a personal home directory
+only covers one user on one machine, so every other human and agent starts with
+no skills. The nine skills now live in `.claude/skills/`, committed to the
+umbrella repo, so they are version-controlled and every actor gets them with no
+per-machine setup. `.agent/conventions.md` was updated to match.

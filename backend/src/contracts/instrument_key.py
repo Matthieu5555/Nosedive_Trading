@@ -21,6 +21,22 @@ from datetime import date
 # Option right is one of exactly these two values; anything else is a bad key.
 OPTION_RIGHTS = ("C", "P")
 
+# The field order of the canonical string, in the exact sequence `canonical()` joins
+# them. Named here (not as a bare index) so the inverse below stays in lockstep with
+# `canonical()`: reorder one and the round-trip test pins the other.
+_CANONICAL_FIELD_ORDER = (
+    "underlying_symbol",
+    "security_type",
+    "exchange",
+    "currency",
+    "multiplier",
+    "broker_contract_id",
+    "expiry",
+    "strike",
+    "option_right",
+)
+_BROKER_CONTRACT_ID_SLOT = _CANONICAL_FIELD_ORDER.index("broker_contract_id")
+
 # The three timestamps every raw event carries, defined once so no module invents
 # its own spelling:
 #   exchange_ts  — when the exchange says the event happened.
@@ -75,3 +91,22 @@ class InstrumentKey:
                 right,
             )
         )
+
+
+def broker_contract_id_from_canonical(canonical_key: str) -> str:
+    """Recover the broker contract id embedded in a canonical instrument-key string.
+
+    The exact inverse of the ``broker_contract_id`` slot of :meth:`InstrumentKey.canonical`.
+    That slot is stored verbatim (a plain string, never formatted or hashed), so unlike
+    the float-formatted multiplier/strike it round-trips losslessly — which is what lets
+    replay hand the collector a tick whose ``broker_contract_id`` resolves against the
+    universe exactly as a live tick would. A string that is not a canonical key (wrong
+    field count) is refused with the offending value rather than silently mis-parsed.
+    """
+    fields = canonical_key.split("|")
+    if len(fields) != len(_CANONICAL_FIELD_ORDER):
+        raise ValueError(
+            f"not a canonical instrument key: expected {len(_CANONICAL_FIELD_ORDER)} "
+            f"pipe-joined fields, got {len(fields)} in {canonical_key!r}"
+        )
+    return fields[_BROKER_CONTRACT_ID_SLOT]

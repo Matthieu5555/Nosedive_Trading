@@ -12,8 +12,9 @@ workstream builds on. What's here today:
   and write-ahead validation.
 - `src/config/` — the validated `PlatformConfig` (four independently versioned
   sections) and its cross-process-stable `config_hash`.
-- `src/provenance/` — the stamp every derived record carries (source records,
-  calc time, code version, config hash) with a deterministic content hash.
+- `src/provenance/` — the stamp every derived record carries (typed full-key
+  source references, calc time, code version, config hash) with a deterministic
+  content hash, plus `validate_stamp` to prove a stamp is wellformed and untampered.
 - `src/storage/` — DuckDB-over-Parquet read/write adapters keyed to the contracts,
   partitioned by layer / trade date / underlying. See `src/storage/README.md` for
   the append-only, partition, and schema-evolution rules.

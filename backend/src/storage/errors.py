@@ -36,3 +36,23 @@ class DuplicateKeyInBatch(StorageError):
         super().__init__(
             f"table {table!r}: primary key {primary_key!r} appears more than once in one write"
         )
+
+
+class SchemaCompatibilityError(StorageError):
+    """A stored row has no value for a required (non-optional) contract field.
+
+    Schema evolution here is additive-and-nullable only: a new column must be
+    optional, so a partition written before it existed reads back with that field
+    as ``None``. A *required* field coming back absent or null means the stored
+    data no longer matches the contract — a removed or renamed column, or real type
+    drift — so the read is refused rather than used to build an invalid instance
+    (e.g. an ``IvPoint`` with ``k=None`` when ``k`` is a required float).
+    """
+
+    def __init__(self, contract: type, field: str) -> None:
+        self.contract = contract
+        self.field = field
+        super().__init__(
+            f"{contract.__name__!r}: required field {field!r} is absent or null in storage; "
+            f"only Optional fields may be missing (additive-nullable schema-evolution rule)"
+        )

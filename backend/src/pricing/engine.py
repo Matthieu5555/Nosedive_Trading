@@ -1,0 +1,74 @@
+"""Public pricing entry points: style dispatch, and the A-contract adapter.
+
+``price`` is the single call that turns a state vector into price and Greeks,
+dispatching on exercise style. ``pricing_result`` projects a :class:`PriceGreeks`
+into Workstream A's ``PricingResult`` contract, adding the monetized (cash) Greeks
+and attaching a caller-supplied provenance stamp. The stamp is built by the caller
+(with an injected ``calc_ts``), never here, so the pricer stays a pure function of
+its inputs with no wall-clock read.
+
+Cash-Greek conventions, per unit of underlying (the risk engine multiplies by the
+contract multiplier and the held quantity):
+
+* ``cash_delta = delta * spot`` — dollar value change for a 1.0 move in spot.
+* ``cash_gamma = gamma * spot**2`` — dollar gamma; P&L of a move dS is about
+  ``0.5 * cash_gamma * (dS / spot)**2``.
+* ``cash_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from contracts import PricingResult
+from provenance import ProvenanceStamp
+
+from .american import price_american
+from .black76 import price_european
+from .state import PriceGreeks, PricingState
+
+# Bump only on a real change to the price or Greek formulas, never on config.
+PRICER_VERSION = "black76-crr-1.0.0"
+
+
+def price(state: PricingState, *, steps: int | None = None) -> PriceGreeks:
+    """Price a state vector, dispatching European vs American on the exercise style.
+
+    ``steps`` applies only to the American lattice; left unset, it delegates to
+    :func:`pricing.american.price_american`'s own default, so dispatching through
+    ``price`` is identical to calling that engine directly (the dispatch test pins
+    this). The European engine is closed-form and ignores ``steps``.
+    """
+    if state.exercise_style == "american":
+        if steps is None:
+            return price_american(state)
+        return price_american(state, steps=steps)
+    return price_european(state)
+
+
+def pricing_result(
+    state: PricingState,
+    greeks: PriceGreeks,
+    *,
+    snapshot_ts: datetime,
+    contract_key: str,
+    source_snapshot_ts: datetime,
+    provenance: ProvenanceStamp,
+) -> PricingResult:
+    """Project price and Greeks into A's ``PricingResult`` contract with cash Greeks."""
+    return PricingResult(
+        snapshot_ts=snapshot_ts,
+        contract_key=contract_key,
+        pricer_version=PRICER_VERSION,
+        price=greeks.price,
+        delta=greeks.delta,
+        gamma=greeks.gamma,
+        vega=greeks.vega,
+        theta=greeks.theta,
+        rho=greeks.rho,
+        cash_delta=greeks.delta * state.spot,
+        cash_gamma=greeks.gamma * state.spot * state.spot,
+        cash_vega=greeks.vega * 0.01,
+        source_snapshot_ts=source_snapshot_ts,
+        provenance=provenance,
+    )

@@ -1,7 +1,7 @@
 # Conventions — house style for this workspace
 
 These are the standards code is expected to meet here. They are distilled from
-the team's standing instructions and from the skills in `~/.claude/skills/`. Where
+the team's standing instructions and from the skills in `.claude/skills/`. Where
 a skill goes deeper, this file names it rather than restating it, so the detailed
 rules have exactly one home.
 

@@ -32,7 +32,7 @@ TWS-only), so IBKR-over-REST becomes the same case as Saxo/Deribit: a custom ada
 catalog, not the shipped Nautilus adapter. The board's "moot unless Nautilus's IBKR coverage
 proves insufficient" caveat is the hook this ADR fills.
 
-## Proposed decision (pending the ruling in "Open question" below)
+## Decision (accepted — owner ruled 2026-06-05; see Ruling below)
 
 1. **IBKR has two ingestion paths, both normalizing into the Nautilus catalog as
    `RawMarketEvent`** (the seam C1 is choosing per ADR 0023): the **shipped Nautilus IBKR
@@ -59,7 +59,7 @@ proves insufficient" caveat is the hook this ADR fills.
    not move a single downstream byte. Read-only invariant holds (REST order endpoints never
    called); the SDK/transport is lazily imported so the gate runs broker-free; no secrets in git.
 
-## Open question — needs an explicit ruling (workspace owner / course)
+## Open question — RESOLVED (owner ruled 2026-06-05; see Ruling at the end of this section)
 
 ADR 0023 is owner-set direction; this ADR proposes an **exception to it for IBKR**, justified by
 an external requirement. That is the owner's call, not an agent's:

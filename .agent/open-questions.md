@@ -25,11 +25,7 @@ without searching.
 
 ## Open
 
-Surfaced by the 2026-06-05 hygiene audit (see [`configuration-and-reproducibility.md`](../documentation/configuration-and-reproducibility.md)):
-
-| # | Question | Why it matters | Who decides | Raised |
-|---|----------|----------------|-------------|--------|
-| OQ-6 | On-disk **profile format** | The profile mechanism is the blueprint's config inheritance (base + overlay + `config_hash`). The format needs pinning: a directory of overlays vs a single resolved file, the naming, and how a run references the profile it used. Decides the save/load step and the later API CRUD. | owner | 2026-06-05 |
+_None currently. OQ-1 through OQ-6 were ruled on 2026-06-05; see Resolved._
 
 _OQ-1 through OQ-4 were ruled on 2026-06-05; see Resolved. The `(blueprint)` rulings (OQ-1, OQ-3)
 and futures capture still need a blueprint amendment + ADR to land formally — those follow-ups are
@@ -66,3 +62,4 @@ useful, so decide it early.
 | OQ-3 | Index membership: point-in-time vs current | Point-in-time is mandatory — store each constituent with `(effective_add_date, effective_remove_date)` and as-of weights; never apply today's list to past dates. Source Siblis Research (SX5E + SP500), cross-checked vs STOXX / EODHD / CRSP. Gate joins with `check-lookahead-bias`. Owner ruled 2026-06-05; blueprint amendment + ADR pending. | [roadmap](../documentation/roadmap-index-analytics.md) §2 |
 | OQ-4 | Tenor grid — confirm the exact set | **10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y** (the prof's spoken grid; resolves the `12m`/`1an` duplicate and out-of-order tail). Owner ruled 2026-06-05; pin into the blueprint data dictionary, confirm against the course's formal brief. | [roadmap](../documentation/roadmap-index-analytics.md) §2 |
 | OQ-5 | `StorageRepository` port: make it load-bearing or delete? | **Keep + make load-bearing.** Owner ruled storage follows Vincent's blueprint-aligned architecture: raw in **`.parquet`** (prof mandate, no doubt), **DuckDB** addable later as a query engine over parquet, **SQLite** for the higher layers later — a real multi-backend future, which is exactly what the port (already accepted in [ADR 0015](decisions/0015-storage-repository-port-tiered-backends.md)) exists for. So: type infra/orchestration/host signatures against `StorageRepository`; widen the port only where a caller has a legitimate uncovered need; never delete it. The duplicate non-Vincent storage/event leftovers collapse via the C6 collection-seam unification ([ADR 0027](decisions/0027-collection-seam-push-canonical.md)), not here. Owner ruled 2026-06-05. | this register + [ADR 0015](decisions/0015-storage-repository-port-tiered-backends.md) |
+| OQ-6 | On-disk profile format / reproducibility anchor | **Profiles are effective-dated + content-addressed in a runtime config store; a run freezes the resolved config in its manifest — git is dev-time only.** Reproducibility includes replaying a **past day**, so config carries the platform's as-of discipline (like market data + index membership): per-run **manifest freeze** (replay a run) + **as-of resolution** of effective-dated profiles (reconstruct a past day). A name → append-only versions; a run pins an immutable hash. Stage: YAML overlays + manifest freeze now → SQLite metadata store → API CRUD; same model throughout. Owner ruled 2026-06-05. Corrects the draft (git is *not* the run-time record; the per-run snapshot is essential, plus the temporal dimension). | [ADR 0028](decisions/0028-configuration-and-reproducibility-standard.md) |

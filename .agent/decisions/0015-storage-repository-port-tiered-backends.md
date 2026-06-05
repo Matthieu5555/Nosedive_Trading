@@ -1,6 +1,12 @@
 # 0015 — Storage repository port + tiered backends (DuckDB query layer, SQLite metadata)
 
-- **Status:** accepted (DuckDB + SQLite tier deferred until a concrete consumer exists — see note)
+- **Status:** accepted (DuckDB + SQLite tier deferred until a concrete consumer exists — see note).
+  **Update 2026-06-05:** the M10 **`RunRepository` + SQLite/Postgres serving tier landed**
+  ([[0026-orchestration-observability-reconciliation]] refs it as landed) — the "Postgres later"
+  language is partly superseded; the DuckDB query/derived tier is still deferred. The
+  `StorageRepository` port is **kept and made load-bearing** (OQ-5 /
+  [[0028-configuration-and-reproducibility-standard]]): raw in `.parquet`, DuckDB/SQLite are the
+  later backends this port exists for — not deleted.
 - **Date:** 2026-06-03
 - **Source:** Vincent's ADR-020; merged 2026-06-05
 

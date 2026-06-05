@@ -6,7 +6,7 @@
 - **Relates to:** [[0019-one-immutable-raw-model]] (upheld), [[0016-eventsource-seam-backtest-readiness]]
   (still YAGNI — see below), [[0007-integration-ops]] (no-dual-path invariant, now realized by
   Nautilus), [[0017-provider-dimension]], [[0015-storage-repository-port-tiered-backends]],
-  [[0024-ibkr-rest-transport-alongside-tws]] (**proposed** — an IBKR *REST* course requirement
+  [[0024-ibkr-rest-transport-alongside-tws]] (**accepted, landed** — an IBKR *REST* course requirement
   the Nautilus TWS adapter can't meet; the IBKR work here is the TWS path and deliberately does
   **not** foreclose a REST connector landing alongside it, pending the owner ruling).
 

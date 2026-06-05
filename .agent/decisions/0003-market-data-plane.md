@@ -1,6 +1,10 @@
 # 0003 — Market-data plane: idempotency identity, gap encoding, broker seam
 
-- **Status:** accepted
+- **Status:** accepted. **Update 2026-06-05:** the scalar *pull* `BrokerTick` /
+  `BrokerSession.ticks()` / `ReplayBrokerSession` seam mechanics described here are **superseded
+  by [[0027-collection-seam-push-canonical]]** (the push `RawCollector` is canonical). The §1
+  **content-addressed `event_id` / `sequence` idempotency core survives** — 0027 §2 explicitly
+  harvests it into the push seam. Read this ADR for the idempotency design, not the pull plumbing.
 - **Date:** 2026-06-01
 
 ## Context

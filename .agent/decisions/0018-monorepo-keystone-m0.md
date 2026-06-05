@@ -1,6 +1,11 @@
 # 0018 — Monorepo keystone (M0): layered uv-workspace, merged core, frozen seams
 
-- **Status:** accepted
+- **Status:** accepted. **Update 2026-06-05:** §3's frozen *pull* `contracts.BrokerSession`
+  seam ("M5's adapters satisfy it, M4's actor drives it") is **superseded by
+  [[0027-collection-seam-push-canonical]]** — the live adapters speak the push
+  `MarketDataAdapter`/`RawCollector`; the scalar pull seam is retired. The other frozen seam
+  (`StorageRepository`) and the workspace layering stand (the port is kept load-bearing per
+  [[0028-configuration-and-reproducibility-standard]] / OQ-5).
 - **Date:** 2026-06-05
 - **Scope:** M0 — the keystone every other merge workstream builds on.
 - **Relates to:** [[0001-workspace-layout]], [[0011-blueprint-as-plan-of-record]],

@@ -1,6 +1,10 @@
 # 0016 — `EventSource` Protocol: backtest readiness without forking the pipeline
 
-- **Status:** accepted
+- **Status:** accepted. **Update 2026-06-05:** under the Nautilus runtime spine
+  ([[0023-nautilus-runtime-spine-and-library-leverage]] / [[0025-nautilus-host-catalog-topology]])
+  the no-fork **invariant holds** — the host replays a `RawMarketEvent` sequence through the same
+  engine — but the **`EventSource` Protocol itself stays YAGNI / unimplemented** (0025 §5). So the
+  `replay_range`-on-Protocol wiring described here is hypothetical; the principle, not the mechanism.
 - **Date:** 2026-06-03
 - **Source:** Vincent's ADR-021; merged 2026-06-05
 

@@ -12,6 +12,15 @@
 
 ## Decide first (ADR 0023 "Open") — record the answers before coding
 
+> **RESOLVED 2026-06-05.** The three "decide first" items below are answered:
+> **(1) catalog topology** — our `RawMarketEvent` + `ParquetStore` stays the system of record,
+> Nautilus bridges ([ADR 0025](../.agent/decisions/0025-nautilus-host-catalog-topology.md));
+> **(2) unifying broker seam** — the push `RawCollector` is canonical, the scalar pull
+> `BrokerSession` retired ([ADR 0027](../.agent/decisions/0027-collection-seam-push-canonical.md)),
+> and the `BrokerTick`/`RawMarketEvent` reconciliation + content-addressed-id restore (item 4 in
+> "What to do") **moved to [C6](C6-collection-seam-unification.md)** — they are no longer C1's;
+> **(3) provenance bridging** — recorded in ADR 0025 §3. Kept below as the original framing.
+
 Not pre-decided; resolve each and write it into the follow-on ADR:
 
 1. **Catalog topology.** Does Nautilus's `ParquetDataCatalog` *become* the immutable raw store (ADR 0019), or do we keep the DuckDB/Parquet raw layer and bridge it into Nautilus? (Touches ADR 0015/0019 and `storage`.)

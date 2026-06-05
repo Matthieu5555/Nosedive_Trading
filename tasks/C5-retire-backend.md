@@ -1,7 +1,7 @@
 # C5 — Retire the `backend/` flat tree
 
 - **Owns:** deletion of `backend/**` module-by-module, plus the doc updates that follow (`.agent/map.md`, the per-directory READMEs, the `AGENTS.md` gate section).
-- **Depends on:** each module's retirement waits on its canonical copy landing green in `packages/`/`apps/`. M0–M3 are ready now; the rest follow C1–C4.
+- **Depends on:** each module's retirement waits on its canonical copy landing green in `packages/`/`apps/`. M0–M3 are ready now; the rest follow **C1–C6**. The collection-coupled modules (collectors, the pull seam, `collect_live`/`surface_job`/`provider_flow`) wait specifically on **C6** (ADR 0027 unified the seam there), not C1.
 - **Blocks:** nothing — this is the close. When it finishes there is one tree.
 - **State going in:** `backend/` is the pre-merge flat layout. M0–M3's modules there are **byte-identical stale dupes** of the `packages/infra` canonical copies (verified). The rest retire as C1–C4 land them.
 
@@ -14,9 +14,14 @@ A clean working tree: `packages/`, `apps/`, `documentation/`, `notebooks/`, `.ag
 Retire in dependency order. A module leaves only once its canonical copy is green in the root gate and nothing imports the old path (import-linter already forbids `packages` → `backend`).
 
 1. **Now (M0–M3 — stale dupes):** delete `backend/src/{config,provenance,contracts,storage,fixtures,snapshots,forwards,iv,surfaces,pricing,risk}` and their `backend/tests/test_*` counterparts.
-2. **After C1:** delete `backend/src/{actor,connectivity,collectors,universe}` + tests.
+2. **After C1:** delete `backend/src/actor` + tests. **After C6:** delete
+   `backend/src/{connectivity,collectors,universe}` + tests (the collection seam unifies in C6,
+   ADR 0027 — the pull seam retires only once nothing imports it).
 3. **After C2:** delete `backend/src/{qc,validation}` + tests.
-4. **After C3:** delete `backend/src/orchestration` + the migrated `backend/tests` acceptance tests.
+4. **After C3:** delete the orchestration *engine* in `backend/src/orchestration` + the migrated
+   `backend/tests` acceptance tests. **After C6:** delete the collection-coupled use-cases
+   (`collect_live`, `surface_job`, `provider_flow`, the handover connectivity-smoke stage) — they
+   port onto the unified seam in C6, not before.
 5. **After C4:** delete `backend/src/frontend` + `backend/web`.
 6. **Last:** delete `backend/` entirely (`pyproject.toml`, `uv.lock`, `README.md`, the now-empty `src/`).
 

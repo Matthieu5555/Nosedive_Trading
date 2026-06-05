@@ -4,6 +4,11 @@
   [[0023-nautilus-runtime-spine-and-library-leverage]]** (2026-06-05) — IBKR connectivity moves to
   Nautilus's shipped adapter. The decisions here (bounded `ChainSelection`, read-only, two-phase
   universe expansion) remain the reference for what the Nautilus-fed IBKR path must reproduce.
+  **Update 2026-06-05:** a REST course requirement then landed a **custom Client Portal REST/WS
+  adapter** alongside the Nautilus-TWS path (**[[0024-ibkr-rest-transport-alongside-tws]]** accepted +
+  landed; hosted per **[[0025-nautilus-host-catalog-topology]]**) — IBKR runs REST-preferred with
+  Nautilus-TWS as a config-flip fallback. So the live IBKR path today is REST or Nautilus-TWS, never
+  the hand-rolled `ib_async` one this ADR describes.
 - **Date:** 2026-06-05
 
 ## Context

@@ -17,14 +17,16 @@ hand-rolled `ib_async` adapter. **Two things have since changed and they interac
 
 These pull opposite ways for IBKR: **Nautilus's IBKR adapter is TWS-API/Gateway, not REST**
 (verified 2026-06-05 against the Nautilus docs — TWS-socket only, no Client Portal/REST option),
-so adopting it as-is does *not* meet the course requirement. The proposed
-reconciliation is in **ADR [0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)
-(status: proposed)** — treat IBKR-over-REST as the same case as Saxo/Deribit (a custom adapter
-normalizing into the Nautilus catalog, because Nautilus's coverage is "insufficient" for the REST
+so adopting it as-is does *not* meet the course requirement. The reconciliation is in
+**ADR [0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md) — now ACCEPTED and
+LANDED** (owner ruled 2026-06-05): IBKR-over-REST is the same case as Saxo/Deribit (a custom adapter
+normalizing into the catalog, because Nautilus's coverage is "insufficient" for the REST
 requirement), with the Nautilus-TWS path as a config-flip manual fallback. **No automatic
-failover; no second username; CP-Gateway auth, not OAuth.** That ADR is *proposed*, not accepted —
-it asks the workspace owner whether IBKR gets this exception to ADR 0023, and it is sequenced
-after C1 owns the catalog seam.
+failover; no second username; CP-Gateway auth, not OAuth.** The custom Client Portal REST/WS adapter
+shipped in `packages/infra-ibkr/cp_rest_*` with a `transport: rest|nautilus-tws` selector and a
+green REST↔TWS equivalence test. **This doc is therefore no longer an "open spike" — it is the
+research record behind a landed decision.** The only genuinely-open remnant is the OAuth/no-Gateway
+*operational* migration (gated, low priority).
 
 What still holds from the research below, regardless of the above: the **session-collision**
 conclusion (REST buys nothing; the shared-login fix is a second IBKR username) and the **OAuth

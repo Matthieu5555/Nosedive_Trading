@@ -1,0 +1,36 @@
+[project]
+name = "algotrading-infra"
+version = "0.1.0"
+description = "Volatility infrastructure layer: market-data capture, instrument master, snapshots, forward/IV/surface/pricing analytics, risk, storage. Strategy-agnostic."
+requires-python = ">=3.13"
+dependencies = [
+    "algotrading-core",
+    "apscheduler>=3.11.2",
+    "duckdb>=1.5.3",
+    "numpy>=2.4.6",
+    "pandas>=3.0.3",
+    "polars>=1.41.2",
+    "prometheus-client>=0.25.0",
+    "py-vollib>=1.0.12",
+    "pyarrow>=24.0.0",
+    "pytz>=2026.2",
+    "quantlib>=1.42.1",
+    "scipy>=1.17.1",
+    "structlog>=25.5.0",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+# Install with: uv sync --extra postgres
+# Required by PostgresRunRepository in storage.postgres_runs.
+postgres = ["psycopg[binary]>=3.2"]
+
+[tool.uv.sources]
+algotrading-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/algotrading"]

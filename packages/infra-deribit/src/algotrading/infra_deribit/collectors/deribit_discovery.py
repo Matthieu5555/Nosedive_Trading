@@ -11,7 +11,7 @@ Currency is USD: prices are quoted in USD using the Deribit index price, not nat
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -78,6 +78,7 @@ def discover_instruments(
     transport: _RestTransport,
     currency: str,
     *,
+    as_of: date | None = None,
     min_days: int = 1,
     max_days: int = 180,
 ) -> list[OptionContract]:
@@ -86,12 +87,17 @@ def discover_instruments(
     ``transport`` must expose a ``.get(path, params) -> dict`` method
     (``DeribitTransport`` or any compatible mock).
 
-    Only contracts whose expiry falls within [min_days, max_days] from today are returned.
+    Only contracts whose expiry falls within [min_days, max_days] of ``as_of`` are returned.
+    ``as_of`` is the reference date the maturity window is measured from — a **compute input**,
+    so it is injected, not read from the wall clock: a replay or backtest passes the trade date
+    and re-selects the exact same universe. When ``as_of`` is omitted it defaults to today (UTC),
+    which is correct only for a live run; deterministic paths must pass it explicitly.
+
     Contracts that fail to parse are logged and skipped — discovery never aborts on a single
     bad instrument name.
     """
     raw = transport.get("/public/get_instruments", {"currency": currency, "kind": "option"})
-    today = datetime.now(tz=UTC).date()
+    today = as_of if as_of is not None else datetime.now(tz=UTC).date()
     contracts: list[OptionContract] = []
     skipped = 0
     for item in raw:

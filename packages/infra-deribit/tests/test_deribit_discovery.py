@@ -94,3 +94,64 @@ class TestDiscoverInstruments:
 
         contracts = discover_instruments(_MockTransport(), "BTC", min_days=0, max_days=9999)
         assert contracts == []
+
+
+class TestDiscoverInstrumentsAsOf:
+    """The maturity filter is measured from an injected ``as_of``, never the wall clock.
+
+    All three fixtures (``sample_instruments_response``) expire 2025-06-27, so the selected
+    universe is a pure function of ``as_of`` + the window. Expected day-counts are derived by
+    hand from the calendar, independent of the implementation.
+    """
+
+    @staticmethod
+    def _transport(payload):
+        class _MockTransport:
+            def get(self, path, params=None):
+                return payload
+
+        return _MockTransport()
+
+    def test_as_of_selects_full_window(self, sample_instruments_response):
+        # 2025-06-01 → 2025-06-27 is 26 days; inside the default [1, 180] window → all 3.
+        contracts = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=date(2025, 6, 1)
+        )
+        assert len(contracts) == 3
+
+    def test_as_of_at_lower_boundary_includes(self, sample_instruments_response):
+        # 2025-06-26 → expiry is 1 day out; min_days=1 includes it.
+        contracts = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=date(2025, 6, 26)
+        )
+        assert len(contracts) == 3
+
+    def test_as_of_on_expiry_excludes(self, sample_instruments_response):
+        # 2025-06-27 → 0 days to expiry; below min_days=1 → empty universe.
+        contracts = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=date(2025, 6, 27)
+        )
+        assert contracts == []
+
+    def test_as_of_beyond_max_window_excludes(self, sample_instruments_response):
+        # 2024-12-01 → 2025-06-27 is 208 days; beyond the default max_days=180 → empty.
+        contracts = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=date(2024, 12, 1)
+        )
+        assert contracts == []
+
+    def test_selection_is_deterministic_for_replay(self, sample_instruments_response):
+        # Same payload + same as_of must reselect the identical universe, regardless of when
+        # the run happens — the property a replay relies on. Compare by instrument key.
+        as_of = date(2025, 6, 10)
+        first = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=as_of
+        )
+        second = discover_instruments(
+            self._transport(sample_instruments_response), "BTC", as_of=as_of
+        )
+        assert [c.symbol for c in first] == [c.symbol for c in second]
+        assert [(c.expiry, c.strike, c.right) for c in first] == [
+            (c.expiry, c.strike, c.right) for c in second
+        ]
+        assert len(first) == 3

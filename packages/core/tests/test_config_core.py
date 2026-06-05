@@ -184,3 +184,34 @@ def test_from_config_rejects_a_missing_section(tmp_path) -> None:
     incomplete.write_text("universe:\n  version: u\n  underlyings: [SPX]\n  exchange: CBOE\n", "utf-8")
     with pytest.raises(ConfigError):
         from_config(load_yaml_config(incomplete))
+
+
+def test_config_hash_collapses_signed_zero() -> None:
+    # -0.0 and 0.0 are mathematically equal; a reproducibility hash must not split them
+    # (they serialize to different JSON tokens without normalization).
+    import dataclasses
+
+    base = _config()
+    neg = dataclasses.replace(base, scenario=dataclasses.replace(base.scenario, vol_shocks=(-0.0, 0.05)))
+    pos = dataclasses.replace(base, scenario=dataclasses.replace(base.scenario, vol_shocks=(0.0, 0.05)))
+    assert config_hash(neg) == config_hash(pos)
+
+
+def test_mapping_hash_collapses_signed_zero() -> None:
+    from algotrading.core.config import mapping_config_hash
+
+    assert mapping_config_hash({"shock": -0.0}) == mapping_config_hash({"shock": 0.0})
+
+
+def test_canonical_json_and_mapping_hash_reject_non_finite() -> None:
+    # A reproducibility hash must never emit invalid JSON (NaN/Infinity are not JSON).
+    from algotrading.core.config import canonical_json, mapping_config_hash
+
+    with pytest.raises(ValueError):
+        canonical_json([float("nan")])
+    with pytest.raises(ValueError):
+        canonical_json([float("inf")])
+    with pytest.raises(ValueError):
+        mapping_config_hash({"x": float("nan")})
+    with pytest.raises(ValueError):
+        mapping_config_hash({"x": float("-inf")})

@@ -99,12 +99,21 @@ def _canonical(value: Any) -> Any:
         }
     if isinstance(value, (tuple, list)):
         return [_canonical(item) for item in value]
+    if isinstance(value, float):
+        # Collapse -0.0 onto 0.0 so the two never split a reproducibility hash (they are
+        # mathematically equal but serialize to different JSON). Non-finite floats fall
+        # through and are rejected by canonical_json's allow_nan=False.
+        return 0.0 if value == 0.0 else value
     return value
 
 
 def canonical_json(value: Any) -> str:
-    """Return the canonical JSON string for any config object or section."""
-    return json.dumps(_canonical(value), sort_keys=True, separators=(",", ":"))
+    """Return the canonical JSON string for any config object or section.
+
+    ``allow_nan=False`` so a NaN/Inf in a config raises rather than emitting invalid
+    ``NaN``/``Infinity`` JSON tokens — a reproducibility hash must never be ill-formed.
+    """
+    return json.dumps(_canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def _sha256(text: str) -> str:

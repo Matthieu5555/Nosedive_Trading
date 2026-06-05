@@ -51,6 +51,10 @@ def _stringify_keys(value: Any) -> Any:
         return {str(k): _stringify_keys(v) for k, v in value.items()}
     if isinstance(value, list | tuple):
         return [_stringify_keys(v) for v in value]
+    if isinstance(value, float):
+        # Collapse -0.0 onto 0.0 so the two never split a hash; non-finite floats fall
+        # through and are rejected by mapping_config_hash's allow_nan=False.
+        return 0.0 if value == 0.0 else value
     return value
 
 
@@ -58,10 +62,14 @@ def mapping_config_hash(data: Mapping[str, Any]) -> str:
     """Return a deterministic SHA-256 over free-form config content.
 
     Key order does not affect the hash; identical content always hashes identically.
-    The typed-config equivalent is ``config.config_hash`` over a ``PlatformConfig``.
+    ``-0.0`` is collapsed onto ``0.0`` and ``allow_nan=False`` rejects NaN/Inf, so the
+    hash is well-formed and never splits on a signed zero. The typed-config equivalent is
+    ``config.config_hash`` over a ``PlatformConfig``.
     """
     normalized = _stringify_keys(data)
-    canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
+    canonical = json.dumps(
+        normalized, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

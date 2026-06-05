@@ -3,7 +3,7 @@
 Interactive Brokers leaf adapter. Imports `algotrading.infra` + `algotrading.core`, nothing
 above (enforced by import-linter).
 
-## What it does (ADR 0023/0024)
+## What it does (ADR 0023/0025)
 
 IBKR rides **Nautilus's shipped InteractiveBrokers adapter** — Nautilus is the runtime spine, and
 its adapter is the live transport. This leaf is the thin seam around it:
@@ -16,7 +16,7 @@ its adapter is the live transport. This leaf is the thin seam around it:
   seam that turns the `QuoteTick`/`TradeTick` the adapter delivers into our immutable
   `RawMarketEvent` rows (one per observed field), content-addressed by `content_event_id` so a
   re-delivered tick (same `sequence`) is written exactly once. Our `ParquetStore` stays the system
-  of record (ADR 0024); no broker SDK type crosses out of this seam.
+  of record (ADR 0025); no broker SDK type crosses out of this seam.
 
 ## The `ibkr` extra and what runs in CI
 
@@ -28,6 +28,15 @@ The `ibkr` extra is `nautilus-trader[ib]` (pulls `nautilus-ibapi`). It is **not*
 - the **config builder** is tested two ways: the guard (no extra → clear error) always runs; the
   construction test skips unless the extra is present;
 - install the live path with `uv sync --extra ibkr` and run it on a machine with a Gateway.
+
+## Open: IBKR-over-REST course requirement
+
+Nautilus's InteractiveBrokers adapter is **TWS/IB-Gateway-only** (no Client Portal / REST option).
+A course requirement mandates an IBKR **REST** connection; [ADR 0024](../../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)
+(**proposed**, pending owner ruling) records the resolution — a custom IBKR-REST connector into the
+catalog (the Saxo/Deribit pattern) *alongside* this Nautilus-TWS path, switched by config. The seam
+here does **not** foreclose that: the normalizer takes plain tick inputs and a REST connector would
+feed the same `RawMarketEvent` raw layer. Do not hard-retire the REST option when extending this leaf.
 
 ## Superseded
 

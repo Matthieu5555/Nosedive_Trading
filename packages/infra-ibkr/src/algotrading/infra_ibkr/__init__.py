@@ -1,4 +1,4 @@
-"""IBKR broker adapter — IBKR on Nautilus's runtime (ADR 0023/0024).
+"""IBKR broker adapter — IBKR on Nautilus's runtime (ADR 0023/0025).
 
 The live market-data path is Nautilus's shipped InteractiveBrokers adapter: build its
 data-client config with :func:`build_data_client_config`, and normalize the

@@ -1,4 +1,4 @@
-"""IBKR connectivity (ADR 0023/0024).
+"""IBKR connectivity (ADR 0023/0025).
 
 Connectivity is Nautilus's InteractiveBrokers data client; build its config via
 :func:`build_data_client_config` (import-guarded on the ``ibkr`` extra). The hand-rolled

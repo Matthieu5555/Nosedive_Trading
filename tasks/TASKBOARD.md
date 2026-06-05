@@ -14,12 +14,24 @@ finished task specs move to `tasks/archive/`.
 
 ## Current phase: convergence — closing the merge
 
+> **⚠ DIRECTION CHANGE — 2026-06-05 (read before touching C1, the actor, or any broker code).**
+> The workspace owner reversed the framework-free / no-Nautilus stance. **Nautilus is now the
+> runtime spine** (its data catalog + replay/backtest engine + actor host), the platform leans on
+> every proven library it can, and **IBKR moves onto Nautilus's adapter while Vincent's
+> Saxo/Deribit adapters are kept** (survivors, not deleted). This overturns the old C1 plan
+> ("delete the M5 fork, retarget all three leaves onto the thin scalar `BrokerSession`") and the
+> old "locked: framework-free actor." Authority:
+> **[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)**.
+> If you are mid-C1 on the old plan, stop and re-read.
+
 We merged two independent builds of the same system — this repo and Vincent's
 (`github.com/Vincent-20-100/AlgoTrading` @ `refactor/audit-remediation`) — toward
-the max-union of both. Two decisions are **locked**: keep our framework-free
-**actor** as the spine, and adopt Vincent's **layered uv-workspace monorepo** as the
-chassis. Vincent's repo is checked out read-only at **`Vincent's Code/`** (gitignored,
-not canonical) as a source of inspiration; refresh with `git -C "Vincent's Code" pull`.
+the max-union of both. Two decisions are **locked**: adopt Vincent's **layered
+uv-workspace monorepo** as the chassis, and — per
+[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) — make
+**Nautilus the runtime spine**, leaning on proven libraries wherever one exists. Vincent's repo
+is checked out read-only at **`Vincent's Code/`** (gitignored, not canonical) as a source of
+inspiration; refresh with `git -C "Vincent's Code" pull`.
 
 The earlier work happened in two waves, both archived in `tasks/archive/`:
 - the original five-workstream backbone (A–E) — **complete**;
@@ -34,9 +46,12 @@ The earlier work happened in two waves, both archived in `tasks/archive/`:
   in `packages/infra`; their `backend/src` copies are stale dupes.
 - **Stuck in the old flat tree:** the market-data plane + the **actor spine** live only
   in `backend/src` (never relocated).
-- **Forked:** the broker workstream vendored a parallel copy of Vincent's
-  collector/universe slice into `packages/infra`, creating a second `BrokerTick` and a
-  selection-less universe. This is the only red on the root gate (3 Saxo-config tests).
+- **Broker plane (direction set by [ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)):**
+  Vincent's vendored Saxo/Deribit slice in `packages/infra` (the EAV `BrokerTick` +
+  `MarketDataAdapter`) is the **survivor** — kept, not deleted. IBKR moves onto **Nautilus's**
+  shipped adapter. The scalar `contracts.BrokerSession` seam and the running-counter event id are
+  reconciled in C1 (restore content-addressed ids; retire the unused pull seam). The 3 red
+  Saxo-config tests are fixed there — the only red on the root gate.
 - **Converged (C2, uncommitted):** `qc`/`validation` — the ten named checks + the
   anomaly/triage plane are now in `packages/infra` on the M0 seam, both feeding the one
   `triage_records` table (three sources), `TriageRow` dropped. `backend/{qc,validation}`
@@ -54,11 +69,11 @@ The five convergence tasks below close all of that. The Postgres serving tier (o
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| Claude (agent) | **C1**: `infra/{actor,connectivity,collectors,universe}/**`, `infra-{ibkr,saxo,deribit}/**`, new ADR 0023 | 2026-06-05 | **C1 in flight.** Resolving the live M4-vs-M5 fork: relocate the canonical M4 plane + framework-free actor from `backend/src` into `algotrading.infra`, delete the M5 vendored fork (2nd `BrokerTick`, selection-less universe, lifecycle `BrokerSession`), retarget the 3 leaves onto the frozen `contracts.BrokerSession` + the one `chain_planning` policy. 3 sequenced commits (relocate → retarget+delete-fork+ADR → tests+docs), gate green at each. Supersedes ADR 0022, closes the ADR 0020 contest. `backend/{actor,connectivity,collectors,universe}` become stale dupes → C5. |
+| Claude (agent) | **C1**: `infra/actor/**`, `infra-ibkr/**`, `infra/pyproject.toml`, ADR 0025 | 2026-06-05 | **C1 IBKR-first increment LANDED (committed on `feat/merge-market-data`); Saxo/Deribit on standby per owner.** Adopted **Nautilus as the runtime spine** (ADR 0023): `nautilus_trader` is now a real `infra` dep; the M4 plane was already relocated in HEAD `3a21d9f`. **(A)** dep added, unused `pandas>=3.0.3` pin relaxed (no source imports pandas). **(B)** `infra/actor/nautilus_host.py` — a thin Nautilus `Actor` (`AnalyticsActor`) replays a `RawMarketEvent` stream through Nautilus's engine on its simulated clock and drives the **unchanged** pure `run_analytics`; `driver.py` stays `nautilus_trader`-free. Determinism gate `test_nautilus_replay_byte_identical.py` proves hosted == direct (ActorOutputs + persisted Parquet byte-identical, stamps incl.). **(C)** IBKR → Nautilus's InteractiveBrokers adapter to the **verifiable boundary**: CI-tested tick→`RawMarketEvent` normalizer (`content_event_id` restored) + import-guarded `build_data_client_config`; live connect needs a Gateway (skipped in CI). ib_async path superseded (kept for C5). **Decisions recorded in [ADR 0025](../.agent/decisions/0025-nautilus-host-catalog-topology.md):** our `RawMarketEvent`+`ParquetStore` stays the system of record (Nautilus bridges, ADR 0019 upheld); EventSource (0016) stays YAGNI. Gate: ruff/mypy/lint-imports clean in scope, all `packages/` tests green. **Still open:** the **IBKR-REST** course requirement ([ADR 0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md), proposed) — this increment is the TWS path and does **not** foreclose a REST connector alongside it. Saxo/Deribit migration onto the runtime + the live `TradingNode` wiring are later tasks. |
 | Claude (agent) | `infra/{qc,validation}/**` + `tests/test_{qc_checks,qc_report,triage,validation,seam_triage}.py` | 2026-06-05 | **C2 LANDED (uncommitted), gate-green in isolation.** Ten named QC checks + the anomaly/triage validation plane ported into `packages/infra` under `algotrading.infra.*`. One persisted shape (`triage_records`), three sources (`qc`/`validation`/`anomaly`, discriminated off `reason_code` in one place); legacy in-memory `TriageRow` dropped. `check_collector_continuity` consumes the `qc.CollectorContinuityInput` Protocol — structural, so C1's eventual `CollectorSummary` satisfies it with no adapter (no edit to C1's plane). 97 tests pass; ruff + mypy (12 files) + import-linter (2/2) clean on C2. ADR 0010 updated. Pre-existing `apps/frontend` reds are unrelated. **Open for C3:** the `qc_job`/`validation_job` wiring. **Stale dupes for C5:** `backend/{qc,validation}`. |
 | Claude (agent, for Anthony) | `apps/frontend/web/**` | 2026-06-05 | UI cleanup + theme pass: metric overflow, money formats, labelled vol surface, status labels. No BFF/Python changes. |
 | Claude (agent, for Anthony) | `apps/frontend/{src,tests}/**` (BFF Python only — web/ untouched, see line above) + `backend/scripts/sample_day.py` (new, throwaway) + `data/` | 2026-06-05 | **C4 slice in flight** (the part not blocked on C1–C3): produce a SAMPLE day into `data/` via the backend pipeline's public entries (script dies with C5), then serve the operator BFF's market/risk routes from the real tables via `algotrading.infra` storage/pricing/risk seams only (schemas byte-identical to flat `contracts`); scenario POST reprices live through the frozen pricing seam. Routes/shapes unchanged; underlyings not in the store keep the explicit fixture stamp (no silent mixing). No edits in `backend/src/**`; run/health/config/oauth routers wait for C3. |
-| Codex | `Test Lenny/**` only | 2026-06-05 | Standalone IBKR paper-trading volatility dashboard prototype; no edits to existing app/backend code. |
+| Claude (tech-lead doc pass) | docs only: `.agent/{map,conventions,glossary}`, `.agent/decisions/{0023,0020,0022,0007,0008}`, `tasks/{TASKBOARD,C1-actor-and-market-data-plane}`, `documentation/{known-limitations,interface-contracts}`, `BIG_PICTURE.md`, `packages/infra*/**/README.md` | 2026-06-05 | Propagating the ADR 0023 direction (Nautilus spine + library-leverage + keep Saxo/Deribit) across every agent-read doc so no one builds the superseded plan. No code edits. |
 
 ## Convergence workstreams
 
@@ -88,9 +103,14 @@ not done.
 
 ## Open future spikes (not part of convergence)
 
-- [ibkr-rest-api-evaluation.md](ibkr-rest-api-evaluation.md) — evaluate replacing the
-  IBKR TWS-API/Gateway transport with the REST API, behind the same `BrokerSession` seam.
-  A spike, not a blocker; pick up after C1 lands the broker leaves.
+- [ibkr-rest-api-evaluation.md](ibkr-rest-api-evaluation.md) — **REST is now a course
+  requirement** (no longer a spike). It triggers exactly the "unless Nautilus's IBKR coverage
+  proves insufficient" caveat from [ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md):
+  Nautilus's IBKR adapter is TWS/Gateway, so it does not meet the REST requirement. Proposed
+  resolution in **[ADR 0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)
+  (status: proposed)** — IBKR-over-REST as a custom adapter into the Nautilus catalog (the
+  Saxo/Deribit pattern), Nautilus-TWS as a config-flip fallback. **Needs an owner ruling** (is
+  this an accepted exception to ADR 0023?) and is sequenced after C1 owns the catalog seam.
 
 ## Format
 

@@ -1,4 +1,4 @@
-"""The IBKR live data-client config builder (ADR 0023/0024).
+"""The IBKR live data-client config builder (ADR 0023/0025).
 
 The builder is import-guarded: without the ``ibkr`` extra (``ibapi``) it raises a clear
 error; with it, it constructs a Nautilus ``InteractiveBrokersDataClientConfig``. CI has no

@@ -1,4 +1,4 @@
-"""The Nautilus-tick → RawMarketEvent seam (ADR 0023/0024).
+"""The Nautilus-tick → RawMarketEvent seam (ADR 0023/0025).
 
 Pure, base-Nautilus-types only — fully exercised in CI without the ``ibkr`` extra or a
 Gateway. Expected event ids are derived independently from the documented

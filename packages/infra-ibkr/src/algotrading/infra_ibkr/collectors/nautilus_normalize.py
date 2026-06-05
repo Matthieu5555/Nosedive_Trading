@@ -1,6 +1,6 @@
 """Normalize Nautilus market-data ticks into our immutable ``RawMarketEvent``.
 
-ADR 0023/0024: IBKR rides Nautilus's InteractiveBrokers adapter, which delivers
+ADR 0023/0025: IBKR rides Nautilus's InteractiveBrokers adapter, which delivers
 ``QuoteTick``/``TradeTick`` for subscribed instruments. This module is the seam that
 turns those into our system-of-record ``RawMarketEvent`` rows — one row per observed
 field, content-addressed by :func:`content_event_id` so a re-delivered tick (same

@@ -1,6 +1,6 @@
 """Build the Nautilus InteractiveBrokers data-client config — the IBKR live seam.
 
-ADR 0023/0024: IBKR connectivity is Nautilus's shipped InteractiveBrokers adapter
+ADR 0023/0025: IBKR connectivity is Nautilus's shipped InteractiveBrokers adapter
 (retiring the hand-rolled ``ib_async`` session). The adapter and its config live behind
 the ``ibkr`` extra (``nautilus-trader[ib]`` → ``ibapi``), which is **absent from the gate
 env** by design — a live connect needs a running TWS/IB Gateway, which CI does not have.

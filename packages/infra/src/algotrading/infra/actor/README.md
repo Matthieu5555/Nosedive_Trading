@@ -15,7 +15,7 @@ code runs live and in replay — that identity is the load-bearing invariant of 
 - `stamping.py` — `build_stamp`, the provenance the actor stamps onto pricing/risk/scenario rows.
 - `valuation_join.py` — the math-free join that turns the analytics results into the risk
   engine's per-contract inputs.
-- `nautilus_host.py` — **the runtime spine (ADR 0023 / ADR 0024).** A thin Nautilus
+- `nautilus_host.py` — **the runtime spine (ADR 0023 / ADR 0025).** A thin Nautilus
   `Actor` (`AnalyticsActor`) that replays a `RawMarketEvent` stream through Nautilus's engine
   on its simulated clock and drives the unchanged `run_analytics`. `RawMarketEventData` +
   `to_custom_data`/`from_custom_data` bridge our immutable events to/from Nautilus custom data
@@ -28,7 +28,7 @@ code runs live and in replay — that identity is the load-bearing invariant of 
 Nautilus engine only changes *who feeds the events*, on a simulated clock. The determinism gate
 `tests/test_nautilus_replay_byte_identical.py` proves the hosted run returns the same
 `ActorOutputs` (stamps included) and writes byte-identical Parquet as a direct `run_analytics`
-call. See ADR 0024 for the catalog-topology and provenance-bridging decisions.
+call. See ADR 0025 for the catalog-topology and provenance-bridging decisions.
 
 IBKR captures through Nautilus's InteractiveBrokers adapter (live wiring to the verifiable
 boundary; no TWS Gateway in CI). Saxo/Deribit remain on their vendored capture slice (ADR 0023).

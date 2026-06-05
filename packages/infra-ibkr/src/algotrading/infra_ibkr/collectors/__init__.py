@@ -1,4 +1,4 @@
-"""IBKR market-data collection (ADR 0023/0024).
+"""IBKR market-data collection (ADR 0023/0025).
 
 The live path is Nautilus's InteractiveBrokers adapter; this package's seam is the pure
 tick → :class:`RawMarketEvent` normalizer exported here. The hand-rolled ``ib_async`` push

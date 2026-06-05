@@ -3,16 +3,16 @@
 Python BFF
 ----------
 The backend-for-frontend is a FastAPI application (``app.py`` / ``create_app()``) that
-exposes eight JSON API routers over the real ``packages/infra`` store:
+exposes six JSON API routers over the real ``packages/infra`` store — it reads only
+down-layer infra seams (``ParquetStore``, the ``surfaces``/``risk`` engines,
+``orchestration.build_dashboard``), never ``backend``:
 
-  ``/api/health``    — operator dashboard status (C3 seam, defensive)
-  ``/api/surfaces``  — fitted SVI surfaces from the store
+  ``/api/health``    — operator dashboard status (orchestration.build_dashboard)
+  ``/api/surfaces``  — fitted SVI surfaces read back from the store
   ``/api/risk``      — portfolio risk aggregates + scenario PnL
   ``/api/run``       — provider listing, pipeline launch, job polling
   ``/api/config``    — platform config file listing + read
   ``/api/oauth``     — Saxo authorization-code CSRF flow
-  ``/api/market``    — Codex paper market data (fixture-backed)
-  ``/api/orders``    — Codex paper orders (fixture-backed)
 
 Application context (``AppContext``) is built once at startup and injected via
 ``app.state.ctx``; tests pass a tmp-store context via ``create_app(ctx=...)``.

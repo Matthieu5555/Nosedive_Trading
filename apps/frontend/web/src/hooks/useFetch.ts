@@ -1,43 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { getJson } from "../api";
 
-interface FetchState<T> {
+export interface FetchState<T> {
   data: T | null;
-  loading: boolean;
   error: string | null;
-  refetch: () => void;
+  loading: boolean;
 }
 
-export function useFetch<T>(path: string, refreshMs = 0): FetchState<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // Once a path has data, background refreshes keep showing the stale data
-  // instead of flipping the panel back to "Loading" on every poll.
-  const hasDataRef = useRef(false);
-
-  const load = useCallback(async () => {
-    if (!hasDataRef.current) setLoading(true);
-    try {
-      const payload = await getJson<T>(path);
-      hasDataRef.current = true;
-      setData(payload);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, [path]);
+// Load JSON from a path, re-running when the path (or an explicit nonce) changes.
+// Returns the three states the pages render: loading, error, and data.
+export function useFetch<T>(path: string, nonce = 0): FetchState<T> {
+  const [state, setState] = useState<FetchState<T>>({
+    data: null,
+    error: null,
+    loading: true,
+  });
 
   useEffect(() => {
-    hasDataRef.current = false;
-    void load();
-    if (refreshMs <= 0) return;
-    const timer = window.setInterval(() => void load(), refreshMs);
-    return () => window.clearInterval(timer);
-  }, [load, refreshMs]);
+    let cancelled = false;
+    setState({ data: null, error: null, loading: true });
+    getJson<T>(path)
+      .then((data) => {
+        if (!cancelled) setState({ data, error: null, loading: false });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err);
+          setState({ data: null, error: message, loading: false });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path, nonce]);
 
-  return { data, loading, error, refetch: load };
+  return state;
 }

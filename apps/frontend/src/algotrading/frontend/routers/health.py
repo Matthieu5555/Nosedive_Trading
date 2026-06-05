@@ -1,14 +1,17 @@
 """Health router: the operator dashboard, wired to real recorded state.
 
-Assembles ``build_dashboard`` from the store's partitions (snapshots, surfaces,
-scenarios), the latest QC verdict for the date, and the run-state ledger. Returns
-a stub/degraded response when the orchestration seam (C3) is not yet available.
+Assembles ``orchestration.build_dashboard`` from the store's partitions (snapshots,
+surfaces, scenarios), the latest QC verdict for the date, and the run-state ledger — so
+the four health flags reflect what is actually on disk, not a hardcoded OK. The trade
+date defaults to the most recent date with snapshot data.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from algotrading.infra.orchestration import build_dashboard, build_metrics
+from algotrading.infra.orchestration.dashboard import QC_FAILING, QC_PASSING, QC_UNKNOWN
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -19,18 +22,6 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 
 # QC result statuses that mean a check failed (lower-cased before comparison).
 _QC_FAIL_STATUSES = frozenset({"fail", "failing", "failed", "reject", "error"})
-
-# Orchestration constants with safe defaults for when the seam is unavailable.
-try:
-    from algotrading.infra.orchestration import build_dashboard, build_metrics  # type: ignore[import-not-found]
-    from algotrading.infra.orchestration.dashboard import QC_FAILING, QC_PASSING, QC_UNKNOWN  # type: ignore[import-not-found]
-
-    _ORCHESTRATION_AVAILABLE = True
-except ImportError:
-    _ORCHESTRATION_AVAILABLE = False
-    QC_FAILING = "failing"
-    QC_PASSING = "passing"
-    QC_UNKNOWN = "unknown"
 
 
 def _context(request: Request) -> AppContext:
@@ -53,27 +44,7 @@ def _qc_status_for(ctx: AppContext, trade_date: date) -> str:
 
 @router.get("")
 def get_health(request: Request, trade_date: str | None = None) -> JSONResponse:
-    """Return the operator dashboard status for a trade date (latest with data by default).
-
-    Returns a stub degraded response when the orchestration seam is not yet available.
-    """
-    if not _ORCHESTRATION_AVAILABLE:
-        resolved = trade_date or datetime.now(tz=UTC).date().isoformat()
-        return JSONResponse(
-            {
-                "trade_date": resolved,
-                "data_flowing": "unknown",
-                "surfaces_building": "unknown",
-                "qc_status": QC_UNKNOWN,
-                "scenarios_current": "unknown",
-                "events_total": 0,
-                "last_healthy_trade_date": None,
-                "backlog": [],
-                "is_healthy": False,
-                "note": "orchestration seam pending (C3); health dashboard unavailable.",
-            }
-        )
-
+    """Return the operator dashboard status for a trade date (latest with data by default)."""
     ctx = _context(request)
     snapshot_partitions = ctx.store.list_partitions("market_state_snapshots")
     surface_partitions = ctx.store.list_partitions("surface_parameters")

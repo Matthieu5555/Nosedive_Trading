@@ -1,0 +1,176 @@
+# Workspace root for the AlgoTrading volatility-infrastructure monorepo.
+#
+# Virtual workspace (no root package): every layer is a member package under
+# `packages/`, plus the cross-package app under `apps/`. One venv, one lock.
+# Layering is `core <- infra <- {infra-<broker>} <- {strategy,execution} <- frontend`,
+# enforced mechanically by import-linter (a layer never imports a layer above it).
+#
+# Full quality gate (AGENTS.md "Verify before you declare done"):
+#     uv run ruff check . && uv run mypy . && uv run import-linter && uv run pytest -q
+
+[tool.uv.workspace]
+members = [
+    "packages/core",
+    "packages/infra",
+    "packages/infra-ibkr",
+    "packages/infra-saxo",
+    "packages/infra-deribit",
+    "packages/strategy",
+    "packages/execution",
+    "apps/frontend",
+]
+# The pre-restructure flat build and the read-only reference checkout are not members.
+exclude = ["backend", "Vincent's Code"]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.155.1",
+    "import-linter>=2.0",
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.15",
+    "types-pyyaml>=6.0.12.20260518",
+]
+
+# --- Lint -----------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# `ruff check .` lints only the workspace. The pre-restructure flat tree, the
+# read-only reference checkout, notebooks, and scratch dirs are out of this gate.
+extend-exclude = [
+    "backend",
+    "notebooks",
+    "Vincent's Code",
+    "ThomasOssen",
+    "research",
+    "data",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests tolerate long lines (fixtures, hand-computed oracle values in comments).
+"packages/*/tests/**/*.py" = ["E501"]
+"apps/*/tests/**/*.py" = ["E501"]
+
+# --- Types ----------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+explicit_package_bases = true
+namespace_packages = true
+# Map files under each package's src/ to the `algotrading.*` name (not a
+# `packages.core.src...` alias), so `mypy .` resolves each source file once.
+mypy_path = "packages/core/src:packages/infra/src:packages/infra-ibkr/src:packages/infra-saxo/src:packages/infra-deribit/src:packages/strategy/src:packages/execution/src:apps/frontend/src"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+# Workspace packages are installed editable by `uv sync`; import them by name.
+files = ["packages", "apps"]
+# `mypy .` must not wander into the pre-restructure flat tree, the read-only
+# reference checkout, or per-package test dirs (which share the name `tests` and
+# would collide under the workspace). Tests run under pytest, not mypy.
+exclude = [
+    "^backend/",
+    "Vincent's Code/",
+    "/tests/",
+]
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "pyarrow.*"]
+ignore_missing_imports = true
+
+# Analytics / pricing libraries that ship no type stubs.
+[[tool.mypy.overrides]]
+module = ["QuantLib.*", "scipy.*", "vollib.*", "py_vollib.*", "py_lets_be_rational.*"]
+ignore_missing_imports = true
+
+# Orchestration scheduler (apscheduler 3.x) ships no stubs.
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
+ignore_missing_imports = true
+
+# Broker SDKs are optional extras, absent from the gate env, imported lazily.
+[[tool.mypy.overrides]]
+module = ["ib_async.*"]
+ignore_missing_imports = true
+
+# Postgres driver is an optional extra (`postgres`), absent from the gate env and
+# imported lazily inside the Postgres run-registry backend only.
+[[tool.mypy.overrides]]
+module = ["psycopg.*"]
+ignore_missing_imports = true
+
+# --- Layering enforcement (import-linter) ---------------------------------
+[tool.importlinter]
+root_packages = ["algotrading"]
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: a layer never imports a layer above it"
+type = "layers"
+# Upper layers are optional (parentheses): the contract holds with only core+infra
+# present and auto-tightens as strategy/execution/frontend fill in. Broker leaf
+# packages sit above infra and below the alpha layers.
+layers = [
+    "(algotrading.frontend)",
+    "(algotrading.execution)",
+    "(algotrading.strategy)",
+    "(algotrading.infra_ibkr) | (algotrading.infra_saxo) | (algotrading.infra_deribit)",
+    "algotrading.infra",
+    "algotrading.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "infra is blind to alpha (must not import strategy/execution/frontend)"
+type = "forbidden"
+source_modules = ["algotrading.infra"]
+forbidden_modules = [
+    "algotrading.strategy",
+    "algotrading.execution",
+    "algotrading.frontend",
+]
+
+# --- Tests ----------------------------------------------------------------
+[tool.pytest.ini_options]
+# importmode=importlib avoids conftest module-name collisions across packages.
+addopts = "-q --import-mode=importlib"
+testpaths = [
+    "packages/core/tests",
+    "packages/infra/tests",
+    "packages/infra-ibkr/tests",
+    "packages/infra-saxo/tests",
+    "packages/infra-deribit/tests",
+    "apps/frontend/tests",
+]
+
+# --- Coverage floor on the pure-function core (tasks/TESTING.md) -----------
+# Branch coverage on the analytics + risk core. Starts at 90 and only ever rises.
+# Kept out of the default `-q` gate (run with `uv run pytest --cov`): a targeted
+# single-module run would otherwise trip the whole-core threshold.
+[tool.coverage.run]
+branch = true
+source = [
+    "algotrading.infra.snapshots",
+    "algotrading.infra.forwards",
+    "algotrading.infra.iv",
+    "algotrading.infra.surfaces",
+    "algotrading.infra.pricing",
+    "algotrading.infra.utils",
+    "algotrading.infra.risk",
+]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+precision = 1
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "^\\s*\\.\\.\\.$",
+    "if __name__ == .__main__.:",
+]

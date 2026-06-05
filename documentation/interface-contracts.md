@@ -79,3 +79,24 @@ The contract definitions are in `backend/src/contracts/tables.py`; the table reg
 `backend/src/contracts/registry.py`; the public seam is `backend/src/contracts/__init__.py`.
 The rationale for the seam and the storage-versioning crossing is in
 `.agent/decisions/0006-risk-engine.md` and `.agent/decisions/0007-integration-ops.md`.
+
+## Merge update (M0) — the frozen seam moves to `algotrading.infra.contracts`
+
+The monorepo restructure (ADR 0018) ports this exact seam into the layered workspace as
+**`algotrading.infra.contracts`** (`packages/infra/src/algotrading/infra/contracts/`).
+The twelve typed contracts, the instrument key, the registry, and write-ahead validation
+are unchanged in shape — only the import path changes (`from algotrading.infra.contracts
+import …`) and `ProvenanceStamp` now comes from `algotrading.core`. M0 owns this package
+in place of the old "Workstream A"; a change is still a request routed through M0.
+
+M0 additionally **freezes two protocols** in the same package — the cross-package seams
+the merge hinges on:
+
+| protocol | module | role | implemented by | driven by |
+|---|---|---|---|---|
+| `StorageRepository` | `contracts/ports.py` | analytics data-plane port (raw + derived, versioned restatement, table-keyed) | M1 (Parquet/DuckDB) | every consumer reads/writes through it |
+| `BrokerSession` | `contracts/broker.py` | broker-agnostic market-data seam (`BrokerTick`, connect/subscribe/ticks, deterministic `content_event_id`) | M5's IBKR/Saxo/Deribit adapters | M4's Nautilus actor |
+
+The blueprint's *other* store — the relational metadata/run registry — is a separate,
+orthogonal port, `algotrading.infra.storage.ports.RunRepository` (M10; ADR 0015), not
+part of the analytics seam above.

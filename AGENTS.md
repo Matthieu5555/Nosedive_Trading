@@ -55,18 +55,24 @@ a choice the next agent would otherwise have to reverse-engineer.
 
 ## Verify before you declare done
 
-There is no single repo-wide verify command yet, because backend and frontend
-verify differently. Run the relevant app's gate and report what actually ran.
-
-**backend/** (Python, uv, Python 3.13) — the full gate is wired:
+**The merged monorepo (`packages/**`, `apps/**`) — the full gate, run from the repo root:**
 ```
-cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q
+uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q
 ```
-`ruff`, `mypy`, and `pytest` (with `hypothesis`) are dev dependencies in
-`backend/pyproject.toml`, and the gate runs green on the current foundation.
+`ruff`, `mypy`, `import-linter`, and `pytest` (with `hypothesis`) are dev dependencies
+in the root `pyproject.toml`. `lint-imports` enforces the layering (`core ← infra ←
+{infra-<broker>} ← {strategy,execution} ← frontend`, and "infra is blind to alpha"):
+treat a broken contract as a build failure, not a warning. The gate runs green on the
+M0 keystone (`packages/core`, `packages/infra/contracts`). Branch coverage on the
+analytics/risk core is a separate, deliberate step: `uv run pytest --cov`.
 
-**frontend/** (Vite/JS): not scaffolded yet. Once it exists, the gate is
-`cd frontend && npm run lint && npm test`.
+The pre-restructure flat build still lives under **`backend/`** with its own gate
+(`cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q`) until each
+workstream's modules are ported into `packages/infra/` and the old tree is retired.
+The root gate deliberately excludes `backend/`, the reference checkout, and notebooks.
+
+**frontend/** (Vite/JS): the React/Vite web app under `apps/frontend/web` verifies with
+`npm run lint && npm test` once scaffolded; its Python BFF is covered by the root gate.
 
 If a gate cannot run because the tooling is absent, say so plainly. Do not claim
 verification you did not perform.

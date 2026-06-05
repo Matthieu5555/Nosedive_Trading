@@ -71,7 +71,7 @@ class SaxoTransport:
             raise SaxoTransportError(
                 f"Saxo REST {exc.response.status_code} for {path}: {exc.response.text[:200]}"
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
             raise SaxoTransportError(f"Saxo REST call failed for {path}: {exc}") from exc
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -89,7 +89,7 @@ class SaxoTransport:
             raise SaxoTransportError(
                 f"Saxo REST POST {exc.response.status_code} for {path}: {exc.response.text[:200]}"
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
             raise SaxoTransportError(f"Saxo REST POST failed for {path}: {exc}") from exc
 
     def patch(self, path: str, body: dict[str, Any]) -> None:
@@ -106,7 +106,7 @@ class SaxoTransport:
             raise SaxoTransportError(
                 f"Saxo REST PATCH {exc.response.status_code} for {path}: {exc.response.text[:200]}"
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
             raise SaxoTransportError(f"Saxo REST PATCH failed for {path}: {exc}") from exc
 
     def delete(self, path: str) -> None:
@@ -120,7 +120,7 @@ class SaxoTransport:
             raise SaxoTransportError(
                 f"Saxo REST DELETE {exc.response.status_code} for {path}: {exc.response.text[:200]}"
             ) from exc
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
             raise SaxoTransportError(f"Saxo REST DELETE failed for {path}: {exc}") from exc
 
     # ------------------------------------------------------------------

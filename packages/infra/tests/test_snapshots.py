@@ -25,6 +25,14 @@ from algotrading.infra.snapshots import (
     latest_by_field_before,
     resolve_reference_spot,
 )
+from algotrading.infra.snapshots.quote_quality import (
+    check_bid_positive,
+    check_crossed_or_locked,
+    check_open_interest,
+    check_price_against_intrinsic,
+    check_quote_age,
+    check_spread,
+)
 from fixtures.events import (
     OPTION,
     SNAPSHOT_TS,
@@ -308,6 +316,47 @@ def test_cross_strike_monotonicity_flags_the_violation() -> None:
     assert cross_strike_monotonicity_violations(strikes, monotone_calls) == ()
     broken_calls = (12.0, 8.0, 9.0, 3.0)  # index 2 rises above index 1: a violation
     assert cross_strike_monotonicity_violations(strikes, broken_calls) == (2,)
+
+
+# Each quote-quality predicate has one threshold; the off-by-one behaviour at the
+# threshold is the thing most likely to drift. These pin below / AT / above for every
+# predicate, calling the function directly. Oracle findings are derived by hand from the
+# documented relation (all comparisons are strict, so the AT-threshold case does NOT fire).
+@pytest.mark.parametrize(
+    "finding, expected",
+    [
+        # check_spread: fires when (ask-bid)/mid > max_spread_pct. bid=3.0, ask=5.0 →
+        # spread=2.0, mid=4.0, ratio=0.5 exactly (all powers-of-two-exact, no float wobble).
+        (check_spread(3.0, 5.0, 0.6), None),                         # below: 0.5 > 0.6 false
+        (check_spread(3.0, 5.0, 0.5), None),                         # AT: 0.5 > 0.5 false
+        (check_spread(3.0, 5.0, 0.4), ("caution", "wide_spread")),   # above: 0.5 > 0.4
+        # check_quote_age: fires when age > max (exclusive).
+        (check_quote_age(9.0, 10.0), None),                          # below
+        (check_quote_age(10.0, 10.0), None),                         # AT: not older
+        (check_quote_age(11.0, 10.0), ("caution", "stale")),         # above
+        # check_open_interest: fires when oi < min.
+        (check_open_interest(101.0, 100.0), None),                   # above min
+        (check_open_interest(100.0, 100.0), None),                   # AT: not below
+        (check_open_interest(99.0, 100.0), ("caution", "low_open_interest")),  # below
+        # check_price_against_intrinsic: reject below intrinsic, reject above max_value.
+        (check_price_against_intrinsic(5.0, 5.0, 100.0), None),      # AT intrinsic: ok
+        (check_price_against_intrinsic(4.99, 5.0, 100.0), ("reject", "below_intrinsic")),
+        (check_price_against_intrinsic(100.0, 5.0, 100.0), None),    # AT max_value: ok
+        (check_price_against_intrinsic(100.01, 5.0, 100.0), ("reject", "above_max_value")),
+        # check_crossed_or_locked: bid>ask reject, bid==ask caution, bid<ask ok.
+        (check_crossed_or_locked(0.99, 1.0), None),                  # bid < ask: ok
+        (check_crossed_or_locked(1.0, 1.0), ("caution", "locked")),  # bid == ask
+        (check_crossed_or_locked(1.01, 1.0), ("reject", "crossed")),  # bid > ask
+        # check_bid_positive: caution when bid <= 0.
+        (check_bid_positive(0.01), None),                            # positive
+        (check_bid_positive(0.0), ("caution", "non_positive_bid")),  # AT zero: fires
+        (check_bid_positive(-1.0), ("caution", "non_positive_bid")),  # negative
+    ],
+)
+def test_quote_quality_predicate_boundaries(
+    finding: tuple[str, str] | None, expected: tuple[str, str] | None
+) -> None:
+    assert finding == expected
 
 
 def test_snapshot_round_trips_as_a_valid_contract() -> None:

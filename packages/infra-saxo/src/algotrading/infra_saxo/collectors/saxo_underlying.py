@@ -94,7 +94,9 @@ class SaxoUnderlyingProbe:
             return []
 
         # _key is set whenever _uic resolved; the early return on _uic is None guarantees it.
-        assert self._key is not None
+        # An explicit raise (not assert) so the invariant survives `python -O`.
+        if self._key is None:  # pragma: no cover — guaranteed by the _uic-None early return above
+            raise RuntimeError("saxo underlying: _key unset after _uic resolved (invariant broken)")
         ts = _parse_last_updated(info) or _parse_last_updated(quote)
         ticks: list[BrokerTick] = []
         for saxo_field, field_name in _QUOTE_FIELD_MAP:

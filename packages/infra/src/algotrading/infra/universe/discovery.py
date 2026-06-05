@@ -17,7 +17,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from .contracts import EXPIRY_FMT, OptionContract, Right, Underlying
-from .master import UniverseError
+from .errors import UniverseError
 
 
 @dataclass(frozen=True)

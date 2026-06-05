@@ -32,7 +32,6 @@ before the restructure begins.
 
 | Who | Area / files | Branch | Claimed | Note |
 |-----|--------------|--------|---------|------|
-| Claude (agent) | `AGENTS.md`/`.agent/**`, `documentation/**`, `.claude/skills/**`, `notebooks/**` | feat/merge-discipline | 2026-06-05 | M9: fold Vincent's blueprint + vol-surface docs + notebooks; reconcile ADR stream 0011–0016; merge glossary (crypto/Deribit/Saxo); update map.md. |
 | Claude (agent) | `backend/src/{qc,validation}` + additive `contracts` TriageRecord table | feat/integration-ops | 2026-06-05 | M6 **landed (flat layout)**: kept our 10 QC checks, added `validation` anomaly/triage sibling, collapsed both planes into one `triage_records` table. Gate green. ADR 0010. Awaiting M0 relocation under `packages/infra`. |
 | Claude (agent) | `backend/tests/test_{replay_byte_identical,provenance_verification}.py` | feat/integration-ops | 2026-06-05 | M7 prep: harden the two headline acceptance tests to multi-underlying in current flat layout (per user; M0 relocates later) |
 | Claude (agent) | workspace root, `packages/**`, `apps/frontend` — M0→M4 restructure | feat/integration-ops | 2026-06-05 | Monorepo restructure in place (no branch, per user). Blueprint = main rail. M0 keystone, then M1 storage, M2 analytics, M3 risk, M4 market-data/actor, in order. |

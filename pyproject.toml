@@ -43,6 +43,7 @@ extend-exclude = [
     "backend",
     "notebooks",
     "Vincent's Code",
+    "Test Lenny",
     "ThomasOssen",
     "research",
     "data",
@@ -78,6 +79,7 @@ files = ["packages", "apps"]
 exclude = [
     "^backend/",
     "Vincent's Code/",
+    "Test Lenny/",
     "/tests/",
 ]
 

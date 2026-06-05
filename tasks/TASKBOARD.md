@@ -32,8 +32,12 @@ before the restructure begins.
 
 | Who | Area / files | Branch | Claimed | Note |
 |-----|--------------|--------|---------|------|
-| Claude (agent) | `backend/src/{qc,validation}` | feat/integration-ops | 2026-06-05 | M6 QC+validation merge, built in current flat layout (per user; M0 relocates later) |
+| Claude (agent) | `AGENTS.md`/`.agent/**`, `documentation/**`, `.claude/skills/**`, `notebooks/**` | feat/merge-discipline | 2026-06-05 | M9: fold Vincent's blueprint + vol-surface docs + notebooks; reconcile ADR stream 0011–0016; merge glossary (crypto/Deribit/Saxo); update map.md. |
+| Claude (agent) | `backend/src/{qc,validation}` + additive `contracts` TriageRecord table | feat/integration-ops | 2026-06-05 | M6 **landed (flat layout)**: kept our 10 QC checks, added `validation` anomaly/triage sibling, collapsed both planes into one `triage_records` table. Gate green. ADR 0010. Awaiting M0 relocation under `packages/infra`. |
 | Claude (agent) | `backend/tests/test_{replay_byte_identical,provenance_verification}.py` | feat/integration-ops | 2026-06-05 | M7 prep: harden the two headline acceptance tests to multi-underlying in current flat layout (per user; M0 relocates later) |
+| Claude (agent) | workspace root, `packages/**`, `apps/frontend` — M0→M4 restructure | feat/integration-ops | 2026-06-05 | Monorepo restructure in place (no branch, per user). Blueprint = main rail. M0 keystone, then M1 storage, M2 analytics, M3 risk, M4 market-data/actor, in order. |
+| Claude (agent) | `backend/src/frontend/**`, `backend/web/**` + `httpx` dev dep | feat/merge-frontend | 2026-06-05 | M8 frontend: FastAPI BFF + React/Vite web, built in flat backend (per user; M0 relocates to `apps/frontend` later). Wired to our flat `backend/src` seams (ParquetStore reads, surfaces/risk, `build_dashboard`); live broker/OAuth network paths implemented to the verifiable boundary, full wiring deferred until `packages/infra-saxo` lands. Self-contained under `backend/src/frontend` — no overlap with `packages/**` or `apps/frontend`. |
+| Claude (agent) | `research/dispersion-eurostoxx50.md` (new, additive) | feat/integration-ops | 2026-06-05 | Research-direction note: implied correlation / dispersion on SX5E as the next demo. Doc only, no code — no overlap with anyone. |
 
 ## Format
 

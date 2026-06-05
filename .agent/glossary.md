@@ -151,6 +151,59 @@ instead.
   surface fitter are checked against an independently-derived answer, not their own
   output.
 
+### Broker protocols and adapter layer (Workstreams M4 / M5)
+
+- **`BrokerTransport`** — the broker-agnostic Protocol for a live connection: sends subscription
+  requests and delivers raw wire frames. Lives in `infra/`; never imported by `strategy`.
+- **`MarketDataAdapter`** — the Protocol that normalizes a broker's wire frames into `BrokerTick`
+  EAV rows. One implementation per broker, in its leaf package (`infra-<broker>`).
+- **`BrokerTick`** — the normalized EAV row crossing the broker seam: `(provider, instrument_key,
+  field, value, exchange_ts, receipt_ts)`. The only shape `infra` analytics ever consumes from a
+  live source.
+- **`FeedFault`** — a classified broker feed-health signal produced by `MarketDataAdapter` when the
+  feed is degraded: pacing, entitlement, or unknown. Logged and counted; never written into the
+  observation stream.
+- **`ProviderFlow`** — a Protocol in `infra` implemented by each broker leaf: `open_session()`,
+  `discover(...)`, `make_adapter(...)`, `resolve_config(...)`. Registered in the app layer (not in
+  `infra/`, which never imports a leaf). ADR 0017.
+- **`EventSource`** — a minimal Protocol for supplying raw events to the analytics pipeline:
+  `events(provider, underlying, start, end) -> Iterable[RawMarketEvent]`. Makes live, replay, and
+  future historical sources interchangeable without forking the pipeline. ADR 0016.
+
+### Provider and exchange identity
+
+- **Provider** — the data source leaf: `DERIBIT`, `SAXO`, `IBKR`. Identifies *who supplied the
+  data*, not where it is listed. A first-class partition segment in all stores (ADR 0017).
+- **Exchange** — the market listing venue: `DERIBIT`, `AMS`, `NASDAQ`, etc. Identifies *where the
+  instrument is listed*. For crypto on Deribit, provider and exchange coincide; for equity they
+  can differ (same option from Saxo or IBKR on the same Euronext listing).
+- **`ProviderCapabilities`** — a frozen dataclass describing a broker leaf's capabilities:
+  `asset_class`, supported underlyings, auth requirements, data latency, entitlement status.
+
+### Deribit / crypto specifics
+
+- **Mark IV** — Deribit's implied-volatility mark price for each option contract, published via
+  the WebSocket tick stream. Used as input to the `mark_iv_divergence` QC check.
+- **BTC / ETH underlying** — the two Deribit-listed underlyings in scope. Options are USD-settled;
+  no native-coin accounting complexity.
+- **Perpetual** — a crypto futures contract with no expiry; rolls continuously via a periodic
+  **funding rate** (the fee paid by longs to shorts, or vice versa, to keep the perpetual price
+  anchored to spot). Not an option; not in the surface fitting scope, but appears in Deribit market
+  data and must be filtered before passing ticks to the IV/surface engine.
+- **Funding rate** — the periodic cost of holding a perpetual position. Deribit publishes it as a
+  tick field; it is a gap/metadata field for the purposes of the observation stream filter
+  (`is_observation`).
+
+### Saxo Bank / OAuth specifics
+
+- **Access token (Saxo)** — OAuth2 bearer token valid for 20 minutes. Rotated automatically by
+  `auth/token_manager.py` using the refresh token.
+- **Refresh token (Saxo)** — OAuth2 token valid for 40 minutes, used to obtain new access tokens
+  without re-authenticating.
+- **`OptionsChain` endpoint** — the Saxo REST endpoint that returns a complete IV matrix and
+  Greeks for a given underlying and expiry in a single call. Architecturally superior to IBKR's
+  per-contract subscription for surface collection.
+
 ### Other domains
 
 - **TODO: define** the `ecogest` domain terms (the `compt*` artifacts). Not yet

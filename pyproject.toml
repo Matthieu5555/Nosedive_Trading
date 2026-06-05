@@ -106,6 +106,13 @@ ignore_missing_imports = true
 module = ["psycopg.*"]
 ignore_missing_imports = true
 
+# nautilus_trader is the runtime spine (ADR 0023). It ships `py.typed`, but its compiled
+# Cython submodules (backtest/common/model/core) carry no stubs, so mypy cannot resolve
+# them — treat the package as untyped at the import boundary; our own code stays typed.
+[[tool.mypy.overrides]]
+module = ["nautilus_trader.*"]
+ignore_missing_imports = true
+
 # --- Layering enforcement (import-linter) ---------------------------------
 [tool.importlinter]
 root_packages = ["algotrading"]

@@ -87,6 +87,19 @@ A contract test that only checks the happy shape is half a test. Include at leas
 one malformed instance per contract and assert A's write-ahead validation rejects
 it with an explicit error, not a silent coercion.
 
+**Converged seam → contract-test map** (the A–E framing above is the principle; this
+is where each *frozen* seam is actually pinned today, post-merge). A seam is "done"
+only if its test goes red the moment *either* side drifts:
+
+| Frozen seam | Pinned by | What drift it catches |
+|-------------|-----------|-----------------------|
+| `StorageRepository` port (M0) | `packages/infra/tests/test_storage_port.py` | a table contract or the port's write/read shape changing; malformed rows rejected |
+| Unified `BrokerTick` (EAV push) → `contracts.RawMarketEvent` (ADR 0027) | `test_collectors.py` (idempotent, content-addressed capture vs the real store) + each leaf's `test_broker_agnostic.py` (`test_..._normalize_to_the_same_raw_shape`, `test_brokertick_seam_is_the_one_shared_tick_type`) | a broker leaf diverging from the one indistinguishable raw shape, or the id losing content-addressing |
+| actor → analytics `RawMarketEvent` boundary | `test_seam_analytics.py` + `test_replay_byte_identical.py` / `test_nautilus_replay_byte_identical.py` | the live and replay paths diverging (the byte-identical invariant) |
+| `TriageRecord` (qc / validation / anomaly → one `triage_records` table) | `test_seam_triage.py` | any of the three sources drifting from the one persisted shape; malformed rejected |
+| BFF ↔ infra | `apps/frontend/tests/test_readback_api.py` | a router reading back a persisted contract field wrong |
+| REST ↔ TWS transport equivalence (ADR 0024) | `packages/infra-ibkr/tests/test_cp_rest_equivalence.py` | the two IBKR transports producing different events for the same observation |
+
 ## Property-based tests for the invariants
 
 This domain is the textbook case for property-based testing (Hypothesis):

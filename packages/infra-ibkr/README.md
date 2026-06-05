@@ -3,46 +3,58 @@
 Interactive Brokers leaf adapter. Imports `algotrading.infra` + `algotrading.core`, nothing
 above (enforced by import-linter).
 
-## What it does (ADR 0023/0025)
+## Two ingestion paths, one `RawMarketEvent` (ADR 0023/0024/0025)
 
-IBKR rides **Nautilus's shipped InteractiveBrokers adapter** — Nautilus is the runtime spine, and
-its adapter is the live transport. This leaf is the thin seam around it:
+IBKR has **two** market-data paths; both normalize into our immutable `RawMarketEvent` (the system
+of record — ADR 0025), so the actor host replays either identically. The path is chosen by config
+(`select_ibkr_transport`); **REST is preferred**, Nautilus-TWS is the manual-flip fallback (ADR
+0024 §2, no automatic failover). Both build events through the shared `collectors/market_fields.py`
+helper, so they emit **byte-identical** rows for the same observation — the equivalence bar proven
+in `tests/test_cp_rest_equivalence.py`.
 
-- `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: builds the Nautilus
-  `InteractiveBrokersDataClientConfig` (host/port/client-id, real-time or delayed market data,
-  instruments to load). Import-guarded on the `ibkr` extra: without it, raises
-  `IbkrExtraNotInstalled` with an actionable message instead of an opaque `ModuleNotFoundError`.
-- `collectors/nautilus_normalize.py` — `quote_tick_to_events` / `trade_tick_to_events`: the pure
-  seam that turns the `QuoteTick`/`TradeTick` the adapter delivers into our immutable
-  `RawMarketEvent` rows (one per observed field), content-addressed by `content_event_id` so a
-  re-delivered tick (same `sequence`) is written exactly once. Our `ParquetStore` stays the system
-  of record (ADR 0025); no broker SDK type crosses out of this seam.
+### Client Portal REST/WebSocket (preferred — the course requirement, ADR 0024)
 
-## The `ibkr` extra and what runs in CI
+A custom adapter over IBKR's Client Portal Web API (the Saxo/Deribit pattern — `httpx`/`websockets`,
+real deps):
 
-The `ibkr` extra is `nautilus-trader[ib]` (pulls `nautilus-ibapi`). It is **not** in the gate env
-(ADR 0018), and a live connect needs a running TWS / IB Gateway, which CI does not have. So:
+- `connectivity/cp_rest_transport.py` — `CpRestTransport`: REST verbs + the WS URL over the local
+  CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests.
+- `connectivity/cp_rest_session.py` — `CpRestSession`: the brokerage-session lifecycle TWS hid —
+  `/iserver/auth/status` + a daemon-thread `/tickle` keepalive (~60 s; the session dies after ~5 min
+  of silence). A dropped session fires `on_drop`, the engine's reconnect signal.
+- `collectors/cp_rest_normalize.py` — `snapshot_to_events`: CP market-data field tags
+  (`84`→bid, `86`→ask, `88`/`85`→sizes, `31`→last, `7059`→last size) → `RawMarketEvent`, dropping
+  the `-1` sentinel; one normalizer serves both the REST snapshot and the WS frame.
+- `collectors/cp_rest_discovery.py` — `CpRestDiscovery`: the mandatory `secdef/search → strikes →
+  info` sequence (the `name` field **omitted** on search, or strikes are suppressed).
+- `collectors/cp_rest_adapter.py` — `CpRestMarketDataAdapter`: REST `snapshot()` + WS frame
+  handling → `RawMarketEvent`. **Read-only** — only `/iserver/marketdata/*` is ever touched, never
+  an order endpoint (asserted in `test_cp_rest_adapter.py`).
 
-- the **normalizer** (`nautilus_normalize`) uses only Nautilus *base* tick types and is fully tested
-  in CI — it is the verifiable core of the IBKR-on-Nautilus data path;
-- the **config builder** is tested two ways: the guard (no extra → clear error) always runs; the
-  construction test skips unless the extra is present;
-- install the live path with `uv sync --extra ibkr` and run it on a machine with a Gateway.
+### Nautilus TWS (fallback, ADR 0025)
 
-## Open: IBKR-over-REST course requirement
+- `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: the Nautilus
+  `InteractiveBrokersDataClientConfig`, import-guarded on the `ibkr` extra
+  (`IbkrExtraNotInstalled` when absent).
+- `collectors/nautilus_normalize.py` — `quote_tick_to_events` / `trade_tick_to_events`: Nautilus
+  `QuoteTick`/`TradeTick` → `RawMarketEvent`.
 
-Nautilus's InteractiveBrokers adapter is **TWS/IB-Gateway-only** (no Client Portal / REST option).
-A course requirement mandates an IBKR **REST** connection; [ADR 0024](../../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)
-(**proposed**, pending owner ruling) records the resolution — a custom IBKR-REST connector into the
-catalog (the Saxo/Deribit pattern) *alongside* this Nautilus-TWS path, switched by config. The seam
-here does **not** foreclose that: the normalizer takes plain tick inputs and a REST connector would
-feed the same `RawMarketEvent` raw layer. Do not hard-retire the REST option when extending this leaf.
+## What runs in CI
+
+The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket, no secrets.
+
+- The **normalizers**, **discovery**, **session keepalive** (fake clock/transport), the adapter's
+  **REST snapshot** + **WS frame** handling, and the **REST↔TWS equivalence** test all run in CI
+  against fakes — the verifiable core.
+- The Nautilus config builder's guard runs; its construction test skips without the `ibkr` extra.
+- Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the
+  Nautilus-TWS path with `uv sync --extra ibkr`; the REST path needs the CP Gateway running locally.
 
 ## Superseded
 
 The hand-rolled `ib_async` modules (`connectivity/ibkr_transport.py`,
 `collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) are
-**superseded** by the Nautilus adapter (ADR 0023). They are kept as files — reached only by direct
-import, no longer surfaced from the package `__init__`, and their tests `importorskip("ib_async")`
-— until **C5** removes them. Real captured samples used by the gate's SDK-free replay test:
+**superseded** (ADR 0023). They are kept as files — reached only by direct import, not surfaced
+from the package `__init__`, tests `importorskip("ib_async")` — until **C5** removes them. Real
+captured samples for the gate's SDK-free replay test:
 `samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.

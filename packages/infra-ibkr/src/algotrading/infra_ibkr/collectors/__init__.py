@@ -1,12 +1,18 @@
-"""IBKR market-data collection (ADR 0023/0025).
+"""IBKR market-data collection — two paths into one ``RawMarketEvent`` (ADR 0023/0024/0025).
 
-The live path is Nautilus's InteractiveBrokers adapter; this package's seam is the pure
-tick → :class:`RawMarketEvent` normalizer exported here. The hand-rolled ``ib_async`` push
-adapter/discovery (``ibkr_adapter``/``ibkr_discovery``) are **superseded** — kept as files
-until C5 removes them, reached only by direct import (they require the old SDK), and not
-surfaced here so this package imports with no broker SDK present.
+- **Client Portal REST/WS** (ADR 0024, preferred): :class:`CpRestMarketDataAdapter` +
+  :class:`CpRestDiscovery`, normalizing via :func:`snapshot_to_events`.
+- **Nautilus TWS** (ADR 0025, fallback): :func:`quote_tick_to_events` /
+  :func:`trade_tick_to_events`.
+
+Both build events through the shared ``market_fields`` helper, so they emit identical rows for the
+same observation (ADR 0024's equivalence bar). The hand-rolled ``ib_async`` push adapter/discovery
+are **superseded** — kept as files until C5, reached only by direct import, not surfaced here.
 """
 
+from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter
+from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
+from .cp_rest_normalize import snapshot_to_events
 from .nautilus_normalize import (
     quote_tick_to_events,
     quote_ticks_to_events,
@@ -14,7 +20,14 @@ from .nautilus_normalize import (
 )
 
 __all__ = [
+    # Nautilus-TWS path (ADR 0025)
     "quote_tick_to_events",
     "quote_ticks_to_events",
     "trade_tick_to_events",
+    # Client Portal REST path (ADR 0024)
+    "CpInstrument",
+    "CpRestMarketDataAdapter",
+    "CpRestDiscovery",
+    "DiscoveryError",
+    "snapshot_to_events",
 ]

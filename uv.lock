@@ -152,6 +152,8 @@ version = "0.1.0"
 source = { editable = "packages/infra-ibkr" }
 dependencies = [
     { name = "algotrading-infra" },
+    { name = "httpx" },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -162,7 +164,9 @@ ibkr = [
 [package.metadata]
 requires-dist = [
     { name = "algotrading-infra", editable = "packages/infra" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "nautilus-trader", extras = ["ib"], marker = "extra == 'ibkr'" },
+    { name = "websockets", specifier = ">=12" },
 ]
 provides-extras = ["ibkr"]
 

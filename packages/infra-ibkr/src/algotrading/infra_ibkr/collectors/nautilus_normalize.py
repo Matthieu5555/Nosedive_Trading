@@ -1,53 +1,31 @@
 """Normalize Nautilus market-data ticks into our immutable ``RawMarketEvent``.
 
 ADR 0023/0025: IBKR rides Nautilus's InteractiveBrokers adapter, which delivers
-``QuoteTick``/``TradeTick`` for subscribed instruments. This module is the seam that
-turns those into our system-of-record ``RawMarketEvent`` rows — one row per observed
-field, content-addressed by :func:`content_event_id` so a re-delivered tick (same
-``sequence``) is written exactly once. No broker SDK type crosses out of here; only
-Nautilus's broker-agnostic tick types come in, and only ``RawMarketEvent`` goes out.
+``QuoteTick``/``TradeTick`` for subscribed instruments. This module maps those onto our
+system-of-record ``RawMarketEvent`` rows — one row per observed field, content-addressed so a
+re-delivered tick (same ``sequence``) is written exactly once. No broker SDK type crosses out of
+here; only Nautilus's broker-agnostic tick types come in, and only ``RawMarketEvent`` goes out.
 
-These functions are pure and use only Nautilus's *base* model types, so they are fully
-exercised in CI without the ``ibkr`` extra or a TWS Gateway.
+Events are built through the shared :mod:`.market_fields` helper, so this path and the Client
+Portal REST path (``cp_rest_normalize``) agree on field names and event construction by
+construction (ADR 0024's equivalence bar). Pure, base-Nautilus-types only — fully exercised in CI.
 """
 
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
 
-from algotrading.infra.contracts import RawMarketEvent, content_event_id
+from algotrading.infra.contracts import RawMarketEvent
 from nautilus_trader.model.data import QuoteTick, TradeTick
 
-_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-
-
-def _to_datetime(nanos: int) -> datetime:
-    """Unix nanoseconds (Nautilus ``ts_event``/``ts_init``) → UTC datetime."""
-    return _EPOCH + timedelta(microseconds=nanos // 1000)
-
-
-def _event(
-    *,
-    instrument_key: str,
-    underlying: str,
-    session_id: str,
-    field_name: str,
-    value: float,
-    sequence: int,
-    exchange_ts: datetime,
-    receipt_ts: datetime,
-) -> RawMarketEvent:
-    return RawMarketEvent(
-        session_id=session_id,
-        event_id=content_event_id(instrument_key, field_name, sequence),
-        instrument_key=instrument_key,
-        exchange_ts=exchange_ts,
-        receipt_ts=receipt_ts,
-        canonical_ts=exchange_ts,
-        field_name=field_name,
-        value=value,
-        trade_date=exchange_ts.date(),
-        underlying=underlying,
-    )
+from .market_fields import (
+    ASK,
+    ASK_SIZE,
+    BID,
+    BID_SIZE,
+    LAST,
+    LAST_SIZE,
+    raw_market_event,
+    to_datetime,
+)
 
 
 def quote_tick_to_events(
@@ -60,21 +38,21 @@ def quote_tick_to_events(
 ) -> tuple[RawMarketEvent, ...]:
     """One Nautilus ``QuoteTick`` → its bid/ask (+sizes) as ``RawMarketEvent`` rows.
 
-    ``sequence`` is the feed's stable per-session ordinal for this update; bid and ask of
-    the same tick share it but differ by ``field_name``, so they get distinct event ids,
-    while a re-delivered tick at the same ``sequence`` reproduces the same ids (idempotent).
-    ``exchange_ts`` is the tick's ``ts_event``; ``receipt_ts`` is ``ts_init``.
+    ``sequence`` is the feed's stable per-session ordinal for this update; bid and ask of the same
+    tick share it but differ by ``field_name``, so they get distinct event ids, while a re-delivered
+    tick at the same ``sequence`` reproduces the same ids (idempotent). ``exchange_ts`` is the
+    tick's ``ts_event``; ``receipt_ts`` is ``ts_init``.
     """
-    exchange_ts = _to_datetime(tick.ts_event)
-    receipt_ts = _to_datetime(tick.ts_init)
+    exchange_ts = to_datetime(tick.ts_event)
+    receipt_ts = to_datetime(tick.ts_init)
     fields = (
-        ("bid", float(tick.bid_price)),
-        ("ask", float(tick.ask_price)),
-        ("bid_size", float(tick.bid_size)),
-        ("ask_size", float(tick.ask_size)),
+        (BID, float(tick.bid_price)),
+        (ASK, float(tick.ask_price)),
+        (BID_SIZE, float(tick.bid_size)),
+        (ASK_SIZE, float(tick.ask_size)),
     )
     return tuple(
-        _event(
+        raw_market_event(
             instrument_key=instrument_key,
             underlying=underlying,
             session_id=session_id,
@@ -97,14 +75,14 @@ def trade_tick_to_events(
     sequence: int,
 ) -> tuple[RawMarketEvent, ...]:
     """One Nautilus ``TradeTick`` → its last price + size as ``RawMarketEvent`` rows."""
-    exchange_ts = _to_datetime(tick.ts_event)
-    receipt_ts = _to_datetime(tick.ts_init)
+    exchange_ts = to_datetime(tick.ts_event)
+    receipt_ts = to_datetime(tick.ts_init)
     fields = (
-        ("last", float(tick.price)),
-        ("last_size", float(tick.size)),
+        (LAST, float(tick.price)),
+        (LAST_SIZE, float(tick.size)),
     )
     return tuple(
-        _event(
+        raw_market_event(
             instrument_key=instrument_key,
             underlying=underlying,
             session_id=session_id,

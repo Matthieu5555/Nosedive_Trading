@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 
+import pytest
 from algotrading.core import (
     PlatformConfig,
     QcThresholdConfig,
@@ -20,6 +21,7 @@ from algotrading.core import (
     UniverseConfig,
     composite_config_hash,
     config_hash,
+    from_config,
     load_yaml_config,
     section_hash,
     section_versions,
@@ -119,3 +121,66 @@ def test_yaml_overlay_merges_deterministically(tmp_path) -> None:
     assert loaded.data["nested"]["y"] == 99  # overlay wins
     # Re-loading the same files yields the same content hash.
     assert load_yaml_config(overlay, base=base).config_hash == loaded.config_hash
+
+
+_BASE_ECONOMIC_YAML = """\
+universe:
+  version: u-base
+  underlyings: [SPX, NDX]
+  exchange: CBOE
+qc_threshold:
+  version: qc-base
+  max_spread_pct: 0.05
+  max_quote_age_seconds: 30.0
+  min_chain_count: 5
+solver:
+  version: s-base
+  iv_tolerance: 1.0e-8
+  max_iterations: 100
+scenario:
+  version: sc-base
+  spot_shocks: [-0.1, 0.0, 0.1]
+  vol_shocks: [-0.02, 0.02]
+"""
+
+
+def test_from_config_builds_typed_platform_config_over_a_yaml_overlay(tmp_path) -> None:
+    # The typed economic config builds from a versioned YAML base + one overlay through
+    # the same validation as the TOML path (C7 task 1: one schema, the overlay loader's
+    # inheritance). The overlay narrows the universe (a list, replaced wholesale, not
+    # merged) and tightens one qc threshold; everything else is inherited from the base.
+    base = tmp_path / "base.yaml"
+    overlay = tmp_path / "single_name.yaml"
+    base.write_text(_BASE_ECONOMIC_YAML, encoding="utf-8")
+    overlay.write_text(
+        "universe:\n  underlyings: [AAPL]\nqc_threshold:\n  max_spread_pct: 0.02\n",
+        encoding="utf-8",
+    )
+
+    config = from_config(load_yaml_config(overlay, base=base))
+
+    assert isinstance(config, PlatformConfig)
+    # List value replaced wholesale by the overlay (not ["SPX","NDX","AAPL"]), as a tuple.
+    assert config.universe.underlyings == ("AAPL",)
+    # Scalar overridden by the overlay.
+    assert config.qc_threshold.max_spread_pct == 0.02
+    # Untouched fields inherited from the base, with the dataclasses' coerced types.
+    assert config.universe.version == "u-base"
+    assert config.universe.exchange == "CBOE"
+    assert config.qc_threshold.max_quote_age_seconds == 30.0
+    assert config.qc_threshold.min_chain_count == 5
+    assert config.solver.iv_tolerance == 1e-8
+    assert config.solver.max_iterations == 100
+    assert config.scenario.spot_shocks == (-0.1, 0.0, 0.1)
+    assert config.scenario.vol_shocks == (-0.02, 0.02)
+
+
+def test_from_config_rejects_a_missing_section(tmp_path) -> None:
+    # A resolved config missing a required economic section fails loudly with the typed
+    # ConfigError (naming the section), never a bare KeyError from deep in the builder.
+    from algotrading.core.config import ConfigError
+
+    incomplete = tmp_path / "incomplete.yaml"
+    incomplete.write_text("universe:\n  version: u\n  underlyings: [SPX]\n  exchange: CBOE\n", "utf-8")
+    with pytest.raises(ConfigError):
+        from_config(load_yaml_config(incomplete))

@@ -3,15 +3,17 @@
 Two paths share this package:
 
 * the typed economic config — :class:`PlatformConfig` and its four versioned
-  sections, loaded from TOML (``load_config``), hashed deterministically; this is
-  the blueprint's mandated universe/QC/solver/scenario version set.
+  sections, hashed deterministically; this is the blueprint's mandated
+  universe/QC/solver/scenario version set. Build it from a versioned YAML overlay
+  config (``load_yaml_config`` → :func:`from_config`, the path C7/ADR 0028 standardize
+  on) or from the legacy TOML file (``load_config``) — both share one validation.
 * the generic versioned-YAML loader with overlay inheritance
   (``load_yaml_config`` → :class:`LoadedConfig`) for free-form config bundles.
 """
 
 from __future__ import annotations
 
-from .loader import ConfigError, config_from_mapping, load_config
+from .loader import ConfigError, config_from_mapping, from_config, load_config
 from .platform_config import (
     SECTION_NAMES,
     PlatformConfig,
@@ -40,6 +42,7 @@ __all__ = [
     "composite_config_hash",
     "config_from_mapping",
     "config_hash",
+    "from_config",
     "load_config",
     "load_yaml_config",
     "mapping_config_hash",

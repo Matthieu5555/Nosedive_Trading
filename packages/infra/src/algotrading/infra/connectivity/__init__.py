@@ -1,16 +1,18 @@
-"""Broker-agnostic connectivity: the session seam, the backoff supervisor, fakes.
+"""Broker-agnostic connectivity: session lifecycle, the backoff supervisor, clocks.
 
-Import the broker-agnostic :class:`BrokerTick` / :class:`BrokerSession` (re-exported
-from the frozen ``contracts`` seam), the :class:`SessionSupervisor` (the one home for
-reconnect-with-backoff and the client-id convention), an injected :class:`Clock`, and
-the no-broker :class:`FakeBrokerSession` / :class:`ReplayBrokerSession` from here. No
-broker SDK type is exported, because none crosses this boundary — the concrete live
-adapters live in the ``infra-{ibkr,saxo,deribit}`` leaf packages.
+The supervisor (:class:`SessionSupervisor`) is the one home for reconnect-with-backoff, the
+client-id convention, and loss-aware :class:`GapInterval` recording — it sits *beneath* the
+push :class:`~algotrading.infra.collectors.MarketDataAdapter` (ADR 0027) and manages only the
+session lifecycle, never a tick type or a pull loop. Import it, an injected :class:`Clock`, the
+market-data entitlement policy, and the content-addressed :func:`content_event_id` (the
+idempotency primitive, re-exported from the frozen ``contracts`` seam) from here. No broker SDK
+type is exported — the concrete live adapters live in the ``infra-{ibkr,saxo,deribit}`` leaves.
 """
 
 from __future__ import annotations
 
-from .broker import BrokerSession, BrokerTick, content_event_id
+from algotrading.infra.contracts import content_event_id
+
 from .clock import Clock, ManualClock, SystemClock
 from .errors import (
     ClientIdError,
@@ -29,12 +31,11 @@ from .market_data_policy import (
     classify_feed_notice,
     market_data_type_name,
 )
-from .sessions import FakeBrokerSession, ReplayBrokerSession, ScriptedDrop, ScriptItem
 from .supervisor import (
     BackoffSchedule,
     GapInterval,
     SessionSupervisor,
-    SupervisedTick,
+    SupervisedSession,
     client_id_for,
 )
 
@@ -43,23 +44,17 @@ __all__ = [
     "OTHER",
     "PACING",
     "BackoffSchedule",
-    "BrokerSession",
-    "BrokerTick",
     "ClientIdError",
     "Clock",
     "ConnectionFailed",
     "ConnectivityError",
-    "FakeBrokerSession",
     "FeedNotice",
     "GapInterval",
     "ManualClock",
     "MarketDataStatus",
-    "ReplayBrokerSession",
-    "ScriptItem",
-    "ScriptedDrop",
     "SessionDisconnected",
     "SessionSupervisor",
-    "SupervisedTick",
+    "SupervisedSession",
     "SystemClock",
     "UnknownServiceError",
     "assess_market_data",

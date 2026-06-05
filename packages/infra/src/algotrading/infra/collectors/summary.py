@@ -16,7 +16,8 @@ from datetime import date
 
 from algotrading.infra.contracts import RawMarketEvent
 
-from .normalization import GAP_FIELD, is_observation
+from .normalization import GAP_FIELD
+from .normalize import is_observation
 from .notices import ENTITLEMENT, PACING, FeedNotice
 
 

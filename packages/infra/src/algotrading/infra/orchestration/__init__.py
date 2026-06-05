@@ -17,8 +17,13 @@ The fastest path — run the canonical end-of-day sequence from one place:
 
 What lives here:
 
-* **jobs** — universe refresh, incremental analytics, EOD reconciliation, each a
-  function of injected dependencies with a structured, correlation-id-bound log line.
+* **jobs** — universe refresh, live collection (``collect_live``), incremental analytics,
+  EOD reconciliation, each a function of injected dependencies with a structured,
+  correlation-id-bound log line.
+* **surface_job** — the end-to-end "give me a surface for this symbol" use case: resolve a
+  chain, capture quotes via ``collect_live``, run the actor, summarize the fitted surface.
+* **provider_flow** — capture from several providers into the one raw layer through the one
+  collector, then run the single actor over the union (the multi-broker capture driver).
 * **qc_job** — the operable wrapper that runs the QC checks over a day's outputs and
   writes the ``QcResult`` rows.
 * **metrics** — the five well-labeled prometheus metrics (event rate, stale ratios,
@@ -36,14 +41,11 @@ What lives here:
 The ``reconstruction`` subpackage (historical replay/backfill) is owned separately and
 is deliberately *not* imported here.
 
-**Pending C1 (the broker→raw-event seam, ADR 0023).** The live-collection job
-(``collect_live``) and the end-to-end surface job (``surface_job``) that begins with a
-live capture both depend on the supervised broker stream feeding a collector that
-writes ``RawMarketEvent`` rows — a seam C1 has not yet reconciled across the two tick
-shapes on the ``packages`` stack (see :mod:`orchestration.jobs`). They are *not* ported
-here yet rather than wired to a second, divergent collection path. The EOD pipeline's
-collection stage stays an injected seam (:class:`EodStages`) so the sequence is
-complete and testable today, and lands its live wiring when C1 closes the seam.
+The collection seam is now unified (ADR 0027 / C6): one :class:`collectors.RawCollector`,
+one :class:`collectors.BrokerTick`, content-addressed exactly-once capture. ``collect_live``,
+``surface_job`` and ``provider_flow`` all drive that one collector, and the EOD pipeline's
+collection stage wires to ``collect_live`` (still injectable as :class:`EodStages` so the
+sequence stays testable without a broker).
 """
 
 from __future__ import annotations
@@ -70,8 +72,10 @@ from .dashboard import (
 from .jobs import (
     AnalyticsResult,
     CollectionResult,
+    FeedDriver,
     ReconciliationResult,
     UniverseRefreshResult,
+    collect_live,
     reconcile_end_of_day,
     record_forward_failure,
     refresh_universe,
@@ -79,6 +83,7 @@ from .jobs import (
 )
 from .metrics import OrchestrationMetrics, build_metrics, sample_value
 from .pipeline import EodResult, EodStages, run_end_of_day
+from .provider_flow import ProviderCapture, ProviderFlowResult, run_provider_flow
 from .qc_job import QcJobResult, run_qc
 from .run_state import (
     EOD_STAGES,
@@ -98,6 +103,12 @@ from .run_state import (
     record_stage,
 )
 from .storage_root import store_root
+from .surface_job import (
+    MarketDataDiagnostics,
+    SurfaceJobRequest,
+    SurfaceJobResult,
+    build_surface,
+)
 
 __all__ = [
     "ALERT_COLLECTOR_DEATH",
@@ -121,14 +132,22 @@ __all__ = [
     "DashboardStatus",
     "EodResult",
     "EodStages",
+    "FeedDriver",
+    "MarketDataDiagnostics",
     "OrchestrationMetrics",
+    "ProviderCapture",
+    "ProviderFlowResult",
     "QcJobResult",
     "ReconciliationResult",
     "StageRun",
+    "SurfaceJobRequest",
+    "SurfaceJobResult",
     "UniverseRefreshResult",
     "backlog_stages",
     "build_dashboard",
     "build_metrics",
+    "build_surface",
+    "collect_live",
     "collector_death_alert",
     "completed_stages",
     "elevated_failure_rate_alert",
@@ -144,6 +163,7 @@ __all__ = [
     "render_dashboard",
     "run_end_of_day",
     "run_incremental_analytics",
+    "run_provider_flow",
     "run_qc",
     "sample_value",
     "store_root",

@@ -6,7 +6,9 @@ Provides two surfaces:
 
 Both surfaces use only public endpoints; no authentication is required for market data.
 ``DeribitSession`` is a thin context manager that owns the transport lifecycle and exposes
-the transport for callers that need it (mirroring the BrokerSession pattern in infra).
+the transport for callers that need it. The push ``DeribitMarketDataAdapter`` drives this
+transport and feeds ticks to the one unified ``RawCollector`` (ADR 0027); there is no pull
+tick loop here.
 """
 
 from __future__ import annotations

@@ -24,10 +24,9 @@ fixtures, and the detection bound is the documented interval constant itself.
 
 Relocated from ``backend/tests`` onto the ``packages/`` stack (C3): the wiring under
 test is ``algotrading.infra.orchestration`` driving the ported actor and QC plane. The
-two *live-collection* cases that drove a ``SessionSupervisor`` stream into a collector
-are pending C1's broker→``RawMarketEvent`` seam (see the skip below and
-:mod:`algotrading.infra.orchestration.jobs`); everything that does not depend on live
-collection runs here.
+two *live-collection* cases drive the unified push collector (C6 / ADR 0027) through
+``collect_live`` over a fake push adapter — one collector, one tick, content-addressed
+capture — and assert the shared correlation id and the per-underlying event counter.
 """
 
 from __future__ import annotations
@@ -45,7 +44,12 @@ from algotrading.core.config import (
     SolverConfig,
     UniverseConfig,
 )
-from algotrading.infra.collectors import CollectorSummary
+from algotrading.infra.collectors import (
+    BrokerTick,
+    CollectorSummary,
+    RawCollector,
+    next_sequence,
+)
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.contracts import (
     InstrumentKey,
@@ -61,6 +65,7 @@ from algotrading.infra.orchestration import (
     backlog_stages,
     build_dashboard,
     build_metrics,
+    collect_live,
     collector_death_alert,
     completed_stages,
     elevated_failure_rate_alert,
@@ -176,24 +181,118 @@ class _CapturingProcessor:
         raise structlog.DropEvent
 
 
-@pytest.mark.skip(
-    reason="Live-collection jobs (collect_live, the EOD collection stage's live wiring, "
-    "and the per-underlying events_collected counter fed off a real capture) are pending "
-    "C1's broker→RawMarketEvent seam (ADR 0023): on the packages stack the supervised "
-    "pull stream yields a contracts.BrokerTick while RawCollector ingests the EAV "
-    "collectors.BrokerTick — two unreconciled tick shapes, owner-deferred ('priorité "
-    "IBKR, le reste en stand by'). C3 does not add a second collection path to fake it. "
-    "See algotrading.infra.orchestration.jobs. Re-enable when C1 closes the seam."
-)
-def test_live_collection_jobs_pending_c1_collection_seam() -> None:
-    """Placeholder marking the two relocated live-collection cases as C1-blocked.
+# =========================================================================== #
+# Live collection through the one unified collector (C6 / ADR 0027)            #
+# =========================================================================== #
+class _FakePushAdapter:
+    """A push MarketDataAdapter that replays a fixed list of ticks when driven — no broker.
 
-    The originals (``test_collection_and_analytics_share_one_correlation_id_end_to_end``
-    and ``test_collected_events_metric_increments_per_underlying``) drove a
-    ``SessionSupervisor`` + ``FakeBrokerSession`` through ``collect_live`` and asserted
-    the per-underlying event counter and the shared correlation id across the
-    collection and analytics log lines. They return once the collection job lands.
+    Captures the collector's tick callback (after :class:`SequenceStamping` wraps it) and, on
+    :meth:`pump`, pushes each scripted tick through it. The script's ticks omit ``sequence``;
+    the stamping wrapper assigns it, exactly as it does for a live feed.
     """
+
+    def __init__(self, ticks: list[BrokerTick]) -> None:
+        self._ticks = ticks
+        self._tick_cb = None
+
+    def subscribe(self, instrument_keys: object) -> None: ...
+    def set_tick_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        self._tick_cb = callback
+    def set_fault_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        ...
+    def unsubscribe_all(self) -> None: ...
+
+    def pump(self, _collector: RawCollector) -> None:
+        for tick in self._ticks:
+            self._tick_cb(tick)  # type: ignore[misc]
+
+
+def _capture_ticks(chain: ChainFixture) -> tuple[list[BrokerTick], list[str]]:
+    """Build a live-feed tick script (bid/ask/last per instrument) for a chain fixture.
+
+    Returns the ticks and the canonical keys to subscribe. Values mirror ``_chain_inputs`` so
+    the captured raw layer is rich enough for the actor to run, and the per-underlying counts
+    are hand-derivable.
+    """
+    spot = chain.underlying_spot
+    counters: dict[tuple[str, str], int] = {}
+    ticks: list[BrokerTick] = []
+    keys: list[str] = []
+
+    def _add(instrument: InstrumentKey, bid: float, ask: float, last: float) -> None:
+        key = instrument.canonical()
+        keys.append(key)
+        for field, value in (("bid", bid), ("ask", ask), ("last", last)):
+            ticks.append(
+                BrokerTick(
+                    instrument_key=key, field_name=field, value=value,
+                    underlying=instrument.underlying_symbol,
+                    sequence=next_sequence(counters, key, field), exchange_ts=AS_OF,
+                )
+            )
+
+    _add(chain.underlying, spot - 0.05, spot + 0.05, spot)
+    for quote in chain.quotes:
+        _add(quote.instrument, quote.bid, quote.ask, quote.last)
+    return ticks, keys
+
+
+def test_collection_and_analytics_share_one_correlation_id_end_to_end(tmp_path: Path) -> None:
+    # Capture live through the one collector, then run analytics over the captured raw layer —
+    # both under one correlation id, so the trace resolves the session to the jobs it fed.
+    chain = get_fixture("synthetic_known_answer")
+    _, instruments, masters = _chain_inputs(chain)
+    ticks, keys = _capture_ticks(chain)
+    store = ParquetStore(tmp_path)
+    clock = ManualClock(start=AS_OF)
+    adapter = _FakePushAdapter(ticks)
+
+    processor = _CapturingProcessor()
+    structlog.configure(processors=[processor])
+
+    collection = collect_live(
+        store=store, adapter=adapter, subscribe=keys, session_id="corr-shared",
+        trade_date=TRADE_DATE, clock=clock, drive=adapter.pump, correlation_id="corr-shared",
+    )
+    analytics = run_incremental_analytics(
+        store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+        instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
+        calc_ts=CALC_TS, clock=clock, correlation_id="corr-shared",
+    )
+    structlog.reset_defaults()
+
+    assert collection.summary.event_count > 0  # the live capture actually landed events
+    assert not analytics.outputs.is_empty()  # analytics ran over the captured raw layer
+    # Both the collection and the analytics job log lines carry the one correlation id.
+    corr_ids = {r.get("correlation_id") for r in processor.records if "correlation_id" in r}
+    assert corr_ids == {"corr-shared"}
+    jobs_logged = {r.get("job") for r in processor.records if "job" in r}
+    assert {"collection", "analytics"} <= jobs_logged
+
+
+def test_collected_events_metric_increments_per_underlying(tmp_path: Path) -> None:
+    # The events_collected counter is labeled by underlying, fed off the real captured layer.
+    chain = get_fixture("synthetic_known_answer")
+    ticks, keys = _capture_ticks(chain)
+    store = ParquetStore(tmp_path)
+    metrics = build_metrics()
+    adapter = _FakePushAdapter(ticks)
+
+    collect_live(
+        store=store, adapter=adapter, subscribe=keys, session_id="sess-metric",
+        trade_date=TRADE_DATE, clock=ManualClock(start=AS_OF),
+        drive=adapter.pump, correlation_id="corr-metric", metrics=metrics,
+    )
+    # Hand-derived oracle: every scripted observation is for underlying AAPL, three fields per
+    # instrument, so the counter for AAPL equals the number of captured observations.
+    captured = [e for e in store.read("raw_market_events") if e.session_id == "sess-metric"]
+    expected = len(captured)
+    assert expected == len(ticks)  # all scripted ticks landed (finite values, distinct ids)
+    assert (
+        sample_value(metrics.registry, "events_collected_total", {"underlying": "AAPL"})
+        == expected
+    )
 
 
 # =========================================================================== #

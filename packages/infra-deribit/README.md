@@ -29,6 +29,7 @@ needed to import the package or run the test suite.
 
 **Direction set by ADR 0023 (2026-06-05):** Nautilus ships no Deribit adapter, so **this leaf is a
 survivor — kept**. It implements the `algotrading.infra.collectors.MarketDataAdapter` seam and feeds
-the catalog Nautilus replays; the scalar `contracts.BrokerSession` is being retired (C1). `flow.py`
-is deferred until the analytics pipeline lands in `packages/infra`. No real sample is carried
-(Deribit captures are synthetic in `tests/conftest.py`).
+the catalog Nautilus replays through the one unified `RawCollector` (ADR 0027 / C6: the pull
+`contracts.BrokerSession` seam has been retired). `flow.py` is deferred until the analytics pipeline
+lands in `packages/infra`. No real sample is carried (Deribit captures are synthetic in
+`tests/conftest.py`).

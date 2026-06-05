@@ -16,13 +16,21 @@ in a notebook and copied into the code).
 | `demo_pipeline_saxo.ipynb` | Saxo pipeline demo: OAuth2 flow, OptionsChain endpoint, IV surface. Requires a live Saxo token. |
 | `vol_surface_pedagogique.ipynb` | Interactive pedagogy: vol surface intuition, smile anatomy, Greeks, no-arb diagnostics. Companion to `documentation/vol-surface/vol_surface_pedagogique.md`. |
 
-The first two run on synthetic inputs (reproducible, no broker needed). The pipeline demos require
-live credentials or a testnet; see the cell-level setup instructions in each notebook.
+The three no-credential demos (`demo_surface_fit`, `demo_pricing_greeks`, `vol_surface_pedagogique`)
+run on synthetic inputs (reproducible, no broker needed). The pipeline demos require live
+credentials or a testnet; see the cell-level setup instructions in each notebook.
 
-> **ADR 0023 (2026-06-05):** Nautilus becomes the runtime spine — IBKR moves onto Nautilus's adapter
-> (the `demo_pipeline_ibkr` `IbkrBrokerSession` path is superseded), while Saxo/Deribit keep their
-> own adapters. The demos rewire when C1 lands; the lines above describe the current pre-migration
-> state.
+> **Status (2026-06-05, post-merge):** the three no-credential demos are **rewired to the merged
+> API and verified** (they execute clean against `algotrading.infra.*` under `--group notebooks`).
+> The four broker-pipeline demos (`demo_pipeline_{deribit,deribit_v2,ibkr,saxo}`) were carried over
+> from the pre-merge tree and **still import pre-merge module paths** (e.g. `surfaces.engine`,
+> `infra_{ibkr,saxo}.flow`, the old `forwards`/`iv`/`qc`/`risk`/`snapshots` names); they need a
+> rewire to the merged collection seam (C6: `orchestration.provider_flow`, the unified collector)
+> before they run, plus live credentials/testnet/Gateway to execute end-to-end.
+
+> **ADR 0023:** Nautilus is the runtime spine — IBKR moved onto Nautilus's adapter (the old
+> `demo_pipeline_ibkr` `IbkrBrokerSession` path is superseded), while Saxo/Deribit keep their own
+> adapters. The pipeline demos will reflect that wiring once rewired.
 
 ## Run
 ```bash

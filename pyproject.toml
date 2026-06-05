@@ -32,6 +32,16 @@ dev = [
     "ruff>=0.15.15",
     "types-pyyaml>=6.0.12.20260518",
 ]
+# Tooling to run the demo notebooks (notebooks/*.ipynb). Not part of the gate.
+notebooks = [
+    "matplotlib>=3.9",
+    "jupyterlab>=4.0",
+    "jupytext>=1.16",
+    "plotly>=6.8.0",
+    "ipykernel>=7.2.0",
+    "nbconvert>=7.16",
+    "kaleido>=1.3.0",
+]
 
 # --- Lint -----------------------------------------------------------------
 [tool.ruff]

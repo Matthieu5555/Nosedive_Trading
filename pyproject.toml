@@ -97,7 +97,7 @@ ignore_missing_imports = true
 
 # Broker SDKs are optional extras, absent from the gate env, imported lazily.
 [[tool.mypy.overrides]]
-module = ["ib_async.*"]
+module = ["ib_async.*", "ibapi.*"]
 ignore_missing_imports = true
 
 # Postgres driver is an optional extra (`postgres`), absent from the gate env and

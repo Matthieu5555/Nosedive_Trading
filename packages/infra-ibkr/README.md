@@ -1,31 +1,39 @@
 # infra-ibkr
 
-Interactive Brokers leaf adapter. Owner: **M5 — broker adapters**. Imports `algotrading.infra`
-+ `algotrading.core`, nothing above (enforced by import-linter).
+Interactive Brokers leaf adapter. Imports `algotrading.infra` + `algotrading.core`, nothing
+above (enforced by import-linter).
 
-## What it does
+## What it does (ADR 0023/0024)
 
-Turns a TWS / IB Gateway connection into broker-agnostic market data:
+IBKR rides **Nautilus's shipped InteractiveBrokers adapter** — Nautilus is the runtime spine, and
+its adapter is the live transport. This leaf is the thin seam around it:
 
-- `connectivity/ibkr_transport.py` — `IbkrTransport` over `ib_async` (connect + timeout-bounded
-  round-trip), behind the `algotrading.infra.connectivity` `BrokerTransport` seam.
-- `collectors/ibkr_discovery.py` — `IbkrUniverseDiscovery`: resolve the underlying conId, then
-  `reqSecDefOptParams` → broker-agnostic `OptionParams`.
-- `collectors/ibkr_adapter.py` — `IbkrMarketDataAdapter`: ib_async ticker callbacks → `BrokerTick`
-  (delayed market-data type by default, IB error codes classified entitlement/pacing/other).
+- `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: builds the Nautilus
+  `InteractiveBrokersDataClientConfig` (host/port/client-id, real-time or delayed market data,
+  instruments to load). Import-guarded on the `ibkr` extra: without it, raises
+  `IbkrExtraNotInstalled` with an actionable message instead of an opaque `ModuleNotFoundError`.
+- `collectors/nautilus_normalize.py` — `quote_tick_to_events` / `trade_tick_to_events`: the pure
+  seam that turns the `QuoteTick`/`TradeTick` the adapter delivers into our immutable
+  `RawMarketEvent` rows (one per observed field), content-addressed by `content_event_id` so a
+  re-delivered tick (same `sequence`) is written exactly once. Our `ParquetStore` stays the system
+  of record (ADR 0024); no broker SDK type crosses out of this seam.
 
-Free delayed data needs no live entitlement; a paid upgrade is a constructor arg, not a code edit.
+## The `ibkr` extra and what runs in CI
 
-## ib_async is an optional extra
+The `ibkr` extra is `nautilus-trader[ib]` (pulls `nautilus-ibapi`). It is **not** in the gate env
+(ADR 0018), and a live connect needs a running TWS / IB Gateway, which CI does not have. So:
 
-`ib_async` is **not** in the gate env (ADR 0018): the adapter/transport/discovery import it at
-module load, so importing this package's collectors needs it, and the live-wiring tests
-`importorskip("ib_async")`. Install the live path with `uv sync --extra ibkr`. The committed-sample
-replay test needs no SDK and runs in the gate.
+- the **normalizer** (`nautilus_normalize`) uses only Nautilus *base* tick types and is fully tested
+  in CI — it is the verifiable core of the IBKR-on-Nautilus data path;
+- the **config builder** is tested two ways: the guard (no extra → clear error) always runs; the
+  construction test skips unless the extra is present;
+- install the live path with `uv sync --extra ibkr` and run it on a machine with a Gateway.
 
-## Status / caveats
+## Superseded
 
-Vendored near-verbatim per **ADR 0022** (which contests ADR 0020): the adapter implements the
-`algotrading.infra.collectors.MarketDataAdapter` seam, not yet M0's thin `contracts.BrokerSession`.
-`flow.py` (the analytics-pipeline orchestration) is deferred until that pipeline lands in
-`packages/infra`. Real samples: `samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.
+The hand-rolled `ib_async` modules (`connectivity/ibkr_transport.py`,
+`collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) are
+**superseded** by the Nautilus adapter (ADR 0023). They are kept as files — reached only by direct
+import, no longer surfaced from the package `__init__`, and their tests `importorskip("ib_async")`
+— until **C5** removes them. Real captured samples used by the gate's SDK-free replay test:
+`samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.

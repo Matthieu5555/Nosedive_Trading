@@ -7,41 +7,74 @@ actor reads and writes it, which is why `AGENTS.md` tells you to. The real safet
 is branch discipline (one branch per task, merge small and often); the board is
 the early warning that two of you are about to collide.
 
-When a task is finished, move its line to `tasks/archive/` (create it when first
-needed) with a one-line note on what was done, so "why was this changed" stays
-answerable later.
+When a task is finished, move its line to `tasks/archive/` with a one-line note on
+what was done, so "why was this changed" stays answerable later.
+
+## Current phase: the merge
+
+We are merging two independent builds of the same system — this repo and Vincent's
+(`github.com/Vincent-20-100/AlgoTrading` @ `refactor/audit-remediation`) — toward
+the max-union of both. Two decisions are **locked**: keep our **Nautilus actor** as
+the spine, and adopt Vincent's **layered uv-workspace monorepo** as the chassis.
+See `M0-monorepo-keystone.md` for the full context.
+
+Vincent's repo is checked out locally at **`Vincent's Code/`** (repo root, on
+`refactor/audit-remediation`) as a read-only source of inspiration — gitignored,
+not part of the canonical workspace. Every `packages/…` path the M-tasks cite (e.g.
+`packages/infra/src/algotrading/…`) is relative to that folder. Refresh it with
+`git -C "Vincent's Code" pull`.
+
+The original five-workstream backbone build (A–E) is **complete**; its specs are in
+`tasks/archive/` and its uncommitted `feat/integration-ops` work should be committed
+before the restructure begins.
 
 ## In flight
 
 | Who | Area / files | Branch | Claimed | Note |
 |-----|--------------|--------|---------|------|
-| agent-A (claude) | backend/src/{contracts,config,provenance,storage,fixtures}, backend/tests, configs/, backend/pyproject.toml; +doc refresh AGENTS.md/.agent/map.md, ADR 0002 | feat/foundation | 2026-06-01 | Workstream A keystone. Gate green (ruff/mypy/pytest, 95 tests). Landed deep-modules review fixes: full-key lineage refs (no event-id conflation), all-or-nothing staged writes, schema-evolution enforced on read, single `validate_stamp`, narrowed contracts surface — see ADR 0002 and storage/README. Not yet committed. |
-| agent-B (claude) | backend/src/{connectivity,universe,collectors}, backend/tests/test_{connectivity,universe,collectors,seam_market_data,smoke_bootstrap}.py; +per-dir READMEs, .agent/map.md row, ADR 0003 | feat/market-data-plane | 2026-06-01 | Workstream B market-data plane (steps 2–3 + IBKR-session part of step 1). On A's uncommitted hardening; will stage only B-owned files (no A/C edits, no pyproject change). Broker-agnostic session seam + one-place backoff/reconnect supervisor + client-id convention; universe (deterministic dedup, four accessors, InstrumentMaster materialization); append-only loss-aware collector (deterministic event_id idempotency, gap events, daily summary); step-1 smoke. No order placement. DONE: B's ruff/mypy/pytest green — 70 B tests incl. the non-negotiable kill-and-restart, deterministic universe dedup (cross-process), broker-agnostic seam, B→A round-trip; 165 green with A's suite. Docs: 3 per-dir READMEs + map.md row + ADR 0003. Not yet committed; will stage only B-owned files. NB shared tree also holds C's in-flight src/pricing (2 ruff E501s) — not B's, untouched. |
-| agent-D (claude) | backend/src/risk/** (new), backend/tests/test_{risk,scenario,risk_properties,seam_risk,determinism_risk}.py (new), backend/tests/golden/risk_pf_risk.json (new); +src/risk/README.md, .agent/map.md row, ADR 0006; +1 line in backend/pyproject.toml ([tool.coverage] source += src/risk); +src/fixtures/positions.py (named pf-risk + low-confidence/multi-currency fixtures) | feat/risk-engine | 2026-06-02 | Workstream D risk engine (steps 11–12). Builds against C's frozen pricing interface (src/pricing present in shared tree) + A's contracts/fixtures. Foundation-first: one shared versioned bump source + monetization convention + pricing adapter + RiskAggregate/ScenarioResult assembly, frozen before Greeks/scenario build on it. DONE: gate green — ruff/mypy/pytest clean, 65 D tests (434 with full suite), src/risk branch coverage 96.4% (floor 90%; the 98.5% figure is total pure-core C+D, not risk-only). Oracle burst (3 agents; GBSM≡QuantLib≡py_vollib to ~1e-14) seeded test constants. Adversarial verification (3 agents) confirmed Greeks/monetization, aggregation, determinism; fixes landed for the real defects found — scenario grid de-dupes shocks + guards id collisions (was 2x-counting worst-case on duplicate shocks); effective_scenario_version folds a hash of D's grid-construction constants (ROLL_DOWN_DAYS/crash rule) so two grids can't share a version; reconcile surfaces a non-finite broker Greek; + carry≠0 and non-100-multiplier regression tests. ADR 0006 + README + map row. Working in shared tree like B; will stage only D-owned files onto feat/risk-engine (no A/C edits beyond the one pyproject coverage line + the new fixtures file). Not yet committed. |
-
-| agent-E (claude) | backend/src/{actor,qc,orchestration}/** (new), backend/tests/test_{actor,qc,orchestration,replay,reconstruction,provenance_verification,replay_byte_identical,handover_e2e}*.py (new), docs/** (new); +.agent/map.md row, ADR(s) 0007+, backend/pyproject.toml ([project] deps: structlog/prometheus-client/apscheduler) + uv.lock | feat/integration-ops | 2026-06-02 | Workstream E integration & operations (steps 13–16 + Part IV.F run sequence + Part VI runbooks). Wave structure around the actor keystone: actor seam frozen first, then S1 actor / S2 qc / S3 observability concurrent, then S4 replay+reconstruction / S5 orchestration jobs. Two headline tests (same-code-path byte-identical replay; provenance verification over all C/D outputs in storage) owned foreground. Stages only E-owned files; no A/B/C/D source edits; does NOT touch [tool.coverage] source (E is behavior-tested per ADR 0004 §3). Added 3 op deps via uv. IN PROGRESS. |
+| Claude (agent) | `backend/src/{qc,validation}` | feat/integration-ops | 2026-06-05 | M6 QC+validation merge, built in current flat layout (per user; M0 relocates later) |
+| Claude (agent) | `backend/tests/test_{replay_byte_identical,provenance_verification}.py` | feat/integration-ops | 2026-06-05 | M7 prep: harden the two headline acceptance tests to multi-underlying in current flat layout (per user; M0 relocates later) |
 
 ## Format
 
-`| your-name-or-agent | backend/foo.py, backend/bar.py | feat/foo | 2026-05-31 | short intent |`
+`| your-name-or-agent | packages/foo/... | feat/merge-foo | 2026-06-05 | short intent |`
 
-## Planned workstreams
+## Merge workstreams
 
-The volatility/risk backbone is cut into five orthogonal workstreams, one agent
-each. Specs are self-contained in the files below. They talk only through the
-typed contracts owned by Workstream A, so A lands first and the rest fan out.
-Claim a workstream in the table above before you start; one branch per workstream.
+Ten orthogonal workstreams, one agent each, each owning a disjoint set of
+directories and talking only through the seams **M0 freezes first**. M0 is the
+keystone (monorepo skeleton + `core` + the frozen contracts/protocols + the gate);
+it lands before everything else, exactly as Workstream A did in the original build.
+The rest fan out. M7 converges last and verifies the headline invariants.
 
-Before writing tests in any workstream, read [TESTING.md](TESTING.md) — the
-shared test-surface contract. It carries the cross-cutting rules (independent
-oracles, the determinism mechanism, seam/contract tests, property tests, the
-edge-case and coverage floors); each spec's own **Test surface** section names
-the cases specific to its modules. Code without the named tests is not done.
+Before writing tests in any workstream, read [TESTING.md](TESTING.md) — the shared
+test-surface contract (independent oracles, the determinism mechanism, seam/contract
+tests, property tests, coverage floors). Each spec's own **Test surface** names the
+cases specific to its modules. Code without the named tests is not done.
 
 | # | Workstream | Spec | Branch | Owns (dirs) | Depends on |
 |---|------------|------|--------|-------------|------------|
-| A | Foundation & data platform | [01-foundation-data-platform.md](01-foundation-data-platform.md) | feat/foundation | contracts/config pkg, `backend/src/storage`, `configs/`, tests scaffold | — (keystone) |
-| B | Market-data plane | [02-market-data-plane.md](02-market-data-plane.md) | feat/market-data-plane | `src/connectivity`, `src/universe`, `src/collectors` | A |
-| C | Analytics core | [03-analytics-core.md](03-analytics-core.md) | feat/analytics-core | `src/snapshots`, `src/forwards`, `src/iv`, `src/surfaces`, `src/pricing` | A |
-| D | Risk engine | [04-risk-engine.md](04-risk-engine.md) | feat/risk-engine | `src/risk` | A, C (pricing iface) |
-| E | Integration & operations | [05-integration-operations.md](05-integration-operations.md) | feat/integration-ops | `src/orchestration`, `src/qc`, actor module, `docs/` | A, B, C, D |
+| M0 | Monorepo keystone — skeleton, `core`, frozen seams, gate/CI | [M0-monorepo-keystone.md](M0-monorepo-keystone.md) | feat/merge-keystone | workspace root, `packages/core`, frozen `contracts` + `StorageRepository`/`BrokerSession` protocols | — (keystone) |
+| M1 | Storage — raw/curated, ports, EAV, tiered stores | [M1-storage.md](M1-storage.md) | feat/merge-storage | `infra/storage` | M0 |
+| M2 | Analytics core — snapshots/forwards/iv/surfaces/pricing | [M2-analytics-core.md](M2-analytics-core.md) | feat/merge-analytics | `infra/{snapshots,forwards,iv,surfaces,pricing,utils}` | M0 |
+| M3 | Risk engine — greeks/aggregation/scenarios/reconciliation | [M3-risk-engine.md](M3-risk-engine.md) | feat/merge-risk | `infra/risk` | M0, M2 |
+| M4 | Market-data plane + Nautilus actor spine | [M4-market-data-actor.md](M4-market-data-actor.md) | feat/merge-market-data | `infra/{connectivity,collectors,universe,actor}` | M0, M1 |
+| M5 | Broker adapters — IBKR / Saxo / Deribit | [M5-broker-adapters.md](M5-broker-adapters.md) | feat/merge-brokers | `infra-ibkr`, `infra-saxo`, `infra-deribit` | M0, M4 |
+| M6 | QC + validation/triage | [M6-qc-validation.md](M6-qc-validation.md) | feat/merge-qc | `infra/{qc,validation}` | M0 |
+| M7 | Orchestration, observability, replay, acceptance | [M7-orchestration-observability.md](M7-orchestration-observability.md) | feat/merge-orchestration | `infra/{orchestration,observability}` + acceptance tests | M0,M1,M2,M3,M4,M6 |
+| M8 | Frontend — FastAPI BFF + React/Vite web | [M8-frontend.md](M8-frontend.md) | feat/merge-frontend | `apps/frontend` | M2,M3,M7 (API contract early) |
+| M9 | Discipline + docs — steering, blueprint, notebooks | [M9-discipline-docs.md](M9-discipline-docs.md) | feat/merge-discipline | `AGENTS.md`/`.agent`, `documentation`, `.claude/skills`, `notebooks` | — (continuous) |
+| M10 | **Postgres for the serving/metadata tier** — _conditional, future_ | [M10-postgres-serving-tier.md](M10-postgres-serving-tier.md) | feat/merge-postgres | metadata/serving stores behind M1's port (run registry, positions/risk/triage/universe) | M1, M8 — **do not start until a trigger fires** |
+
+### Launch order
+
+1. **M0 alone first** — nothing else can start until the skeleton + the two
+   protocols (`StorageRepository`, `BrokerSession`) + analytics/pricing contracts
+   are frozen and the gate is green.
+2. **Then fan out:** M1, M2, M6, M9 depend only on M0 and start together. M3
+   follows M2's frozen pricer; M4 follows M1; M5 follows M4's adapter seam.
+3. **M7 converges last** and proves byte-identical replay + provenance end to end.
+
+M9 is docs/steering only and runs continuously alongside the rest. Each workstream
+stages only its own directories; the only shared edits are the frozen seams, which
+M0 owns — change one and you ping every claim on this board.

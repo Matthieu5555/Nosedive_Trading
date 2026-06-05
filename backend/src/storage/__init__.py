@@ -8,6 +8,7 @@ from .errors import (
     DuplicateKeyInBatch,
     SchemaCompatibilityError,
     StorageError,
+    VersionedWriteNotAllowed,
 )
 from .schema import arrow_schema
 from .serialization import from_row, to_row
@@ -18,6 +19,7 @@ __all__ = [
     "ParquetStore",
     "SchemaCompatibilityError",
     "StorageError",
+    "VersionedWriteNotAllowed",
     "arrow_schema",
     "from_row",
     "primary_key_of",

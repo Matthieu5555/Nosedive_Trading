@@ -130,3 +130,22 @@ here. C owns no contract; the six objects it emits (`MarketStateSnapshot`,
   malformed *today*, so E's integration inherits a tested seam, not an assumption.
 - A regenerated golden shows up as a reviewable JSON diff; an unexplained change to a
   stamp hash or an SVI parameter is visible there, not buried in a green run.
+
+## Addendum — 2026-06-02: `PRICER_VERSION` misnomer corrected (crr → lr)
+
+`PRICER_VERSION` was `black76-crr-1.0.0`. The `crr` tag was wrong: the American engine
+has always been Leisen-Reimer (`src/pricing/american.py`), never Cox-Ross-Rubinstein.
+The tag is now `black76-lr-1.0.0`.
+
+This is a name correction, not a formula change, so the patch level stays `1.0.0` per
+decision 1 above ("bump only on a real change to the price or Greek formulas"). The
+cheap test confirms the claim rather than asserting it: with the rename in place,
+`test_determinism_analytics`, `test_determinism_risk`, and `test_replay_byte_identical`
+all pass against the *committed* goldens unchanged — no committed stamp hash folds in
+the version string, so no golden moved and no number moved.
+
+The one visible effect is forward-looking: `PricingResult.pricer_version` on results
+produced on or after 2026-06-02 reads `black76-lr-1.0.0`, while results produced before
+read `black76-crr-1.0.0`. The two label the identical computation. The discontinuity is
+recorded in `documentation/releases/2026-06-02-pricer-version-rename.md` so a future
+diff of the label across the boundary is explained, not mysterious.

@@ -72,3 +72,27 @@ reads no wall clock and is a pure function of its inputs.
 and vega — the engine is total over its whole domain rather than dividing by zero.
 Deep in/out of the money and very high vol are unit-tested against their analytic
 asymptotes.
+
+## Worked example
+
+The at-the-money reference point used across the tests: `F = K = 100`, `T = 0.25`,
+`vol = 0.20`, `DF = 0.99`. Because `F == K`, the call and the put are equal, and the
+forward-form Black-76 price is `3.947884` (to six decimals). `test_pricing.py`
+cross-checks this three ways — the fixture's own closed-form Black-76, `vollib`, and
+QuantLib's `blackFormula` all agree to six decimals — and it is the anchor for the
+unit-convention guards: a percent-scaled vol (`0.002`) prices near zero, a
+hundred-times-scaled vol (`20.0`) saturates near `DF*F = 99.0`, and only the
+correct decimal `0.20` gives `~3.95`. A second textbook anchor (Hull example 15.6:
+`S=42, K=40, r=0.10, sigma=0.20, T=0.5`, non-dividend so `b=r`) prices the call at
+`4.76` and the put at `0.81`.
+
+## Determinism and the C-layer boundary
+
+These are framework-free pure functions. No wall clock, no RNG, no I/O: the same
+`PricingState` always yields the same `PriceGreeks`, byte for byte, which is what
+lets a replay reproduce a stored price exactly. The American lattice anchors to a
+fixed valuation date (`2025-01-15`) and reconstructs the horizon from
+`maturity_years` under Actual/365, so it too is clock-free. Nautilus and the actor
+(Workstream E) only feed this module data and carry its outputs to storage; they
+never reach into the math. `calc_ts` is injected at the `pricing_result` projection
+boundary, never read inside the pricer.

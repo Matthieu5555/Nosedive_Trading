@@ -80,6 +80,30 @@ and rejected flag. Thread the estimate from here into the IV solver (which needs
   heuristic. These shape every consumer's trust in a maturity; change them
   deliberately.
 
+## Worked example
+
+Single pair, by hand (Eq 2): a call mid `6.0` and put mid `4.0` at strike `100` with
+a supplied `DF = 0.95` imply `F = K + (C - P)/DF = 100 + 2.0/0.95 = 102.1052...`.
+
+Full chain: build `y = DF·(F - K)` at strikes `(100, 110, 120)` for a chosen
+`DF = 0.90`, `F = 110`; the weighted least-squares line returns exactly
+`slope = -0.90`, `DF = 0.90`, `F = 110`. The synthetic surface fixture
+(`F = 100`, `DF = 0.99`, `T = 0.25`, spot `= F·DF = 99.0`, five strikes) recovers
+`forward ≈ 100`, `discount_factor ≈ 0.99`, `confidence = 1.0`, `quality_label =
+"good"`, and the implied carry/dividend: `r = -ln(0.99)/0.25`,
+`b = ln(100/99)/0.25`, `q = r - b = 0` (carry equals the rate, so no dividend).
+Corrupt one strike's call mid and exactly that strike comes back `rejected`, with
+the recovered forward unchanged to `1e-6`.
+
+## Determinism and the C-layer boundary
+
+Framework-free pure functions: no clock, no RNG, no I/O. The fit is order- and
+caller-independent, and `calc_ts` is injected only at the `forward_curve_point`
+projection. The actor (Workstream E) assembles the `ForwardPair` chain from snapshots
+and persists the emitted `ForwardCurvePoint`; it never reaches into the regression or
+the outlier rejection. Thread the rich `ForwardEstimate` (which keeps `DF`) directly
+into the IV solver in-process.
+
 ## Verify
 
 ```

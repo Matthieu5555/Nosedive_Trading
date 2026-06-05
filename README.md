@@ -8,8 +8,9 @@ guide for working in this workspace. To find where something lives, start at
 
 ## Layout
 
-- `backend/`   Python service & quant logic (uv, Python 3.13). Currently a
-  skeleton — `main.py` is a stub, no FastAPI app yet. See `backend/README.md`.
+- `backend/`   Python service & quant logic (uv, Python 3.13). The strategy-agnostic
+  market-data → analytics → risk backbone (workstreams A–E) is built; there is no
+  FastAPI app yet (`main.py` is still a stub). See `backend/README.md`.
 - `frontend/`  JS/Vite app. Not scaffolded yet. See `frontend/README.md`.
 - `research/`  Notebooks and experiments, with reproducibility and as-of rules.
 - `data/`      Shared datasets (parquet/duckdb). Keep large/secret data out of git.

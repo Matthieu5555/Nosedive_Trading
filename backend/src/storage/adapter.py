@@ -35,7 +35,7 @@ from contracts.registry import TableSpec, spec_for_table
 from contracts.validation import validate_record
 from provenance import canonical_primary_key
 
-from .errors import AppendOnlyViolation, DuplicateKeyInBatch
+from .errors import AppendOnlyViolation, DuplicateKeyInBatch, VersionedWriteNotAllowed
 from .partitioning import (
     partition_dir,
     partition_file,
@@ -65,7 +65,9 @@ class ParquetStore:
         self.root = Path(root)
 
     # -- writing ----------------------------------------------------------
-    def write(self, table: str, records: Sequence[object]) -> None:
+    def write(
+        self, table: str, records: Sequence[object], *, version: str | None = None
+    ) -> None:
         """Validate and persist a batch of records for one table — all or nothing.
 
         Append-only tables reject any primary key that already exists on disk;
@@ -75,11 +77,22 @@ class ParquetStore:
         — including the append-only collision check — before a single byte is
         written. A failure in a later partition therefore cannot leave an earlier
         one already changed: nothing is committed until the whole batch is ready.
+
+        ``version`` selects the ``version=<V>`` sub-partition for a restated analytic
+        and defaults to ``None`` — the unversioned, replace-in-place *live* layout. A
+        write under a new version lands beside the live partition rather than
+        overwriting it, which is how a newer-code restatement preserves the older
+        analytic (step 13). Versioning is for derived analytics only: a versioned write
+        to an append-only table (raw events, instrument master) is refused with
+        :class:`VersionedWriteNotAllowed`, because raw observations are immutable and
+        have no restatement.
         """
         if not records:
             return
 
         spec = spec_for_table(table)
+        if version is not None and spec.append_only:
+            raise VersionedWriteNotAllowed(table, version)
         for record in records:
             validate_record(table, record)
 
@@ -97,9 +110,9 @@ class ParquetStore:
         schema = arrow_schema(spec.contract)
         prepared: list[tuple[Path, pa.Table]] = []
         for (trade_date, underlying), partition_records in grouped.items():
-            path = partition_file(self.root, table, trade_date, underlying)
+            path = partition_file(self.root, table, trade_date, underlying, version)
             new_table = self._prepare_partition(
-                table, spec, schema, trade_date, underlying, partition_records
+                table, spec, schema, trade_date, underlying, partition_records, version
             )
             prepared.append((path, new_table))
         self._commit(prepared)
@@ -112,6 +125,7 @@ class ParquetStore:
         trade_date: date,
         underlying: str,
         records: list[object],
+        version: str | None = None,
     ) -> pa.Table:
         """Build the Arrow table to land for one partition, touching no files.
 
@@ -121,7 +135,7 @@ class ParquetStore:
         semantics). It mutates nothing, so a collision is surfaced in the prepare
         phase, before any partition in the batch is committed.
         """
-        path = partition_file(self.root, table, trade_date, underlying)
+        path = partition_file(self.root, table, trade_date, underlying, version)
         new_rows = [to_row(spec.contract, record) for record in records]
         new_table = _rows_to_arrow(new_rows, schema)
 
@@ -178,15 +192,36 @@ class ParquetStore:
 
     # -- reading ----------------------------------------------------------
     def _partition_files(
-        self, table: str, trade_date: date | None, underlying: str | None
+        self,
+        table: str,
+        trade_date: date | None,
+        underlying: str | None,
+        version: str | None = None,
     ) -> list[Path]:
+        """The Parquet files a read covers — live rows and restatements never mix.
+
+        ``version=None`` selects only *live* (unversioned) files — those that sit
+        directly under ``underlying=<SYM>``, never one nested in a ``version=<V>``
+        restatement sub-partition. An explicit ``version`` selects only that
+        restatement's files. So the live partition and a restatement of it, which
+        coexist on disk for the same ``(trade_date, underlying)``, are read back
+        separately and a version-blind read can never double-count overlapping keys.
+        """
         if trade_date is not None and underlying is not None:
-            single = partition_file(self.root, table, trade_date, underlying)
+            # One partition: exactly the live file (version=None) or exactly the one
+            # restatement file (version=<V>). partition_file places each precisely.
+            single = partition_file(self.root, table, trade_date, underlying, version)
             return [single] if single.exists() else []
         base = table_dir(self.root, table)
         if not base.exists():
             return []
-        return sorted(base.glob("**/*.parquet"))
+        files = sorted(base.glob("**/*.parquet"))
+        if version is None:
+            # Live rows only: the file directly under underlying=<SYM>. A restatement
+            # file lives one level deeper under version=<V>, so its parent dir name
+            # starts with "version=" and is excluded here.
+            return [path for path in files if not path.parent.name.startswith("version=")]
+        return [path for path in files if path.parent.name == f"version={version}"]
 
     def read(
         self,
@@ -194,15 +229,23 @@ class ParquetStore:
         *,
         trade_date: date | None = None,
         underlying: str | None = None,
+        version: str | None = None,
     ) -> list[Any]:
         """Read records for a table (optionally one partition) back into contracts.
 
         Uses DuckDB over the Parquet files with ``union_by_name`` so partitions
         written under an older, narrower schema remain readable — missing columns
-        come back as ``None``.
+        come back as ``None``. ``version`` left ``None`` reads only the *live*
+        (unversioned) rows — the default a caller almost always wants; an explicit
+        ``version`` reads only that restatement. Live rows and restatements coexist
+        on disk for the same partition (the live run writes unversioned, a
+        reconstruction writes ``version=<V>`` beside it), so this separation is what
+        keeps a default read from returning both and double-counting overlapping
+        primary keys. To inspect restatements, enumerate them with
+        :meth:`list_versions` and read each by its explicit version.
         """
         spec = spec_for_table(table)
-        files = self._partition_files(table, trade_date, underlying)
+        files = self._partition_files(table, trade_date, underlying, version)
         if not files:
             return []
         connection = duckdb.connect()
@@ -234,9 +277,38 @@ class ParquetStore:
                 found.append((trade_date, underlying))
         return found
 
-    def delete_partition(self, table: str, trade_date: date, underlying: str) -> None:
-        """Delete one partition. Idempotent: deleting a missing partition is fine."""
-        target = partition_dir(self.root, table, trade_date, underlying)
+    def list_versions(
+        self, table: str, trade_date: date, underlying: str
+    ) -> list[str]:
+        """List the ``version=<V>`` sub-partitions present for one partition.
+
+        Returns the version strings (sorted), empty when the partition is unversioned
+        or absent. This is how a restatement test asserts that a newer-code run landed
+        a new version beside the older one rather than overwriting it.
+        """
+        partition = partition_dir(self.root, table, trade_date, underlying)
+        if not partition.exists():
+            return []
+        return sorted(
+            child.name.split("=", 1)[1]
+            for child in partition.glob("version=*")
+            if child.is_dir()
+        )
+
+    def delete_partition(
+        self,
+        table: str,
+        trade_date: date,
+        underlying: str,
+        version: str | None = None,
+    ) -> None:
+        """Delete one partition. Idempotent: deleting a missing partition is fine.
+
+        With ``version=None`` the whole ``(trade_date, underlying)`` partition is
+        removed, including any version sub-partitions; with a version only that one
+        ``version=<V>`` sub-partition is removed, leaving the others intact.
+        """
+        target = partition_dir(self.root, table, trade_date, underlying, version)
         if target.exists():
             shutil.rmtree(target)
 

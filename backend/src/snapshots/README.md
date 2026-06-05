@@ -83,8 +83,23 @@ uses between its rich in-memory `ForwardEstimate` and the flat persisted
 `ForwardCurvePoint`. Persisting QC verdicts as queryable rows is the operations QC
 plane's job (`QcResult`, Workstream E), fed from this assessed batch.
 
-## Determinism and provenance
+## Worked example
+
+A two-sided quote of `bid = 99.8`, `ask = 100.2` at or before `snapshot_ts`
+resolves to `reference_type = "mid"`, `reference_spot = 100.0`, and
+`spread_pct = (100.2 - 99.8) / 100.0 = 0.004`. Drop the ask and the same instant
+falls to the next rung: a positive `last = 99.5` gives `reference_type = "last"`,
+`reference_spot = 99.5`, `is_fallback = True`, and a `fallback_spot` flag. A crossed
+quote (`bid = 100.2 > ask = 99.8`) never becomes a mid — it falls through the ladder
+and QC marks it `reject` with reason `crossed`. With all three quote fields present,
+`completeness = 1.0`; with only bid and last, `completeness = 2/3`.
+
+## Determinism, provenance, and the C-layer boundary
 
 Pure functions, no I/O and no wall clock — `calc_ts` is injected. Every snapshot
 carries a provenance stamp naming the exact raw events that fed it, by full
-`(session_id, event_id)` key.
+`(session_id, event_id)` key. The as-of read is order-independent, so feeding the
+same events shuffled yields a byte-identical snapshot, which is what makes replay
+deterministic. This is the framework-free layer: the actor (Workstream E) hands it
+raw events and a `SnapshotContext` and persists what comes back; it never reaches
+into the price-selection or QC logic.

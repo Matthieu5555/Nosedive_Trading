@@ -63,6 +63,21 @@ against its inputs. `surface_parameters` (SVI only) and `surface_grid_cells` (an
 method with a curve) project the usable part into A's stamped contracts;
 `slice_plot_series` returns raw-vs-fitted plot data.
 
+`project_surface_fit` is the one seam that owns the *rule* about which method emits
+which contract — SVI → parameters and a grid, nonparametric → grid only, insufficient
+→ nothing — returning a `SurfaceProjection(parameters, grid_cells)`. A caller (the
+actor) persists whatever comes back instead of re-encoding the rule; the method
+semantics live here, next to where they are documented.
+
+## Reading the surface out (`reporting.py`)
+
+`reporting.py` reduces the persisted `SurfaceParameters` into display-ready rows for a
+CLI table, a test, or an API. `summarize_surface_parameters` returns a
+`SurfaceSliceSummary` per maturity (sorted nearest-first), and `atm_volatility` computes
+the headline number an operator reads first — at-the-money vol, `sqrt(w(0)/T)` — *from*
+the calibrated SVI parameters via the same `SviParams.total_variance`, so the summary
+can never drift from the curve it describes.
+
 ## Tunable constants (top of `svi.py` / `fit.py` / `arbitrage.py`)
 
 - Parameter bounds `_A_BOUNDS`, `_B_BOUNDS`, `_RHO_BOUNDS`, `_M_BOUNDS`,
@@ -73,6 +88,29 @@ method with a curve) project the usable part into A's stamped contracts;
   probes, padded past the observed strikes.
 - `_CALENDAR_TOL`, `_BUTTERFLY_TOL` — float slack so an exactly-flat boundary is not
   flagged.
+
+## Worked example
+
+At the SVI vertex (`k = m`), the curvature term collapses to `σ`, so
+`w(m) = a + b·σ`. For the synthetic parameters `a = 0.04`, `b = 0.10`,
+`ρ = -0.30`, `m = 0.0`, `σ = 0.20`, that is `w(0) = 0.04 + 0.10·0.20 = 0.06`. Fitting
+`fit_svi` to total-variance points generated from those same parameters recovers all
+five to `1e-5` (the generator is the independent oracle). Cross-maturity: place a
+calendar-monotone pair of slices and read off `interpolate_total_variance`; beyond the
+fitted maturity range it holds the nearest slice flat (e.g. `0.06` extrapolated out
+past the last maturity), and inside it interpolates linearly in `w`.
+
+## Determinism, failure modes, and the C-layer boundary
+
+Framework-free pure functions: no clock, no RNG, no I/O; `least_squares` is
+deterministic on fixed inputs, so a replay reproduces the SVI parameters exactly, and
+`calc_ts` is injected only at projection. The failure modes are all *labeled, not
+raised*: a sparse slice (fewer than five distinct strikes) returns a `nonparametric`
+fit rather than a forced SVI; an empty slice returns `insufficient`; an arbitrage
+breach sets `arb_free = False` and lists the offending `k` points rather than
+rejecting the fit; a parameter pinned at its feasible edge is named in `bound_hits`.
+The actor (Workstream E) feeds solved `IvPoint` records in and persists the emitted
+`SurfaceParameters`/`SurfaceGrid`; it never reaches into the calibration.
 
 ## Verify
 

@@ -33,6 +33,10 @@ data/**
 # Personal scratch — not part of the canonical workspace
 ThomasOssen/
 
+# Vincent's AlgoTrading repo (branch refactor/audit-remediation) — reference only,
+# source of inspiration for the M-series tasks. Not part of the canonical workspace.
+Vincent's Code/
+
 # Claude Code local (per-user) settings
 .claude/settings.local.json
 

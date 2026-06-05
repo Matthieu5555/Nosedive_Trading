@@ -1,7 +1,7 @@
 # Workstream E — Integration and operations
 
 - **Branch:** `feat/integration-ops`
-- **Owns:** `src/orchestration`, `src/qc`, the Nautilus actor module, `docs/`.
+- **Owns:** `src/orchestration`, `src/qc`, the Nautilus actor module, `documentation/`.
 - **Roadmap coverage:** steps 13 (historical reconstruction/replay), 14 (validation framework), 15 (orchestration and observability), 16 (production handover), plus the canonical run sequence (Part IV.F) and the operational runbooks (Part VI).
 - **Depends on:** A (contracts), B (event stream), C and D (their frozen interfaces). Converges last.
 - **Blocks:** nothing — this closes the loop.

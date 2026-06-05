@@ -27,8 +27,11 @@ from .american import price_american
 from .black76 import price_european
 from .state import PriceGreeks, PricingState
 
-# Bump only on a real change to the price or Greek formulas, never on config.
-PRICER_VERSION = "black76-crr-1.0.0"
+# Bump only on a real change to the price or Greek formulas, never on config. The
+# "lr" tag names the American engine's lattice (Leisen-Reimer); the European leg is
+# closed-form Black-76. (Was "black76-crr-1.0.0" — a misnomer; the engine has never
+# been Cox-Ross-Rubinstein. Corrected 2026-06-02; see ADR 0004 and the release note.)
+PRICER_VERSION = "black76-lr-1.0.0"
 
 
 def price(state: PricingState, *, steps: int | None = None) -> PriceGreeks:

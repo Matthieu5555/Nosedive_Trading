@@ -9,6 +9,15 @@ hold one broker row.
 
 from __future__ import annotations
 
+from .chain_planning import (
+    AvailableChain,
+    ChainPlan,
+    ChainSelection,
+    plan_chain,
+    select_chain,
+    select_expiries,
+    select_strikes,
+)
 from .errors import (
     DuplicateBrokerContractIdError,
     InstrumentMasterConflictError,
@@ -28,6 +37,9 @@ from .service import (
 )
 
 __all__ = [
+    "AvailableChain",
+    "ChainPlan",
+    "ChainSelection",
     "DuplicateBrokerContractIdError",
     "InstrumentMasterConflictError",
     "ResolvedContract",
@@ -41,6 +53,10 @@ __all__ = [
     "materialize_universe",
     "normalize_expiry",
     "normalize_right",
+    "plan_chain",
     "resolve_chain",
     "resolve_contract_row",
+    "select_chain",
+    "select_expiries",
+    "select_strikes",
 ]

@@ -24,10 +24,17 @@ from storage import (
     DuplicateKeyInBatch,
     ParquetStore,
     SchemaCompatibilityError,
+    StorageError,
+    VersionedWriteNotAllowed,
     arrow_schema,
     from_row,
 )
-from storage.partitioning import partition_file, trade_date_of, underlying_of
+from storage.partitioning import (
+    partition_dir,
+    partition_file,
+    trade_date_of,
+    underlying_of,
+)
 from storage.serialization import to_row
 
 ALL_TABLES = sorted(baseline_records().keys())
@@ -329,3 +336,137 @@ def test_a_write_that_fails_partway_commits_nothing(
     # Neither partition advanced to version 2.
     forwards = {record.underlying: record.forward for record in store.read("forward_curve")}
     assert forwards == {"AAPL": 191.0, "MSFT": 191.0}
+
+
+# -- versioned (restated) partitions ------------------------------------------
+# Step 13: a replayed/restated analytic written under a newer code version must
+# land beside the older one, never overwrite it. Versioning is off by default —
+# version=None must reproduce the original unversioned layout exactly — so these
+# tests pin both that default and the coexistence guarantee.
+
+
+def test_unversioned_write_keeps_the_original_on_disk_layout(tmp_path: Path) -> None:
+    # version=None must land at .../underlying=<SYM>/data.parquet with no version
+    # sub-directory, so every partition written before versioning existed is
+    # byte-for-byte unchanged.
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    store.write("forward_curve", [record])
+
+    trade_date = trade_date_of(record)
+    underlying = underlying_of(record)
+    assert partition_file(tmp_path, "forward_curve", trade_date, underlying).exists()
+    assert store.list_versions("forward_curve", trade_date, underlying) == []
+
+
+def test_a_newer_version_does_not_overwrite_the_older_analytic(tmp_path: Path) -> None:
+    # The headline restatement guarantee: write one analytic under "v1", restate it
+    # under "v2", and both files must survive with their own values.
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    trade_date = trade_date_of(record)
+    underlying = underlying_of(record)
+
+    restated = dataclasses.replace(record, forward=record.forward + 5.0)
+    store.write("forward_curve", [record], version="v1")
+    store.write("forward_curve", [restated], version="v2")
+
+    v1_file = partition_file(tmp_path, "forward_curve", trade_date, underlying, "v1")
+    v2_file = partition_file(tmp_path, "forward_curve", trade_date, underlying, "v2")
+    assert v1_file.exists() and v2_file.exists()
+    assert store.list_versions("forward_curve", trade_date, underlying) == ["v1", "v2"]
+
+    # Each version reads back its own analytic; the older value is intact.
+    [v1_back] = store.read(
+        "forward_curve", trade_date=trade_date, underlying=underlying, version="v1"
+    )
+    [v2_back] = store.read(
+        "forward_curve", trade_date=trade_date, underlying=underlying, version="v2"
+    )
+    assert v1_back.forward == record.forward
+    assert v2_back.forward == record.forward + 5.0
+
+
+def test_a_version_blind_read_returns_live_rows_only_not_restatements(
+    tmp_path: Path,
+) -> None:
+    # The load-bearing safety property: a live partition and a restatement of it
+    # coexist on disk for the same (trade_date, underlying) — the live run writes
+    # unversioned, a reconstruction writes version=<V> beside it. A default read must
+    # return ONLY the live rows, never live + restated (which share primary keys and
+    # would double-count). The restatement is reachable only by its explicit version.
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    trade_date = trade_date_of(record)
+    underlying = underlying_of(record)
+
+    restated = dataclasses.replace(record, forward=record.forward + 5.0)
+    store.write("forward_curve", [record])  # live (unversioned)
+    store.write("forward_curve", [restated], version="v2")  # restatement beside it
+
+    # Default read: live only, no double-count.
+    assert store.read("forward_curve", trade_date=trade_date, underlying=underlying) == [record]
+    assert store.read("forward_curve") == [record]
+    # The restatement is isolated under its explicit version.
+    assert store.read(
+        "forward_curve", trade_date=trade_date, underlying=underlying, version="v2"
+    ) == [restated]
+
+
+def test_a_version_blind_read_of_a_partition_with_no_live_rows_is_empty(
+    tmp_path: Path,
+) -> None:
+    # version=None means "the live/current rows". A partition that holds only
+    # restatements (no unversioned write) has no live rows, so a version-blind read is
+    # empty — the operator must ask for a specific version, surfaced via list_versions,
+    # rather than being silently handed a restatement as if it were live.
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    trade_date = trade_date_of(record)
+    underlying = underlying_of(record)
+
+    store.write("forward_curve", [record], version="v1")
+    restated = dataclasses.replace(record, forward=record.forward + 5.0)
+    store.write("forward_curve", [restated], version="v2")
+
+    assert store.read("forward_curve", trade_date=trade_date, underlying=underlying) == []
+    assert store.read("forward_curve") == []
+    assert store.list_versions("forward_curve", trade_date, underlying) == ["v1", "v2"]
+
+
+def test_a_versioned_write_to_an_append_only_table_is_refused(tmp_path: Path) -> None:
+    # Versioning is for restated derived analytics. An append-only raw observation has
+    # no restatement, so a versioned write to one is refused rather than opening a
+    # version=<V> raw sub-partition that would muddy raw-layer immutability.
+    store = ParquetStore(tmp_path)
+    event = baseline_records()["raw_market_events"]
+    with pytest.raises(VersionedWriteNotAllowed) as info:
+        store.write("raw_market_events", [event], version="v2")
+    assert info.value.table == "raw_market_events"
+    assert info.value.version == "v2"
+    # Nothing was written: the table is still empty.
+    assert store.read("raw_market_events") == []
+
+
+def test_deleting_one_version_leaves_the_others(tmp_path: Path) -> None:
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    trade_date = trade_date_of(record)
+    underlying = underlying_of(record)
+
+    store.write("forward_curve", [record], version="v1")
+    store.write("forward_curve", [record], version="v2")
+    store.delete_partition("forward_curve", trade_date, underlying, version="v1")
+
+    assert store.list_versions("forward_curve", trade_date, underlying) == ["v2"]
+    assert not partition_dir(tmp_path, "forward_curve", trade_date, underlying, "v1").exists()
+
+
+@pytest.mark.parametrize("bad", ["", "a/b", "a=b", "a\\b"])
+def test_an_invalid_version_segment_is_refused(tmp_path: Path, bad: str) -> None:
+    # A version is one Hive path segment; a separator or "=" would corrupt the tree,
+    # so it is rejected at write time rather than silently misplacing the file.
+    store = ParquetStore(tmp_path)
+    record = baseline_records()["forward_curve"]
+    with pytest.raises(StorageError):
+        store.write("forward_curve", [record], version=bad)

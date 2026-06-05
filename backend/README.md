@@ -4,25 +4,61 @@ Python service and quant logic for the workspace. Uses `uv`, targets Python 3.13
 
 ## TL;DR
 
-This holds the Workstream A foundation — the typed data platform every other
-workstream builds on. What's here today:
+This is the strategy-agnostic data-and-pricing backbone: it turns raw Interactive
+Brokers market data into provenance-stamped options analytics, and runs the same
+code live and in replay. The pipeline is five workstreams (A–E), each a set of
+packages under `src/` with its own `README.md` — read the package README for
+detail; this file is the map.
 
-- `src/contracts/` — the twelve immutable table contracts (the only objects that
-  cross a workstream boundary), the composite instrument key, the table registry,
-  and write-ahead validation.
-- `src/config/` — the validated `PlatformConfig` (four independently versioned
-  sections) and its cross-process-stable `config_hash`.
-- `src/provenance/` — the stamp every derived record carries (typed full-key
-  source references, calc time, code version, config hash) with a deterministic
-  content hash, plus `validate_stamp` to prove a stamp is wellformed and untampered.
-- `src/storage/` — DuckDB-over-Parquet read/write adapters keyed to the contracts,
-  partitioned by layer / trade date / underlying. See `src/storage/README.md` for
-  the append-only, partition, and schema-evolution rules.
-- `src/fixtures/` — the shared "rogues' gallery": liquid chains, every named
-  pathology, and a synthetic known-answer surface the analytics oracles use.
+```
+   broker feed                                                        consumers
+       │                                                            (backtest, ML,
+       ▼                                                             research — later)
+  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌────────┐                  ▲
+  │ B  market│──▶│ B  raw   │──▶│ C        │──▶│ D risk │                  │
+  │ data in  │   │ capture  │   │ analytics│   │ engine │                  │
+  └──────────┘   └────┬─────┘   └────┬─────┘   └───┬────┘                  │
+                      │ append-only  │ pure fns    │ on C's frozen pricer  │
+                      ▼              ▼             ▼                        │
+                 ┌─────────────────────────────────────────┐              │
+                 │ E  actor: drives C/D, stamps outputs     │──────────────┘
+                 │ E  orchestration + QC + historical replay│
+                 └─────────────────────────────────────────┘
+                                   │ reads/writes
+                                   ▼
+                 ┌─────────────────────────────────────────┐
+                 │ A  contracts · config · provenance ·     │
+                 │    DuckDB-over-Parquet storage · fixtures │
+                 └─────────────────────────────────────────┘
+```
+
+*The diagram shows what feeds what. It omits the connectivity supervisor, metrics,
+and alerting. Strategy/backtest/ML are deliberately out of scope — they re-enter
+later as read-only consumers, never inside the plumbing.*
+
+- **A — Foundation.** The typed substrate every other workstream speaks through.
+  `src/contracts/` (the twelve immutable table contracts, the instrument key, the
+  registry, write-ahead validation), `src/config/` (the validated `PlatformConfig`
+  and its cross-process-stable `config_hash`), `src/provenance/` (the stamp every
+  derived record carries, plus `validate_stamp`), `src/storage/` (DuckDB-over-Parquet
+  adapters with the append-only / partition / schema-evolution rules), `src/fixtures/`
+  (the shared rogues' gallery and known-answer oracles for tests).
+- **B — Market-data plane.** Broker-agnostic connectivity that reconnects without
+  silently dying, the instrument universe, and the append-only raw collector:
+  `src/connectivity/`, `src/universe/`, `src/collectors/`.
+- **C — Analytics core.** The pure-function quant heart — snapshots, the parity
+  forward, the IV solver, the SVI surface, and the pricing engine:
+  `src/snapshots/`, `src/forwards/`, `src/iv/`, `src/surfaces/`, `src/pricing/`.
+- **D — Risk engine.** Portfolio greeks, monetized sensitivities, aggregation,
+  broker reconciliation, and the scenario stress grid, all built on C's frozen
+  pricer: `src/risk/`.
+- **E — Integration & operations.** The framework-free actor that drives C/D and
+  stamps their outputs, the QC/validation library, and orchestration +
+  observability + historical replay: `src/actor/`, `src/qc/`, `src/orchestration/`
+  (with the `reconstruction/` subpackage).
 
 Not here yet: there is no FastAPI `app` object, and `main.py` is still the
-`uv init` hello-world stub. Standing up the service is later-workstream work.
+`uv init` hello-world stub. Standing up the HTTP service is later work.
 
 ## Run
 

@@ -4,6 +4,54 @@ DuckDB-over-Parquet persistence for the typed contracts. One `ParquetStore` owns
 data root and reads/writes every table family through `contracts`. Reads and
 lineage go through DuckDB querying the Parquet files; writes go through pyarrow.
 
+This is the layer that enforces two of the platform's four invariants on disk: the
+immutable raw layer (append-only tables refuse to overwrite an observation) and
+determinism (live and replay write byte-identical schemas, derived from the
+contract, so a partition written today and one recomputed in replay are the same
+shape by construction rather than by convention). Validation and provenance are
+checked at the write door, so malformed or tampered data never lands.
+
+## Public interface
+
+Construct one `ParquetStore(root)` over a data root and use it for everything. The
+root is environment, not economics — the orchestration layer owns it and passes it
+in; it is never read from `config`.
+
+- `write(table, records, *, version=None)` — validate and persist a batch, all or
+  nothing.
+- `read(table, *, trade_date=None, underlying=None, version=None)` — read records
+  back into contract instances, optionally scoped to one partition.
+- `list_partitions(table)` — the `(trade_date, underlying)` partitions present.
+- `list_versions(table, trade_date, underlying)` — the restatement versions
+  present for one partition.
+- `delete_partition(table, trade_date, underlying, version=None)` — drop one
+  partition (or one version of it); idempotent.
+- `source_records_for(record)` / `raw_events_for(record)` — lineage: the source
+  records that produced a derived record, grouped by table (or just its raw
+  events).
+
+Module-level helpers and types are also re-exported: `primary_key_of`,
+`arrow_schema`, `to_row` / `from_row`, and the error types `StorageError`,
+`AppendOnlyViolation`, `DuplicateKeyInBatch`, `VersionedWriteNotAllowed`,
+`SchemaCompatibilityError`.
+
+## Fastest way to exercise it
+
+```python
+from pathlib import Path
+from storage import ParquetStore
+from fixtures.records import baseline_records
+
+store = ParquetStore(Path("/tmp/store"))
+records = baseline_records()
+store.write("iv_points", [records["iv_points"]])
+print(store.read("iv_points"))                 # one IvPoint, round-tripped
+print(store.raw_events_for(records["iv_points"]))  # [] until raw events are written
+```
+
+From `backend/`, every guarantee below is pinned by a test in
+`tests/test_storage.py`; run `uv run pytest -q tests/test_storage.py`.
+
 ## On-disk layout
 
 One Parquet file per partition, in a Hive-style tree:
@@ -15,10 +63,44 @@ One Parquet file per partition, in a Hive-style tree:
 The layer comes from the table registry (`raw`, `snapshot`, `derived`,
 `portfolio`, `qc`). The trade date and underlying are read off the record:
 most tables carry them directly, the rest derive the trade date from their primary
-timestamp (`snapshot_ts` / `valuation_ts` / `canonical_ts` / `run_ts`) and the
-underlying from the first field of the instrument/contract key. A record that
-carries none of these cannot be placed, and that raises rather than landing in a
-catch-all (`partitioning.trade_date_of`).
+timestamp (`snapshot_ts` / `valuation_ts` / `canonical_ts` / `run_ts`, falling
+back to `as_of_date`) and the underlying from the first `|`-separated field of the
+`instrument_key` / `contract_key`. The trade date is mandatory: a record from
+which none can be derived cannot be placed and raises a `StorageError` rather than
+landing in a catch-all (`partitioning.trade_date_of`). The underlying is softer —
+a record with no explicit `underlying` and no key field falls back to the literal
+`_all` segment rather than raising (`partitioning.underlying_of`).
+
+An optional fourth segment versions a partition:
+
+```
+<root>/<layer>/<table>/trade_date=<YYYY-MM-DD>/underlying=<SYM>/version=<V>/data.parquet
+```
+
+`version` is **off by default** — `write(..., version=None)` (the live recompute
+path) produces exactly the three-segment layout above and preserves the original
+path layout and read/write behavior, so every partition written before versioning
+existed is untouched. Live analytics are unversioned; a restatement passes an
+explicit version so a replayed analytic written under newer code lands *beside* the
+live one instead of overwriting it (roadmap step 13, "versioned partitions").
+
+The live partition and a restatement of it therefore coexist on disk for the same
+`(trade_date, underlying)`. Reads keep them apart so a default read is never
+double-counted across overlapping primary keys:
+
+- `read(..., version=None)` returns the **live (unversioned) rows only** — the safe
+  default a caller almost always wants.
+- `read(..., version=V)` returns **only that restatement's** rows.
+- A partition that holds only restatements (no live write) has no live rows, so a
+  version-blind read of it is empty; inspect restatements via `list_versions`.
+
+Versioning is for derived analytics: a versioned write to an append-only table
+(raw events, instrument master) is refused with `VersionedWriteNotAllowed`, because
+a raw observation is immutable and has no restatement. `list_versions(table,
+trade_date, underlying)` enumerates the versions present; `delete_partition(...,
+version=V)` drops one version and leaves the rest. (`test_a_newer_version_does_not_
+overwrite_the_older_analytic`, `test_a_version_blind_read_returns_live_rows_only_not_
+restatements`, `test_unversioned_write_keeps_the_original_on_disk_layout`.)
 
 There is exactly one Arrow schema per table and it is derived from the contract's
 type hints (`schema.arrow_schema`), so a partition written live and one written in
@@ -57,6 +139,36 @@ a `dictionary<string>` column that collides with the file's real `date32` one.
   leaves_the_raw_layer_byte_unchanged`, `test_delete_partition_isolates_to_that_
   partition`.)
 
+## Partition management
+
+`list_partitions(table)` enumerates the `(trade_date, underlying)` partitions on
+disk; `list_versions(table, trade_date, underlying)` enumerates the restatement
+versions present for one of them (empty when it is unversioned). `delete_partition`
+is idempotent — deleting a missing partition is a no-op — and removes either the
+whole `(trade_date, underlying)` partition (`version=None`, including any version
+sub-partitions) or just one `version=<V>` sub-partition.
+
+## Failure modes
+
+Every storage failure names the table and the offending key, so a rejected write
+tells an operator exactly what went wrong rather than "write failed". None of these
+are retryable as-is: each is a caller or data bug whose fix is to correct the input,
+not to retry.
+
+| Raised | When | Caller does |
+|--------|------|-------------|
+| `ContractValidationError` | A record fails a field rule, or its provenance stamp is malformed/tampered, on the write-ahead check | Fix the record; the message names the field. |
+| `DuplicateKeyInBatch` | One `write` call contains two records with the same primary key | Deduplicate the batch before writing. |
+| `AppendOnlyViolation` | A write to `raw_market_events` or `instrument_master` collides with an existing on-disk key | Do not rewrite a raw observation; it is immutable. |
+| `VersionedWriteNotAllowed` | A versioned write targets an append-only table | Versioning is for derived restatements only. |
+| `SchemaCompatibilityError` | A read finds a required (non-`Optional`) contract field absent or null in storage | The stored data no longer matches the contract (a removed/renamed column or type drift); see schema-evolution rules below. |
+| `StorageError` | A record has no derivable trade date (`partitioning.trade_date_of`) | Give the record a `trade_date` or a recognized primary timestamp. |
+
+Because writes prepare every partition before committing any, a malformed record
+or a collision anywhere in a batch leaves the store exactly as it was — the one gap
+not claimed is a process crash *between* the final renames in a multi-partition
+commit.
+
 ## Schema evolution and backfill compatibility
 
 The data is append-mostly and partitions are written over months, so old
@@ -94,8 +206,10 @@ Workstream A and routed through it, never edited in place by a consumer.
 
 ## Reading and lineage
 
-`read(table, trade_date=?, underlying=?)` returns contract instances (optionally
-scoped to one partition).
+`read(table, trade_date=?, underlying=?, version=?)` returns contract instances
+(optionally scoped to one partition). `version` defaults to `None`, the live
+(unversioned) rows; pass an explicit version to read one restatement (see the
+versioning section above).
 
 Lineage reads the typed source references off a record's provenance stamp
 (`provenance.SourceRecordRef`) and resolves each by its *full* primary key — so a

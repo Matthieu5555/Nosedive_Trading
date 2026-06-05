@@ -314,3 +314,61 @@ def surface_grid_cells(
             )
         )
     return tuple(cells)
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceProjection:
+    """What persisting a slice produces: SVI parameters (if any) and grid cells.
+
+    ``parameters`` is set only for a calibrated SVI slice — a nonparametric or
+    insufficient slice has no SVI model to persist. ``grid_cells`` carries the
+    regularized total-variance grid for any fitted curve (SVI or nonparametric) and is
+    empty for an insufficient slice. The pairing exists so a caller never has to know
+    which method emits which contract.
+    """
+
+    parameters: SurfaceParameters | None
+    grid_cells: tuple[SurfaceGrid, ...]
+
+
+def project_surface_fit(
+    fit: SliceFit,
+    moneyness_buckets: tuple[float, ...],
+    *,
+    snapshot_ts: datetime,
+    source_snapshot_ts: datetime,
+    calc_ts: datetime,
+    config_hash: str,
+) -> SurfaceProjection:
+    """Project a fitted slice into the stamped contracts it is allowed to emit.
+
+    The single home for the rule "SVI emits parameters and a grid, a nonparametric
+    fallback emits only a grid, an insufficient slice emits nothing" — the method
+    semantics this module already documents, so a caller (the actor) just persists what
+    comes back rather than re-encoding which fit yields which contract. Reuses
+    :func:`surface_parameters` (SVI only) and :func:`surface_grid_cells` (any curve);
+    an insufficient slice short-circuits to an empty projection rather than asking either
+    to raise.
+    """
+    if fit.method == METHOD_INSUFFICIENT:
+        return SurfaceProjection(parameters=None, grid_cells=())
+    parameters = (
+        surface_parameters(
+            fit,
+            snapshot_ts=snapshot_ts,
+            source_snapshot_ts=source_snapshot_ts,
+            calc_ts=calc_ts,
+            config_hash=config_hash,
+        )
+        if fit.method == METHOD_SVI
+        else None
+    )
+    cells = surface_grid_cells(
+        fit,
+        moneyness_buckets,
+        snapshot_ts=snapshot_ts,
+        source_snapshot_ts=source_snapshot_ts,
+        calc_ts=calc_ts,
+        config_hash=config_hash,
+    )
+    return SurfaceProjection(parameters=parameters, grid_cells=cells)

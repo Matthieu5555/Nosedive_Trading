@@ -38,6 +38,26 @@ class DuplicateKeyInBatch(StorageError):
         )
 
 
+class VersionedWriteNotAllowed(StorageError):
+    """A versioned write targeted an append-only table.
+
+    Versioning exists for restated *derived* analytics: a newer-code run lands a
+    ``version=<V>`` sub-partition beside the live one. Append-only layers (raw
+    events, instrument master) are immutable by contract — there is no "restatement"
+    of a raw observation — so a versioned write to one is a caller bug, refused at
+    the door rather than quietly opening a versioned raw partition that would muddy
+    raw-layer immutability.
+    """
+
+    def __init__(self, table: str, version: str) -> None:
+        self.table = table
+        self.version = version
+        super().__init__(
+            f"append-only table {table!r}: versioned writes (version={version!r}) are only "
+            f"supported for derived tables"
+        )
+
+
 class SchemaCompatibilityError(StorageError):
     """A stored row has no value for a required (non-optional) contract field.
 

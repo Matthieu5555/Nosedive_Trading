@@ -61,6 +61,27 @@ rather than raises).
   500% vol is reported `above_max` rather than resolved to an absurd number.
 - `_PRICE_RTOL`, `_PRICE_ATOL` — the price-space slack for the bound checks.
 
+## Worked example
+
+The solver is the inverse of the pricer, so the cleanest check is a round-trip
+against a known vol. On the synthetic surface (`F = 100`, `DF = 0.99`, `T = 0.25`),
+the strike-80 call is priced with a known `sigma`; feeding that price back through
+`solve_iv` recovers the same `sigma` to `1e-7`, with `status = "converged"` and a
+price residual below `1e-9`. The result also carries `k = ln(K/F) = ln(80/100)`
+(Eq 6) and `total_variance = sigma²·T` (Eq 7), and `vollib`'s independent inversion
+agrees to `1e-6`. The labeled-failure paths: a price below `DF·max(K-F, 0)` returns
+`below_intrinsic`, a price above the ceiling (`DF·K` for a put, `DF·F` for a call)
+returns `above_max`, and a price exactly at the intrinsic floor converges to
+`iv = 0` (no time value), never a `non_convergence`.
+
+## Determinism and the C-layer boundary
+
+Framework-free pure functions: no clock, no RNG, no I/O. `brentq` is deterministic on
+fixed inputs, so a replay reproduces every implied vol exactly. `calc_ts` is injected
+only at the `iv_point` projection. The actor (Workstream E) supplies the target price,
+the `(F, DF)` from the forward engine, and the solver config, and persists the emitted
+`IvPoint`; it never reaches into the root find.
+
 ## Verify
 
 ```

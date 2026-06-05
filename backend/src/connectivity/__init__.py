@@ -18,6 +18,17 @@ from .errors import (
     SessionDisconnected,
     UnknownServiceError,
 )
+from .ibkr_session import IbkrBrokerSession, ibkr_field_name
+from .market_data_policy import (
+    ENTITLEMENT,
+    OTHER,
+    PACING,
+    FeedNotice,
+    MarketDataStatus,
+    assess_market_data,
+    classify_feed_notice,
+    market_data_type_name,
+)
 from .sessions import FakeBrokerSession, ReplayBrokerSession, ScriptedDrop, ScriptItem
 from .supervisor import (
     BackoffSchedule,
@@ -28,6 +39,9 @@ from .supervisor import (
 )
 
 __all__ = [
+    "ENTITLEMENT",
+    "OTHER",
+    "PACING",
     "BackoffSchedule",
     "BrokerSession",
     "BrokerTick",
@@ -36,8 +50,11 @@ __all__ = [
     "ConnectionFailed",
     "ConnectivityError",
     "FakeBrokerSession",
+    "FeedNotice",
     "GapInterval",
+    "IbkrBrokerSession",
     "ManualClock",
+    "MarketDataStatus",
     "ReplayBrokerSession",
     "ScriptItem",
     "ScriptedDrop",
@@ -46,6 +63,10 @@ __all__ = [
     "SupervisedTick",
     "SystemClock",
     "UnknownServiceError",
+    "assess_market_data",
+    "classify_feed_notice",
     "client_id_for",
     "content_event_id",
+    "ibkr_field_name",
+    "market_data_type_name",
 ]

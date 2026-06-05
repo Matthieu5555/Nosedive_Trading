@@ -20,6 +20,13 @@ dependencies = [
     "uvicorn>=0.48.0",
 ]
 
+[project.optional-dependencies]
+# The live IBKR adapter (src/connectivity/ibkr_session.py). Optional on purpose: the
+# quality gate, the seam tests, and the disk replay all run with no broker SDK present,
+# and ib_async is only imported lazily inside the methods that talk to the gateway.
+# Install it for a live session or the live smoke with: uv sync --extra ibkr
+ibkr = ["ib_async>=2.1.0"]
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.155.1",
@@ -67,6 +74,12 @@ ignore_missing_imports = true
 # prometheus_client are typed; apscheduler 3.x is not).
 [[tool.mypy.overrides]]
 module = ["apscheduler.*"]
+ignore_missing_imports = true
+
+# The live IBKR adapter's SDK is an optional extra (`ibkr`), absent from the gate
+# environment and ships no stubs; it is imported lazily inside the adapter only.
+[[tool.mypy.overrides]]
+module = ["ib_async.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -1,44 +1,29 @@
-"""Classify a broker feed notice as pacing, entitlement, or other.
+"""Re-export the broker-neutral feed-notice vocabulary (now homed in connectivity).
 
-The spec asks the collector to *detect pacing/entitlement failures and log them as
-structured events* — distinct from a missing data interval, which is a durable gap
-event. A notice is classified into a small broker-agnostic vocabulary (the broker's
-own numeric error codes are mapped here, the one place that knows them) and counted in
-the daily summary, so feed-health problems are visible without polluting the raw
-observation stream.
+Feed-notice classification — mapping a broker's numeric error codes into the
+pacing/entitlement/other vocabulary — moved down to
+:mod:`connectivity.market_data_policy` so the broker adapter can classify its own error
+events without a ``connectivity → collectors`` import cycle. The collector still detects
+pacing/entitlement failures and counts them in the daily summary, distinct from a missing
+data interval (a durable gap event); it just shares one classifier with the adapter now.
+
+This module re-exports the same names so existing collector code and tests are unchanged.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from connectivity.market_data_policy import (
+    ENTITLEMENT,
+    OTHER,
+    PACING,
+    FeedNotice,
+    classify_feed_notice,
+)
 
-# Broker error codes that mean "you are requesting too fast" / pacing violations.
-_PACING_CODES = frozenset({100, 420})
-# Broker error codes that mean "you are not entitled to / not subscribed for this data".
-_ENTITLEMENT_CODES = frozenset({354, 10168, 10197})
-
-PACING = "pacing"
-ENTITLEMENT = "entitlement"
-OTHER = "other"
-
-
-@dataclass(frozen=True, slots=True)
-class FeedNotice:
-    """One classified feed notice: its kind, the broker code, the message, and when."""
-
-    kind: str
-    code: int
-    message: str
-    ts: datetime
-
-
-def classify_feed_notice(code: int, message: str, ts: datetime) -> FeedNotice:
-    """Classify a broker notice code into the pacing/entitlement/other vocabulary."""
-    if code in _PACING_CODES:
-        kind = PACING
-    elif code in _ENTITLEMENT_CODES:
-        kind = ENTITLEMENT
-    else:
-        kind = OTHER
-    return FeedNotice(kind=kind, code=code, message=message, ts=ts)
+__all__ = [
+    "ENTITLEMENT",
+    "OTHER",
+    "PACING",
+    "FeedNotice",
+    "classify_feed_notice",
+]

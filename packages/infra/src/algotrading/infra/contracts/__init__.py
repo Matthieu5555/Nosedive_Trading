@@ -2,12 +2,14 @@
 
 This package is the frozen seam M0 hands every other workstream. Import the dataclass
 you need, ``validate``/``validate_record``, ``table_for_contract``/``spec_for_table``,
-and the two protocols the merge hinges on:
+and the storage port the merge hinges on:
 
 * :class:`StorageRepository` — the storage port every store satisfies and every
   consumer reads/writes through (no module reaches into Parquet/DuckDB directly).
-* :class:`BrokerSession` — the broker-agnostic market-data seam M5's adapters
-  implement and M4's actor drives.
+
+The broker-agnostic market-data seam is the push ``collectors.BrokerTick`` +
+``collectors.MarketDataAdapter`` (ADR 0027); the contract layer keeps only its
+content-addressed event id (``content_event_id``), the idempotency primitive.
 
 The registry's introspection machinery (``REGISTRY``, ``resolved_field_types`` and
 friends) is deliberately *not* re-exported: it is how the storage codec and validators
@@ -18,7 +20,7 @@ field ripples to the other workstreams.
 
 from __future__ import annotations
 
-from .broker import BrokerSession, BrokerTick, content_event_id
+from .broker import content_event_id
 from .bundles import ForwardDiagnostics, IvDiagnostics, SurfaceFitDiagnostics
 from .errors import ContractError, ContractValidationError, UnknownTableError
 from .instrument_key import (
@@ -53,8 +55,6 @@ from .validation import validate, validate_record
 __all__ = [
     "EVENT_TIMESTAMP_FIELDS",
     "OPTION_RIGHTS",
-    "BrokerSession",
-    "BrokerTick",
     "ContractError",
     "ContractValidationError",
     "ForwardCurvePoint",

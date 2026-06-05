@@ -1,24 +1,26 @@
 """Hold the broker session: backoff reconnect in one place, client-id convention.
 
-The supervisor is the single home for connect/reconnect/retry behaviour — the spec's
-"reconnect and retry behavior lives in exactly one place". It owns a session, a
-client id, an injected clock, and a backoff schedule. It re-subscribes after every
-reconnect and records each outage as a :class:`GapInterval`, so a consumer can both
-resume cleanly across a drop and record the lost interval as a loss-aware gap.
+The supervisor is the single home for connect/reconnect/retry behaviour — the blueprint's
+"reconnect and retry behavior lives in exactly one place" — and it lives *beneath* the
+push :class:`~algotrading.infra.collectors.MarketDataAdapter` (ADR 0027). It owns a session,
+a client id, an injected clock, and a backoff schedule. It re-subscribes after every reconnect
+and records each outage as a :class:`GapInterval`, which the collector turns into a loss-aware
+gap meta-event. It no longer defines a tick type or a pull loop: the adapter pushes ticks at
+the collector; the supervisor only manages the session lifecycle under it.
 
-The client-id convention lives here too: each service draws from its own reserved
-band so two services connecting to the same gateway can never request the same id.
+The client-id convention lives here too: each service draws from its own reserved band so two
+services connecting to the same gateway can never request the same id.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
-from .broker import BrokerSession, BrokerTick
 from .clock import Clock
-from .errors import ClientIdError, ConnectionFailed, SessionDisconnected, UnknownServiceError
+from .errors import ClientIdError, ConnectionFailed, UnknownServiceError
 
 # Reserved client-id bands, one per service. Bands are spaced by _BAND_WIDTH so a
 # service's instance ids (band + instance) never reach into the next service's band.
@@ -53,6 +55,26 @@ def client_id_for(service: str, instance: int = 0) -> int:
     if not 0 <= instance < _BAND_WIDTH:
         raise ClientIdError(service, instance, _BAND_WIDTH)
     return band + instance
+
+
+class SupervisedSession(Protocol):
+    """The minimal broker session lifecycle the supervisor manages — no tick pulling.
+
+    A concrete session connects under a client id, subscribes instruments, and reports
+    whether it is currently connected; the push adapter feeds ticks at the collector
+    separately. Every type here is broker-agnostic: ids and symbols are strings, chain rows
+    are plain mappings.
+    """
+
+    def connect(self, client_id: int) -> None: ...
+
+    def disconnect(self) -> None: ...
+
+    def is_connected(self) -> bool: ...
+
+    def request_option_chain(self, symbol: str) -> tuple[Mapping[str, object], ...]: ...
+
+    def subscribe(self, broker_contract_id: str) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,31 +112,19 @@ class GapInterval:
         return (self.ended_at - self.started_at).total_seconds()
 
 
-@dataclass(frozen=True, slots=True)
-class SupervisedTick:
-    """A tick from the resilient stream, flagged if it is the first after a reconnect.
-
-    ``gap_before`` is the outage that just ended when this is the first tick after a
-    reconnect, and ``None`` otherwise — the loss-aware signal the collector turns into
-    an explicit gap event.
-    """
-
-    tick: BrokerTick
-    gap_before: GapInterval | None = None
-
-
 class SessionSupervisor:
     """Owns the broker session: one place for connect/reconnect-with-backoff + ids.
 
-    Construct it with a session, the client id it should connect under, an injected
-    clock, and an optional backoff schedule. ``connect`` establishes the session
-    (retrying failures on the backoff schedule); ``stream`` yields ticks resiliently,
-    reconnecting and re-subscribing across drops and recording each outage.
+    Construct it with a session, the client id it should connect under, an injected clock, and
+    an optional backoff schedule. ``connect`` establishes the session (retrying failures on the
+    backoff schedule); ``recover`` reconnects and re-subscribes across a mid-stream drop,
+    recording the outage as a :class:`GapInterval` the caller hands to the collector. It is the
+    single home for reconnect; nothing above it owns that behaviour.
     """
 
     def __init__(
         self,
-        session: BrokerSession,
+        session: SupervisedSession,
         *,
         client_id: int,
         clock: Clock,
@@ -162,28 +172,19 @@ class SessionSupervisor:
         """Pass an option-chain discovery request through to the session."""
         return self._session.request_option_chain(symbol)
 
-    def stream(self) -> Iterator[SupervisedTick]:
-        """Yield ticks, reconnecting and re-subscribing across any mid-stream drop.
+    def recover(self, dropped_at: datetime) -> GapInterval:
+        """Reconnect and re-subscribe after a mid-stream drop, recording the outage.
 
-        A clean end of the session's tick iterator ends the stream. A
-        :class:`SessionDisconnected` is recovered: reconnect on the backoff schedule,
-        re-subscribe every instrument, record the outage, and resume — tagging the
-        next tick with the gap that just ended.
+        Reconnects on the backoff schedule from the moment the link ``dropped_at``,
+        re-subscribes every instrument, records the :class:`GapInterval` that just ended, and
+        returns it so the caller can hand it to the collector as a loss-aware gap. This is the
+        one place reconnect happens; the adapter resumes pushing ticks once it returns.
         """
-        gap_before: GapInterval | None = None
-        while True:
-            try:
-                for tick in self._session.ticks():
-                    yield SupervisedTick(tick=tick, gap_before=gap_before)
-                    gap_before = None
-                return
-            except SessionDisconnected:
-                dropped_at = self._clock.now()
-                self._connect_with_backoff()
-                self._resubscribe()
-                gap = GapInterval(started_at=dropped_at, ended_at=self._clock.now())
-                self.reconnects.append(gap)
-                gap_before = gap
+        self._connect_with_backoff()
+        self._resubscribe()
+        gap = GapInterval(started_at=dropped_at, ended_at=self._clock.now())
+        self.reconnects.append(gap)
+        return gap
 
     def _connect_with_backoff(self) -> None:
         attempt = 0

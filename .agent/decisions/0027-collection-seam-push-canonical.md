@@ -1,6 +1,10 @@
 # 0027 — Collection seam: the push `RawCollector` is canonical; harvest the pull seam, then retire it
 
-- **Status:** accepted, 2026-06-05. Formalizes the seam direction already set by
+- **Status:** accepted, 2026-06-05; **implemented by C6, 2026-06-05** — one `BrokerTick`, one
+  `RawCollector`, content-addressed live capture, the pull seam deleted, and the four
+  collection-coupled use-cases (`collect_live`, `surface_job`, the handover smoke stage,
+  `provider_flow`) ported onto it. See `tasks/C6-collection-seam-unification.md`. Formalizes the
+  seam direction already set by
   [[0023-nautilus-runtime-spine-and-library-leverage]] ("the EAV `BrokerTick` +
   `MarketDataAdapter` is the survivor; restore content-addressed ids; retire the unused pull
   seam") and **resolves the collection-seam fork deferred in

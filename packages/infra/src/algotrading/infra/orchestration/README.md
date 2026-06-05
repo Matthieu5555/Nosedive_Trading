@@ -49,12 +49,12 @@ lines), so a session resolves to the jobs it fed.
 - **Injected clocks only.** Jobs and alerts take a `Clock`/`now`; nothing here reads the
   wall clock, so a replay of the same pipeline reproduces the same ledger and the
   detection-interval tests advance a `ManualClock` instead of waiting.
-- **Live collection is pending C1.** The `collect_live` job and the EOD collection
-  stage's live wiring need the broker-session→`RawMarketEvent` seam C1 has not yet
-  reconciled (two `BrokerTick` shapes on the packages stack; owner-deferred). The
-  collection stage stays an *injected* seam on `run_end_of_day` — a caller supplies it
-  (a fixture replay in tests today; the live job once C1 lands). See `jobs.py`'s
-  docstring and ADR 0026.
+- **Live collection rides the one unified collector (ADR 0027 / C6).** `collect_live`,
+  `surface_job` (`build_surface`) and `provider_flow` (`run_provider_flow`) drive the single
+  `collectors.RawCollector` — one `BrokerTick`, content-addressed exactly-once capture, no
+  second analytics path. The EOD collection stage is still an *injected* seam on
+  `run_end_of_day` (so the sequence stays testable without a broker), and its default wiring is
+  `collect_live`. See `jobs.py`'s docstring and ADR 0027.
 
 ## Tests
 

@@ -1,9 +1,9 @@
 """The operable jobs — each a function of injected dependencies and a correlation id.
 
-A job here is one unit of operable work: universe refresh, incremental analytics, and
-end-of-day reconciliation. Every job takes its dependencies (the store, the config, a
-clock, the metric bundle) as parameters rather than constructing them, so a test
-drives a job with fakes and an injected clock and nothing reaches a real broker or a
+A job here is one unit of operable work: universe refresh, live collection, incremental
+analytics, and end-of-day reconciliation. Every job takes its dependencies (the store,
+the config, a clock, the metric bundle) as parameters rather than constructing them, so a
+test drives a job with fakes and an injected clock and nothing reaches a real broker or a
 wall clock. Every job emits a structured log line bound to a ``correlation_id``, and
 that same id is threaded from the collector session through the analytics run, so a
 single trace resolves a session to the jobs it fed — the actor already binds the id
@@ -14,29 +14,31 @@ correlation id) so the pipeline can record it and the dashboard can read it. A j
 does not schedule itself: it is a plain function the pipeline (or a scheduler, or a
 test) calls directly.
 
-**Live collection is intentionally absent here (pending C1).** The live-collection job
-that drives a :class:`connectivity.SessionSupervisor` stream into a collector and
-writes ``RawMarketEvent`` rows depends on the broker-session→raw-event bridge that C1
-adopted Nautilus for but has not yet reconciled across Saxo/Deribit (ADR 0023; owner:
-"priorité IBKR, le reste en stand by"). On the ``packages`` stack today the supervised
-pull stream yields a ``contracts.BrokerTick`` while the push :class:`collectors.RawCollector`
-ingests the EAV ``collectors.BrokerTick`` — two unreconciled tick shapes. C3 does not
-add a *second* collection path to paper over that gap (a second driver is exactly what
-the byte-identical guarantee forbids); the collection stage stays an injected seam on
-:func:`pipeline.run_end_of_day` and lands its real wiring when C1 closes the seam.
-:class:`CollectionResult` is kept as that seam's result type.
+Live collection rides the one unified collection seam (ADR 0027): :func:`collect_live`
+drives a broker adapter through the single :class:`collectors.RawCollector`, which writes
+content-addressed ``RawMarketEvent`` rows — the *same* collector and event shape the
+replay path uses, so live capture is exactly-once and live==replay holds. The adapter is
+injected and the feed is driven by an injected callable, so a test runs the job over a
+fake feed (or a replay source) with no broker and no second code path.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.actor import ActorOutputs, persist_outputs, run_analytics
-from algotrading.infra.collectors import CollectorSummary, is_observation, replay_day
+from algotrading.infra.collectors import (
+    CollectorSummary,
+    MarketDataAdapter,
+    RawCollector,
+    SequenceStamping,
+    is_observation,
+    replay_day,
+)
 from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import (
     InstrumentKey,
@@ -67,10 +69,7 @@ class UniverseRefreshResult:
 class CollectionResult:
     """What a collection job captured, as the collector's own daily summary.
 
-    The result type of the EOD pipeline's injected collection stage. Its real producer
-    (the live-collection job) lands when C1 reconciles the broker-session→raw-event
-    seam (see the module docstring); until then a caller supplies a collection stage
-    that returns one of these.
+    The result type of :func:`collect_live` and of the EOD pipeline's collection stage.
     """
 
     correlation_id: str
@@ -138,6 +137,88 @@ def refresh_universe(
         master_count=len(masters),
         masters=tuple(masters),
     )
+
+
+# A driver pumps a wired collector's feed to completion: it subscribes the adapter, drives
+# the stream (a live async WS loop; a fake feed; or a replay source's pump), and surfaces any
+# reconnect to the collector. It is injected so the job is broker-agnostic and testable.
+FeedDriver = Callable[[RawCollector], None]
+
+
+def collect_live(
+    *,
+    store: ParquetStore,
+    adapter: MarketDataAdapter,
+    subscribe: Sequence[str],
+    session_id: str,
+    trade_date: date,
+    clock: Clock,
+    drive: FeedDriver,
+    correlation_id: str,
+    metrics: OrchestrationMetrics | None = None,
+) -> CollectionResult:
+    """Capture one collection session through the one unified collector and record its metric.
+
+    Wraps the injected push ``adapter`` with :class:`collectors.SequenceStamping` (so every
+    tick gets the stable per-(instrument, field) ordinal the content-addressed id needs),
+    builds the single :class:`collectors.RawCollector` over the store, subscribes, and hands
+    the collector to the injected ``drive`` callable that pumps the feed to completion. The
+    ``session_id`` is the correlation handle: it is stable across restarts (so a restart
+    resumes the same session, not a fresh one, and the collector reloads its already-written
+    ids) and it is the id the downstream analytics run carries, which links a session to the
+    jobs it fed. Bumps the ``events_collected_total`` counter by the observations captured,
+    labeled by underlying. Returns the collector's daily summary.
+    """
+    log = _LOGGER.bind(
+        correlation_id=correlation_id,
+        job="collection",
+        session_id=session_id,
+        trade_date=trade_date.isoformat(),
+    )
+    log.info("orchestration.collection.start", subscribe_count=len(subscribe))
+    collector = RawCollector(
+        store=store,
+        adapter=SequenceStamping(adapter),
+        session_id=session_id,
+        trade_date=trade_date,
+        clock=clock,
+        subscribed_keys=subscribe,
+    )
+    collector.start(list(subscribe))
+    drive(collector)
+    summary = collector.close()
+    if metrics is not None:
+        _record_collection_metrics(store, summary, trade_date, metrics)
+    log.info(
+        "orchestration.collection.done",
+        event_count=summary.event_count,
+        gap_count=summary.gap_count,
+        reconnect_count=summary.reconnect_count,
+        coverage_ratio=summary.coverage_ratio,
+    )
+    return CollectionResult(
+        correlation_id=correlation_id, session_id=session_id, summary=summary
+    )
+
+
+def _record_collection_metrics(
+    store: ParquetStore,
+    summary: CollectorSummary,
+    trade_date: date,
+    metrics: OrchestrationMetrics,
+) -> None:
+    """Increment the per-underlying event counter from a session's persisted events.
+
+    Reads the day's observations back off the raw layer and counts them per underlying, so the
+    ``events_collected_total`` counter is labeled by underlying rather than lumped into one
+    opaque total. Gap meta-events are not observations and are not counted.
+    """
+    per_underlying: dict[str, int] = {}
+    for event in replay_day(store, trade_date):
+        if event.session_id == summary.session_id and is_observation(event.field_name):
+            per_underlying[event.underlying] = per_underlying.get(event.underlying, 0) + 1
+    for underlying, count in per_underlying.items():
+        metrics.events_collected.labels(underlying=underlying).inc(count)
 
 
 def run_incremental_analytics(

@@ -18,12 +18,10 @@ The stages drive the same public APIs the runbooks tell an operator to call:
   ``QcResult`` rows, and reports an escalation level.
 
 Relocated onto the ``packages/`` stack (C3) and re-pointed to ``algotrading.infra.*``,
-driving the ported actor. Stage **(b) connectivity smoke** — resolve a contract off a
-broker session and capture one quote — is pending C1's broker→``RawMarketEvent`` seam
-(the supervised pull stream and the ``RawCollector`` carry two unreconciled tick shapes
-on the packages stack today; owner-deferred). It is kept as a documented skip below
-rather than faked, so the engine path (bootstrap → reconstruct → QC) is proven now and
-the collection leg lands when C1 closes the seam.
+driving the ported actor. Stage **(b) connectivity smoke** — resolve a contract, capture
+exactly one quote through the one unified collector, place no orders — now runs on the
+unified collection seam (C6 / ADR 0027): a fake push adapter feeds the single
+``RawCollector``, which writes the one canonical ``RawMarketEvent`` shape.
 
 The named fixture library (``fixtures.library.get_fixture("synthetic_known_answer")``)
 and the chain-driving pattern (events/instruments/masters → seed the raw layer → run)
@@ -36,15 +34,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from algotrading.core.config import PlatformConfig, config_hash, load_config
-from algotrading.infra.collectors import summarize_session
+from algotrading.infra.collectors import BrokerTick, RawCollector, summarize_session
+from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.contracts import InstrumentMaster, Position
 from algotrading.infra.contracts.instrument_key import InstrumentKey
-from algotrading.infra.orchestration import run_qc
+from algotrading.infra.orchestration import collect_live, run_qc
 from algotrading.infra.orchestration.reconstruction import RECONSTRUCTED, reconstruct_day
 from algotrading.infra.qc import STATUS_PASS, thresholds_from_config
 from algotrading.infra.storage import ParquetStore
+from algotrading.infra.universe import UniverseService, materialize_universe
 from fixtures.events import quote_events
 from fixtures.library import ChainFixture, get_fixture
 
@@ -180,19 +179,66 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     assert persisted_qc[0].run_id == "handover-run", "the persisted row carries the injected run id"
 
 
-@pytest.mark.skip(
-    reason="Stage (b) connectivity smoke (resolve a contract off a broker session, capture one "
-    "quote, place no orders) is pending C1's broker→RawMarketEvent seam (ADR 0023): the supervised "
-    "pull SessionSupervisor stream yields a contracts.BrokerTick while the RawCollector ingests the "
-    "EAV collectors.BrokerTick — unreconciled on the packages stack, owner-deferred. C3 does not "
-    "add a second collection path to fake it; the engine path (a/c/d) above proves the rest. "
-    "Re-enable when C1 lands the collector that writes RawMarketEvents off the session."
-)
-def test_handover_connectivity_smoke_pending_c1_collection_seam() -> None:
-    """Placeholder for the relocated connectivity-smoke stage (b).
+# The connectivity smoke uses its own small trade date and one resolvable contract — one
+# quote, no orders — mirroring the start-of-day runbook's smoke step.
+_SMOKE_TRADE_DATE = _AS_OF.date()
+_SMOKE_ROWS: list[dict[str, object]] = [
+    {"conId": "u", "symbol": "AAPL", "secType": "STK", "exchange": "SMART",
+     "currency": "USD", "multiplier": 1},
+    {"conId": "c1", "symbol": "AAPL", "secType": "OPT", "exchange": "SMART",
+     "currency": "USD", "multiplier": 100, "expiry": "20260619", "strike": 100, "right": "C"},
+]
 
-    The original drove a ``SessionSupervisor`` over a ``FakeBrokerSession``: resolve one
-    option chain, materialize the universe, capture exactly one quote through a
-    collector that writes ``RawMarketEvent`` rows, and assert no orders were placed. It
-    returns once C1 reconciles the broker-session→raw-event seam.
+
+class _OneQuoteAdapter:
+    """A push MarketDataAdapter that emits exactly one quote for one instrument when driven."""
+
+    def __init__(self, instrument_key: str, *, value: float) -> None:
+        self._key = instrument_key
+        self._value = value
+        self._tick_cb = None
+
+    def subscribe(self, instrument_keys: object) -> None: ...
+    def set_tick_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        self._tick_cb = callback
+    def set_fault_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        ...
+    def unsubscribe_all(self) -> None: ...
+
+    def pump(self, _collector: RawCollector) -> None:
+        self._tick_cb(  # type: ignore[misc]
+            BrokerTick(
+                instrument_key=self._key, field_name="bid", value=self._value,
+                underlying="AAPL", exchange_ts=_AS_OF,
+            )
+        )
+
+
+def test_handover_connectivity_smoke(tmp_path: Path) -> None:
+    """Stage (b): resolve a contract, capture exactly one quote, place no orders.
+
+    Drives the documented smoke path on the one unified collector: materialize a tiny universe
+    off (fake) broker rows, pick one option, and capture a single quote through ``collect_live``
+    — the same collector the live and replay paths use. Asserts exactly one ``RawMarketEvent``
+    landed and that nothing was written to the positions/orders layer.
     """
+    smoke_store = ParquetStore(tmp_path / "smoke")
+    materialize_universe(smoke_store, _SMOKE_ROWS, _SMOKE_TRADE_DATE)
+    universe = UniverseService.load_active_universe(smoke_store, _SMOKE_TRADE_DATE)
+    option = universe.get_option_chain("AAPL", _SMOKE_TRADE_DATE)[0]
+    option_key = option.canonical()
+
+    adapter = _OneQuoteAdapter(option_key, value=5.25)
+    result = collect_live(
+        store=smoke_store, adapter=adapter, subscribe=[option_key],
+        session_id="handover-smoke", trade_date=_SMOKE_TRADE_DATE,
+        clock=ManualClock(start=_AS_OF), drive=adapter.pump, correlation_id="handover-smoke",
+    )
+
+    smoke_events = smoke_store.read("raw_market_events")
+    assert len(smoke_events) == 1, "the smoke must capture exactly one quote"
+    assert smoke_events[0].value == 5.25
+    assert smoke_events[0].instrument_key == option_key
+    assert result.summary.event_count == 1
+    # No orders/positions are placed by a connectivity smoke.
+    assert smoke_store.read("positions") == []

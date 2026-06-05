@@ -1,28 +1,29 @@
 """The broker-agnostic guarantee: every broker's ticks normalize to one identical raw shape.
 
-ADR 0020's whole bet is that no broker leaks a second code path: whichever broker produced a
-tick, the collector turns it into the *same* ``RawMarketEvent`` shape, so the actor downstream
-cannot tell Saxo from Deribit from IBKR. The full "same actor → structurally identical outputs"
-check belongs to M4 (the actor isn't relocated yet); this is its in-reach floor — drive each
-broker's pure tick-translation, push the ticks through the one shared ``RawCollector``
-normalize path, and assert the emitted records are structurally indistinguishable across brokers.
+ADR 0027's whole bet is that no broker leaks a second code path: whichever broker produced a
+tick, the one :class:`RawCollector` turns it into the *same* canonical
+:class:`~algotrading.infra.contracts.RawMarketEvent`, so the actor downstream cannot tell Saxo
+from Deribit from IBKR. This drives each broker's pure tick-translation, pushes the ticks
+through the single shared collector, and asserts the persisted records are structurally
+indistinguishable across brokers — one tick type, one collector, one raw shape.
 
-IBKR participates only when its optional ``ib_async`` extra is installed (its adapter imports the
-SDK at module load); Saxo and Deribit always run. The cross-leaf imports here are test-only — the
-source packages stay independent (``infra-saxo`` never imports ``infra-deribit``).
+IBKR participates only when its optional ``ib_async`` extra is installed (its adapter imports
+the SDK at module load); Saxo and Deribit always run. The cross-leaf imports here are test-only
+— the source packages stay independent (``infra-saxo`` never imports ``infra-deribit``).
 """
 
 from __future__ import annotations
 
 import dataclasses
 from collections.abc import Sequence
-from datetime import UTC, datetime
-from decimal import Decimal
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
-from algotrading.infra.collectors import BrokerTick, RawCollector
+from algotrading.infra.collectors import BrokerTick, RawCollector, next_sequence
 from algotrading.infra.collectors.normalize import BrokerTick as CollectorBrokerTick
-from algotrading.infra.storage.events import RawMarketEvent
+from algotrading.infra.contracts import RawMarketEvent
+from algotrading.infra.storage import ParquetStore
 from algotrading.infra_deribit.collectors.deribit_adapter import _ticks_from_ticker_data
 from algotrading.infra_saxo.collectors.saxo_adapter import parse_strike_frame
 
@@ -33,39 +34,53 @@ _CANONICAL_FIELDS = {
 }
 
 _FIXED_TS = datetime(2026, 6, 5, 12, 0, 0, tzinfo=UTC)
+_TRADE_DATE = date(2026, 6, 5)
 
 
-class _NullAdapter:
-    """A MarketDataAdapter that does nothing — lets us drive RawCollector.ingest() directly."""
+class _FixedClock:
+    def now(self) -> datetime:
+        return _FIXED_TS
+
+
+class _PushAdapter:
+    """A MarketDataAdapter that captures the collector's tick callback so a test can drive it."""
+
+    def __init__(self) -> None:
+        self.tick_cb = None
 
     def subscribe(self, instrument_keys: Sequence[str]) -> None: ...
-    def set_tick_callback(self, callback: object) -> None: ...
-    def set_fault_callback(self, callback: object) -> None: ...
+    def set_tick_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        self.tick_cb = callback
+    def set_fault_callback(self, callback) -> None:  # type: ignore[no-untyped-def]
+        ...
     def unsubscribe_all(self) -> None: ...
 
 
-class _MemoryWriter:
-    def __init__(self) -> None:
-        self.events: list[object] = []
+def _normalize(ticks: Sequence[BrokerTick], tmp_path: Path) -> list[RawMarketEvent]:
+    """Push ticks through the one shared collector and read back the persisted raw events.
 
-    def write_events(self, events: Sequence[object]) -> None:
-        self.events.extend(events)
-
-
-def _normalize(ticks: Sequence[BrokerTick]) -> list[RawMarketEvent]:
-    """Push ticks through the one shared collector normalize path and collect the raw events."""
-    writer = _MemoryWriter()
+    Each broker's pure translator omits ``sequence`` (the adapter assigns it on the live
+    path); here the test assigns it by the same per-(instrument, field) rule the live and
+    replay paths share, so distinct observations get distinct content-addressed ids.
+    """
+    store = ParquetStore(tmp_path)
+    adapter = _PushAdapter()
     collector = RawCollector(
-        adapter=_NullAdapter(),
-        writer=writer,
-        clock=lambda: _FIXED_TS,
+        store=store,
+        adapter=adapter,
         session_id="agnostic-test",
+        trade_date=_TRADE_DATE,
+        clock=_FixedClock(),
         flush_batch_size=10_000,
     )
+    counters: dict[tuple[str, str], int] = {}
     for tick in ticks:
-        collector.ingest(tick)
+        sequenced = dataclasses.replace(
+            tick, sequence=next_sequence(counters, tick.instrument_key, tick.field_name)
+        )
+        adapter.tick_cb(sequenced)  # type: ignore[misc]
     collector.flush()
-    return [e for e in writer.events if isinstance(e, RawMarketEvent)]
+    return [e for e in store.read("raw_market_events") if e.session_id == "agnostic-test"]
 
 
 def _deribit_ticks() -> list[BrokerTick]:
@@ -100,31 +115,34 @@ def _saxo_ticks() -> list[BrokerTick]:
     )
 
 
-def _assert_canonical_raw_events(events: Sequence[RawMarketEvent], *, provider: str) -> None:
-    assert events, f"{provider} produced no raw events"
+def _assert_canonical_raw_events(events: Sequence[RawMarketEvent]) -> None:
+    assert events, "produced no raw events"
     for e in events:
-        assert e.provider == provider
         assert e.field_name in _CANONICAL_FIELDS
-        # EAV: one observed field per event, numeric values normalized to exact Decimal.
-        assert e.field_value is None or isinstance(e.field_value, Decimal)
-        assert e.collector_session_id == "agnostic-test"
+        # One observed field per event, with a finite numeric value (the raw layer's value
+        # is a required finite float; absent observations are not stored, by design).
+        assert isinstance(e.value, float)
+        assert e.session_id == "agnostic-test"
         assert e.receipt_ts == _FIXED_TS
 
 
-def test_saxo_and_deribit_normalize_to_the_same_raw_shape() -> None:
-    deribit = _normalize(_deribit_ticks())
-    saxo = _normalize(_saxo_ticks())
+def test_saxo_and_deribit_normalize_to_the_same_raw_shape(tmp_path: Path) -> None:
+    deribit = _normalize(_deribit_ticks(), tmp_path / "deribit")
+    saxo = _normalize(_saxo_ticks(), tmp_path / "saxo")
 
-    _assert_canonical_raw_events(deribit, provider="DERIBIT")
-    _assert_canonical_raw_events(saxo, provider="SAXO")
+    _assert_canonical_raw_events(deribit)
+    _assert_canonical_raw_events(saxo)
 
     # Structurally identical: the emitted record type and its field layout do not depend on
-    # which broker produced the tick.
+    # which broker produced the tick. The source/leaf is recoverable from the instrument key
+    # (its provider segment), not a separate column — one canonical raw shape.
     assert {type(e) for e in deribit} == {RawMarketEvent}
     assert {type(e) for e in saxo} == {RawMarketEvent}
     fields = {f.name for f in dataclasses.fields(RawMarketEvent)}
     for e in (*deribit, *saxo):
         assert {f.name for f in dataclasses.fields(e)} == fields
+    assert all("DERIBIT" in e.instrument_key for e in deribit)
+    assert all("SAXO" in e.instrument_key for e in saxo)
 
 
 def test_brokertick_seam_is_the_one_shared_tick_type() -> None:
@@ -133,7 +151,7 @@ def test_brokertick_seam_is_the_one_shared_tick_type() -> None:
         assert isinstance(tick, CollectorBrokerTick)
 
 
-def test_ibkr_joins_the_same_shape_when_its_extra_is_present() -> None:
+def test_ibkr_joins_the_same_shape_when_its_extra_is_present(tmp_path: Path) -> None:
     pytest.importorskip("ib_async")
     from algotrading.infra_ibkr.collectors.ibkr_adapter import ticker_to_ticks
 
@@ -150,8 +168,8 @@ def test_ibkr_joins_the_same_shape_when_its_extra_is_present() -> None:
         underlying="SPY",
         contract_id_broker="123",
     )
-    events = _normalize(ticks)
-    _assert_canonical_raw_events(events, provider="IBKR")
+    events = _normalize(ticks, tmp_path / "ibkr")
+    _assert_canonical_raw_events(events)
     fields = {f.name for f in dataclasses.fields(RawMarketEvent)}
     for e in events:
         assert {f.name for f in dataclasses.fields(e)} == fields

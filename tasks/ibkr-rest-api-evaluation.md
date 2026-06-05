@@ -5,6 +5,37 @@
 - **Depends on:** M0 (`BrokerSession` protocol — the seam any new transport must satisfy), M4 (adapter-to-actor wiring).
 - **Relates to:** [M5-broker-adapters.md](M5-broker-adapters.md) — this is a **fourth option** in the IBKR bake-off, which today weighs only TWS-API transports (`ib_async`, Vincent's `ibkr_transport`, Nautilus's built-in). ADR [`0008-live-ibkr-adapter`](../.agent/decisions/0008-live-ibkr-adapter.md) records why the current adapter is TWS-API-over-`ib_async`.
 
+## Update 2026-06-05 — two things changed the same day; read both
+
+This doc's disposition was written when REST was an *optional* operational migration over the
+hand-rolled `ib_async` adapter. **Two things have since changed and they interact:**
+
+1. **REST is now a hard course requirement**, not an optional spike.
+2. **ADR [0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) landed**
+   and reversed the spine to **Nautilus**, with direction "IBKR rides Nautilus's shipped adapter,
+   retiring the `ib_async` session this doc evaluates."
+
+These pull opposite ways for IBKR: **Nautilus's IBKR adapter is TWS-API/Gateway, not REST**
+(verified 2026-06-05 against the Nautilus docs — TWS-socket only, no Client Portal/REST option),
+so adopting it as-is does *not* meet the course requirement. The proposed
+reconciliation is in **ADR [0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)
+(status: proposed)** — treat IBKR-over-REST as the same case as Saxo/Deribit (a custom adapter
+normalizing into the Nautilus catalog, because Nautilus's coverage is "insufficient" for the REST
+requirement), with the Nautilus-TWS path as a config-flip manual fallback. **No automatic
+failover; no second username; CP-Gateway auth, not OAuth.** That ADR is *proposed*, not accepted —
+it asks the workspace owner whether IBKR gets this exception to ADR 0023, and it is sequenced
+after C1 owns the catalog seam.
+
+What still holds from the research below, regardless of the above: the **session-collision**
+conclusion (REST buys nothing; the shared-login fix is a second IBKR username) and the **OAuth
+gating** facts. What is now *stale*: any framing of this as a `BrokerSession`-seam transport swap
+or a Gateway *replacement* — under ADR 0023 the seam is the catalog, and TWS-via-Nautilus stays as
+the fallback rather than being removed.
+
+Everything below is the original research, kept verbatim as the evidence base.
+
+---
+
 ## Why this exists
 
 Today we talk to IBKR over the **TWS API** (binary socket protocol) via a local **IB Gateway** — `ib_async` → Gateway (`:4002` paper / `:4001` live) → IBKR. That means a always-on Java Gateway process holding a logged-in session. The question raised: should we move to IBKR's **REST API** instead?

@@ -13,14 +13,14 @@ test asserts this directly: after a full bootstrap, the positions layer is empty
 nothing wrote to it. Positions enter the system as data (the `Position` contract), from a
 portfolio source; the platform values and risks them, it does not trade them.
 
-**`nautilus_trader` is not a dependency and is not installed.** The "Nautilus actor" is
-a framework-free pure driver, not a `nautilus_trader` subclass (ADR 0007, decision 1).
-It is a plain function pipeline: `run_analytics` is a pure function of its inputs, and
-`run_day` reads the day's raw events via `collectors.replay_day` and feeds them in. The
-Nautilus name is kept for continuity with the roadmap, but the framework is not present.
-This is the deliberate "feed the same functions from a plain loop" escape hatch from
-`BIG_PICTURE.md`, and it is what makes same-code-path replay achievable — live and replay
-differ only in who populated the raw layer first.
+**Nautilus is the runtime spine ([ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)).**
+`nautilus_trader` is a real dependency: its data catalog, replay/backtest engine, and actor host
+are the runtime, and our analytics are the pure functions a thin Nautilus `Actor` drives and
+stamps provenance onto (`run_analytics` is still a pure function of its inputs). The same actor
+runs live and replay via Nautilus's own live==backtest property — the blueprint's single-code-path
+mandate. This reverses the interim framework-free stance of ADRs 0007/0020; the pure analytics stay
+framework-independent, so they can still be driven from a plain loop if Nautilus ever gets in the
+way (the ADR 0016 escape hatch).
 
 **The live IBKR adapter needs an opt-in extra and is not exercised by the test suite.**
 There *is* now a concrete live `IbkrBrokerSession` over `ib_async` (ADR 0008), but the
@@ -30,7 +30,10 @@ session in the test suite, so the suite drives the adapter through a fake `ib_as
 the live socket is proven only by `backend/scripts/ibkr_live_smoke.py`, run by hand. The
 default `uv run pytest` runs broker-free against the `FakeBrokerSession` and the disk
 `ReplayBrokerSession`. The adapter is read-only: it reads market data and never places an
-order. See `backend/src/connectivity/README.md`.
+order. See `backend/src/connectivity/README.md`. (Under
+[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md), IBKR
+connectivity moves to Nautilus's shipped adapter; this hand-rolled `ib_async` `IbkrBrokerSession`
+is superseded.)
 
 **Single-broker, single-currency-per-contract assumptions.** The connectivity seam
 models one broker session at a time, and the universe resolution requires each contract

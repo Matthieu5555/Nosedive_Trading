@@ -1,46 +1,53 @@
-# C1 — Land the market-data plane + actor spine in `packages/infra`, resolve the broker fork
+# C1 — Land the market-data plane + actor spine in `packages/infra`, on Nautilus
 
-- **Owns:** `packages/infra/src/algotrading/infra/{connectivity,collectors,universe,actor}/**` (+ READMEs), `packages/infra-{ibkr,saxo,deribit}/**`, and one new ADR recording the resolution.
-- **Depends on:** M0 (`contracts.BrokerSession` + scalar `BrokerTick`, `contracts.RawMarketEvent`), M1 (the raw layer / replay). Both landed.
-- **Blocks:** C2 (qc reads actor outputs), C3 (orchestration drives the actor; the headline tests need it), C5 (retiring `backend/{actor,connectivity,collectors,universe}`).
-- **State going in:** the consolidated M4 plane + the framework-free actor exist **only in `backend/src`**; they were never relocated. `packages/infra/{collectors,universe,connectivity}` currently hold a **second, forked copy** — Vincent's slice vendored near-verbatim by M5 — which defines a parallel `BrokerTick` and a selection-less universe. This is the one live architectural conflict and the source of the only red tests on the root gate (3 Saxo-config failures).
+> **Direction reset by [ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) (2026-06-05).**
+> This spec replaces the earlier "framework-free actor, no Nautilus, delete the M5 fork,
+> retarget all three leaves onto the scalar `contracts.BrokerSession`" plan. The new direction:
+> **Nautilus is the runtime spine; IBKR rides Nautilus's adapter; Vincent's Saxo/Deribit
+> adapters are kept (survivors).** Read ADR 0023 before starting.
+
+- **Owns:** `packages/infra/src/algotrading/infra/{connectivity,collectors,universe,actor}/**` (+ READMEs), `packages/infra-{ibkr,saxo,deribit}/**`, and a follow-on ADR recording the integration design ADR 0023 left open.
+- **Depends on:** M0 (`contracts`, the raw-event model), M1 (storage). `nautilus_trader` is added as a real dependency. M0/M1 landed.
+- **Blocks:** C2 (qc reads actor outputs — landed, waiting on the wiring), C3 (orchestration drives the actor; the headline tests need it), C5 (retiring `backend/{actor,connectivity,collectors,universe}`).
+
+## Decide first (ADR 0023 "Open") — record the answers before coding
+
+Not pre-decided; resolve each and write it into the follow-on ADR:
+
+1. **Catalog topology.** Does Nautilus's `ParquetDataCatalog` *become* the immutable raw store (ADR 0019), or do we keep the DuckDB/Parquet raw layer and bridge it into Nautilus? (Touches ADR 0015/0019 and `storage`.)
+2. **Unifying broker seam.** Confirm the seam is "everything normalizes to `RawMarketEvent` in the catalog," and retire the scalar pull `contracts.BrokerSession`. Decide how Saxo/Deribit `MarketDataAdapter` output reaches the catalog.
+3. **Provenance bridging.** How a Nautilus event maps to our `RawMarketEvent` + `content_event_id` + `ProvenanceStamp`.
 
 ## Objective
 
-One market-data plane, one actor, one broker seam — in `packages/infra`. The actor is the system's spine: it holds no math, transports market state into M2/M3's pure functions, stamps their outputs, and persists through M1. **The same actor runs live and replay** — that identity is the load-bearing invariant the whole merge rests on.
+One market-data plane and one actor spine in `packages/infra`, on the Nautilus runtime. The actor holds no math: it is a thin Nautilus `Actor` that transports market state into M2/M3's pure functions, stamps their outputs with our provenance, and persists through M1. **The same actor runs live and replay** — now via Nautilus's own live==backtest engine — the load-bearing invariant the whole merge rests on.
 
 ## What to do
 
-1. **Relocate M4's canonical content** from `backend/src/{actor,connectivity,collectors,universe}` into the `packages/infra` namespace (`algotrading.infra.*` imports). This is the version that wins — it is the one consolidated build:
-   - **actor:** `driver.py` (`run_analytics`/`run_day`), `stamping.py`, `outputs.py` (`ActorOutputs`), `valuation_join.py`.
-   - **connectivity:** the broker-agnostic session seam, backoff/reconnect supervisor, client-id convention, `market_data_policy.py` (entitlement/status codes 10089/10091), clock.
-   - **collectors:** the append-only, loss-aware collector with deterministic `event_id` idempotency, gap events, daily summary, and `replay_day` (canonical-order replay).
-   - **universe:** the **one** chain-selection policy `chain_planning.py` — `plan_chain` (discovery) + `select_capture_keys` (capture) over a single `ChainSelection` — plus deterministic dedup and `InstrumentMaster` materialization.
-2. **Delete the M5 vendored fork** now occupying those dirs in `packages/infra`: `collectors/{collector,normalize}.py`, `universe/{contracts,discovery,master}.py`, `connectivity/session.py`, and especially the **second `BrokerTick`** in `collectors/normalize.py`. These bypass the frozen seam and re-introduce a parallel selection-less universe. Salvage only genuinely-additive Vincent pieces that do **not** duplicate M4 (e.g. Saxo `auth/`, per-broker `config.py`/sample configs).
-3. **Retarget the broker leaves** `infra-{ibkr,saxo,deribit}` onto the frozen seam:
-   - import `contracts.BrokerTick` / `contracts.BrokerSession`, **not** `infra.collectors.normalize.BrokerTick`;
-   - discovery emits `universe.AvailableChain` rows feeding the one `chain_planning` policy — the adapter supplies the menu, it does not invent selection;
-   - keep the leaf packages (ADR 0012) and their current "minus `flow.py`" state (`flow.py` needs the analytics pipeline that lands via the actor — defer);
-   - fix the 3 red Saxo-config tests as part of the retarget.
-4. **Record the resolution as a new ADR** (next free number). ADR 0020 is *accepted* and the board admits M5 "knowingly contests" it; make the resolution as loud as the fork was. One `BrokerSession` seam, one `chain_planning` policy, one collector writing the raw layer, one actor replaying it.
+1. **Add Nautilus as the runtime.** `nautilus_trader` is a real dependency. Stand up its data catalog, its replay/backtest engine, and an `Actor` host. The actor subclass hosts the pure `run_analytics` core salvaged from `backend/src/actor` — the math-free driver logic survives; the framework-free *hosting* is dropped.
+2. **IBKR on Nautilus.** Use Nautilus's shipped InteractiveBrokers adapter for IBKR connectivity + market data, feeding the catalog. Retire the hand-rolled `ib_async` `IbkrBrokerSession` (ADR 0008) once parity is proven.
+3. **Keep Vincent's Saxo/Deribit adapters.** Nautilus ships neither. The vendored `infra-saxo`/`infra-deribit` `MarketDataAdapter` slices are survivors: keep them, and feed their normalized ticks into the same catalog the engine replays (per the topology decided above). Fix the 3 red Saxo-config tests.
+4. **One normalized event, content-addressed.** All three brokers normalize to one `RawMarketEvent` shape with **content-addressed event ids** (`content_event_id` over `(instrument_key, field, sequence)`) — restore this over the vendored running-counter `evt-{n}` so reconnect re-delivery and restart dedup to exactly one write. Reconcile the two `BrokerTick`/`RawMarketEvent` models into one (ADR 0022's "promote the richer EAV model" path, keeping the scalar model's idempotent identity).
+5. **Keep chain-selection one policy.** Discovery emits a broker-neutral chain menu; one `chain_planning` policy picks what to qualify and stream. The adapter supplies the menu, never invents selection.
+6. **Record the resolution** in the follow-on ADR (the open calls above + what was built).
 
-## Frozen seam (unchanged — only import paths move)
+## Frozen / preserved invariants
 
-`contracts.BrokerSession` (`connect`/`disconnect`/`is_connected`/`request_option_chain`/`subscribe`/`ticks`, emitting only scalar `BrokerTick`) + the M1 raw layer. **Actor input** = the `RawMarketEvent` stream read off the raw layer in canonical order via `collectors.replay_day`, plus injected `as_of`/`calc_ts`/`config`/`config_hash` and the `InstrumentMaster` set. No broker SDK type and no pre-normalized bundle crosses the seam; the actor builds the normalized state itself inside `run_analytics`. Per ADR 0020, this is what makes live == replay and lets all three brokers plug in identically. No `nautilus_trader` dependency.
+Determinism (injected `as_of`/`calc_ts`, no wall-clock/RNG), the immutable raw layer (ADR 0019), provenance on every derived record, the provider dimension (ADR 0017), and one code path for live and replay (now Nautilus's engine). No broker SDK type — including Nautilus's own — crosses into the analytics; the actor builds normalized state itself inside `run_analytics`.
 
 ## Test surface (in `packages/infra/tests` + per-leaf tests)
 
 Read `tasks/TESTING.md` first.
-- **Kill-and-restart idempotency:** a killed collector restarts with no duplicated and no corrupted raw events.
+- **Kill-and-restart idempotency:** a killed collector restarts with no duplicated and no corrupted raw events (content-addressed ids make this hold).
 - **Deterministic universe dedup** across processes.
-- **Actor byte-identical in isolation:** drive the actor once from a simulated live stream and once from the same events replayed off stored raw → byte-identical derived outputs. (C3 owns the full end-to-end version; prove the actor alone here.)
-- **Broker-agnostic seam:** a fake `BrokerSession` drives the full plane → resolver → supervisor → collector → persisted raw, with no broker specifics leaking above the seam.
-- **Per-leaf conformance:** each of IBKR/Saxo/Deribit *is-a* `contracts.BrokerSession` (structural check) and maps its native tick enum to the string `field_name` inside the adapter.
+- **Actor byte-identical, live vs replay:** drive the actor once from a live Nautilus feed and once from the same events replayed off the catalog → byte-identical derived outputs.
+- **Broker-agnostic normalization:** IBKR (via Nautilus), Saxo, and Deribit ticks normalize to one indistinguishable `RawMarketEvent` shape.
+- **Per-leaf:** each adapter maps its native tick fields to the string `field_name` inside the adapter; no SDK type leaks above the boundary.
 
 ## Done criteria
 
-One market-data plane and the actor as the **sole** driver, both in `packages/infra`; the vendored fork deleted; the three brokers on the frozen seam; the new ADR written; **root gate green (the 3 Saxo failures cleared)**. `backend/{actor,connectivity,collectors,universe}` are now stale dupes — hand them to C5 for retirement.
+One market-data plane and the actor as the sole driver, both in `packages/infra` on Nautilus; IBKR on Nautilus's adapter; Saxo/Deribit kept and feeding the catalog; one content-addressed `RawMarketEvent`; the follow-on ADR written; **root gate green (the 3 Saxo failures cleared)**, `nautilus_trader` in the gate. `backend/{actor,connectivity,collectors,universe}` are now stale dupes → C5.
 
 ## Gotchas
 
-One spine — the actor. No second driver, no "historical only" path, or the byte-identical guarantee becomes a lie. The actor stamps but computes nothing; any math in it belongs in M2/M3. Do not re-vendor: the fix is *one* policy and *one* `BrokerTick`, not a reconciliation of two.
+One spine — the actor — no second driver and no "historical-only" path, or the byte-identical guarantee becomes a lie. The actor stamps but computes nothing; any math in it belongs in M2/M3. Do not let Nautilus's types leak past the adapter/normalization boundary into the analytics — the pure functions stay framework-independent (the ADR 0016 escape hatch, and what keeps them testable on their own). Restore content-addressed ids before relying on idempotency.

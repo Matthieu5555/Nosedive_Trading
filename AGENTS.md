@@ -53,6 +53,12 @@ Non-obvious choices are recorded in `.agent/decisions/` as append-only ADRs.
 Read the relevant one before re-litigating a design; add a new one when you make
 a choice the next agent would otherwise have to reverse-engineer.
 
+Choices that are *not yet ruled on* live in `.agent/open-questions.md` — a living
+register of decisions awaiting an owner/domain ruling. When you hit a fork that is
+not yours to settle, record it there rather than guessing; when it is ruled it
+becomes an ADR. The medium-term direction the next workstreams aim at is in
+`documentation/vision-medium-term.md` (forward-looking, refined by the owner's brief).
+
 ## Verify before you declare done
 
 **The merged monorepo (`packages/**`, `apps/**`) — the full gate, run from the repo root:**

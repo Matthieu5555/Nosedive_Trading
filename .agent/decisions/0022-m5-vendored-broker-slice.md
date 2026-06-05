@@ -2,6 +2,10 @@
 
 - **Status:** accepted by workspace-owner direction — **contests [[0020-market-data-actor-wiring]]**.
   Recorded so the divergence is visible to the M4 owner, not silent.
+  **Resolved 2026-06-05 by [[0023-nautilus-runtime-spine-and-library-leverage]]:** the vendored
+  Saxo/Deribit slice is the **survivor** (kept); IBKR moves to Nautilus's adapter. The
+  reconciliation path below resolves toward *promote the richer EAV model / retire the scalar pull
+  seam*, not *retire this slice*.
 - **Date:** 2026-06-05
 - **Workstream:** M5 (broker adapters — IBKR / Saxo / Deribit)
 - **Relates to:** [[0018-monorepo-keystone-m0]], [[0019-one-immutable-raw-model]],

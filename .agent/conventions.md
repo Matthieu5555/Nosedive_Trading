@@ -22,6 +22,13 @@ rules have exactly one home.
   was asked. If 200 lines could be 50, write 50.
 - **Reuse before you write.** Grep for an existing function before adding a new
   one. No `foo_for_ingest` when `foo` already exists two files over.
+- **Leverage proven libraries before hand-rolling.** Where a well-built library
+  covers the job, use it — the platform leans on Nautilus (the runtime spine: data
+  catalog, replay/backtest engine, actor host), QuantLib + `py_vollib` (pricing,
+  Greeks, IV), SciPy/NumPy, DuckDB/PyArrow. The bar is depth: the wrapper must hide
+  real complexity, never be a thin shim that only adds a dependency. Hand-write only
+  the bespoke vol math no library provides. See
+  [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md).
 
 ## Python
 

@@ -123,10 +123,12 @@ instead.
 
 ### Integration and operations (Workstream E)
 
-- **Actor** — the framework-free pure driver in `src/actor` that transports market
-  state into C/D's pure functions and stamps/persists their outputs. *Not* a
-  `nautilus_trader` subclass; the Nautilus name is kept only for roadmap continuity
-  (ADR 0007).
+- **Actor** — the driver that transports market state into C/D's pure functions and
+  stamps/persists their outputs; it holds no math. Under
+  [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md) Nautilus is the
+  runtime spine, so the actor is a thin Nautilus `Actor` hosting those pure functions; the
+  framework-free `backend/src/actor` is the salvage source for that pure core. The same actor
+  runs live and replay (Nautilus's live==backtest property).
 - **Same-code-path replay** — the invariant that a live run and a replay of the
   same trade date call the identical `run_analytics`, differing only in who
   populated the raw layer first. Verified by `test_replay_byte_identical.py`.
@@ -153,6 +155,11 @@ instead.
 
 ### Broker protocols and adapter layer (Workstreams M4 / M5)
 
+- **Broker-seam direction ([ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md)):**
+  Nautilus is the runtime spine; **IBKR rides Nautilus's adapter**, **Saxo/Deribit keep the
+  `MarketDataAdapter` below** (Nautilus ships neither) — all three normalize to `RawMarketEvent` in
+  the catalog the engine replays. The scalar pull `contracts.BrokerSession` is being retired;
+  restore content-addressed event ids over the vendored running counter.
 - **`BrokerTransport`** — the broker-agnostic Protocol for a live connection: sends subscription
   requests and delivers raw wire frames. Lives in `infra/`; never imported by `strategy`.
 - **`MarketDataAdapter`** — the Protocol that normalizes a broker's wire frames into `BrokerTick`

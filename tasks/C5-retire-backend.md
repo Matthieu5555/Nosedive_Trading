@@ -26,6 +26,29 @@ Then make the docs tell the truth:
 - **Per-directory READMEs:** any README that still points at `backend/src/...` as canonical is corrected to the `packages/infra/...` home.
 - **`frontend/` stub README** (`.agent/map.md` row 16): reconcile with the real `apps/frontend` home from C4.
 
+## Reference checkout cleanup — `Vincent's Code/` (gated on owner sign-off)
+
+The read-only reference clone of Vincent's repo (`Vincent's Code/`, gitignored, a separate
+clone of `github.com/Vincent-20-100/AlgoTrading`) is the diff base / inspiration source for the
+parts of his stack that survived the merge. Remove it as the **last** clean-tree step, **only
+once**:
+- the broker plane is fully landed — Saxo/Deribit migrated onto the Nautilus runtime and
+  live-wired — so no open task still diffs against it, **and**
+- the **workspace owner confirms there is nothing left to harvest** from the max-union.
+
+Then:
+- `rm -rf "Vincent's Code"` — gitignored, so deletion is **local, produces no git diff, and is
+  reversible** (re-clone from the origin URL above if a question ever resurfaces). Nothing
+  canonical imports it.
+- Drop its three tooling-exclusion lines in `pyproject.toml` (the uv-workspace `exclude`, the
+  ruff `exclude`, the mypy override) and the `.gitignore` rule — they become harmless no-ops
+  once the dir is gone, but the clean-tree gesture removes them too.
+- Clear the `Vincent's Code/` "source of inspiration / refresh with `git pull`" note from the
+  `tasks/TASKBOARD.md` phase intro. (ADR 0018's mention is append-only history — leave it.)
+
+Not a blocker: keep it while any open broker task still references it. It is the very last thing
+to go.
+
 ## Frozen seam
 
 None added — this is removal plus doc truth.
@@ -36,7 +59,7 @@ After each deletion the **root gate stays green** and no test references the rem
 
 ## Done criteria
 
-No `backend/` directory; the root gate is the only gate; `AGENTS.md`, `.agent/map.md`, and the READMEs describe a single tree. `git status` shows nothing pointing back at the flat layout.
+No `backend/` directory; the root gate is the only gate; `AGENTS.md`, `.agent/map.md`, and the READMEs describe a single tree. `git status` shows nothing pointing back at the flat layout. `Vincent's Code/` and its tooling-exclusion references are gone — gated on the owner's sign-off that the max-union harvest is complete (see "Reference checkout cleanup" above).
 
 ## Gotchas
 

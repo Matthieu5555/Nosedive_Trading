@@ -34,6 +34,10 @@ uv sync
    Healthy output: all tests pass. The smoke asserts exactly one event is written, its
    value round-trips, and the positions layer stays empty (nothing places an order).
 
+   > **ADR 0023 (2026-06-05):** under the new direction IBKR connectivity moves to Nautilus's
+   > shipped adapter; the `IbkrBrokerSession` / `ibkr_live_smoke.py` path below is the current
+   > (pre-migration) one, kept until C1 lands the Nautilus runtime.
+
    To prove the *live socket* against a running Gateway/TWS — connect read-only, expand a
    bounded option chain, subscribe, and write at least one raw event — run the live IBKR
    smoke instead (it needs the optional broker SDK and a reachable gateway):

@@ -19,6 +19,11 @@ in a notebook and copied into the code).
 The first two run on synthetic inputs (reproducible, no broker needed). The pipeline demos require
 live credentials or a testnet; see the cell-level setup instructions in each notebook.
 
+> **ADR 0023 (2026-06-05):** Nautilus becomes the runtime spine — IBKR moves onto Nautilus's adapter
+> (the `demo_pipeline_ibkr` `IbkrBrokerSession` path is superseded), while Saxo/Deribit keep their
+> own adapters. The demos rewire when C1 lands; the lines above describe the current pre-migration
+> state.
+
 ## Run
 ```bash
 uv run --group notebooks jupyter lab        # open and run interactively

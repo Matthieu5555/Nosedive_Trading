@@ -1,6 +1,12 @@
 # 0020 — Market-data actor wiring: raw-layer replay, and the seam M5 implements
 
-- **Status:** accepted
+- **Status:** **superseded by [[0023-nautilus-runtime-spine-and-library-leverage]]** (2026-06-05)
+  — Nautilus is now the runtime spine and Saxo/Deribit keep their own adapters; the
+  no-`nautilus_trader` decision (§1) and the "all three brokers on the scalar `BrokerSession`" seam
+  (§2) are reversed. The collection seam is finally settled in
+  [[0027-collection-seam-push-canonical]] (the push `RawCollector`/EAV `BrokerTick` is canonical;
+  this ADR's scalar pull `BrokerSession.ticks()` seam is retired). The live==replay guarantee
+  (§1, raw-layer replay) is upheld there. Original text kept for the record.
 - **Date:** 2026-06-05
 - **Workstream:** M4 (market-data plane + actor spine)
 

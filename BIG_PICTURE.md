@@ -88,3 +88,13 @@ the data-transport and replay shell calling them. That keeps the QuantLib/SVI co
 testable on its own, lets us feed those same functions from a plain loop if
 Nautilus ever gets in the way, and keeps the strategy-agnostic boundary intact —
 analytics never reach up into strategy code.
+
+## Status (2026-06-05)
+
+This plan is the active direction, reaffirmed by
+[ADR 0023](.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md): **Nautilus is
+the runtime spine**, and the platform leans on every well-built library it can. Two refinements to
+the IBKR-centric sketch above: market data now comes from **three** brokers — **IBKR via
+Nautilus's own adapter**, and **Saxo + Deribit via our own adapters** (Nautilus ships neither),
+all three normalizing into the one catalog the engine replays. An interim decision to drop the
+Nautilus dependency (ADRs 0007/0020) was reversed by 0023.

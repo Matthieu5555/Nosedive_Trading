@@ -1,6 +1,9 @@
 # 0008 — Live IBKR adapter: two-phase universe expansion, optional SDK, read-only
 
-- **Status:** accepted
+- **Status:** accepted; **the `ib_async` `IbkrBrokerSession` is superseded by
+  [[0023-nautilus-runtime-spine-and-library-leverage]]** (2026-06-05) — IBKR connectivity moves to
+  Nautilus's shipped adapter. The decisions here (bounded `ChainSelection`, read-only, two-phase
+  universe expansion) remain the reference for what the Nautilus-fed IBKR path must reproduce.
 - **Date:** 2026-06-05
 
 ## Context

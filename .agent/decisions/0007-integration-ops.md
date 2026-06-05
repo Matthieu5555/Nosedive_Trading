@@ -1,6 +1,9 @@
 # 0007 — Integration & operations: actor seam, storage versioning, dual-path ban
 
-- **Status:** accepted
+- **Status:** accepted; **decision 1 (the framework-free actor, no `nautilus_trader`) is
+  superseded by [[0023-nautilus-runtime-spine-and-library-leverage]]** (2026-06-05). Decisions 2–5
+  stand; the no-dual-path invariant (decision 4) is upheld, now realized by Nautilus's
+  live==backtest engine.
 - **Date:** 2026-06-02
 
 ## Context

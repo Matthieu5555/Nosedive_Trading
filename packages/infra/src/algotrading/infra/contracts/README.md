@@ -24,9 +24,12 @@ request routed through M0, because every field ripples to the other workstreams.
     (`version=None` = live; `version=<V>` = one restatement; the two never mix; raw
     append-only tables refuse a versioned write). M1 implements it; everyone reads
     and writes through it.
-  - `BrokerSession` (`broker.py`) — the broker-agnostic market-data seam. `BrokerTick`
-    plus connect/subscribe/option-chain/ticks. M5's adapters satisfy it; M4's actor
-    drives it. `content_event_id` gives a tick a deterministic, cross-process id.
+  - `BrokerSession` (`broker.py`) — the M0 broker-agnostic market-data seam (`BrokerTick`
+    plus connect/subscribe/option-chain/ticks; `content_event_id` gives a tick a
+    deterministic, cross-process id). **Being retired by ADR 0023** (Nautilus is the runtime
+    spine): the live seam becomes "normalize every broker into `RawMarketEvent` in the
+    catalog," IBKR via Nautilus and Saxo/Deribit on `collectors.MarketDataAdapter`.
+    `content_event_id` stays — the determinism invariant C1 restores over the vendored counter.
 
 ## Rules
 

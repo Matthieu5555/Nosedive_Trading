@@ -14,6 +14,15 @@ finished task specs move to `tasks/archive/`.
 
 ## Current phase: convergence — closing the merge
 
+> **▶ START HERE: [CONVERGENCE-PLAN.md](CONVERGENCE-PLAN.md) is the linear A-to-Z runbook.**
+> Work it top to bottom. It sequences the convergence tasks (C4/C5/C6) with the
+> housekeeping the per-task specs don't own (commit C3, consolidate branches, retire the
+> backend dupes in waves, tree hygiene) and the solidity bar the owner asked for
+> (minimalism sweep, contract-test hardening, config-as-YAML). The `C*` specs below hold
+> the per-task detail; the plan holds the order. Ground truth 2026-06-05: gate ~744 pass /
+> 1 fail / ~18 skip — the one failure + all mypy/ruff are isolated in the uncommitted C3
+> tree and the in-flight C4 frontend.
+
 > **⚠ DIRECTION CHANGE — 2026-06-05 (read before touching C1, the actor, or any broker code).**
 > The workspace owner reversed the framework-free / no-Nautilus stance. **Nautilus is now the
 > runtime spine** (its data catalog + replay/backtest engine + actor host), the platform leans on
@@ -72,13 +81,15 @@ The five convergence tasks below close all of that. The Postgres serving tier (o
 | Claude (agent) | **C1**: `infra/actor/**`, `infra-ibkr/**`, `infra/pyproject.toml`, ADR 0025 | 2026-06-05 | **C1 IBKR-first increment LANDED (committed on `feat/merge-market-data`); Saxo/Deribit on standby per owner.** Adopted **Nautilus as the runtime spine** (ADR 0023): `nautilus_trader` is now a real `infra` dep; the M4 plane was already relocated in HEAD `3a21d9f`. **(A)** dep added, unused `pandas>=3.0.3` pin relaxed (no source imports pandas). **(B)** `infra/actor/nautilus_host.py` — a thin Nautilus `Actor` (`AnalyticsActor`) replays a `RawMarketEvent` stream through Nautilus's engine on its simulated clock and drives the **unchanged** pure `run_analytics`; `driver.py` stays `nautilus_trader`-free. Determinism gate `test_nautilus_replay_byte_identical.py` proves hosted == direct (ActorOutputs + persisted Parquet byte-identical, stamps incl.). **(C)** IBKR → Nautilus's InteractiveBrokers adapter to the **verifiable boundary**: CI-tested tick→`RawMarketEvent` normalizer (`content_event_id` restored) + import-guarded `build_data_client_config`; live connect needs a Gateway (skipped in CI). ib_async path superseded (kept for C5). **Decisions recorded in [ADR 0025](../.agent/decisions/0025-nautilus-host-catalog-topology.md):** our `RawMarketEvent`+`ParquetStore` stays the system of record (Nautilus bridges, ADR 0019 upheld); EventSource (0016) stays YAGNI. Gate: ruff/mypy/lint-imports clean in scope, all `packages/` tests green. **IBKR-REST course requirement — LANDED** ([ADR 0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md) now **accepted**, owner ruled): custom Client Portal REST/WS adapter (`infra-ibkr/cp_rest_*`, httpx/websockets) normalizing into `RawMarketEvent` alongside the TWS path, `transport: rest|nautilus-tws` selector (REST default), `/tickle` keepalive, read-only proven, secdef search→strikes→info. Headline **REST↔TWS equivalence** test green (same observation → byte-identical events). Live CP Gateway unverifiable in CI (smoke on a Gateway host). **Still open:** Saxo/Deribit migration onto the runtime + the live `TradingNode`/collector wiring (the `transport` switch consumer) are later tasks. |
 | Claude (agent) | `infra/{qc,validation}/**` + `tests/test_{qc_checks,qc_report,triage,validation,seam_triage}.py` | 2026-06-05 | **C2 LANDED (uncommitted), gate-green in isolation.** Ten named QC checks + the anomaly/triage validation plane ported into `packages/infra` under `algotrading.infra.*`. One persisted shape (`triage_records`), three sources (`qc`/`validation`/`anomaly`, discriminated off `reason_code` in one place); legacy in-memory `TriageRow` dropped. `check_collector_continuity` consumes the `qc.CollectorContinuityInput` Protocol — structural, so C1's eventual `CollectorSummary` satisfies it with no adapter (no edit to C1's plane). 97 tests pass; ruff + mypy (12 files) + import-linter (2/2) clean on C2. ADR 0010 updated. Pre-existing `apps/frontend` reds are unrelated. **Open for C3:** the `qc_job`/`validation_job` wiring. **Stale dupes for C5:** `backend/{qc,validation}`. |
 | Claude (agent, for Anthony) | `apps/frontend/web/**` | 2026-06-05 | UI cleanup + theme pass: metric overflow, money formats, labelled vol surface, status labels. No BFF/Python changes. |
-| Matthieu (Claude) | **C3**: `infra/{orchestration,observability}/**` + acceptance tests in `infra/tests` + root `pyproject.toml` testpaths | 2026-06-05 | Port orchestration/observability around the **one** actor; relocate the 3 headline tests (`replay_byte_identical`, `provenance_verification`, `handover_e2e`) onto the `packages/` stack and into the root gate. First increment: the two pure headline tests (byte-identical replay + provenance) relocated to `algotrading.infra.*`. |
+| Matthieu (Claude) | **C3**: `infra/{orchestration,observability}/**` + READMEs + `infra/tests/test_{replay_byte_identical,provenance_verification,replay_reconstruction,orchestration,observability_runner,handover_e2e}.py` + ADR 0026 + `.agent/map.md` + 2 stale C4 health tests | 2026-06-05 | **C3 ENGINE SURFACE COMPLETE (uncommitted), gate green: 744 passed / 18 skipped / 1 pre-existing C4 SPX red (not mine). ruff + mypy(15) + lint-imports(2/2) clean.** One driver only — the actor; no second analytics path (ADR 0026). **Landed:** `orchestration/{jobs,qc_job,metrics(×5),alerts(×4),dashboard,run_state,storage_root,pipeline}` + `reconstruction/` subpackage; `observability/run_job` (run-lineage over the M10 `RunRegistry` — the one Vincent helper adopted). **All 4 headline acceptance tests relocated into the root gate, green on `packages/`:** byte-identical replay (live vs replay-off-disk, multi-underlying) + provenance + reconstruction robustness (missing≠empty, versioned restatement, replay==live) + handover **engine path** (bootstrap→reconstruct→QC). Plus test_orchestration (kill/restart idempotency, 5 metrics, 4 alerts, dashboard, reconciliation, run-state) + observability-lineage tests. Landing this flipped C4's pre-wired BFF health router from its `orchestration-pending` stub to the live `build_dashboard` path → updated 2 stale C4 stub tests to assert live behavior (router unchanged). ADR 0026 records which Vincent helpers were adopted (`run_job`) vs declined (archive/persist/positions_io/universe_io/risk_pipeline/compare — fork our storage spine or duplicate ours) vs deferred. **DEFERRED → C1 collection seam (the only thing left; needs a broker-session→`RawMarketEvent` bridge — pull `SessionSupervisor`/`contracts.BrokerTick` vs push `RawCollector`/EAV `collectors.BrokerTick`, owner-deferred):** `collect_live`, `surface_job`, the handover connectivity-smoke stage (b), `provider_flow`. Two documented `skip`s mark them; the EOD pipeline keeps collection as an injected seam. **Stale for C5:** `backend/orchestration` + migrated `backend/tests`. |
 | Claude (agent, for Anthony) | `apps/frontend/{src,tests}/**` (BFF Python only — web/ untouched, see line above) + `backend/scripts/sample_day.py` (new, throwaway) + `data/` | 2026-06-05 | **C4 slice in flight** (the part not blocked on C1–C3): produce a SAMPLE day into `data/` via the backend pipeline's public entries (script dies with C5), then serve the operator BFF's market/risk routes from the real tables via `algotrading.infra` storage/pricing/risk seams only (schemas byte-identical to flat `contracts`); scenario POST reprices live through the frozen pricing seam. Routes/shapes unchanged; underlyings not in the store keep the explicit fixture stamp (no silent mixing). No edits in `backend/src/**`; run/health/config/oauth routers wait for C3. |
 | Claude (tech-lead doc pass) | docs only: `.agent/{map,conventions,glossary}`, `.agent/decisions/{0023,0020,0022,0007,0008}`, `tasks/{TASKBOARD,C1-actor-and-market-data-plane}`, `documentation/{known-limitations,interface-contracts}`, `BIG_PICTURE.md`, `packages/infra*/**/README.md` | 2026-06-05 | Propagating the ADR 0023 direction (Nautilus spine + library-leverage + keep Saxo/Deribit) across every agent-read doc so no one builds the superseded plan. No code edits. |
+| Claude (agent) | NEW docs only: `.agent/open-questions.md`, `documentation/vision-medium-term.md`, pointer added to `AGENTS.md` "Decisions" | 2026-06-05 | **Done.** Created the pending-decision register (`open-questions.md`, seeded OQ-1..4 + resolved OQ-0→ADR 0024) and the forward-looking medium-term vision (the index→constituents daily-snapshot pipeline: delta-band per tenor, IV/surface/Greeks decimal+dollar, parquet raw, daily close cron). **Follow-up for the doc-pass owner:** add `.agent/map.md` rows for both new docs (didn't touch `map.md` — you hold it). |
+| Claude (agent) | NEW doc only: `documentation/configuration-and-reproducibility.md`; added OQ-5/OQ-6 to `.agent/open-questions.md` | 2026-06-05 | **Done.** The config & reproducibility architecture+standard (Theme B of the hygiene audit), anchored on **blueprint Part VII** (YAML taxonomy `environment/broker/universe/qc/scenarios/pricing` + inheritance) and Part I (versioning). Codifies: no business param as a `.py` literal; YAML → typed validated config (`from_config`+`__post_init__`+`version`) → DI into pure compute; the existing `config_hash`/`composite_config_hash`/`ProvenanceStamp` are the reproducibility mechanism (environment excluded); **profiles = the blueprint's config inheritance** (base+overlay+hash). Ends with the 5 fix-tasks (TOML→YAML, six base YAMLs, generalize the typed pattern, wire config into `infra`, stamp composite hash). **Open:** OQ-5 (`StorageRepository` port load-bearing vs delete) + OQ-6 (on-disk profile format). To be **ratified by a short ADR** on owner sign-off. **Follow-up for doc-pass owner:** link it from `conventions.md` + `.agent/map.md`. |
 
 ## Convergence workstreams
 
-Five tasks close the merge. Each owns a disjoint set of directories and talks only
+Six tasks close the merge. Each owns a disjoint set of directories and talks only
 through the seams M0 already froze (`contracts`). Read each spec before starting;
 read [TESTING.md](TESTING.md) before writing tests — code without the named tests is
 not done.
@@ -89,7 +100,8 @@ not done.
 | C2 | QC + validation/triage ported to `packages` | [C2-qc-validation.md](C2-qc-validation.md) | `infra/{qc,validation}` | M0 (landed) |
 | C3 | Orchestration, observability + headline acceptance tests on the `packages` stack, in the gate | [C3-orchestration-and-acceptance.md](C3-orchestration-and-acceptance.md) | `infra/{orchestration,observability}` + acceptance tests | C1, C2 |
 | C4 | Consolidate the two frontends into `apps/frontend` | [C4-frontend.md](C4-frontend.md) | `apps/frontend` | C1, C2, C3 (seams) |
-| C5 | Retire the `backend/` flat tree | [C5-retire-backend.md](C5-retire-backend.md) | deletion of `backend/**` + doc truth | each module after its port |
+| C6 | Unify the collection seam ([ADR 0027](../.agent/decisions/0027-collection-seam-push-canonical.md)) + port the 4 deferred use-cases + live-wire Saxo/Deribit | [C6-collection-seam-unification.md](C6-collection-seam-unification.md) | `infra/{collectors,connectivity}`, `infra/orchestration/{collect_live,surface_job,provider_flow}`, `infra-{saxo,deribit}` | ADR 0027 (accepted); C1/C3 (landed) |
+| C5 | Retire the `backend/` flat tree | [C5-retire-backend.md](C5-retire-backend.md) | deletion of `backend/**` + doc truth | each module after its port (collection modules wait on C6) |
 
 ### Launch order
 
@@ -97,10 +109,17 @@ not done.
    headline tests without it). **C2 runs alongside C1** (it needs only M0).
 2. **C3 after C1 + C2** — it drives the ported actor and moves the acceptance bar onto
    the `packages` stack and into the root gate.
-3. **C4** can port early against stubs; final wiring needs the C1–C3 seams.
-4. **C5 is continuous** — retire M0–M3's stale `backend` dupes now; retire each remaining
-   module the moment its convergence task lands it green. Done when there is no `backend/`
-   and the root gate is the only gate.
+3. **C6 unblocks the tail** — with ADR 0027 settling the collection seam (push `RawCollector`
+   canonical; harvest `sequence`+`SessionSupervisor` from the pull seam, then retire it), C6
+   unifies the seam and ports the four use-cases (`collect_live`, `surface_job`, the handover
+   smoke stage, `provider_flow`) plus Saxo/Deribit live-wiring. This is what lets `backend/`'s
+   collection + orchestration modules fully retire.
+4. **C4** can port early against stubs; final run/health wiring needs the C6 live path.
+5. **C5 is continuous** — retire M0–M3's stale `backend` dupes **now** (config, provenance,
+   contracts, storage, snapshots, forwards, iv, surfaces, pricing, risk, fixtures) plus
+   qc/validation (C2), actor/connectivity/collectors/universe (C1), orchestration engine (C3);
+   the collection-coupled modules retire the moment C6 lands them green. Done when there is no
+   `backend/` and the root gate is the only gate.
 
 ## Open future spikes (not part of convergence)
 

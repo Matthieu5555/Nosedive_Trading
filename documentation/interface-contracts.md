@@ -95,7 +95,14 @@ the merge hinges on:
 | protocol | module | role | implemented by | driven by |
 |---|---|---|---|---|
 | `StorageRepository` | `contracts/ports.py` | analytics data-plane port (raw + derived, versioned restatement, table-keyed) | M1 (Parquet/DuckDB) | every consumer reads/writes through it |
-| `BrokerSession` | `contracts/broker.py` | broker-agnostic market-data seam (`BrokerTick`, connect/subscribe/ticks, deterministic `content_event_id`) | M5's IBKR/Saxo/Deribit adapters | M4's Nautilus actor |
+| `BrokerSession` | `contracts/broker.py` | broker-agnostic market-data seam (scalar `BrokerTick`, deterministic `content_event_id`) | **being reset — see note below** | Nautilus actor |
+
+**Broker-seam update ([ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md), 2026-06-05).**
+Nautilus is the runtime spine. **IBKR** rides Nautilus's shipped adapter; **Saxo/Deribit** keep
+their own `MarketDataAdapter` (Nautilus has neither) — all three normalize to `RawMarketEvent` in
+the catalog the engine replays. The scalar pull `contracts.BrokerSession` above is on track to be
+retired in favour of that catalog seam; C1 resolves the exact contract (ADR 0023, "Open"). The
+`StorageRepository` and `RunRepository` ports are unaffected.
 
 The blueprint's *other* store — the relational metadata/run registry — is a separate,
 orthogonal port, `algotrading.infra.storage.ports.RunRepository` (M10; ADR 0015), not

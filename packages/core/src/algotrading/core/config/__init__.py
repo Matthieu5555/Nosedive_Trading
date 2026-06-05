@@ -27,17 +27,20 @@ from .platform_config import (
     section_hash,
     section_versions,
 )
+from .reflective import ConfigFieldError, build_dataclass
 from .yaml_config import LoadedConfig, load_yaml_config, mapping_config_hash
 
 __all__ = [
     "SECTION_NAMES",
     "ConfigError",
+    "ConfigFieldError",
     "LoadedConfig",
     "PlatformConfig",
     "QcThresholdConfig",
     "ScenarioConfig",
     "SolverConfig",
     "UniverseConfig",
+    "build_dataclass",
     "canonical_json",
     "composite_config_hash",
     "config_from_mapping",

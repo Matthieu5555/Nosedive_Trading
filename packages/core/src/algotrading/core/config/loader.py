@@ -12,6 +12,7 @@ path C7/ADR 0028 standardize on; the legacy TOML loader was retired here.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from .platform_config import (
@@ -21,6 +22,7 @@ from .platform_config import (
     SolverConfig,
     UniverseConfig,
 )
+from .reflective import build_dataclass
 from .yaml_config import LoadedConfig
 
 
@@ -28,39 +30,26 @@ class ConfigError(Exception):
     """The config file or mapping was missing a required section or field."""
 
 
-def config_from_mapping(data: dict[str, Any]) -> PlatformConfig:
-    """Build a validated config from a plain mapping (e.g. parsed TOML)."""
-    try:
-        universe = data["universe"]
-        qc = data["qc_threshold"]
-        solver = data["solver"]
-        scenario = data["scenario"]
-    except KeyError as missing:
-        raise ConfigError(f"config is missing required section {missing}") from missing
+def config_from_mapping(data: Mapping[str, Any]) -> PlatformConfig:
+    """Build a validated config from a plain mapping (e.g. resolved YAML).
 
-    return PlatformConfig(
-        universe=UniverseConfig(
-            version=universe["version"],
-            underlyings=tuple(universe["underlyings"]),
-            exchange=universe["exchange"],
-        ),
-        qc_threshold=QcThresholdConfig(
-            version=qc["version"],
-            max_spread_pct=float(qc["max_spread_pct"]),
-            max_quote_age_seconds=float(qc["max_quote_age_seconds"]),
-            min_chain_count=int(qc["min_chain_count"]),
-        ),
-        solver=SolverConfig(
-            version=solver["version"],
-            iv_tolerance=float(solver["iv_tolerance"]),
-            max_iterations=int(solver["max_iterations"]),
-        ),
-        scenario=ScenarioConfig(
-            version=scenario["version"],
-            spot_shocks=tuple(float(x) for x in scenario["spot_shocks"]),
-            vol_shocks=tuple(float(x) for x in scenario["vol_shocks"]),
-        ),
-    )
+    Each of the four economic sections is built by the one reflective
+    :func:`build_dataclass` seam (coerce by declared type, reject unknown/missing keys,
+    validate in ``__post_init__``), so the YAML↔dataclass schema cannot drift and a bad
+    field raises a labelled :class:`ConfigFieldError` naming the section and field.
+    """
+    sections = {
+        "universe": UniverseConfig,
+        "qc_threshold": QcThresholdConfig,
+        "solver": SolverConfig,
+        "scenario": ScenarioConfig,
+    }
+    built: dict[str, Any] = {}
+    for name, cls in sections.items():
+        if name not in data:
+            raise ConfigError(f"config is missing required section '{name}'")
+        built[name] = build_dataclass(cls, data[name], section=name)
+    return PlatformConfig(**built)
 
 
 def from_config(loaded: LoadedConfig) -> PlatformConfig:

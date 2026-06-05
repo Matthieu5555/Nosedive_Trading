@@ -215,3 +215,76 @@ def test_canonical_json_and_mapping_hash_reject_non_finite() -> None:
         mapping_config_hash({"x": float("nan")})
     with pytest.raises(ValueError):
         mapping_config_hash({"x": float("-inf")})
+
+
+_GOOD_QC = {
+    "version": "qc-1",
+    "max_spread_pct": 0.05,
+    "max_quote_age_seconds": 30.0,
+    "min_chain_count": 6,
+}
+
+
+def test_build_dataclass_coerces_by_declared_type() -> None:
+    from algotrading.core.config import build_dataclass
+
+    qc = build_dataclass(QcThresholdConfig, _GOOD_QC, section="qc_threshold")
+    assert qc.max_spread_pct == 0.05 and isinstance(qc.min_chain_count, int)
+    # tuple[float, ...] coercion: a YAML list of numbers becomes a tuple of floats.
+    sc = build_dataclass(
+        ScenarioConfig,
+        {"version": "sc", "spot_shocks": [-0.1, 0, 0.1], "vol_shocks": [0.0]},
+        section="scenario",
+    )
+    assert sc.spot_shocks == (-0.1, 0.0, 0.1)
+    assert all(isinstance(x, float) for x in sc.spot_shocks)
+
+
+def test_build_dataclass_rejects_unknown_key() -> None:
+    from algotrading.core.config import ConfigFieldError, build_dataclass
+
+    with pytest.raises(ConfigFieldError) as exc:
+        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "typo": 1}, section="qc_threshold")
+    assert exc.value.field == "typo"
+
+
+def test_build_dataclass_rejects_missing_field() -> None:
+    from algotrading.core.config import ConfigFieldError, build_dataclass
+
+    incomplete = {k: v for k, v in _GOOD_QC.items() if k != "min_chain_count"}
+    with pytest.raises(ConfigFieldError) as exc:
+        build_dataclass(QcThresholdConfig, incomplete, section="qc_threshold")
+    assert exc.value.field == "min_chain_count" and "missing" in exc.value.reason
+
+
+def test_build_dataclass_rejects_fractional_int() -> None:
+    from algotrading.core.config import ConfigFieldError, build_dataclass
+
+    with pytest.raises(ConfigFieldError) as exc:
+        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "min_chain_count": 6.5}, section="qc_threshold")
+    assert exc.value.field == "min_chain_count"
+
+
+def test_post_init_range_validation_raises_labelled_error() -> None:
+    from algotrading.core.config import ConfigFieldError, build_dataclass
+
+    with pytest.raises(ConfigFieldError) as exc:
+        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "max_spread_pct": -0.01}, section="qc_threshold")
+    assert exc.value.section == "qc_threshold"
+    assert exc.value.field == "max_spread_pct"
+    assert exc.value.value == -0.01
+
+
+def test_from_config_surfaces_a_bad_economic_value(tmp_path) -> None:
+    # A bad value in the YAML must fail loudly through from_config with the labelled error,
+    # never a silent default or a bare ValueError deep in the builder.
+    from algotrading.core.config import ConfigFieldError
+
+    bad = tmp_path / "bad.yaml"
+    base = tmp_path / "base.yaml"
+    base.write_text(_BASE_ECONOMIC_YAML, encoding="utf-8")
+    # min_chain_count 0 violates the __post_init__ >= 1 rule.
+    bad.write_text("qc_threshold:\n  min_chain_count: 0\n", encoding="utf-8")
+    with pytest.raises(ConfigFieldError) as exc:
+        from_config(load_yaml_config(bad, base=base))
+    assert exc.value.section == "qc_threshold" and exc.value.field == "min_chain_count"

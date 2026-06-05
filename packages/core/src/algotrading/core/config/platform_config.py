@@ -28,9 +28,18 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from .reflective import ConfigFieldError
+
+
+def _finite(section: str, field: str, value: float) -> None:
+    """Reject a non-finite number on an economic field (it would poison the hash)."""
+    if not math.isfinite(value):
+        raise ConfigFieldError(section, field, value, "must be finite")
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +49,14 @@ class UniverseConfig:
     version: str
     underlyings: tuple[str, ...]
     exchange: str
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ConfigFieldError("universe", "version", self.version, "must be non-empty")
+        if not self.underlyings:
+            raise ConfigFieldError("universe", "underlyings", self.underlyings, "must be non-empty")
+        if not self.exchange:
+            raise ConfigFieldError("universe", "exchange", self.exchange, "must be non-empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +68,22 @@ class QcThresholdConfig:
     max_quote_age_seconds: float
     min_chain_count: int
 
+    def __post_init__(self) -> None:
+        _finite("qc_threshold", "max_spread_pct", self.max_spread_pct)
+        _finite("qc_threshold", "max_quote_age_seconds", self.max_quote_age_seconds)
+        if self.max_spread_pct <= 0.0:
+            raise ConfigFieldError(
+                "qc_threshold", "max_spread_pct", self.max_spread_pct, "must be > 0"
+            )
+        if self.max_quote_age_seconds <= 0.0:
+            raise ConfigFieldError(
+                "qc_threshold", "max_quote_age_seconds", self.max_quote_age_seconds, "must be > 0"
+            )
+        if self.min_chain_count < 1:
+            raise ConfigFieldError(
+                "qc_threshold", "min_chain_count", self.min_chain_count, "must be >= 1"
+            )
+
 
 @dataclass(frozen=True, slots=True)
 class SolverConfig:
@@ -60,6 +93,13 @@ class SolverConfig:
     iv_tolerance: float
     max_iterations: int
 
+    def __post_init__(self) -> None:
+        _finite("solver", "iv_tolerance", self.iv_tolerance)
+        if self.iv_tolerance <= 0.0:
+            raise ConfigFieldError("solver", "iv_tolerance", self.iv_tolerance, "must be > 0")
+        if self.max_iterations < 1:
+            raise ConfigFieldError("solver", "max_iterations", self.max_iterations, "must be >= 1")
+
 
 @dataclass(frozen=True, slots=True)
 class ScenarioConfig:
@@ -68,6 +108,12 @@ class ScenarioConfig:
     version: str
     spot_shocks: tuple[float, ...]
     vol_shocks: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        # Empty shock tuples are valid — a grid with no spot/vol shocks is just the
+        # time-roll scenario. Only the shock *values* are constrained: they must be finite.
+        for shock in (*self.spot_shocks, *self.vol_shocks):
+            _finite("scenario", "shock", shock)
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,26 +2,21 @@
 
 The job infrastructure (``JobState``, ``JobStatus``, ``JOB_STORE``, the queue/poll
 state machine) is fully wired: ``new_job`` registers a job, ``launch_pipeline`` runs it
-off the request thread, and ``GET /api/jobs/{id}`` polls its lifecycle. That lifecycle is
-exercised end-to-end by the test suite today.
+off the request thread, and ``GET /api/jobs/{id}`` polls its lifecycle.
 
-The one thing it cannot do yet is actually *run* the SAMPLE pipeline. A surface build
-starts with a live capture — resolve the chain off a broker session, collect a window of
-quotes into the raw layer, then run the actor — so it depends on the broker-session →
-``RawMarketEvent`` collection seam. That seam (``orchestration.surface_job`` /
-``collect_live``) is owned by C6 and has not yet landed on the ``packages`` stack: the C3
-orchestration package deliberately did *not* port ``build_surface`` rather than wire it to
-a second, divergent collection path (see ``infra/orchestration/__init__.py``). Until C6
-closes the seam, a SAMPLE run transitions to ``ERROR`` with a typed "C6 pending" message
-instead of pretending to build a surface.
+The SAMPLE provider builds a real surface by **replaying a committed day** through the
+exact actor pipeline (C6's unified collection seam). It reads the store's most recent
+committed day for the underlying read-only via :func:`collectors.replay_day`, re-emits
+those events through the production :class:`collectors.ReplaySource` push adapter into a
+**throwaway temp store**, and drives :func:`orchestration.build_surface` over it. The temp
+store isolates the run: ``build_surface`` re-captures and re-derives without ever writing
+to the canonical ``data/`` store (which it only ever reads). The fitted surface is reduced
+to a small job summary the web app polls. ``persist=False`` — a SAMPLE run reports the
+surface it computed; it does not restate the committed analytics.
 
-TODO(C6): when ``algotrading.infra.orchestration`` exports ``build_surface`` /
-``SurfaceJobRequest`` over the unified collector, replace ``_build_sample_surface``'s stub
-body with the real call — resolve the ``synthetic_known_answer`` chain through a
-``FakeBrokerSession`` / ``ManualClock`` / ``SessionSupervisor``, drive ``build_surface``,
-persist into ``ctx.store`` — so the surfaces/health endpoints read the result back. The
-shape is the backend ``frontend/runner.py``'s ``_build_sample_surface``; only the import
-target moves. See tasks/C6-collection-seam-unification.md.
+Replay-into-the-same-store is *not* used here on purpose: the committed sample day predates
+C6's content-addressed ``event_id`` scheme, so re-capturing it into ``data/`` would append
+duplicates rather than no-op. The temp store sidesteps that entirely.
 """
 
 from __future__ import annotations
@@ -29,24 +24,28 @@ from __future__ import annotations
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import structlog
+from algotrading.core.config import config_hash, load_config
+from algotrading.infra.collectors import ReplaySource, replay_day
+from algotrading.infra.connectivity import ManualClock
+from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
+from algotrading.infra.storage import ParquetStore
 
 from .context import AppContext
 from .providers import SAMPLE_PROVIDER, is_runnable
 
 _LOGGER = structlog.get_logger("frontend.runner")
 
-# The typed message a SAMPLE run carries until C6 lands the surface-build collection seam.
-_C6_PENDING_MESSAGE = (
-    "SAMPLE pipeline pending C6: a surface build starts with a live capture, so it needs "
-    "the broker-session->RawMarketEvent collection seam (orchestration.surface_job / "
-    "collect_live), which C6 unifies onto the packages stack. The job lifecycle is live; "
-    "only the build body is stubbed. See tasks/C6-collection-seam-unification.md."
-)
+# The market-data type a replayed SAMPLE session records on its status (3 = delayed/last).
+_SAMPLE_MARKET_DATA_TYPE = 3
+# The config the SAMPLE run values the surface under (the BFF's single default profile).
+_SAMPLE_CONFIG_FILE = "default.toml"
 
 
 class JobState(StrEnum):
@@ -96,15 +95,76 @@ def new_job(provider: str, underlying: str) -> JobStatus:
     return job
 
 
-def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
-    """Build a surface from the offline sample chain — C6-pending stub.
+def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
+    """The most recent committed trade date with raw events for ``underlying``.
 
-    A surface build composes a live capture (``collect_live``) with the actor pipeline,
-    so it depends on the unified collection seam C6 owns. Until that lands in
-    ``algotrading.infra.orchestration`` this raises a typed error and the caller marks the
-    job ERROR. See the module docstring and tasks/C6-collection-seam-unification.md.
+    Raises if the store holds no committed day for it — a SAMPLE run has nothing to replay.
     """
-    raise RuntimeError(_C6_PENDING_MESSAGE)
+    days = [
+        part_date
+        for part_date, part_underlying in ctx.store.list_partitions("raw_market_events")
+        if part_underlying == underlying
+    ]
+    if not days:
+        raise RuntimeError(
+            f"no committed sample day for {underlying!r} in the store: nothing to replay. "
+            "Seed a day into the raw layer (or pick an underlying the store holds)."
+        )
+    return max(days)
+
+
+def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
+    """Replay the latest committed day for the underlying into a surface, in a temp store.
+
+    Reads the canonical store read-only (the day's events + instrument masters), replays the
+    events through the production :class:`ReplaySource` into an isolated temp store, drives
+    :func:`build_surface` over the exact actor pipeline, and reduces the fitted surface to a
+    job summary. ``data/`` is never written — only read.
+    """
+    underlying = job.underlying
+    trade_date = _resolve_sample_day(ctx, underlying)
+    events = replay_day(ctx.store, trade_date, underlying=underlying)
+    masters = list(
+        ctx.store.read("instrument_master", trade_date=trade_date, underlying=underlying)
+    )
+    config = load_config(ctx.configs_dir / _SAMPLE_CONFIG_FILE)
+    cfg_hash = config_hash(config)
+    # Value as-of the last quote in the day — no look-ahead, and reproducible from the events.
+    as_of = max(event.canonical_ts for event in events)
+    replay_source = ReplaySource(events)
+
+    with TemporaryDirectory(prefix="sample-surface-") as tmp:
+        temp_store = ParquetStore(Path(tmp))
+        # Seed the masters so the temp store is self-sufficient for the analytics read-back.
+        temp_store.write("instrument_master", masters)
+        result = build_surface(
+            request=SurfaceJobRequest(
+                symbol=underlying,
+                trade_date=trade_date,
+                market_data_type=_SAMPLE_MARKET_DATA_TYPE,
+                as_of=as_of,
+                calc_ts=as_of,
+                persist=False,
+            ),
+            store=temp_store,
+            config=config,
+            config_hash=cfg_hash,
+            adapter=replay_source,
+            masters=masters,
+            drive=lambda _collector: replay_source.pump(),
+            clock=ManualClock(start=as_of),
+            correlation_id=f"api-{job.job_id}",
+        )
+
+    params = result.outputs.surface_parameters
+    return {
+        "underlying": underlying,
+        "trade_date": trade_date.isoformat(),
+        "n_surface_params": len(params),
+        "n_fitted_maturities": result.fitted_maturities,
+        "config_hash": cfg_hash,
+        "code_version": params[0].provenance.code_version if params else None,
+    }
 
 
 def _run_in_thread(ctx: AppContext, job_id: str) -> None:
@@ -114,7 +174,7 @@ def _run_in_thread(ctx: AppContext, job_id: str) -> None:
     job.started_at = datetime.now(tz=UTC)
     try:
         if job.provider.upper() == SAMPLE_PROVIDER:
-            job.message = "Building surface from the offline sample chain…"
+            job.message = "Replaying the latest committed day into a surface…"
             job.summary = _build_sample_surface(ctx, job)
             job.state = JobState.DONE
             job.message = "Pipeline completed successfully"

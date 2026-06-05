@@ -23,6 +23,7 @@ from datetime import date
 from algotrading.infra.contracts import RawMarketEvent
 from algotrading.infra.storage import ParquetStore
 
+from .collector import FeedFault
 from .normalize import BrokerTick, is_observation
 
 _RAW_MARKET_EVENTS = "raw_market_events"
@@ -86,7 +87,7 @@ class ReplaySource:
     def set_tick_callback(self, callback: Callable[[BrokerTick], None]) -> None:
         self._tick_cb = callback
 
-    def set_fault_callback(self, callback: Callable[[object], None]) -> None:
+    def set_fault_callback(self, callback: Callable[[FeedFault], None]) -> None:
         """No-op: a replay of stored events has no live feed and therefore no faults."""
         return None
 

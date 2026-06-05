@@ -2,17 +2,25 @@
 
 Import the pure normalization helpers and the reserved gap field, the daily
 :class:`CollectorSummary` and its pure builder, the feed-notice classification, and the
-disk :func:`replay_day` from here. (The :class:`MarketDataCollector` driver lands in
-C1 commit 2, once the forked ``collector.py`` below is removed.)
+disk :func:`replay_day` from here.
 
-TRANSITIONAL (C1 commit 1): the forked M5 ``collector.py``/``normalize.py`` still live
-here and the broker leaves still import :class:`BrokerTick` / :class:`FeedFault` from
-them. Both are removed and the leaves retargeted onto the frozen seam in C1 commit 2
-(see ADR 0023). Until then this package exports the union so the gate stays green.
+This package carries two collectors that coexist by design (ADR 0023). The relocated
+helpers above feed the analytics pipeline. The vendored M5 push collector
+(:class:`RawCollector` + :class:`BrokerTick` + :class:`MarketDataAdapter` +
+:class:`FeedFault`, re-exported below) is the capture path the **kept** Saxo/Deribit
+broker leaves ride on — ADR 0023 keeps Vincent's adapters as survivors, so this is a
+permanent export, not a transitional one. (IBKR captures through Nautilus instead.)
 """
 
 from __future__ import annotations
 
+# --- re-exports of the vendored M5 capture slice (kept per ADR 0023; Saxo/Deribit ride it) ---
+from .collector import (  # noqa: E402  (vendored push-collector module)
+    EventWriter,
+    FeedFault,
+    MarketDataAdapter,
+    RawCollector,
+)
 from .errors import CollectorError, ReservedFieldError
 from .normalization import (
     GAP_FIELD,
@@ -22,13 +30,10 @@ from .normalization import (
     meta_event_id,
     normalize_tick,
 )
+from .normalize import BrokerTick, normalize_event  # noqa: E402  (vendored EAV tick)
 from .notices import ENTITLEMENT, OTHER, PACING, FeedNotice, classify_feed_notice
 from .replay import replay_day
 from .summary import CollectorSummary, summarize_session
-
-# --- transitional re-exports of the forked M5 slice (removed in C1 commit 2) ---------
-from .collector import FeedFault  # noqa: E402  (forked RawCollector module)
-from .normalize import BrokerTick  # noqa: E402  (forked EAV tick)
 
 __all__ = [
     "ENTITLEMENT",
@@ -39,13 +44,17 @@ __all__ = [
     "BrokerTick",
     "CollectorError",
     "CollectorSummary",
+    "EventWriter",
     "FeedFault",
     "FeedNotice",
+    "MarketDataAdapter",
+    "RawCollector",
     "ReservedFieldError",
     "build_gap_event",
     "classify_feed_notice",
     "is_observation",
     "meta_event_id",
+    "normalize_event",
     "normalize_tick",
     "replay_day",
     "summarize_session",

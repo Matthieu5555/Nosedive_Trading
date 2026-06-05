@@ -7,8 +7,13 @@ dependencies = [
     "algotrading-core",
     "apscheduler>=3.11.2",
     "duckdb>=1.5.3",
+    # nautilus_trader is the runtime spine (ADR 0023): its replay/backtest engine + actor host
+    # drive our pure analytics. It caps pandas at <3, hence the relaxed pandas pin below — no
+    # source module imports pandas (the core is polars/pyarrow/duckdb/numpy), so the downgrade
+    # from 3.x to 2.3.x is inert.
+    "nautilus-trader>=1.227",
     "numpy>=2.4.6",
-    "pandas>=3.0.3",
+    "pandas>=2.3",
     "polars>=1.41.2",
     "prometheus-client>=0.25.0",
     "py-vollib>=1.0.12",

@@ -7,12 +7,13 @@ dependencies = [
     "algotrading-infra",
 ]
 
-# ib_async is an OPTIONAL extra, deliberately absent from the gate env (ADR 0018): the IBKR
-# transport/adapter/discovery import it lazily and the tests `importorskip("ib_async")`, so the
-# package type-checks (mypy override) and tests run (skipping the live wiring) without it.
-# Install the live path with `uv sync --extra ibkr`.
+# The IBKR live path rides Nautilus's shipped InteractiveBrokers adapter (ADR 0023), pulled by
+# the `[ib]` extra of nautilus-trader (which brings `nautilus-ibapi`). It is an OPTIONAL extra,
+# deliberately absent from the gate env (ADR 0018): the live wiring is import-guarded and its
+# tests skip without it, so the package type-checks and the gate runs (replay + unit only)
+# without a TWS Gateway. Install the live path with `uv sync --extra ibkr`.
 [project.optional-dependencies]
-ibkr = ["ib-async"]
+ibkr = ["nautilus-trader[ib]"]
 
 [tool.uv.sources]
 algotrading-infra = { workspace = true }

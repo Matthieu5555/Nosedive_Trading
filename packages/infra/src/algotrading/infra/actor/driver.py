@@ -46,9 +46,8 @@ from collections.abc import Callable, Sequence
 from datetime import date, datetime
 
 import structlog
-
-from algotrading.infra.collectors import is_observation, replay_day
 from algotrading.core.config import PlatformConfig
+from algotrading.infra.collectors import is_observation, replay_day
 from algotrading.infra.contracts import (
     ForwardCurvePoint,
     InstrumentKey,
@@ -64,7 +63,12 @@ from algotrading.infra.contracts import (
     SurfaceParameters,
     table_for_contract,
 )
-from algotrading.infra.forwards import ForwardEstimate, ForwardPair, estimate_forward, forward_curve_point
+from algotrading.infra.forwards import (
+    ForwardEstimate,
+    ForwardPair,
+    estimate_forward,
+    forward_curve_point,
+)
 from algotrading.infra.iv import iv_point, solve_iv
 from algotrading.infra.pricing import PRICER_VERSION, from_spot, price, pricing_result
 from algotrading.infra.risk import (

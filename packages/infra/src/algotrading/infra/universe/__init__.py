@@ -5,12 +5,12 @@ Import the resolution pipeline (:func:`resolve_chain`, :func:`build_instrument_m
 accessors, the one chain-selection policy (:func:`plan_chain` / :func:`select_capture_keys`
 over a single :class:`ChainSelection`), and the resolution/lookup errors from here.
 
-TRANSITIONAL (C1 commit 1): the forked M5 instrument model (``contracts.py`` /
-``discovery.py`` — :class:`Underlying`, :class:`OptionContract`, :func:`instrument_key`,
-:func:`normalize_option_params`, …) still lives here because the broker leaves import it.
-It is removed and the leaves retargeted onto the one policy (discovery emits
-:class:`AvailableChain` for :func:`plan_chain`) in C1 commit 2 (see ADR 0023). Until then
-this package exports the union so the gate stays green.
+This package carries two instrument models that coexist by design (ADR 0023). The
+relocated chain-selection policy + masters above are the analytics-facing universe. The
+vendored M5 instrument model (``contracts.py`` / ``discovery.py`` — :class:`Underlying`,
+:class:`OptionContract`, :func:`instrument_key`, :func:`normalize_option_params`, …,
+re-exported below) is what the **kept** Saxo/Deribit broker leaves import — ADR 0023 keeps
+Vincent's adapters as survivors, so this is a permanent export, not a transitional one.
 """
 
 from __future__ import annotations
@@ -25,6 +25,17 @@ from .chain_planning import (
     select_expiries,
     select_strikes,
 )
+
+# --- re-exports of the vendored M5 instrument model (kept per ADR 0023; Saxo/Deribit ride it) ---
+from .contracts import (  # noqa: E402
+    InstrumentKeyError,
+    OptionContract,
+    Right,
+    Underlying,
+    instrument_key,
+    parse_instrument_key,
+)
+from .discovery import OptionParams, normalize_option_params  # noqa: E402
 from .errors import (
     DuplicateBrokerContractIdError,
     InstrumentMasterConflictError,
@@ -42,17 +53,6 @@ from .service import (
     materialize_universe,
     resolve_chain,
 )
-
-# --- transitional re-exports of the forked M5 instrument model (removed in C1 commit 2) ---
-from .contracts import (  # noqa: E402
-    InstrumentKeyError,
-    OptionContract,
-    Right,
-    Underlying,
-    instrument_key,
-    parse_instrument_key,
-)
-from .discovery import OptionParams, normalize_option_params  # noqa: E402
 
 __all__ = [
     "AvailableChain",

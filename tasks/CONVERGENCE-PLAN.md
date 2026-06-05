@@ -48,17 +48,34 @@ the stale feature branches. From here on there is one line of work.
 
 ## 3. Retire the backend dupes that are already safe (C5, wave 1)
 
-`backend/` is still the whole flat tree. Start shrinking it now — every module whose
-canonical copy is already green can go. Follow the dependency order in
-[C5-retire-backend.md](C5-retire-backend.md): delete the M0–M3 stale dupes
-(`config, provenance, contracts, storage, fixtures, snapshots, forwards, iv,
-surfaces, pricing, risk`), the C2 modules (`qc, validation`), and the C1-complete
-modules (`actor, universe`) plus their `backend/tests` counterparts. **Hold**
-`connectivity`, `collectors`, the collection-coupled orchestration use-cases,
-`frontend`, and `web` — those wait on C4/C6.
+> **AMENDED 2026-06-05 — wave-1-now is not executable; folded into the post-C4/C6
+> sweep.** A wave-1 attempt found `backend/` is a *monolith*: the held-back top-half
+> port sources (`backend/src/{orchestration, frontend, collectors, connectivity}` —
+> the very modules C4/C6 port *from*) still import the bottom-half wave-1 targets
+> (`config, contracts, storage, surfaces, qc, risk, universe, actor, ...`). You cannot
+> "delete the bottom, keep the top" — the tree doesn't separate. The whole of
+> `backend/` is already excluded from every gate tool (ruff `exclude`, mypy
+> `files=["packages","apps"]`, import-linter root, pytest `testpaths`), so the
+> deletions buy **no gate-green progress** and **unblock nothing** (C4/C6 don't depend
+> on them). Forcing the split now only yields a dangling-import interim in dead,
+> doomed modules and risks tripping C4/C6 if they execute backend code mid-port.
+> **Resolution:** there is one C5, run once, *after* C4 and C6 land — at which point
+> `frontend` and `collectors/connectivity/orchestration` are also retired, so all of
+> `backend/` goes in a single coherent sweep with no half-state. See step 7, which now
+> absorbs the whole of C5. The original wave-split below is kept only as the deletion
+> *inventory* for that single sweep.
 
-- **Done when:** the listed modules and their tests are gone; root gate green;
-  lint-imports still clean (the `packages → backend` ban catches any dangling ref).
+`backend/` is still the whole flat tree. Every module whose canonical copy is already
+green can go — but only as one sweep (see the amendment above). Inventory, in
+dependency order per [C5-retire-backend.md](C5-retire-backend.md): the M0–M3 stale
+dupes (`config, provenance, contracts, storage, fixtures, snapshots, forwards, iv,
+surfaces, pricing, risk`), the C2 modules (`qc, validation`), the C1-complete modules
+(`actor, universe`), and — once C4/C6 land — `connectivity`, `collectors`, the
+collection-coupled orchestration use-cases, `frontend`, and `web`, plus all their
+`backend/tests` counterparts.
+
+- **Done when (now part of step 7):** no `backend/` tree; root gate green; lint-imports
+  still clean (the `packages → backend` ban catches any dangling ref).
 
 ## 4. Consolidate the frontend (C4)
 

@@ -1,20 +1,18 @@
-"""FastAPI application factory: wires all routers over the real infra store.
+"""FastAPI application factory: wires the JSON API routers over the real infra store.
 
 ``create_app`` takes an injectable :class:`~algotrading.frontend.context.AppContext`
 (tests pass a tmp-store context; production resolves the repo root). Routers are imported
 inside the factory so the module stays importable even while individual routers are in flux.
 
-Router inventory
-----------------
-Real infra (packages/infra-backed):
-  health, surfaces, risk, run, config, oauth
+The BFF reads only ``packages/infra`` seams (down-layer): ``ParquetStore`` for the
+persisted contract tables, the pure ``surfaces``/``risk`` engines, and
+``orchestration.build_dashboard``. It never reaches into ``backend``. The six routers —
+``health``, ``surfaces``, ``risk``, ``run``, ``config``, ``oauth`` — each call infra and
+serialize; no business logic lives in them.
 
-Codex extras (paper/fixture-backed, kept forward):
-  market, orders
-
-The ``risk`` router is the real backend version (``risk_aggregates`` + ``scenario_results``
-partitions). The Codex scenario sub-router is gone — the web ``RiskScenarios`` page uses
-the ``market`` fixture path instead.
+The earlier Codex ``market``/``orders`` paper-trading routers were dropped in C4: they
+synthesized ~700 lines of fixture data, had no backend equivalent, and are superseded by
+the store-backed surfaces/risk routers.
 """
 
 from __future__ import annotations
@@ -42,8 +40,6 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
 
     app = FastAPI(title="AlgoTrading Dashboard (BFF)", version="0.1.0")
     app.state.ctx = ctx
-    # Keep app.state.store for the Codex market router which reads directly from the store.
-    app.state.store = ctx.store
 
     frontend_origin = os.getenv("FRONTEND_BASE_URL", _DEFAULT_FRONTEND_ORIGIN)
     app.add_middleware(
@@ -53,7 +49,6 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Real infra routers.
     from .routers import config as config_router  # noqa: PLC0415
     from .routers import health as health_router  # noqa: PLC0415
     from .routers import oauth as oauth_router  # noqa: PLC0415
@@ -67,13 +62,6 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(run_router.router)
     app.include_router(config_router.router)
     app.include_router(oauth_router.router)
-
-    # Codex paper/fixture routers (market data + paper orders) kept forward.
-    from .routers import market  # noqa: PLC0415
-    from .routers import orders  # noqa: PLC0415
-
-    app.include_router(market.router)
-    app.include_router(orders.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

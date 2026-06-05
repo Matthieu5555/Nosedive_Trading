@@ -6,12 +6,11 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from algotrading.frontend import runner
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
 from algotrading.infra.storage import ParquetStore
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture

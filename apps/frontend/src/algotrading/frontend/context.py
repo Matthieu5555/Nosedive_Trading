@@ -16,7 +16,9 @@ from algotrading.infra.storage import ParquetStore
 # Repo-root marker: the canonical instructions file lives only at the workspace root.
 _ROOT_MARKER = "AGENTS.md"
 
-# Fallbacks when no config names a default.
+# Fallbacks when no config names a default. AAPL is the underlying the offline
+# `synthetic_known_answer` chain fixture (and therefore the SAMPLE run path) produces,
+# so the default surfaces/run views point at data the store can actually hold.
 _DEFAULT_UNDERLYING = "AAPL"
 _DEFAULT_WINDOW_DAYS = 30
 

@@ -16,10 +16,10 @@ from algotrading.infra.contracts import RiskAggregate, ScenarioResult, SurfacePa
 from algotrading.infra.surfaces import SlicePlotSeries
 
 if TYPE_CHECKING:
-    # DashboardStatus lives in algotrading.infra.orchestration which is an empty
-    # skeleton until C3 lands. The import is guarded so this module stays importable
-    # now; dashboard_status_to_dict uses duck-typed attribute access, not the type.
-    from algotrading.infra.orchestration import DashboardStatus  # type: ignore[import-not-found]
+    # Used only as the annotation on dashboard_status_to_dict; imported under
+    # TYPE_CHECKING to keep this module's runtime import surface to the contracts it
+    # serializes. The body uses duck-typed attribute access, not the type.
+    from algotrading.infra.orchestration import DashboardStatus
 
 
 def _iso(value: datetime | date) -> str:

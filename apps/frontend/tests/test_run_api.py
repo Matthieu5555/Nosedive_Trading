@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 from algotrading.frontend import runner
 from algotrading.frontend.context import AppContext
+from fastapi.testclient import TestClient
 
 
 def test_liveness_is_ok(infra_client: TestClient) -> None:
@@ -63,15 +62,19 @@ def test_list_jobs_includes_launched_job(infra_client: TestClient) -> None:
     assert len(jobs) >= 1
 
 
-def test_sample_run_goes_to_error_when_orchestration_pending(
+def test_sample_run_goes_to_error_pending_c6_collection_seam(
     ctx: AppContext,
 ) -> None:
+    # The SAMPLE build starts with a live capture and so depends on C6's collection
+    # seam (orchestration.surface_job / collect_live), not yet on the packages stack.
+    # The job lifecycle still runs: a SAMPLE run must settle to ERROR with the typed
+    # C6-pending message, not crash past the job boundary.
     # run_now is synchronous so the job state is settled by the time we check.
     job = runner.new_job("SAMPLE", ctx.default_underlying)
     runner.run_now(ctx, job)
-    # Orchestration seam is not yet landed; the job must go to ERROR, not crash.
     assert job.state == runner.JobState.ERROR
-    assert "C1+C3" in job.message or "orchestration" in job.message.lower()
+    assert "C6" in job.message
+    assert job.finished_at is not None  # the lifecycle ran to completion, error and all
 
 
 def test_run_underlyings_includes_context_default(infra_client: TestClient) -> None:

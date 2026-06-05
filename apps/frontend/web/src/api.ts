@@ -1,183 +1,98 @@
-export interface UnderlyingChoice {
-  symbol: string;
-  name: string;
-  asset_class: string;
-  currency: string;
-}
-
-export interface UnderlyingsResponse {
-  underlyings: UnderlyingChoice[];
-}
+// Typed client for the BFF. Response shapes mirror
+// apps/frontend/src/algotrading/frontend/serializers.py; keep them in sync when a
+// serializer changes (the HTTP contract is the seam).
 
 export interface Provenance {
-  as_of: string;
-  provider: string;
+  calc_ts: string;
   code_version: string;
   config_hash: string;
-  source: string;
   stamp_hash: string;
+  n_sources: number;
 }
 
-export interface SnapshotQuote {
-  symbol: string;
-  name: string;
-  last: number;
-  bid: number;
-  ask: number;
-  change_percent: number;
-  volume: number;
+export interface SurfaceSlice {
   snapshot_ts: string;
-  currency: string;
-}
-
-export interface GreekVector {
-  delta: number;
-  gamma: number;
-  vega: number;
-  theta: number;
-  rho: number;
-}
-
-export interface OptionQuote {
-  contract_key: string;
   underlying: string;
-  expiry: string;
-  strike: number;
-  option_type: "call" | "put";
-  bid: number;
-  ask: number;
-  mid: number;
-  implied_vol: number;
-  open_interest: number;
-  volume: number;
-  greeks: GreekVector;
-}
-
-export interface VolSurfacePoint {
-  log_moneyness: number;
   maturity_years: number;
-  implied_vol: number;
-  total_variance: number;
-}
-
-export interface VolSurfaceSlice {
-  maturity_years: number;
-  expiry: string;
-  atm_vol: number;
-  skew_25_delta: number;
+  model_version: string;
   svi_a: number;
   svi_b: number;
   svi_rho: number;
   svi_m: number;
   svi_sigma: number;
-  rmse: number;
-  n_points: number;
-}
-
-export interface VolatilitySurface {
-  underlying: string;
-  as_of: string;
-  slices: VolSurfaceSlice[];
-  points: VolSurfacePoint[];
-}
-
-export interface MarketDashboard {
-  underlying: UnderlyingChoice;
-  index_snapshot: SnapshotQuote;
-  stock_snapshots: SnapshotQuote[];
-  option_chain: OptionQuote[];
-  greek_totals: GreekVector;
-  volatility_surface: VolatilitySurface;
+  expiry_date: string;
+  day_count: string;
+  diagnostics: { rmse: number; n_points: number; arb_free: boolean };
+  source_snapshot_ts: string;
   provenance: Provenance;
 }
 
-export interface ScenarioInput {
+export interface SurfaceResponse {
   underlying: string;
+  trade_date: string | null;
+  n_slices: number;
+  slices: SurfaceSlice[];
+}
+
+export interface RiskAggregate {
+  valuation_ts: string;
   portfolio_id: string;
-  spot_shock_percent: number;
-  vol_shock_points: number;
-  time_roll_days: number;
-}
-
-export interface ScenarioGridPoint {
-  spot_shock_percent: number;
-  vol_shock_points: number;
-  pnl: number;
-  delta_after: number;
-  vega_after: number;
-}
-
-export interface SpotLadderPoint {
-  spot_shock_percent: number;
-  pnl: number;
-  delta: number;
-  gamma: number;
-  vega: number;
-  theta: number;
-}
-
-export interface ExpiryGreeks {
-  expiry: string;
-  contracts: number;
-  greeks: GreekVector;
-}
-
-export interface ScenarioResult {
-  scenario_id: string;
-  requested: ScenarioInput;
-  baseline_value: number;
-  shocked_value: number;
-  pnl: number;
-  greek_before: GreekVector;
-  greek_after: GreekVector;
-  grid: ScenarioGridPoint[];
-  ladder: SpotLadderPoint[];
-  expiry_buckets: ExpiryGreeks[];
+  group_key: string;
+  net_delta: number;
+  net_gamma: number;
+  net_vega: number;
+  net_theta: number;
+  source_snapshot_ts: string;
   provenance: Provenance;
 }
 
-export interface OrderTicket {
-  side: "buy" | "sell";
-  symbol: string;
-  quantity: number;
-  limit_price: number;
-  instrument_type: "index_option" | "equity";
-  expiry?: string | null;
-  strike?: number | null;
-  option_type?: "call" | "put" | null;
-  time_in_force: "day" | "gtc";
+export interface RiskResponse {
+  portfolio_id: string | null;
+  n_aggregates: number;
+  aggregates: RiskAggregate[];
 }
 
-export interface OrderPreview {
-  ticket: OrderTicket;
-  estimated_notional: number;
-  estimated_commission: number;
-  risk_check: "pass" | "warn" | "reject";
-  risk_message: string;
-  greek_impact: GreekVector;
-  paper_only: boolean;
+export interface HealthResponse {
+  trade_date: string;
+  data_flowing: string;
+  surfaces_building: string;
+  qc_status: string;
+  scenarios_current: string;
+  events_total: number;
+  last_healthy_trade_date: string | null;
+  backlog: string[];
+  is_healthy: boolean;
 }
 
-export interface OrderHistoryItem {
-  order_id: string;
-  submitted_at: string;
-  ticket: OrderTicket;
-  status: "paper_accepted" | "filled" | "cancelled";
-  filled_quantity: number;
-  average_price: number | null;
+export interface Provider {
+  provider: string;
+  asset_class: string;
+  auth_required: boolean;
+  data_latency: string;
+  status: string;
+  note: string;
 }
 
-export interface OrdersDashboard {
-  mode: "paper";
-  open_orders: OrderHistoryItem[];
-  history: OrderHistoryItem[];
-  recent_preview: OrderPreview;
+export interface ProvidersResponse {
+  providers: Provider[];
 }
 
+export interface Job {
+  job_id: string;
+  provider: string;
+  underlying: string;
+  state: "queued" | "running" | "done" | "error";
+  started_at: string | null;
+  finished_at: string | null;
+  message: string;
+  summary: Record<string, unknown>;
+}
+
+// One narrow fetch helper: every page goes through here so error handling is uniform.
 export async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
   if (!response.ok) {
-    let detail = response.statusText;
+    let detail = "";
     try {
       detail = JSON.stringify(await response.json());
     } catch {
@@ -195,13 +110,7 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    let detail = response.statusText;
-    try {
-      detail = JSON.stringify(await response.json());
-    } catch {
-      detail = response.statusText;
-    }
-    throw new Error(`${response.status} ${detail}`);
+    throw new Error(`${response.status} ${response.statusText}`);
   }
   return (await response.json()) as T;
 }

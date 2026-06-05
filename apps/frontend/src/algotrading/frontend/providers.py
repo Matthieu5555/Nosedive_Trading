@@ -52,7 +52,8 @@ _CAPABILITIES: tuple[ProviderCapability, ...] = (
         auth_required=False,
         data_latency="delayed",
         status="unavailable",
-        note="Needs the optional 'ib_async' dependency and a running IB gateway (packages/infra-ibkr).",
+        note="Needs the optional 'ib_async' dependency and a running IB gateway "
+        "(packages/infra-ibkr).",
     ),
     ProviderCapability(
         provider="SAXO",

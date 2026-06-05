@@ -1,17 +1,27 @@
 """Pipeline runner: launch a surface build as a tracked, async-safe job.
 
-The job infrastructure (JobState, JobStatus, JOB_STORE, polling) is fully wired now.
-The SAMPLE provider will drive ``algotrading.infra.orchestration.build_surface`` through
-the full actor pipeline once the C1 (market-data/actor) and C3 (orchestration) seams
-land. Until then the job transitions to ERROR with a typed "seam pending" message —
-the queue/poll/state-machine lifecycle is exercised end-to-end and the test suite can
-verify it.
+The job infrastructure (``JobState``, ``JobStatus``, ``JOB_STORE``, the queue/poll
+state machine) is fully wired: ``new_job`` registers a job, ``launch_pipeline`` runs it
+off the request thread, and ``GET /api/jobs/{id}`` polls its lifecycle. That lifecycle is
+exercised end-to-end by the test suite today.
 
-When C3 lands, ``_build_sample_surface`` must be completed with:
-  - The chain fixture (will move from ``backend/src/fixtures`` to ``packages/infra``)
-  - ``algotrading.infra.orchestration.SurfaceJobRequest`` + ``build_surface``
-  - ``algotrading.infra.universe.ChainSelection``
-  - ``algotrading.infra.connectivity.FakeBrokerSession`` / ``ManualClock`` / ``SessionSupervisor``
+The one thing it cannot do yet is actually *run* the SAMPLE pipeline. A surface build
+starts with a live capture — resolve the chain off a broker session, collect a window of
+quotes into the raw layer, then run the actor — so it depends on the broker-session →
+``RawMarketEvent`` collection seam. That seam (``orchestration.surface_job`` /
+``collect_live``) is owned by C6 and has not yet landed on the ``packages`` stack: the C3
+orchestration package deliberately did *not* port ``build_surface`` rather than wire it to
+a second, divergent collection path (see ``infra/orchestration/__init__.py``). Until C6
+closes the seam, a SAMPLE run transitions to ``ERROR`` with a typed "C6 pending" message
+instead of pretending to build a surface.
+
+TODO(C6): when ``algotrading.infra.orchestration`` exports ``build_surface`` /
+``SurfaceJobRequest`` over the unified collector, replace ``_build_sample_surface``'s stub
+body with the real call — resolve the ``synthetic_known_answer`` chain through a
+``FakeBrokerSession`` / ``ManualClock`` / ``SessionSupervisor``, drive ``build_surface``,
+persist into ``ctx.store`` — so the surfaces/health endpoints read the result back. The
+shape is the backend ``frontend/runner.py``'s ``_build_sample_surface``; only the import
+target moves. See tasks/C6-collection-seam-unification.md.
 """
 
 from __future__ import annotations
@@ -30,12 +40,13 @@ from .providers import SAMPLE_PROVIDER, is_runnable
 
 _LOGGER = structlog.get_logger("frontend.runner")
 
-# Checked once at module load: avoid repeated try/import on every job.
-try:
-    from algotrading.infra.orchestration import build_surface as _build_surface_fn  # noqa: F401
-    _ORCHESTRATION_AVAILABLE = True
-except ImportError:
-    _ORCHESTRATION_AVAILABLE = False
+# The typed message a SAMPLE run carries until C6 lands the surface-build collection seam.
+_C6_PENDING_MESSAGE = (
+    "SAMPLE pipeline pending C6: a surface build starts with a live capture, so it needs "
+    "the broker-session->RawMarketEvent collection seam (orchestration.surface_job / "
+    "collect_live), which C6 unifies onto the packages stack. The job lifecycle is live; "
+    "only the build body is stubbed. See tasks/C6-collection-seam-unification.md."
+)
 
 
 class JobState(StrEnum):
@@ -86,59 +97,14 @@ def new_job(provider: str, underlying: str) -> JobStatus:
 
 
 def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
-    """Drive build_surface over the offline sample chain fixture.
+    """Build a surface from the offline sample chain — C6-pending stub.
 
-    Requires C1 (market-data/actor) and C3 (orchestration) seams. Called only when
-    _ORCHESTRATION_AVAILABLE is True. Raises RuntimeError until the fixture move and
-    connectivity stubs are in packages/infra.
+    A surface build composes a live capture (``collect_live``) with the actor pipeline,
+    so it depends on the unified collection seam C6 owns. Until that lands in
+    ``algotrading.infra.orchestration`` this raises a typed error and the caller marks the
+    job ERROR. See the module docstring and tasks/C6-collection-seam-unification.md.
     """
-    # Imports are deferred inside the function (not at module top) so the module
-    # stays importable now; the try/except at module level already gates this path.
-    from algotrading.core import config_hash, load_config  # noqa: PLC0415
-    from algotrading.infra.orchestration import (  # type: ignore[import-not-found] # noqa: PLC0415
-        SurfaceJobRequest,
-        build_surface,
-    )
-
-    # Chain fixtures are in backend/src/fixtures until C1 moves them to packages/infra.
-    try:
-        from fixtures.library import get_fixture  # type: ignore[import-untyped] # noqa: PLC0415
-    except ImportError as exc:
-        raise RuntimeError(
-            "fixtures.library not importable: chain fixtures are in backend/src/fixtures "
-            "and haven't moved to packages/infra yet (C1 pending)."
-        ) from exc
-
-    from algotrading.infra.universe import ChainSelection  # type: ignore[import-not-found] # noqa: PLC0415
-
-    chain = get_fixture("synthetic_known_answer")
-    config = load_config(ctx.configs_dir / "default.toml")
-    cfg_hash = config_hash(config)
-    symbol = chain.underlying.underlying_symbol
-
-    request = SurfaceJobRequest(
-        symbol=symbol,
-        trade_date=chain.as_of.date(),
-        selection=ChainSelection(),
-        as_of=chain.as_of,
-        calc_ts=chain.as_of,
-    )
-    result = build_surface(
-        request=request,
-        store=ctx.store,
-        config=config,
-        config_hash=cfg_hash,
-        correlation_id=f"api-{job.job_id}",
-    )
-    params = result.outputs.surface_parameters
-    return {
-        "underlying": symbol,
-        "trade_date": chain.as_of.date().isoformat(),
-        "n_surface_params": len(params),
-        "n_fitted_maturities": result.fitted_maturities,
-        "config_hash": cfg_hash,
-        "code_version": params[0].provenance.code_version if params else None,
-    }
+    raise RuntimeError(_C6_PENDING_MESSAGE)
 
 
 def _run_in_thread(ctx: AppContext, job_id: str) -> None:
@@ -148,12 +114,6 @@ def _run_in_thread(ctx: AppContext, job_id: str) -> None:
     job.started_at = datetime.now(tz=UTC)
     try:
         if job.provider.upper() == SAMPLE_PROVIDER:
-            if not _ORCHESTRATION_AVAILABLE:
-                raise RuntimeError(
-                    "C1+C3 seams not yet landed: "
-                    "algotrading.infra.orchestration.build_surface is not available. "
-                    "The SAMPLE pipeline will run once orchestration and actor are merged."
-                )
             job.message = "Building surface from the offline sample chain…"
             job.summary = _build_sample_surface(ctx, job)
             job.state = JobState.DONE

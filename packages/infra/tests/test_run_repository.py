@@ -26,11 +26,10 @@ from pathlib import Path
 
 import pytest
 from algotrading.core.manifest import Manifest
-
+from algotrading.infra.storage.factory import make_run_repository
 from algotrading.infra.storage.ports import RunRepository
 from algotrading.infra.storage.runs import RunRecord, RunStatus
 from algotrading.infra.storage.sqlite_runs import SqliteRunRepository
-from algotrading.infra.storage.factory import make_run_repository
 
 # ---------------------------------------------------------------------------
 # Fixtures

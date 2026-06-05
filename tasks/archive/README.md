@@ -18,7 +18,26 @@ as the record of what was built and why, superseded by the merge workstreams
 - [05-integration-operations.md](05-integration-operations.md) — E: actor, QC, orchestration, replay, handover.
 
 The merge does not throw this away — each merge workstream bakes the A–E
-implementation off against Vincent's and keeps the better. See the `M*` specs.
+implementation off against Vincent's and keeps the better.
+
+The ten-workstream merge fan-out (M0–M10) that followed A–E is now archived too. Its
+keystone + bottom half (M0 core/contracts seam, M1 storage, M2 analytics, M3 risk, and
+the M10 Postgres serving tier) **landed** in `packages/infra`; its top half (market-data,
+actor, qc, orchestration, frontend) was either stuck in the old flat tree or forked, and
+is finished by the **convergence tasks (C1–C5)** on the active board. The fan-out decisions
+live in `.agent/decisions/` and the results in the code.
+
+- [M0-monorepo-keystone.md](M0-monorepo-keystone.md) — layered uv-workspace, merged `core`, frozen `contracts` seam + gate. Landed.
+- [M1-storage.md](M1-storage.md) — `ParquetStore` behind `StorageRepository`, immutable raw EAV. Landed.
+- [M2-analytics-core.md](M2-analytics-core.md) — snapshots/forwards/iv/surfaces/pricing, frozen pricer. Landed.
+- [M3-risk-engine.md](M3-risk-engine.md) — greeks/aggregation/scenarios/reconciliation on the M2 seam. Landed.
+- [M4-market-data-actor.md](M4-market-data-actor.md) — market-data plane + actor spine. Built in flat tree; relocation is **C1**.
+- [M5-broker-adapters.md](M5-broker-adapters.md) — IBKR/Saxo/Deribit leaves. Forked against ADR 0020; resolved in **C1**.
+- [M6-qc-validation.md](M6-qc-validation.md) — QC + validation/triage. Contract collapsed; logic port is **C2**.
+- [M7-orchestration-observability.md](M7-orchestration-observability.md) — orchestration/observability + acceptance tests. Port + gating is **C3**.
+- [M8-frontend.md](M8-frontend.md) — FastAPI BFF + React/Vite web. Two copies; consolidation is **C4**.
+- [M9-discipline-docs.md](M9-discipline-docs.md) — blueprint, vol-surface docs, notebooks, ADRs, glossary. Landed; doc upkeep is now continuous per `AGENTS.md`.
+- [M10-postgres-serving-tier.md](M10-postgres-serving-tier.md) — `RunRepository` + SQLite/Postgres behind M1's port. Landed; further expansion is trigger-gated.
 
 | Who | Area / files | Branch | Done | What was done |
 |-----|--------------|--------|------|---------------|

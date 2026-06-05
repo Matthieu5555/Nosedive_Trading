@@ -1,0 +1,57 @@
+# Saxo Bank universe configuration
+# Underlyings available via the Saxo OpenAPI options-chain endpoint.
+# SPX is excluded — blocked at the Saxo API level by exchange agreement.
+# Data entitlements (OPRA for US, Euronext Derivatives for EU) must be active
+# in the account; check SaxoTrader → Account → Other → Subscriptions.
+
+underlyings:
+  # NOTE (verified live 2026-06-04): US option data (OPRA) is NOT entitled on this account — SPY/QQQ
+  # discovery + underlying spot work, but ZERO option ticks stream (needs the paid OPRA add-on).
+  # Only EU names (ASML/AEX, Euronext/Eurex delayed) are free. Kept here, correctly classified, for
+  # when OPRA is enabled. Their options are StockOption (SPY:xcbf on CBOE), NOT EtfOption.
+  - symbol: SPY
+    asset_type: StockOption       # Saxo classifies SPY options as StockOption (SPY:xcbf), not EtfOption
+    exchange: OPRA
+    currency: USD
+    maturity_window_days: 90      # collect options expiring within this horizon
+    multiplier: 100
+    note: "S&P 500 ETF — options are StockOption on CBOE; US OPRA data not entitled (see note above)"
+
+  - symbol: QQQ
+    asset_type: StockOption       # Saxo: QQQ options are StockOption, not EtfOption
+    exchange: OPRA
+    currency: USD
+    maturity_window_days: 90
+    multiplier: 100
+    note: "Nasdaq-100 ETF — StockOption; US OPRA data not entitled"
+
+  - symbol: AAPL
+    asset_type: StockOption
+    exchange: OPRA
+    currency: USD
+    maturity_window_days: 90
+    multiplier: 100
+    note: "US single-stock probe — tests whether a company (vs ETF/index) dodges the OPRA wall"
+
+  - symbol: AEX
+    asset_type: StockOption
+    exchange: EUREX
+    currency: EUR
+    maturity_window_days: 60
+    multiplier: 100
+    note: "AEX index options — requires Euronext Derivatives subscription"
+
+  - symbol: ASML
+    asset_type: StockOption
+    exchange: AMS
+    currency: EUR
+    maturity_window_days: 60
+    multiplier: 100
+    note: "ASML Holding — Euronext Amsterdam; verified free delayed (15-min) option data"
+
+collection:
+  max_strikes_per_session: 100    # Saxo hard limit per streaming session
+  strike_window_mode: atm         # start window at ATM; PATCH to paginate
+  snapshot_interval_s: 60         # how often to persist a snapshot
+  n_expiries: 4                   # nearest maturities to span — a vol surface needs a term structure
+  min_days: 25                    # skip near-term weeklies (wide spreads corrupt the implied forward)

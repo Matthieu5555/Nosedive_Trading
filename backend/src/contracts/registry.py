@@ -33,6 +33,7 @@ from .tables import (
     ScenarioResult,
     SurfaceGrid,
     SurfaceParameters,
+    TriageRecord,
 )
 
 
@@ -177,6 +178,17 @@ REGISTRY: dict[str, TableSpec] = {
         name="qc_results",
         contract=QcResult,
         primary_key=("run_id", "check_name", "target_key"),
+        layer="qc",
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "triage_records": TableSpec(
+        name="triage_records",
+        contract=TriageRecord,
+        primary_key=("run_id", "source", "name", "target_key"),
         layer="qc",
         append_only=False,
         requires_provenance=False,

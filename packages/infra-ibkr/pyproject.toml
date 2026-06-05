@@ -7,6 +7,13 @@ dependencies = [
     "algotrading-infra",
 ]
 
+# ib_async is an OPTIONAL extra, deliberately absent from the gate env (ADR 0018): the IBKR
+# transport/adapter/discovery import it lazily and the tests `importorskip("ib_async")`, so the
+# package type-checks (mypy override) and tests run (skipping the live wiring) without it.
+# Install the live path with `uv sync --extra ibkr`.
+[project.optional-dependencies]
+ibkr = ["ib-async"]
+
 [tool.uv.sources]
 algotrading-infra = { workspace = true }
 

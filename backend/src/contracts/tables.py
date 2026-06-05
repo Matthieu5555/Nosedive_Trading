@@ -225,3 +225,32 @@ class QcResult:
     measured_value: float
     threshold_version: str
     context: str
+
+
+@dataclass(frozen=True, slots=True)
+class TriageRecord:
+    """One thing for an operator to investigate, from any quality plane.
+
+    The single, persisted triage shape both quality planes collapse into: the named
+    QC checks (``source="qc"``) and the validation/anomaly layer
+    (``source="validation"``/``"anomaly"``). Holding both as one row means a day's
+    whole triage list is one queryable table, ordered and escalated by one rule, with
+    no second result shape for a reporting layer to reconcile.
+
+    The specificity discipline is preserved across the merge: ``target_key`` names the
+    exact offending object (a maturity, a quote, a solver, a metric) and ``detail`` is
+    the one-line headline that names it, never a generic banner. ``reason_code`` is the
+    machine-readable why; ``run_ts`` places the row on the time-partitioned layout.
+    """
+
+    run_id: str
+    run_ts: datetime
+    underlying: str
+    source: str
+    name: str
+    target_key: str
+    status: str
+    severity: str
+    reason_code: str
+    detail: str
+    threshold_version: str

@@ -1,0 +1,4762 @@
+[
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792722",
+    "event_id": "evt-12222",
+    "exchange_ts": "2026-06-04T18:29:20.115330+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.270000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.115587+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792722",
+    "event_id": "evt-12223",
+    "exchange_ts": "2026-06-04T18:29:20.115330+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.300000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.115662+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792722",
+    "event_id": "evt-12224",
+    "exchange_ts": "2026-06-04T18:29:20.115330+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.300000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.115679+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792722",
+    "event_id": "evt-12225",
+    "exchange_ts": "2026-06-04T18:29:20.115330+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "7.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.115691+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794291",
+    "event_id": "evt-12226",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.320000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116076+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794291",
+    "event_id": "evt-12227",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116092+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794291",
+    "event_id": "evt-12228",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.300000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116104+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794291",
+    "event_id": "evt-12229",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.630000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116115+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792768",
+    "event_id": "evt-12230",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.700000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116152+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792768",
+    "event_id": "evt-12231",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.730000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116163+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792768",
+    "event_id": "evt-12232",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116175+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792768",
+    "event_id": "evt-12233",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "7.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116186+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454719",
+    "event_id": "evt-12234",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.870000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116214+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454719",
+    "event_id": "evt-12235",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.900000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116225+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454719",
+    "event_id": "evt-12236",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116237+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454719",
+    "event_id": "evt-12237",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "8.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116248+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455222",
+    "event_id": "evt-12238",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116274+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455222",
+    "event_id": "evt-12239",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116287+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455222",
+    "event_id": "evt-12240",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.920000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116298+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455222",
+    "event_id": "evt-12241",
+    "exchange_ts": "2026-06-04T18:29:20.115796+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116310+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794375",
+    "event_id": "evt-12242",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.760000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116650+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794375",
+    "event_id": "evt-12243",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.790000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116662+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794375",
+    "event_id": "evt-12244",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116674+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794375",
+    "event_id": "evt-12245",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.140000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116685+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306457",
+    "event_id": "evt-12246",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116712+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306457",
+    "event_id": "evt-12247",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.170000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116725+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306457",
+    "event_id": "evt-12248",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.190000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116742+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306457",
+    "event_id": "evt-12249",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "6.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116752+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454641",
+    "event_id": "evt-12254",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.480000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116839+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454641",
+    "event_id": "evt-12255",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.510000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116850+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454641",
+    "event_id": "evt-12256",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.540000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116862+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454641",
+    "event_id": "evt-12257",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.010000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116873+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455142",
+    "event_id": "evt-12258",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.510000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116899+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455142",
+    "event_id": "evt-12259",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.530000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116910+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455142",
+    "event_id": "evt-12260",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.500000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116922+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455142",
+    "event_id": "evt-12261",
+    "exchange_ts": "2026-06-04T18:29:20.116377+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.116933+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310496",
+    "event_id": "evt-12262",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.210000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117274+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310496",
+    "event_id": "evt-12263",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.240000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117293+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310496",
+    "event_id": "evt-12264",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.240000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117306+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310496",
+    "event_id": "evt-12265",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.650000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117318+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792808",
+    "event_id": "evt-12266",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "7.610000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117348+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792808",
+    "event_id": "evt-12267",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "7.640000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117360+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792808",
+    "event_id": "evt-12268",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.230000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117372+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792808",
+    "event_id": "evt-12269",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "6.430000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117384+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306414",
+    "event_id": "evt-12274",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.090000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117473+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306414",
+    "event_id": "evt-12275",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.210000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117485+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306414",
+    "event_id": "evt-12276",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117496+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881306414",
+    "event_id": "evt-12277",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.570000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117508+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310472",
+    "event_id": "evt-12278",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117538+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310472",
+    "event_id": "evt-12279",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117549+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310472",
+    "event_id": "evt-12280",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117560+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "881310472",
+    "event_id": "evt-12281",
+    "exchange_ts": "2026-06-04T18:29:20.116987+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.230000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117572+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794420",
+    "event_id": "evt-12282",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117977+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794420",
+    "event_id": "evt-12283",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.720000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.117996+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794420",
+    "event_id": "evt-12284",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.730000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118008+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794420",
+    "event_id": "evt-12285",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.190000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118019+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455059",
+    "event_id": "evt-12286",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "7.760000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118046+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455059",
+    "event_id": "evt-12287",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "7.780000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118057+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455059",
+    "event_id": "evt-12288",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.740000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118068+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883455059",
+    "event_id": "evt-12289",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.810000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118078+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454539",
+    "event_id": "evt-12290",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118104+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454539",
+    "event_id": "evt-12291",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.890000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118115+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454539",
+    "event_id": "evt-12292",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118127+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454539",
+    "event_id": "evt-12293",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118138+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792870",
+    "event_id": "evt-12294",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "7.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118169+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792870",
+    "event_id": "evt-12295",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "7.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118180+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792870",
+    "event_id": "evt-12296",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.060000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118192+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883792870",
+    "event_id": "evt-12297",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "5.970000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118203+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794464",
+    "event_id": "evt-12298",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118229+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794464",
+    "event_id": "evt-12299",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.270000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118239+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794464",
+    "event_id": "evt-12300",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118249+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883794464",
+    "event_id": "evt-12301",
+    "exchange_ts": "2026-06-04T18:29:20.117644+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118260+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454464",
+    "event_id": "evt-12302",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118575+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454464",
+    "event_id": "evt-12303",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.540000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118588+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454464",
+    "event_id": "evt-12304",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.200000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118598+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454464",
+    "event_id": "evt-12305",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.780000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118609+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454982",
+    "event_id": "evt-12306",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "7.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118635+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454982",
+    "event_id": "evt-12307",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "7.440000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118646+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454982",
+    "event_id": "evt-12308",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.500000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118657+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883454982",
+    "event_id": "evt-12309",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.400000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260626:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118668+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796038",
+    "event_id": "evt-12310",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118696+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796038",
+    "event_id": "evt-12311",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118706+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796038",
+    "event_id": "evt-12312",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.070000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118717+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796038",
+    "event_id": "evt-12313",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "8.730000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118729+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798245",
+    "event_id": "evt-12314",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.030000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118774+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798245",
+    "event_id": "evt-12315",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.060000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118786+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798245",
+    "event_id": "evt-12316",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118797+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798245",
+    "event_id": "evt-12317",
+    "exchange_ts": "2026-06-04T18:29:20.118325+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.300000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.118807+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795975",
+    "event_id": "evt-12318",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.720000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119157+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795975",
+    "event_id": "evt-12319",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.740000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119173+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795975",
+    "event_id": "evt-12320",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119184+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795975",
+    "event_id": "evt-12321",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.270000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119196+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798197",
+    "event_id": "evt-12322",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.620000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119221+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798197",
+    "event_id": "evt-12323",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.640000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119232+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798197",
+    "event_id": "evt-12324",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.620000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119243+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798197",
+    "event_id": "evt-12325",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.820000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119253+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796085",
+    "event_id": "evt-12326",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.550000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119280+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796085",
+    "event_id": "evt-12327",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.570000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119291+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796085",
+    "event_id": "evt-12328",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.310000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119301+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796085",
+    "event_id": "evt-12329",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "8.200000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119313+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795930",
+    "event_id": "evt-12330",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.330000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119339+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795930",
+    "event_id": "evt-12331",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119350+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795930",
+    "event_id": "evt-12332",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.140000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119361+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795930",
+    "event_id": "evt-12333",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.820000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119373+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798306",
+    "event_id": "evt-12334",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.460000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119398+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798306",
+    "event_id": "evt-12335",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.490000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119409+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798306",
+    "event_id": "evt-12336",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119421+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798306",
+    "event_id": "evt-12337",
+    "exchange_ts": "2026-06-04T18:29:20.118871+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.790000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119431+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798140",
+    "event_id": "evt-12338",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.220000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119728+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798140",
+    "event_id": "evt-12339",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.250000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119745+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798140",
+    "event_id": "evt-12340",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.180000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119757+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798140",
+    "event_id": "evt-12341",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119767+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608666",
+    "event_id": "evt-12342",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119795+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608666",
+    "event_id": "evt-12343",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.940000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119806+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608666",
+    "event_id": "evt-12344",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.890000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119816+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608666",
+    "event_id": "evt-12345",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.300000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119828+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607398",
+    "event_id": "evt-12346",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.740000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119855+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607398",
+    "event_id": "evt-12347",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.050000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119865+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607398",
+    "event_id": "evt-12348",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.630000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119876+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607398",
+    "event_id": "evt-12349",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.400000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119887+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607435",
+    "event_id": "evt-12350",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.990000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119915+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607435",
+    "event_id": "evt-12351",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.010000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119925+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607435",
+    "event_id": "evt-12352",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.970000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119936+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797607435",
+    "event_id": "evt-12353",
+    "exchange_ts": "2026-06-04T18:29:20.119483+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "7.700000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.119947+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608627",
+    "event_id": "evt-12354",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.840000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120266+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608627",
+    "event_id": "evt-12355",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.870000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120282+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608627",
+    "event_id": "evt-12356",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.850000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120293+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "797608627",
+    "event_id": "evt-12357",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120305+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795845",
+    "event_id": "evt-12358",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.330000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120330+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795845",
+    "event_id": "evt-12359",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.810000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120342+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795845",
+    "event_id": "evt-12360",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.980000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120354+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795845",
+    "event_id": "evt-12361",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.990000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120363+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798367",
+    "event_id": "evt-12362",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120390+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798367",
+    "event_id": "evt-12363",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.400000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120401+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798367",
+    "event_id": "evt-12364",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "15.270000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120412+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798367",
+    "event_id": "evt-12365",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.830000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120423+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798095",
+    "event_id": "evt-12366",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.480000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120448+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798095",
+    "event_id": "evt-12367",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.510000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120457+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798095",
+    "event_id": "evt-12368",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.700000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120468+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798095",
+    "event_id": "evt-12369",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.510000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120479+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796136",
+    "event_id": "evt-12370",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.440000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120504+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796136",
+    "event_id": "evt-12371",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.470000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120516+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796136",
+    "event_id": "evt-12372",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120526+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796136",
+    "event_id": "evt-12373",
+    "exchange_ts": "2026-06-04T18:29:20.120008+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "7.210000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120536+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798413",
+    "event_id": "evt-12378",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.120992+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798413",
+    "event_id": "evt-12379",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121001+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798413",
+    "event_id": "evt-12380",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121012+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798413",
+    "event_id": "evt-12381",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121024+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795794",
+    "event_id": "evt-12382",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.050000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121052+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795794",
+    "event_id": "evt-12383",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.490000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121077+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795794",
+    "event_id": "evt-12384",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121094+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883795794",
+    "event_id": "evt-12385",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.590000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121103+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798032",
+    "event_id": "evt-12386",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.130000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121124+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798032",
+    "event_id": "evt-12387",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121135+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798032",
+    "event_id": "evt-12388",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121147+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883798032",
+    "event_id": "evt-12389",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121159+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895855",
+    "event_id": "evt-12390",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121188+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895855",
+    "event_id": "evt-12391",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121200+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895855",
+    "event_id": "evt-12392",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.140000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121212+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895855",
+    "event_id": "evt-12393",
+    "exchange_ts": "2026-06-04T18:29:20.120598+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.650000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121222+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898915",
+    "event_id": "evt-12394",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.610000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121531+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898915",
+    "event_id": "evt-12395",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.640000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121546+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898915",
+    "event_id": "evt-12396",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.640000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121558+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898915",
+    "event_id": "evt-12397",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.830000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121569+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895827",
+    "event_id": "evt-12398",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.720000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121596+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895827",
+    "event_id": "evt-12399",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121607+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895827",
+    "event_id": "evt-12400",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.121618+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895827",
+    "event_id": "evt-12401",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.200000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128563+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898884",
+    "event_id": "evt-12402",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.190000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128665+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898884",
+    "event_id": "evt-12403",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.230000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128680+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898884",
+    "event_id": "evt-12404",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.230000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128692+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898884",
+    "event_id": "evt-12405",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.360000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128703+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895884",
+    "event_id": "evt-12406",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.530000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128729+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895884",
+    "event_id": "evt-12407",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.560000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128739+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895884",
+    "event_id": "evt-12408",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.500000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128749+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895884",
+    "event_id": "evt-12409",
+    "exchange_ts": "2026-06-04T18:29:20.121301+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.110000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.128759+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898944",
+    "event_id": "evt-12410",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.030000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129344+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898944",
+    "event_id": "evt-12411",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.070000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129365+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898944",
+    "event_id": "evt-12412",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129377+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898944",
+    "event_id": "evt-12413",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.310000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129388+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898984",
+    "event_id": "evt-12414",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.470000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129415+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898984",
+    "event_id": "evt-12415",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.510000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129426+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898984",
+    "event_id": "evt-12416",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129438+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898984",
+    "event_id": "evt-12417",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.810000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129448+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895799",
+    "event_id": "evt-12418",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.340000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129470+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895799",
+    "event_id": "evt-12419",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129477+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895799",
+    "event_id": "evt-12420",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129484+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895799",
+    "event_id": "evt-12421",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.770000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129495+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895901",
+    "event_id": "evt-12422",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.960000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129519+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895901",
+    "event_id": "evt-12423",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.990000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129530+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895901",
+    "event_id": "evt-12424",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129541+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895901",
+    "event_id": "evt-12425",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "8.600000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129552+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898858",
+    "event_id": "evt-12426",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.800000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129577+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898858",
+    "event_id": "evt-12427",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.840000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129587+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898858",
+    "event_id": "evt-12428",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.800000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129598+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898858",
+    "event_id": "evt-12429",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129609+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895775",
+    "event_id": "evt-12430",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129627+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895775",
+    "event_id": "evt-12431",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.020000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129638+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895775",
+    "event_id": "evt-12432",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.020000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129648+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895775",
+    "event_id": "evt-12433",
+    "exchange_ts": "2026-06-04T18:29:20.129000+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.129660+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450247",
+    "event_id": "evt-12434",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "16.140000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.130948+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450247",
+    "event_id": "evt-12435",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "16.330000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.130969+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450247",
+    "event_id": "evt-12436",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "16.260000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.130977+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450247",
+    "event_id": "evt-12437",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.470000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.130983+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450307",
+    "event_id": "evt-12438",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "15.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131000+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450307",
+    "event_id": "evt-12439",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "15.660000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131007+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450307",
+    "event_id": "evt-12440",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "14.880000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131013+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450307",
+    "event_id": "evt-12441",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.850000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131020+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452206",
+    "event_id": "evt-12442",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.150000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131044+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452206",
+    "event_id": "evt-12443",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.190000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131052+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452206",
+    "event_id": "evt-12444",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131060+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452206",
+    "event_id": "evt-12445",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.250000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131071+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452252",
+    "event_id": "evt-12446",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.740000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131095+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452252",
+    "event_id": "evt-12447",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.780000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131105+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452252",
+    "event_id": "evt-12448",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.850000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131114+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452252",
+    "event_id": "evt-12449",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131122+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452304",
+    "event_id": "evt-12450",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.540000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131145+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452304",
+    "event_id": "evt-12451",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.580000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131155+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452304",
+    "event_id": "evt-12452",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.560000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131166+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452304",
+    "event_id": "evt-12453",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.690000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131175+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452429",
+    "event_id": "evt-12454",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131213+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452429",
+    "event_id": "evt-12455",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131224+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452429",
+    "event_id": "evt-12456",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.340000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131235+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452429",
+    "event_id": "evt-12457",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.610000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131246+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898824",
+    "event_id": "evt-12458",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131264+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898824",
+    "event_id": "evt-12459",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.460000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131273+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898824",
+    "event_id": "evt-12460",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.380000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131284+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885898824",
+    "event_id": "evt-12461",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.490000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131294+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899016",
+    "event_id": "evt-12462",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131314+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899016",
+    "event_id": "evt-12463",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.970000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131324+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899016",
+    "event_id": "evt-12464",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.190000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131334+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899016",
+    "event_id": "evt-12465",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.320000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131345+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500830",
+    "event_id": "evt-12466",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.060000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131368+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500830",
+    "event_id": "evt-12467",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131376+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500830",
+    "event_id": "evt-12468",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.270000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131386+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500830",
+    "event_id": "evt-12469",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.070000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131397+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899050",
+    "event_id": "evt-12470",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131419+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899050",
+    "event_id": "evt-12471",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131430+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899050",
+    "event_id": "evt-12472",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.400000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131440+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885899050",
+    "event_id": "evt-12473",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.850000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131451+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500754",
+    "event_id": "evt-12474",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.710000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131467+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500754",
+    "event_id": "evt-12475",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131475+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500754",
+    "event_id": "evt-12476",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "9.080000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131483+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885500754",
+    "event_id": "evt-12477",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.670000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131494+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452372",
+    "event_id": "evt-12478",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.950000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131521+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452372",
+    "event_id": "evt-12479",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.990000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131532+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452372",
+    "event_id": "evt-12480",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.970000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131543+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452372",
+    "event_id": "evt-12481",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "14.140000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131554+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452478",
+    "event_id": "evt-12482",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.800000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131575+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452478",
+    "event_id": "evt-12483",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.840000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131586+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452478",
+    "event_id": "evt-12484",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.170000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131597+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452478",
+    "event_id": "evt-12485",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "15.090000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131607+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452120",
+    "event_id": "evt-12486",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.420000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131630+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452120",
+    "event_id": "evt-12487",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131641+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452120",
+    "event_id": "evt-12488",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131652+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452120",
+    "event_id": "evt-12489",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131662+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452169",
+    "event_id": "evt-12494",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.780000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131738+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452169",
+    "event_id": "evt-12495",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.820000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131749+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452169",
+    "event_id": "evt-12496",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.960000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131755+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452169",
+    "event_id": "evt-12497",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.820000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131762+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452543",
+    "event_id": "evt-12498",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.950000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131777+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452543",
+    "event_id": "evt-12499",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.990000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131784+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452543",
+    "event_id": "evt-12500",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "-1.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131790+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452543",
+    "event_id": "evt-12501",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "16.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131797+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452064",
+    "event_id": "evt-12506",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.070000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131843+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452064",
+    "event_id": "evt-12507",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131850+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452064",
+    "event_id": "evt-12508",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.160000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131857+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452064",
+    "event_id": "evt-12509",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.020000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131863+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450409",
+    "event_id": "evt-12510",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "14.230000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131878+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450409",
+    "event_id": "evt-12511",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "14.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131884+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450409",
+    "event_id": "evt-12512",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "14.200000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131891+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450409",
+    "event_id": "evt-12513",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.660000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:756:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131897+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450619",
+    "event_id": "evt-12514",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "12.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131911+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450619",
+    "event_id": "evt-12515",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "12.480000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131917+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450619",
+    "event_id": "evt-12516",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.120000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131924+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450619",
+    "event_id": "evt-12517",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.980000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:759:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131930+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450508",
+    "event_id": "evt-12518",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.650000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131944+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450508",
+    "event_id": "evt-12519",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.680000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131950+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450508",
+    "event_id": "evt-12520",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.450000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131957+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450508",
+    "event_id": "evt-12521",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.090000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.131963+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895925",
+    "event_id": "evt-12526",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "9.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132010+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895925",
+    "event_id": "evt-12527",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "9.440000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132016+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895925",
+    "event_id": "evt-12528",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "8.420000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132022+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895925",
+    "event_id": "evt-12529",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "8.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132028+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895950",
+    "event_id": "evt-12530",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "8.880000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132043+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895950",
+    "event_id": "evt-12531",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "8.910000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132049+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895950",
+    "event_id": "evt-12532",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.340000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132055+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885895950",
+    "event_id": "evt-12533",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "7.610000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132061+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499333",
+    "event_id": "evt-12534",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "14.210000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132076+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499333",
+    "event_id": "evt-12535",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "14.370000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132082+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499333",
+    "event_id": "evt-12536",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "14.280000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132088+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499333",
+    "event_id": "evt-12537",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "12.550000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:753:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132095+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450568",
+    "event_id": "evt-12538",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.050000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132109+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450568",
+    "event_id": "evt-12539",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.070000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132116+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450568",
+    "event_id": "evt-12540",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "12.980000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132122+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450568",
+    "event_id": "evt-12541",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.520000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:758:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132128+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450466",
+    "event_id": "evt-12542",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.350000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132142+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450466",
+    "event_id": "evt-12543",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.380000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132149+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450466",
+    "event_id": "evt-12544",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132155+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450466",
+    "event_id": "evt-12545",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.800000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:757.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132161+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450667",
+    "event_id": "evt-12546",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.870000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132175+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450667",
+    "event_id": "evt-12547",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.900000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132181+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450667",
+    "event_id": "evt-12548",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.890000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132188+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450667",
+    "event_id": "evt-12549",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "10.440000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:760:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132194+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450813",
+    "event_id": "evt-12550",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.760000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132209+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450813",
+    "event_id": "evt-12551",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.790000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132216+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450813",
+    "event_id": "evt-12552",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.490000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132222+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450813",
+    "event_id": "evt-12553",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.410000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132228+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450357",
+    "event_id": "evt-12554",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "14.840000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132242+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450357",
+    "event_id": "evt-12555",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "15.010000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132248+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450357",
+    "event_id": "evt-12556",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "14.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132254+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450357",
+    "event_id": "evt-12557",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "13.250000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:755:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132261+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450773",
+    "event_id": "evt-12558",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "10.490000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132274+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450773",
+    "event_id": "evt-12559",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "10.520000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132280+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450773",
+    "event_id": "evt-12560",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "10.460000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132286+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450773",
+    "event_id": "evt-12561",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.180000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:762.5:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132293+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450713",
+    "event_id": "evt-12562",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "11.310000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132307+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450713",
+    "event_id": "evt-12563",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "11.340000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132313+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450713",
+    "event_id": "evt-12564",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "11.340000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132319+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887450713",
+    "event_id": "evt-12565",
+    "exchange_ts": "2026-06-04T18:29:20.129742+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "9.930000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:C:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:20.132325+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796176",
+    "event_id": "evt-12566",
+    "exchange_ts": "2026-06-04T18:29:22.034998+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "7.920000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:22.035166+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796176",
+    "event_id": "evt-12567",
+    "exchange_ts": "2026-06-04T18:29:22.034998+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "7.950000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:22.035210+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796176",
+    "event_id": "evt-12568",
+    "exchange_ts": "2026-06-04T18:29:22.034998+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "7.960000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:22.035223+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "883796176",
+    "event_id": "evt-12569",
+    "exchange_ts": "2026-06-04T18:29:22.034998+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "6.740000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260630:C:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:22.035232+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452509",
+    "event_id": "evt-12570",
+    "exchange_ts": "2026-06-04T18:29:23.185713+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.250000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:23.185859+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452509",
+    "event_id": "evt-12571",
+    "exchange_ts": "2026-06-04T18:29:23.185713+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.290000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:23.185911+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452509",
+    "event_id": "evt-12572",
+    "exchange_ts": "2026-06-04T18:29:23.185713+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "14.970000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:23.185928+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452509",
+    "event_id": "evt-12573",
+    "exchange_ts": "2026-06-04T18:29:23.185713+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "15.590000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:761:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:23.185943+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452583",
+    "event_id": "evt-12574",
+    "exchange_ts": "2026-06-04T18:29:24.065038+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.710000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:24.065167+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452583",
+    "event_id": "evt-12575",
+    "exchange_ts": "2026-06-04T18:29:24.065038+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.750000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:24.065210+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452583",
+    "event_id": "evt-12576",
+    "exchange_ts": "2026-06-04T18:29:24.065038+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "-1.000000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:24.065222+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "887452583",
+    "event_id": "evt-12577",
+    "exchange_ts": "2026-06-04T18:29:24.065038+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "16.100000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260710:P:762:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:24.065233+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499385",
+    "event_id": "evt-12578",
+    "exchange_ts": "2026-06-04T18:29:26.989351+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "13.520000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:26.989473+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499385",
+    "event_id": "evt-12579",
+    "exchange_ts": "2026-06-04T18:29:26.989351+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "13.720000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:26.989524+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499385",
+    "event_id": "evt-12580",
+    "exchange_ts": "2026-06-04T18:29:26.989351+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "13.630000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:26.989542+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "885499385",
+    "event_id": "evt-12581",
+    "exchange_ts": "2026-06-04T18:29:26.989351+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "11.940000"
+    },
+    "instrument_key": "OPT:SPY:OPT:20260702:C:754:100:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:26.989555+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "756733",
+    "event_id": "evt-12594",
+    "exchange_ts": "2026-06-04T18:29:28.229026+00:00",
+    "field_name": "bid",
+    "field_value": {
+      "__dec__": "757.690000"
+    },
+    "instrument_key": "UND:SPY:STK:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:28.229072+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "756733",
+    "event_id": "evt-12595",
+    "exchange_ts": "2026-06-04T18:29:28.229026+00:00",
+    "field_name": "ask",
+    "field_value": {
+      "__dec__": "757.710000"
+    },
+    "instrument_key": "UND:SPY:STK:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:28.229088+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "756733",
+    "event_id": "evt-12596",
+    "exchange_ts": "2026-06-04T18:29:28.229026+00:00",
+    "field_name": "last",
+    "field_value": {
+      "__dec__": "757.710000"
+    },
+    "instrument_key": "UND:SPY:STK:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:28.229099+00:00",
+    "underlying": "SPY"
+  },
+  {
+    "collector_session_id": "ibkr-spy-20260604T182539Z",
+    "contract_id_broker": "756733",
+    "event_id": "evt-12597",
+    "exchange_ts": "2026-06-04T18:29:28.229026+00:00",
+    "field_name": "close",
+    "field_value": {
+      "__dec__": "754.240000"
+    },
+    "instrument_key": "UND:SPY:STK:SMART:USD",
+    "provider": "IBKR",
+    "receipt_ts": "2026-06-04T18:29:28.229110+00:00",
+    "underlying": "SPY"
+  }
+]

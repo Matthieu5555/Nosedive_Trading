@@ -1,0 +1,26 @@
+# Forward-curve parameters for Deribit BTC/ETH options.
+#
+# The forward engine implies a continuously-compounded carry rate r from put-call parity.
+# For crypto, r absorbs the perpetual funding rate rather than a risk-free rate + dividend.
+# Deribit BTC/ETH perp funding has historically ranged from -10% to +30% annualised in
+# normal markets, with spikes to +100%+ during bull runs. The bounds below are intentionally
+# wide to avoid silently rejecting maturities during high-funding regimes.
+#
+# Same schema as the equity forward_engine (consumed by ForwardParams.from_config); only the
+# crypto-specific bounds differ. min_maturity_years excludes degenerate near-expiry options
+# (< ~2 days) where the parity-implied rate is numerically unstable (annualising tiny price
+# differences over a sub-day horizon yields wild rates). Maturities outside the rate bounds are
+# refused and logged as MISSING, never silently patched. Re-calibrate after a full cycle of data.
+
+forward_engine:
+  strike_band_mode: nearest_liquid  # near-the-money strike band selection
+  max_candidate_count: 12           # cap on parity-forward candidates per maturity
+  outlier_method: mad               # robust outlier rejection (median absolute deviation)
+  max_robust_zscore: 3.5            # robust MAD z-score beyond which a candidate is rejected
+  epsilon: 0.0001                   # liquidity-weight floor (avoids divide-by-zero on zero spread)
+  min_candidates: 2                 # minimum usable strikes to estimate a maturity
+  day_count: ACT/365F               # year-fraction convention
+  min_maturity_years: 0.005         # ~1.8 days: exclude unstable near-expiry forwards
+  min_rate: -0.10                   # negative funding possible in bear markets
+  max_rate: 0.60                    # wide upper bound for bull-run funding spikes
+  comfortable_candidate_count: 3    # fewer strikes per expiry than equity; 3 is sufficient

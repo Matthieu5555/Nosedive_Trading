@@ -41,6 +41,7 @@ from .tables import (
     ScenarioResult,
     SurfaceGrid,
     SurfaceParameters,
+    TriageRecord,
 )
 from .validation import validate, validate_record
 
@@ -66,6 +67,7 @@ __all__ = [
     "SurfaceGrid",
     "SurfaceParameters",
     "TableSpec",
+    "TriageRecord",
     "UnknownTableError",
     "broker_contract_id_from_canonical",
     "spec_for_table",

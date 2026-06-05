@@ -139,6 +139,11 @@ forbidden_modules = [
 [tool.pytest.ini_options]
 # importmode=importlib avoids conftest module-name collisions across packages.
 addopts = "-q --import-mode=importlib"
+# The shared fixture library (the rogues' gallery + known-answer generators) lives under
+# packages/infra/tests/fixtures and is imported by name (`from fixtures.synthetic import ...`)
+# across the analytics/risk/qc tests; pythonpath makes that top-level `fixtures` package
+# importable under importlib mode without installing it into the runtime packages.
+pythonpath = ["packages/infra/tests"]
 testpaths = [
     "packages/core/tests",
     "packages/infra/tests",

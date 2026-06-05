@@ -27,16 +27,19 @@ import json
 
 from .runs import RunRecord, RunStatus
 
-_DDL = """
+_DDL_TABLE = """
 CREATE TABLE IF NOT EXISTS runs (
     run_id   TEXT        PRIMARY KEY,
     job      TEXT        NOT NULL,
     status   TEXT        NOT NULL,
     ended_at TIMESTAMPTZ NOT NULL,
     payload  JSONB       NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_runs_job_ended ON runs (job, ended_at);
+)
 """
+
+_DDL_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_runs_job_ended ON runs (job, ended_at)"
+)
 
 _UPSERT = """
 INSERT INTO runs (run_id, job, status, ended_at, payload)
@@ -71,7 +74,8 @@ class PostgresRunRepository:
         import psycopg
 
         with psycopg.connect(self._dsn, autocommit=True) as con:
-            con.execute(_DDL)
+            con.execute(_DDL_TABLE)
+            con.execute(_DDL_INDEX)
 
     def record(self, run: RunRecord) -> None:
         """Persist one run record, keyed by ``run_id`` (idempotent: same id overwrites)."""

@@ -1,0 +1,22 @@
+# Monitored crypto option universe — Deribit BTC and ETH options.
+# security_type CRYPTO marks the underlying as a crypto asset (string field, not an enum).
+# exchange DERIBIT is used as-is in canonical instrument keys.
+# currency USD: Deribit options are priced and settled in USD (index price), not native coin.
+
+underlyings:
+  - symbol: BTC
+    exchange: DERIBIT
+    currency: USD
+    security_type: CRYPTO
+
+  - symbol: ETH
+    exchange: DERIBIT
+    currency: USD
+    security_type: CRYPTO
+
+maturity_window:
+  min_days: 1    # crypto options trade very short-dated; allow 1-day expiries
+  max_days: 180  # Deribit liquidity drops off sharply past 6 months
+
+collection:
+  max_strikes_per_session: 100  # cap on contracts subscribed per capture session

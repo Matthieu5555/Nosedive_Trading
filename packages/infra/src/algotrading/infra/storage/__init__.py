@@ -20,9 +20,12 @@ imported directly by callers — use ``factory.make_run_repository()`` instead.
 Public API of this module (metadata tier, M10):
   ``RunRecord``, ``RunStatus``, ``RunRegistry``    — the run record types
   ``SqliteRunRepository``                          — local backend
-  ``PostgresRunRepository``                        — deployed backend
   ``RunRepository``                                — the port (Protocol)
   ``make_run_repository``                          — backend factory
+
+  ``PostgresRunRepository`` is an optional backend (requires ``psycopg[binary]``).
+  Import it directly: ``from algotrading.infra.storage.postgres_runs import PostgresRunRepository``
+  or install the extra and let ``make_run_repository()`` select it via ``POSTGRES_URL``.
 
 Public API of the analytics data plane (M1):
   ``ParquetStore``                                 — the StorageRepository implementation
@@ -39,6 +42,7 @@ from .errors import (
     VersionedWriteNotAllowed,
 )
 from .factory import make_run_repository
+from .json_io import events_from_json, events_to_json
 from .ports import RunRepository
 from .runs import RunRecord, RunRegistry, RunStatus
 from .schema import arrow_schema
@@ -57,6 +61,12 @@ __all__ = [
     "from_row",
     "primary_key_of",
     "to_row",
+    # Raw-event JSON codec (M5 slice, ADR 0021) — for committed offline samples. The
+    # collector-level ``RawMarketEvent`` (storage.events) is the EAV capture event, distinct
+    # from the frozen analytics contract ``contracts.tables.RawMarketEvent``; import it
+    # explicitly from ``storage.events`` to keep the two unambiguous.
+    "events_from_json",
+    "events_to_json",
     # Metadata / serving tier (M10) — the run registry.
     "RunRecord",
     "RunRegistry",

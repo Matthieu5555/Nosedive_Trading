@@ -107,18 +107,28 @@ _NAME_KEYS: tuple[str, ...] = (
 )
 
 
-def _headline(result: QcResult) -> str:
+def named_offender(result: QcResult) -> str | None:
+    """The ``key=value`` naming the offending object a check wrote into its context.
+
+    Returns the first present, non-empty named key in priority order (the failing
+    session, quote, contract, maturity, …), or ``None`` if the result named nothing.
+    This is the one place the specificity rule is read back out, so the triage layer and
+    the unified triage records both name the *same* offender from the *same* logic.
+    """
+    context = deserialize_context(result.context)
+    for key in _NAME_KEYS:
+        if key in context and context[key] not in ("", [], None):
+            return f"{key}={context[key]!r}"
+    return None
+
+
+def result_headline(result: QcResult) -> str:
     """Build a one-line, operator-facing headline naming the offending object.
 
     Reads the named keys the check wrote into the context. This is where "name the
     failing maturity/quote/solver" becomes the thing an operator actually reads.
     """
-    context = deserialize_context(result.context)
-    named: str | None = None
-    for key in _NAME_KEYS:
-        if key in context and context[key] not in ("", [], None):
-            named = f"{key}={context[key]!r}"
-            break
+    named = named_offender(result)
     measured = result.measured_value
     measured_text = f"{measured:g}" if math.isfinite(measured) else str(measured)
     where = f" [{named}]" if named is not None else ""
@@ -185,7 +195,7 @@ def triage_table(report: QcReport) -> TriageTable:
             severity=result.severity,
             measured_value=result.measured_value,
             threshold_version=result.threshold_version,
-            headline=_headline(result),
+            headline=result_headline(result),
         )
         for result in report.results
         if result.status != STATUS_PASS

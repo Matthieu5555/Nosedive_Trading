@@ -64,10 +64,16 @@ wrong Greek — folding in the deferred item from ADR 0006.
 ## Anomaly detection
 
 `detect_anomaly(observed, baseline, metric, target, ...)` flags a value that sits
-too far from its rolling baseline. It uses a median/MAD robust z-score (so one old
-spike in the baseline does not inflate the scale and hide a new one) and fails when
-the score exceeds `anomaly_mad_multiplier` MADs. An empty baseline raises
-`EmptyBaselineError` — "is this a spike" has no answer without a reference.
+too far from its rolling baseline, returning a `QcResult` like any other check. It
+uses a median/MAD robust z-score (so one old spike in the baseline does not inflate
+the scale and hide a new one) and fails when the score exceeds
+`anomaly_mad_multiplier` MADs. An empty baseline raises `EmptyBaselineError` — "is
+this a spike" has no answer without a reference.
+
+For the richer, run-level anomaly view — warn/fail bands, an explicit
+`no_baseline` state for cold-start runs, and a sweep over many metrics at once — see
+the sibling `src/validation` plane, which also owns the unified triage record both
+planes collapse into.
 
 ## Triage and escalation
 

@@ -67,6 +67,8 @@ from .report import (
     TriageTable,
     build_report,
     escalation_level,
+    named_offender,
+    result_headline,
     triage_table,
 )
 from .result import (
@@ -131,6 +133,8 @@ __all__ = [
     "deserialize_context",
     "detect_anomaly",
     "escalation_level",
+    "named_offender",
+    "result_headline",
     "robust_z_score",
     "serialize_context",
     "thresholds_from_config",

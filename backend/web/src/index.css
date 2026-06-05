@@ -1,0 +1,69 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+body {
+  margin: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #11283b;
+  color: #fff;
+}
+
+.topbar .brand {
+  font-weight: 700;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.topbar a {
+  color: #c7d6e5;
+  text-decoration: none;
+}
+
+.topbar a.active {
+  color: #fff;
+  font-weight: 600;
+}
+
+.content {
+  padding: 1.5rem;
+}
+
+table {
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.6rem;
+  text-align: right;
+}
+
+th {
+  background: #eef2f6;
+}
+
+.ok {
+  color: #1a7f37;
+}
+
+.bad {
+  color: #b3261e;
+}
+
+.error {
+  color: #b3261e;
+}

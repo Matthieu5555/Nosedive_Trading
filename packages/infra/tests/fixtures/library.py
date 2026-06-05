@@ -33,7 +33,7 @@ AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 NEAR_EXPIRY = date(2026, 6, 19)
 FAR_EXPIRY = date(2026, 9, 18)
 
-# Default stale-quote threshold mirrors configs/default.toml (max_quote_age_seconds).
+# Default stale-quote threshold mirrors configs/default.yaml (max_quote_age_seconds).
 _STALE_THRESHOLD_SECONDS = 30.0
 
 

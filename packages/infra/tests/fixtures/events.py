@@ -9,7 +9,7 @@ scenarios, so the snapshot edge-case tests bind to one curated home instead of
 inventing inline literals (TESTING.md).
 
 ``SNAPSHOT_TS`` mirrors ``fixtures.library.AS_OF`` and ``STALE_THRESHOLD_SECONDS``
-mirrors ``configs/default.toml``'s ``max_quote_age_seconds`` so staleness fixtures
+mirrors ``configs/default.yaml``'s ``max_quote_age_seconds`` so staleness fixtures
 line up with the default config a test would load.
 """
 

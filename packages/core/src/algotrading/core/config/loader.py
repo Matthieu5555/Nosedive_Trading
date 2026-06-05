@@ -1,20 +1,17 @@
-"""Build a :class:`PlatformConfig` from a YAML overlay, a TOML file, or a mapping.
+"""Build a :class:`PlatformConfig` from a versioned YAML overlay config or a mapping.
 
 The loader is the only place that knows the on-disk shape of the typed economic
 config. It turns lists into the tuples the frozen dataclasses expect and raises a
 clear error naming the missing section rather than a raw ``KeyError`` from deep inside.
 
-Two source forms reach the same validation (``config_from_mapping``): the versioned
-YAML overlay path (``from_config`` over a :class:`LoadedConfig` resolved by
-``load_yaml_config`` — base + one overlay, deep-merged), and the legacy TOML path
-(``load_config``). The YAML overlay path is the one C7/ADR 0028 standardize on; the
-TOML path is kept until its remaining consumers migrate.
+The economic config is authored in versioned YAML and resolved through the overlay
+loader (``from_config`` over a :class:`LoadedConfig` from ``load_yaml_config`` — base +
+one overlay, deep-merged), then validated by ``config_from_mapping``. This is the single
+path C7/ADR 0028 standardize on; the legacy TOML loader was retired here.
 """
 
 from __future__ import annotations
 
-import tomllib
-from pathlib import Path
 from typing import Any
 
 from .platform_config import (
@@ -79,15 +76,3 @@ def from_config(loaded: LoadedConfig) -> PlatformConfig:
     must be present in the resolved mapping; a missing one raises :class:`ConfigError`.
     """
     return config_from_mapping(dict(loaded.data))
-
-
-def load_config(path: Path) -> PlatformConfig:
-    """Read a TOML config file and return a validated :class:`PlatformConfig`.
-
-    Legacy path: prefer authoring the economic config in YAML and loading it through
-    ``load_yaml_config`` + :func:`from_config`. Kept until the remaining TOML consumers
-    migrate (C7 task 1's retirement step).
-    """
-    with path.open("rb") as handle:
-        data = tomllib.load(handle)
-    return config_from_mapping(data)

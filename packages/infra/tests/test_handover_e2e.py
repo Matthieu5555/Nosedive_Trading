@@ -9,7 +9,7 @@ command stops working, this test goes red.
 
 The stages drive the same public APIs the runbooks tell an operator to call:
 
-* (a) bootstrap — ``config.load_config`` over ``configs/default.toml`` yields a valid,
+* (a) bootstrap — ``from_config(load_yaml_config(configs/default.yaml))`` yields a valid,
   hashable ``PlatformConfig`` and a ``ParquetStore`` opens on a data root;
 * (c) triggered replay — ``orchestration.reconstruction.reconstruct_day`` over a seeded
   raw day runs the *identical* actor compute as live and persists derived outputs
@@ -34,7 +34,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from algotrading.core.config import PlatformConfig, config_hash, load_config
+from algotrading.core.config import PlatformConfig, config_hash, from_config, load_yaml_config
 from algotrading.infra.collectors import BrokerTick, RawCollector, summarize_session
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.contracts import InstrumentMaster, Position
@@ -49,7 +49,7 @@ from fixtures.library import ChainFixture, get_fixture
 
 # The economics config the runbooks load — the real checked-in file, not a stub. Using
 # the shipped config is the point: the new engineer runs against what production runs.
-_CONFIG_PATH = Path(__file__).resolve().parents[3] / "configs" / "default.toml"
+_CONFIG_PATH = Path(__file__).resolve().parents[3] / "configs" / "default.yaml"
 
 # Injected times (nothing reads a clock), matching the replay fixtures' AS_OF so the
 # synthetic-known-answer chain inverts cleanly.
@@ -112,9 +112,9 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     """Drive the documented new-engineer engine path and assert an artifact at each stage."""
 
     # -- stage (a): bootstrap is usable -------------------------------------
-    # The runbooks open with `config.load_config(configs/default.toml)` and a
-    # ParquetStore on a data root. Both must produce a real, hashable object.
-    config: PlatformConfig = load_config(_CONFIG_PATH)
+    # The runbooks open with `from_config(load_yaml_config(configs/default.yaml))`
+    # and a ParquetStore on a data root. Both must produce a real, hashable object.
+    config: PlatformConfig = from_config(load_yaml_config(_CONFIG_PATH))
     assert config.universe.underlyings, "the shipped config must name underlyings to trade"
     cfg_hash = config_hash(config)
     assert isinstance(cfg_hash, str) and cfg_hash, "config_hash must produce a stable string"

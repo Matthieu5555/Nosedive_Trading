@@ -1,1 +1,1 @@
-../../backend/src/universe/README.md
+../../packages/infra/src/algotrading/infra/universe/README.md

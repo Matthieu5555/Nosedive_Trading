@@ -2,8 +2,8 @@
 
 ## The one rule
 
-The typed dataclasses in `backend/src/contracts` are the only objects that cross a
-workstream line. A workstream hands another workstream one of these, never a loose dict,
+The typed dataclasses in `packages/infra/src/algotrading/infra/contracts` are the only
+objects that cross a workstream line. A workstream hands another workstream one of these, never a loose dict,
 a tuple, or an internal in-memory type. That is the entire integration surface, and
 freezing it is what let five workstreams build in parallel against each other without
 constant renegotiation.
@@ -11,7 +11,8 @@ constant renegotiation.
 These contracts are owned by Workstream A. Nobody outside A edits a definition in place.
 A needed change — a new field, a new table — is a request routed to A, because every
 field ripples to four other workstreams. The contracts package says this itself
-(`backend/src/contracts/__init__.py`): the registry internals are deliberately not
+(`packages/infra/src/algotrading/infra/contracts/__init__.py`): the registry internals
+are deliberately not
 re-exported, so a consumer that finds itself reaching for them wants a new method on the
 seam, routed through A, not a reassembly of A's internals.
 
@@ -45,8 +46,9 @@ contracts.
 ## What "frozen" does not mean
 
 Frozen does not mean unchangeable; it means changed *only through A, only additively*.
-The storage README (`backend/src/storage/README.md`, "Schema evolution and backfill
-compatibility") is the authority on what an additive change is, and the rules are
+The storage README (`packages/infra/src/algotrading/infra/storage/README.md`, "Schema
+evolution and backfill compatibility") is the authority on what an additive change is,
+and the rules are
 enforced in code, not just documented:
 
 1. A new field is added to the *end* of a contract and must be `Optional`. A partition
@@ -74,9 +76,11 @@ exception that proves the rule.
 
 ## Where to look
 
-The contract definitions are in `backend/src/contracts/tables.py`; the table registry
+The contract definitions are in
+`packages/infra/src/algotrading/infra/contracts/tables.py`; the table registry
 (layer, append-only-ness, provenance requirement) is in
-`backend/src/contracts/registry.py`; the public seam is `backend/src/contracts/__init__.py`.
+`packages/infra/src/algotrading/infra/contracts/registry.py`; the public seam is
+`packages/infra/src/algotrading/infra/contracts/__init__.py`.
 The rationale for the seam and the storage-versioning crossing is in
 `.agent/decisions/0006-risk-engine.md` and `.agent/decisions/0007-integration-ops.md`.
 

@@ -43,7 +43,7 @@ warn is a `notice`, a clean report is `none`.
 ## The check-to-cause table
 
 Each QC check, what it reads, and what a failure points at. Full detail in
-`backend/src/qc/README.md`.
+`packages/infra/src/algotrading/infra/qc/README.md`.
 
 | check | failure names | likely cause |
 |---|---|---|
@@ -83,16 +83,16 @@ A surface fails because something upstream did.
 1. `check_surface_fit_error` names the failing `underlying` + `maturity`. Start there.
 2. Check `check_iv_solver_convergence` for that underlying. If the solves did not
    converge (it names the `failing_solvers`), the slice had too few good IV points to
-   fit. The IV solver lives in `backend/src/iv`.
+   fit. The IV solver lives in `packages/infra/src/algotrading/infra/iv`.
 3. If the IVs were fine, check `check_forward_stability` and `check_parity_residual` for
    that maturity. A bad forward poisons every IV solved against it. The forward
-   estimator lives in `backend/src/forwards`.
+   estimator lives in `packages/infra/src/algotrading/infra/forwards`.
 4. If the forward was fine, check `check_underlying_quote_health` and
    `check_option_chain_coverage`. A stale or wide underlying quote, or a chain missing
-   contracts, starves the forward and the fit. Snapshots live in `backend/src/snapshots`.
+   contracts, starves the forward and the fit. Snapshots live in `packages/infra/src/algotrading/infra/snapshots`.
 5. If the inputs were all there and good but the fit still failed, the issue is in the
-   fit itself — `backend/src/surfaces`, the `SliceFit` for that maturity. The actor that
-   wires snapshot → forward → IV → surface is `backend/src/actor`.
+   fit itself — `packages/infra/src/algotrading/infra/surfaces`, the `SliceFit` for that maturity. The actor that
+   wires snapshot → forward → IV → surface is `packages/infra/src/algotrading/infra/actor`.
 
 At each step the QC result's context payload names the specific object, so you are
 following named offenders down the chain, not guessing.

@@ -1,1 +1,0 @@
-../../backend/src/fixtures/README.md

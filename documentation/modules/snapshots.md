@@ -1,1 +1,1 @@
-../../backend/src/snapshots/README.md
+../../packages/infra/src/algotrading/infra/snapshots/README.md

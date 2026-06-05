@@ -1,1 +1,1 @@
-../../backend/src/orchestration/README.md
+../../packages/infra/src/algotrading/infra/orchestration/README.md

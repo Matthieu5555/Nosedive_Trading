@@ -1,1 +1,1 @@
-../../backend/src/risk/README.md
+../../packages/infra/src/algotrading/infra/risk/README.md

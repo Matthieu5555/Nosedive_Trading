@@ -1,1 +1,1 @@
-../../backend/src/connectivity/README.md
+../../packages/infra/src/algotrading/infra/connectivity/README.md

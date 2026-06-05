@@ -14,7 +14,7 @@ check — it has no side effects and reproduces the same status for the same sta
 
 ## Steps
 
-Everything runs from `backend/`.
+Everything runs from the repo root against the `algotrading.infra` packages.
 
 1. Build and render the dashboard for the current trade date. It is a pure read over
    the partitions on disk, the run-state ledger, the latest QC verdict, and the live
@@ -41,7 +41,7 @@ Everything runs from `backend/`.
    ```
 
    The panel leads with the two operational facts — `last healthy run` and `backlog` —
-   then the four flags. See `backend/src/orchestration/README.md` for the dashboard's
+   then the four flags. See `../../packages/infra/src/algotrading/infra/orchestration/README.md` for the dashboard's
    semantics.
 
 2. Read the metrics. Five well-labeled metrics, each carrying the underlying or job it

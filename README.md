@@ -8,17 +8,17 @@ guide for working in this workspace. To find where something lives, start at
 
 ## Layout
 
-This repo is mid-merge: the original flat `backend/` build and Vincent's layered
-uv-workspace monorepo are being unified under `packages/` (M0 keystone). Until M0 lands,
-`backend/` remains the live codebase.
+The system is one layered uv-workspace monorepo under `packages/` + `apps/` (the merge
+that unified the original flat `backend/` build with Vincent's monorepo is complete; the
+flat tree is retired). The single gate runs from the repo root:
+`uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q`.
 
-- `backend/`              Python service & quant logic (Python 3.13, uv). Market-data →
-  analytics → risk backbone plus QC/validation, actor, orchestration, replay, and a FastAPI
-  BFF with React frontend (M8). Gate: `cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q`.
-- `packages/`             Target monorepo layout (`core`, `infra`, `infra-ibkr`,
-  `infra-saxo`, `infra-deribit`, `strategy`, `execution`) — scaffolded by M0, populated
-  by M1–M7. See individual `packages/<pkg>/README.md`.
-- `apps/frontend/`        React/Vite web app (M8). Cross-package; usable by all layers.
+- `packages/`             The single tree: `core` (`algotrading.core` — config/log/manifest/
+  provenance), `infra` (`algotrading.infra` — the contract seam plus market-data, analytics,
+  risk, QC/validation, the Nautilus-hosted actor, orchestration, observability, replay),
+  `infra-{ibkr,saxo,deribit}` (broker leaf adapters), and `strategy`/`execution` (upper
+  layers). See each `packages/<pkg>/README.md`. Layering is enforced by import-linter.
+- `apps/frontend/`        Python BFF + React/Vite web app, wired to the real `infra` seams.
 - `documentation/`        Operator handover runbooks, interface contracts, release notes.
 - `documentation/blueprint/` Founding domain reference — formulas, data contracts,
   field definitions, 16-step roadmap. **Read this before touching any analytics code.** See
@@ -29,7 +29,7 @@ uv-workspace monorepo are being unified under `packages/` (M0 keystone). Until M
 - `research/`             Research notes and experiments. As-of reproducibility rules apply.
 - `data/`                 Shared datasets (parquet/duckdb). Keep large/secret data out of git.
 - `.agent/`               Agent instruction layer: routing map, conventions, glossary,
-  decisions (ADRs 0001–0017).
+  decisions (ADRs).
 - `tasks/`                `TASKBOARD.md` — claim your work before you start (collision guard).
 
 ## Git and secrets

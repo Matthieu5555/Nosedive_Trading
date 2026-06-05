@@ -22,8 +22,8 @@ match live, and it is what the byte-identical headline test pins.
 
 ## Steps
 
-Everything runs from `backend/`. Point reconstruction at a store that already has raw
-events on disk.
+Everything runs from the repo root against the `algotrading.infra` packages. Point
+reconstruction at a store that already has raw events on disk.
 
 1. See which days *can* be replayed (the days that have a stored raw partition):
 

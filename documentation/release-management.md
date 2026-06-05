@@ -21,11 +21,15 @@ proof was run before it shipped*.
 
 Concretely, you need a release artifact if your change touches any of:
 
-- the math in `backend/src/forwards`, `backend/src/iv`, `backend/src/surfaces`,
-  `backend/src/pricing`, or `backend/src/risk`;
-- the actor's valuation join or any projection in `backend/src/actor` that changes a
-  persisted value;
-- the QC thresholds or any check's verdict logic in `backend/src/qc`;
+- the math in `packages/infra/src/algotrading/infra/forwards`,
+  `packages/infra/src/algotrading/infra/iv`,
+  `packages/infra/src/algotrading/infra/surfaces`,
+  `packages/infra/src/algotrading/infra/pricing`, or
+  `packages/infra/src/algotrading/infra/risk`;
+- the actor's valuation join or any projection in
+  `packages/infra/src/algotrading/infra/actor` that changes a persisted value;
+- the QC thresholds or any check's verdict logic in
+  `packages/infra/src/algotrading/infra/qc`;
 - any value in `configs/default.toml` (and therefore a section `version` bump).
 
 If you are unsure whether a change moves a number, the cheap test is the byte-identical
@@ -37,7 +41,7 @@ plumbing.
 
 "Revalidated" is not a feeling, it is a command. For an economics change you:
 
-1. Run the full gate: `cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q`.
+1. Run the full gate from the repo root: `uv run ruff check . && uv run mypy . && uv run pytest -q`.
    It must be green.
 2. Bump the affected config section `version` (so the `config_hash` changes and old and
    new results are distinguishable).

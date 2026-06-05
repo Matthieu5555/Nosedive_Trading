@@ -19,8 +19,8 @@ members = [
     "packages/execution",
     "apps/frontend",
 ]
-# The pre-restructure flat build and the read-only reference checkout are not members.
-exclude = ["backend", "Vincent's Code"]
+# The read-only reference checkout is not a workspace member.
+exclude = ["Vincent's Code"]
 
 [dependency-groups]
 dev = [
@@ -37,10 +37,9 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-# `ruff check .` lints only the workspace. The pre-restructure flat tree, the
-# read-only reference checkout, notebooks, and scratch dirs are out of this gate.
+# `ruff check .` lints only the workspace. The read-only reference checkout,
+# notebooks, and scratch dirs are out of this gate.
 extend-exclude = [
-    "backend",
     "notebooks",
     "Vincent's Code",
     "Test Lenny",
@@ -73,11 +72,10 @@ no_implicit_optional = true
 strict_equality = true
 # Workspace packages are installed editable by `uv sync`; import them by name.
 files = ["packages", "apps"]
-# `mypy .` must not wander into the pre-restructure flat tree, the read-only
-# reference checkout, or per-package test dirs (which share the name `tests` and
-# would collide under the workspace). Tests run under pytest, not mypy.
+# `mypy .` must not wander into the read-only reference checkout, scratch dirs, or
+# per-package test dirs (which share the name `tests` and would collide under the
+# workspace). Tests run under pytest, not mypy.
 exclude = [
-    "^backend/",
     "Vincent's Code/",
     "Test Lenny/",
     "/tests/",

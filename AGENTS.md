@@ -61,21 +61,17 @@ becomes an ADR. The medium-term direction the next workstreams aim at is in
 
 ## Verify before you declare done
 
-**The merged monorepo (`packages/**`, `apps/**`) — the full gate, run from the repo root:**
+**The monorepo (`packages/**`, `apps/**`) — the full gate, run from the repo root:**
 ```
 uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q
 ```
-`ruff`, `mypy`, `import-linter`, and `pytest` (with `hypothesis`) are dev dependencies
-in the root `pyproject.toml`. `lint-imports` enforces the layering (`core ← infra ←
-{infra-<broker>} ← {strategy,execution} ← frontend`, and "infra is blind to alpha"):
-treat a broken contract as a build failure, not a warning. The gate runs green on the
-M0 keystone (`packages/core`, `packages/infra/contracts`). Branch coverage on the
-analytics/risk core is a separate, deliberate step: `uv run pytest --cov`.
-
-The pre-restructure flat build still lives under **`backend/`** with its own gate
-(`cd backend && uv run ruff check . && uv run mypy . && uv run pytest -q`) until each
-workstream's modules are ported into `packages/infra/` and the old tree is retired.
-The root gate deliberately excludes `backend/`, the reference checkout, and notebooks.
+This is the **only** gate. `ruff`, `mypy`, `import-linter`, and `pytest` (with
+`hypothesis`) are dev dependencies in the root `pyproject.toml`. `lint-imports` enforces
+the layering (`core ← infra ← {infra-<broker>} ← {strategy,execution} ← frontend`, and
+"infra is blind to alpha"): treat a broken contract as a build failure, not a warning.
+Branch coverage on the analytics/risk core is a separate, deliberate step:
+`uv run pytest --cov`. The gate scopes to `packages/` + `apps/`; it deliberately
+excludes the read-only reference checkout, notebooks, and scratch dirs.
 
 **frontend/** (Vite/JS): the React/Vite web app under `apps/frontend/web` verifies with
 `npm run lint && npm test` once scaffolded; its Python BFF is covered by the root gate.

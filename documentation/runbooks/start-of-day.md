@@ -15,10 +15,10 @@ empty or holey raw layer.
 
 ## Steps
 
-Everything runs from `backend/`. Sync first if you have not today.
+Everything runs from the repo root against the `algotrading.infra` packages. Sync first
+if you have not today.
 
 ```
-cd backend
 uv sync
 ```
 
@@ -39,17 +39,15 @@ uv sync
    > (pre-migration) one, kept until C1 lands the Nautilus runtime.
 
    To prove the *live socket* against a running Gateway/TWS — connect read-only, expand a
-   bounded option chain, subscribe, and write at least one raw event — run the live IBKR
-   smoke instead (it needs the optional broker SDK and a reachable gateway):
+   bounded option chain, subscribe, and write at least one raw event — you would run the live
+   IBKR smoke (it needs the optional broker SDK and a reachable gateway). That manual smoke
+   script lived in the retired `backend/scripts/` tree (`ibkr_live_smoke.py`) and was *not*
+   ported to the monorepo, so there is no current entrypoint for it — treat live-socket
+   smoke as a known gap until it is reinstated.
 
-   ```
-   uv sync --extra ibkr
-   uv run python scripts/ibkr_live_smoke.py --symbol AAPL --max-expiries 2 --seconds 30
-   ```
-
-   Healthy output ends with an `OK:` line and a non-zero event count. Any failure prints a
-   `FAIL:` line naming the step (connect, qualify, materialize, or no events) and exits
-   non-zero. See ADR 0008 and `backend/src/connectivity/README.md`.
+   Healthy output ended with an `OK:` line and a non-zero event count; any failure printed a
+   `FAIL:` line naming the step (connect, qualify, materialize, or no events) and exited
+   non-zero. See ADR 0008 and `../../packages/infra/src/algotrading/infra/connectivity/README.md`.
 
 2. Refresh the universe for the trade date. This resolves the broker's option-chain
    rows into canonical `InstrumentMaster` rows and writes them append-only. It is
@@ -79,7 +77,7 @@ uv sync
    (`orchestration.refresh_universe`); at start of day you run it standalone to confirm
    the chain resolves. A bad row (missing multiplier or currency, unparseable expiry)
    raises `UnresolvedContractError` naming the offending field — a loud failure, never a
-   silent drop. See `backend/src/universe/README.md`.
+   silent drop. See `../../packages/infra/src/algotrading/infra/universe/README.md`.
 
 3. Start collection for the day. The collector subscribes, normalizes each tick to a
    `RawMarketEvent`, stamps it, and persists append-only. The `session_id` must be
@@ -118,4 +116,4 @@ shows a non-zero `event_count`, a `coverage_ratio` at or near 1.0, and `gap_coun
   thin or dropping. This is the `check_collector_continuity` and
   `check_underlying_quote_health` QC checks' territory; see the
   [incident-response runbook](incident-response.md) and the
-  [QC README](../../backend/src/qc/README.md).
+  [QC README](../../packages/infra/src/algotrading/infra/qc/README.md).

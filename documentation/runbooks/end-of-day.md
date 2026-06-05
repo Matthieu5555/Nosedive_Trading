@@ -14,7 +14,8 @@ sequence is restartable and skips whatever already finished cleanly (see Restart
 
 ## Steps
 
-Everything runs from `backend/`. The one entrypoint is `run_end_of_day`. You hand it the
+Everything runs from the repo root against the `algotrading.infra` packages; the one
+entrypoint is `run_end_of_day` (in `algotrading.infra.orchestration`). You hand it the
 five stages as zero-argument callables that close over your store, config, clock, and
 correlation id; the pipeline runs them in order, records each clean completion, and on a
 restart skips whatever already finished.
@@ -90,7 +91,7 @@ other nine checks read C/D objects the caller already has in hand (forwards, IV 
 slice fits, risk lines). Build those `QcResult` rows with the matching `qc.check_*`
 functions and pass them in via `extra_results=` so `run_qc` stays the single place that
 rolls the report, persists the rows, and computes escalation. See the
-[QC README](../../backend/src/qc/README.md) for the ten checks and their inputs.
+[QC README](../../packages/infra/src/algotrading/infra/qc/README.md) for the ten checks and their inputs.
 
 ## Healthy output
 

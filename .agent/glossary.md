@@ -126,9 +126,10 @@ instead.
 - **Actor** — the driver that transports market state into C/D's pure functions and
   stamps/persists their outputs; it holds no math. Under
   [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md) Nautilus is the
-  runtime spine, so the actor is a thin Nautilus `Actor` hosting those pure functions; the
-  framework-free `backend/src/actor` is the salvage source for that pure core. The same actor
-  runs live and replay (Nautilus's live==backtest property).
+  runtime spine, so the actor is a thin Nautilus `Actor` hosting those pure functions; it lives
+  in `packages/infra/src/algotrading/infra/actor` (the pure `run_analytics` core was salvaged
+  from the now-retired flat tree). The same actor runs live and replay (Nautilus's
+  live==backtest property).
 - **Same-code-path replay** — the invariant that a live run and a replay of the
   same trade date call the identical `run_analytics`, differing only in who
   populated the raw layer first. Verified by `test_replay_byte_identical.py`.

@@ -1,1 +1,1 @@
-../../backend/src/qc/README.md
+../../packages/infra/src/algotrading/infra/qc/README.md

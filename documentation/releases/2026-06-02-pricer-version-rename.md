@@ -10,8 +10,9 @@ This is the human-readable half of a provenance-tag correction, filed per
 ## What changed
 
 `PRICER_VERSION` renamed from `black76-crr-1.0.0` to `black76-lr-1.0.0` in
-`backend/src/pricing/engine.py`. Label-only correction: the American engine is and
-always has been Leisen-Reimer (`backend/src/pricing/american.py`), never
+`packages/infra/src/algotrading/infra/pricing/engine.py`. Label-only correction: the
+American engine is and always has been Leisen-Reimer
+(`packages/infra/src/algotrading/infra/pricing/american.py`), never
 Cox-Ross-Rubinstein, so `crr` was a misnomer in the tag. No price, Greek, or
 scenario formula changed.
 

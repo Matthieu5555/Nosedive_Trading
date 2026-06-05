@@ -1,1 +1,0 @@
-../../backend/src/config/README.md

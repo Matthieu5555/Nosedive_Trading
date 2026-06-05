@@ -27,10 +27,11 @@ There *is* now a concrete live `IbkrBrokerSession` over `ib_async` (ADR 0008), b
 broker SDK is an optional dependency, not installed by default — a live session requires
 `uv sync --extra ibkr` and a running Gateway/TWS. The spec still forbids a live IBKR
 session in the test suite, so the suite drives the adapter through a fake `ib_async` and
-the live socket is proven only by `backend/scripts/ibkr_live_smoke.py`, run by hand. The
+the live socket is proven only by a manual smoke script that lived in the retired
+`backend/` tree and was not ported into the monorepo, run by hand. The
 default `uv run pytest` runs broker-free against the `FakeBrokerSession` and the disk
 `ReplayBrokerSession`. The adapter is read-only: it reads market data and never places an
-order. See `backend/src/connectivity/README.md`. (Under
+order. See `packages/infra/src/algotrading/infra/connectivity/README.md`. (Under
 [ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md), IBKR
 connectivity moves to Nautilus's shipped adapter; this hand-rolled `ib_async` `IbkrBrokerSession`
 is superseded.)
@@ -41,8 +42,9 @@ to carry its own currency and multiplier (never defaulted) — there is no cross
 reconciliation and no FX layer. A contract's currency is a field on its key, not a
 portfolio-level conversion.
 
-**No FastAPI service yet.** There is no `app` object and `main.py` is still the `uv init`
-hello-world stub (`backend/README.md`). The platform is driven as a library — from the
+**No FastAPI service yet.** There is no `app` object and no service entrypoint; the
+`main.py`/HTTP-service layer was never built (the old `backend/` tree carried only a
+`uv init` hello-world stub, now gone). The platform is driven as a library — from the
 runbook scripts and the pipeline entrypoints — not served over HTTP. Standing up the
 service is later work; the workspace README's `uvicorn main:app` command does not work
 today.
@@ -100,7 +102,8 @@ Escalation path: an operator handles `notice`-level items from the triage queue 
 runbooks. A `page` goes to the workstream owner of the failing layer — connectivity and
 collection issues to B's owner, forward/IV/surface/pricing issues to C's owner, risk and
 scenario issues to D's owner, orchestration/QC/replay and any determinism break to E's
-owner (Workstream E owns `src/orchestration`, `src/qc`, the actor, and `documentation/`). A
+owner (Workstream E owns `packages/infra/src/algotrading/infra/orchestration`,
+`packages/infra/src/algotrading/infra/qc`, the actor, and `documentation/`). A
 contract change request goes to A's owner, never made in place (see
 [interface contracts](interface-contracts.md)). The workstream owners and their branches
 are listed in the task files under `tasks/`; the routing table for which directory owns

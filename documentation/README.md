@@ -1,11 +1,11 @@
 # Operations docs
 
 This is the operations handbook for the volatility platform — the layer that turns
-the green code under `backend/src` into something a person can run, watch, and fix
-without the original authors. Everything here describes what the code does today, not
-what it is meant to do; if a command here stops working, the end-to-end test
-`backend/tests/test_handover_e2e.py` is meant to go red and force this doc back into
-line.
+the green code under `packages/infra/src/algotrading/infra` into something a person can
+run, watch, and fix without the original authors. Everything here describes what the
+code does today, not what it is meant to do; if a command here stops working, the
+end-to-end test `packages/infra/tests/test_handover_e2e.py` is meant to go red and force
+this doc back into line.
 
 Start with the runbook for the task in front of you. The five live in
 [`runbooks/`](runbooks/): [start of day](runbooks/start-of-day.md),
@@ -27,14 +27,13 @@ does *not* do, and who to contact when something breaks.
 
 This is the path the acceptance test drives. Do it once on a fresh checkout and you
 will understand the shape of the whole system. Every command below is real; the test
-`backend/tests/test_handover_e2e.py` runs the same sequence and asserts an artifact at
-each step.
+`packages/infra/tests/test_handover_e2e.py` runs the same sequence and asserts an
+artifact at each step.
 
-First, set up the environment. The backend uses `uv` for everything; never pip or
-conda.
+First, set up the environment. The workspace uses `uv` for everything; never pip or
+conda. Run from the repo root.
 
 ```
-cd backend
 uv sync
 ```
 
@@ -47,18 +46,15 @@ uv run ruff check . && uv run mypy . && uv run pytest -q
 
 Second, run the connectivity smoke test. It is the bootstrap the start-of-day runbook
 opens with: resolve one contract off a (fake) broker session, capture one quote, write
-it to disk, and place no orders.
-
-```
-uv run pytest tests/test_smoke_bootstrap.py -q
-```
+it to disk, and place no orders. The start-of-day runbook names the exact command for
+the bootstrap smoke under `packages/infra/tests/`.
 
 Third, trigger a replay. Reconstruction replays a stored raw day through the *same*
 actor compute path as live and writes the derived analytics. The replay/backfill
 runbook has the full script; the one-line proof that it works is:
 
 ```
-uv run pytest tests/test_replay_byte_identical.py -q
+uv run pytest packages/infra/tests/test_replay_byte_identical.py -q
 ```
 
 That test runs `actor.run_analytics` over a live event stream and `actor.run_day`
@@ -73,8 +69,8 @@ Fourth, read a QC report. The QC plane is a library of ten named checks; the
 orchestration layer's `run_qc` runs them over a day's outputs and rolls a report whose
 triage table names the exact failing object. See the
 [end-of-day runbook](runbooks/end-of-day.md) for how to generate one, and the
-[QC README](../backend/src/qc/README.md) for the ten checks and the triage/escalation
-rules.
+[QC README](../packages/infra/src/algotrading/infra/qc/README.md) for the ten checks and
+the triage/escalation rules.
 
 Fifth — the question the acceptance criterion ends on — know where to investigate a
 failed surface build. A surface is built per maturity from that maturity's IV points,
@@ -85,15 +81,19 @@ solves converge for that maturity?), then `check_forward_stability` and
 `check_parity_residual` (was the forward recoverable?), then
 `check_underlying_quote_health` and `check_collector_continuity` (was the input data
 even there?). The [incident-response runbook](runbooks/incident-response.md) lays this
-walk out as a table. The code lives in `backend/src/surfaces`, `backend/src/iv`,
-`backend/src/forwards`, and `backend/src/snapshots`; the actor that wires them is
-`backend/src/actor`.
+walk out as a table. The code lives in
+`packages/infra/src/algotrading/infra/surfaces`,
+`packages/infra/src/algotrading/infra/iv`,
+`packages/infra/src/algotrading/infra/forwards`, and
+`packages/infra/src/algotrading/infra/snapshots`; the actor that wires them is
+`packages/infra/src/algotrading/infra/actor`.
 
 ## Where the truth lives
 
 These docs are the operations layer. The authority on *what each module does* is the
-README next to the code (`backend/src/<module>/README.md`) and the typed contracts in
-`backend/src/contracts`. For convenience those per-module READMEs are also reachable
+README next to the code (`packages/infra/src/algotrading/infra/<module>/README.md`) and
+the typed contracts in `packages/infra/src/algotrading/infra/contracts`. For convenience
+those per-module READMEs are also reachable
 from one roof here: [`modules/`](modules/) holds a symlink to each one, so the same
 single file lives next to its code *and* under `documentation/` — there is no second
 copy to drift. The authority on *why* a non-obvious choice was made is the ADRs in

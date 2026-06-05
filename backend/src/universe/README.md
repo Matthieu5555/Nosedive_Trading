@@ -41,16 +41,23 @@ u.symbols()                              # every underlying symbol, sorted
 ## Public interface
 
 The module splits cleanly into a write path, a read path, and the broker-agnostic
-chain-planning policy that decides *which* contracts to ask a broker for.
+chain-selection policy that decides *which* contracts to ask a broker for and *which* of
+those to stream.
 
-- `chain_planning.py` — the selection policy, in broker-neutral terms. `ChainSelection`
-  bounds the request (nearest N expiries, a strike window around spot, a minimum per
-  side); `AvailableChain` is one normalized listing a broker offered; `plan_chain`
-  composes `select_chain` (which listing — primary trading class before a secondary
-  settlement class, the SPY/2SPY rule), `select_expiries`, and `select_strikes` into a
-  `ChainPlan` a broker adapter expands into real contracts. No broker type appears here;
-  an adapter normalizes its native chain-discovery rows into `AvailableChain` and reads
-  back a `ChainPlan`.
+- `chain_planning.py` — the single chain-selection policy, in broker-neutral terms, in
+  two stages bound by one `ChainSelection` config (nearest N expiries, a strike window
+  around spot, a minimum per side, and a per-session capture budget). **Discovery:**
+  `AvailableChain` is one normalized listing a broker offered, and `plan_chain` composes
+  `select_chain` (which listing — primary trading class before a secondary settlement
+  class, the SPY/2SPY rule), `select_expiries`, and `select_strikes` into a `ChainPlan` a
+  broker adapter expands into real contracts to *qualify into the universe*. **Capture:**
+  `select_capture_keys` takes the already-resolved `InstrumentKey`s and returns the
+  canonical keys to *actually stream* — the nearest-the-money strikes (both rights) across
+  the nearest maturities, capped to `max_strikes_per_session` split across them, underlyings
+  always kept. This is the one place the chain is narrowed; there is no second per-broker or
+  per-script selection. No broker type appears here — an adapter normalizes its native
+  chain-discovery rows into `AvailableChain`, reads back a `ChainPlan`, and the capture stage
+  works off the resolved universe.
 - `normalization.py` — `resolve_contract_row`: one raw broker row → one validated
   `InstrumentKey`, plus the field normalizers `normalize_expiry` and `normalize_right`.
   This is the strict gate.

@@ -7,13 +7,12 @@
 > `config_hashes` dict on every `ProvenanceStamp`; injected code identity (commit SHA +
 > dirty) on the run manifest; per-run config freeze + `validate_manifest`. The owner
 > prerequisite (*no new compute until params are in YAML and reproducibility is locked*)
-> is met for **replay-a-run**. Two carry-forwards remain, both explicitly staged later or
-> operational (non-blocking):
+> is met for **replay-a-run**. The operational `broker.yaml` client-id bands + backoff are
+> now wired too (typed `BrokerConfig` via `load_broker_config`). **One carry-forward
+> remains**, explicitly staged later (non-blocking):
 > - **Effective-dated profile store** — ADR 0028's "Next" stage (a runtime metadata
 >   store) for resolving "the config in force on day D" to replay a *past day fresh*. The
 >   "now" stage it mandates (YAML overlays + per-run manifest freeze) is done.
-> - **Operational `broker.yaml` client-id bands / backoff** — not hashed (operational);
->   the YAML documents them, wiring the supervisor to read them is the remaining step.
 
 
 - **Owns:** `packages/core/src/algotrading/core/config/**`, new `packages/infra/**/configs/*.yaml`,

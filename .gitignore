@@ -14,6 +14,13 @@ wheels/
 htmlcov/
 coverage.xml
 
+# Tool caches (gate tooling: ruff, mypy, pytest, hypothesis, import-linter)
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+
 # Node / frontend
 node_modules/
 

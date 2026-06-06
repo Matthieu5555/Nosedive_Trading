@@ -57,6 +57,7 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
+| Vincent (Claude) | H1 **landed**; H2 in flight — doc layer: `packages/**`+`apps/**` READMEs, `.agent/map.md`+`glossary.md`, `blueprint/09`+`10` catalogs, `documentation/` index, root `README.md`, + gate-wired doc-freshness check | 2026-06-06 | branch `chore/h1-h2-hygiene-and-docs` off `e0ab3ab`. Touches docs only — **not** `packages/`/`apps/` code, **not** `blueprint/` domain content. H1 report: [tasks/H1-repo-hygiene-report.md](H1-repo-hygiene-report.md). |
 
 ## What's next — the index-analytics build
 
@@ -87,13 +88,14 @@ converged seam → contract-test map. Code without the named tests is not done.
   profile record (`name → versions`, each with `effective_from` + a content hash a run
   pins) + an as-of resolver. Details in [C7-config-hardening.md](C7-config-hardening.md)
   (task 5, point 9) and its STATUS header.
-- **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) (queued, after C7).** The two merged
-  projects left debris worth sweeping once C7 lands: obsolete/duplicate dirs (e.g. `.agent/`
-  canonical vs `.agents/`, `.codex/`), stray tool caches, and dead paths. Do it as a **read-only
-  classification first** — tag every suspect path as obsolete / debris / reference / human-decision
-  and get the report reviewed *before* moving anything. Decision so far: `Test Lenny/` and
-  `Vincent's Code/` **stay in place**, each flagged by its own README banner; their on-disk removal
-  is the admin's call, not the audit's. Full method + done criteria in the spec.
+- **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
+  Read-only classification done; report at [H1-repo-hygiene-report.md](H1-repo-hygiene-report.md).
+  Outcome: **no tracked dead paths** (nothing to `git rm`). Applied safe patch — added the five
+  missing tool-cache patterns to `.gitignore` (`.mypy_cache/`, `.pytest_cache/`, `.ruff_cache/`,
+  `.hypothesis/`, `.import_linter_cache/`; all were untracked) and `rmdir`'d the two empty
+  never-tracked merge stubs `.agents/` and `.codex/`. `Test Lenny/`, `Vincent's Code/`, `ThomasOssen/`
+  left in place and flagged. Gate green. `Vincent's Code/` on-disk removal stays a `matthieu`/admin
+  step (see below).
 - **[H2 — doc reconciliation](H2-doc-reconciliation.md) (queued, after H1).** Refresh the layered
   docs to the **post-merge** behavior (Nautilus spine, push collection seam, C7 config) and complete
   the bottom-up README ladder leaf→root, so `map → directory README → code` actually holds. The

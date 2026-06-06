@@ -1,5 +1,21 @@
 # C7 — Config hardening: kill hardcoding, wire validated config, lock reproducibility
 
+> **STATUS (2026-06-06): landed — tasks 1–5 done; gate reopened for new compute.**
+> Six Part VII YAML bundles + the bundle-aware `load_platform_config`; every hashed
+> economic param (solver vol bracket, SVI bounds, forward-confidence heuristics, scenario
+> `roll_down_days`) repatriated into validated typed config and threaded by DI; per-bundle
+> `config_hashes` dict on every `ProvenanceStamp`; injected code identity (commit SHA +
+> dirty) on the run manifest; per-run config freeze + `validate_manifest`. The owner
+> prerequisite (*no new compute until params are in YAML and reproducibility is locked*)
+> is met for **replay-a-run**. Two carry-forwards remain, both explicitly staged later or
+> operational (non-blocking):
+> - **Effective-dated profile store** — ADR 0028's "Next" stage (a runtime metadata
+>   store) for resolving "the config in force on day D" to replay a *past day fresh*. The
+>   "now" stage it mandates (YAML overlays + per-run manifest freeze) is done.
+> - **Operational `broker.yaml` client-id bands / backoff** — not hashed (operational);
+>   the YAML documents them, wiring the supervisor to read them is the remaining step.
+
+
 - **Owns:** `packages/core/src/algotrading/core/config/**`, new `packages/infra/**/configs/*.yaml`,
   the per-domain config objects across `infra/{qc,validation,iv,surfaces,forwards,universe,
   connectivity,orchestration,risk}`, the manifest/provenance reproducibility hardening in

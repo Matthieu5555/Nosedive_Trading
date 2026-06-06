@@ -324,6 +324,18 @@ _BUNDLE_SECTIONS: dict[str, tuple[str, ...]] = {
 }
 
 
+def config_snapshot(config: PlatformConfig) -> dict[str, Any]:
+    """Return the fully-resolved config as a plain, JSON-ready mapping (the manifest freeze).
+
+    One key per typed section (``{universe, qc_threshold, solver, surface, forward,
+    scenario}``), each the section's canonical field mapping. A run's manifest stores this
+    snapshot so the run replays from the manifest alone — git is dev-time only (ADR 0028).
+    It round-trips through :func:`config_from_mapping`, and ``validate_manifest`` recomputes
+    :func:`config_hashes` from it and rejects a snapshot whose hashes do not match.
+    """
+    return {name: _canonical(getattr(config, name)) for name in SECTION_NAMES}
+
+
 def config_hashes(config: PlatformConfig) -> dict[str, str]:
     """Return the per-bundle reproducibility hashes — the blueprint manifest form.
 

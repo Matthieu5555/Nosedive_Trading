@@ -60,6 +60,7 @@ class RunRecord:
                 code_version=m["code_version"],
                 code_identity=m.get("code_identity", "unknown"),
                 config_hashes=m["config_hashes"],
+                config_snapshot=m.get("config_snapshot", {}),
                 input_partitions=m["input_partitions"],
                 output_partitions=m["output_partitions"],
                 status=m["status"],

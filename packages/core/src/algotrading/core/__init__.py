@@ -19,6 +19,7 @@ from .config import (
     composite_config_hash,
     config_hash,
     config_hashes,
+    config_snapshot,
     from_config,
     load_platform_config,
     load_yaml_config,
@@ -26,7 +27,7 @@ from .config import (
     section_versions,
 )
 from .log import get_logger
-from .manifest import Manifest
+from .manifest import Manifest, ManifestValidationError, validate_manifest
 from .provenance import (
     ProvenanceError,
     ProvenanceStamp,
@@ -44,6 +45,7 @@ __all__ = [
     "ForwardConfig",
     "LoadedConfig",
     "Manifest",
+    "ManifestValidationError",
     "PlatformConfig",
     "ProvenanceError",
     "ProvenanceStamp",
@@ -60,6 +62,7 @@ __all__ = [
     "composite_config_hash",
     "config_hash",
     "config_hashes",
+    "config_snapshot",
     "get_logger",
     "from_config",
     "load_platform_config",
@@ -68,5 +71,6 @@ __all__ = [
     "section_versions",
     "source_ref",
     "stamp",
+    "validate_manifest",
     "validate_stamp",
 ]

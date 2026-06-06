@@ -15,6 +15,8 @@ import sys
 import pytest
 from algotrading.core import (
     ForwardConfig,
+    Manifest,
+    ManifestValidationError,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -23,11 +25,15 @@ from algotrading.core import (
     UniverseConfig,
     composite_config_hash,
     config_hash,
+    config_hashes,
+    config_snapshot,
     from_config,
     load_yaml_config,
     section_hash,
     section_versions,
+    validate_manifest,
 )
+from algotrading.core.config import config_from_mapping
 
 
 def _surface(version: str = "surf-1") -> SurfaceConfig:
@@ -445,3 +451,66 @@ def test_from_config_surfaces_a_bad_economic_value(tmp_path) -> None:
     with pytest.raises(ConfigFieldError) as exc:
         from_config(load_yaml_config(bad, base=base))
     assert exc.value.section == "qc_threshold" and exc.value.field == "min_chain_count"
+
+
+# -- per-bundle hashes + manifest freeze / validate_manifest (C7 increment 3a/4) -----
+
+def _manifest(config: PlatformConfig, **overrides: object) -> Manifest:
+    """A minimal Manifest frozen from a config — snapshot + per-bundle hashes."""
+    kwargs: dict = dict(
+        run_id="run-1",
+        environment="test",
+        code_version="1.0.0",
+        config_hashes=config_hashes(config),
+        config_snapshot=config_snapshot(config),
+        input_partitions={},
+        output_partitions={},
+        status="ok",
+    )
+    kwargs.update(overrides)
+    return Manifest(**kwargs)  # type: ignore[arg-type]
+
+
+def test_config_hashes_are_per_bundle_and_move_only_their_bundle() -> None:
+    # The blueprint manifest form: one hash per hashed Part VII bundle. An economic field
+    # change moves exactly its bundle's hash and leaves the others byte-identical.
+    import dataclasses
+
+    base = _config()
+    hashes = config_hashes(base)
+    assert set(hashes) == {"universe", "qc", "pricing", "scenarios"}
+
+    # Move a solver field — only the pricing bundle (which carries solver) changes.
+    moved = dataclasses.replace(base, solver=dataclasses.replace(base.solver, iv_tolerance=1e-9))
+    moved_hashes = config_hashes(moved)
+    assert moved_hashes["pricing"] != hashes["pricing"]
+    assert {k: moved_hashes[k] for k in ("universe", "qc", "scenarios")} == {
+        k: hashes[k] for k in ("universe", "qc", "scenarios")
+    }
+
+
+def test_manifest_freeze_round_trips_and_validates() -> None:
+    # A run replays from its manifest alone: the frozen snapshot rebuilds the same config,
+    # and validate_manifest accepts a snapshot whose hashes match it.
+    config = _config()
+    manifest = _manifest(config)
+    assert config_from_mapping(manifest.config_snapshot) == config
+    validate_manifest(manifest)  # raises on mismatch; reaching here is the assertion
+
+
+def test_validate_manifest_rejects_a_hash_that_disagrees_with_the_snapshot() -> None:
+    # A tampered/stale snapshot cannot pass as a faithful freeze: the stored bundle hash
+    # no longer equals a fresh recompute from the snapshot.
+    config = _config()
+    tampered = _manifest(config, config_hashes={**config_hashes(config), "pricing": "0" * 64})
+    with pytest.raises(ManifestValidationError) as exc:
+        validate_manifest(tampered)
+    assert exc.value.bundle == "pricing"
+
+
+def test_validate_manifest_accepts_a_snapshotless_manifest_with_hashes() -> None:
+    # Older partitions (or a run that did not freeze a snapshot) validate as long as they
+    # carry at least one bundle hash — the additive-nullable schema-evolution case.
+    config = _config()
+    manifest = _manifest(config, config_snapshot={})
+    validate_manifest(manifest)

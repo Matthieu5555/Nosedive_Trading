@@ -172,6 +172,45 @@ class SurfaceConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ForwardConfig:
+    """Confidence/quality heuristics for the put-call-parity forward estimate.
+
+    These map a maturity's used-pair count and relative fit residual to a quality label
+    and a 0..1 confidence every downstream consumer trusts. Authored in ``pricing.yaml``
+    under ``forward:``. (The minimum-pairs floor for the regression — two unknowns need
+    two equations — and the residual float-noise floor are mathematical/precision
+    invariants and stay code constants.)
+    """
+
+    version: str
+    good_rel_residual: float
+    fair_rel_residual: float
+    full_credit_pairs: float
+    rel_residual_halflife: float
+    single_pair_confidence: float
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ConfigFieldError("forward", "version", self.version, "must be non-empty")
+        for name in ("good_rel_residual", "fair_rel_residual", "rel_residual_halflife"):
+            value = getattr(self, name)
+            _finite("forward", name, value)
+            if value <= 0.0:
+                raise ConfigFieldError("forward", name, value, "must be > 0")
+        if self.full_credit_pairs <= 0.0:
+            raise ConfigFieldError(
+                "forward", "full_credit_pairs", self.full_credit_pairs, "must be > 0"
+            )
+        if not 0.0 <= self.single_pair_confidence <= 1.0:
+            raise ConfigFieldError(
+                "forward",
+                "single_pair_confidence",
+                self.single_pair_confidence,
+                "must be in [0, 1]",
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ScenarioConfig:
     """The stress grid applied by the risk engine.
 
@@ -207,12 +246,13 @@ class PlatformConfig:
     qc_threshold: QcThresholdConfig
     solver: SolverConfig
     surface: SurfaceConfig
+    forward: ForwardConfig
     scenario: ScenarioConfig
 
 
 # The section names, in the order they hash, exposed so callers (and tests)
 # can iterate the version stamps without hand-listing them.
-SECTION_NAMES = ("universe", "qc_threshold", "solver", "surface", "scenario")
+SECTION_NAMES = ("universe", "qc_threshold", "solver", "surface", "forward", "scenario")
 
 
 def _canonical(value: Any) -> Any:

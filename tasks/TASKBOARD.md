@@ -56,7 +56,7 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| — | — | — | _No active claims._ |
+| claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
 
 ## What's next — the index-analytics build
 

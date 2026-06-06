@@ -14,6 +14,7 @@ import sys
 
 import pytest
 from algotrading.core import (
+    ForwardConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -42,6 +43,17 @@ def _surface(version: str = "surf-1") -> SurfaceConfig:
     )
 
 
+def _forward(version: str = "fwd-1") -> ForwardConfig:
+    return ForwardConfig(
+        version=version,
+        good_rel_residual=1e-3,
+        fair_rel_residual=1e-2,
+        full_credit_pairs=4.0,
+        rel_residual_halflife=1e-3,
+        single_pair_confidence=0.30,
+    )
+
+
 def _config() -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(version="u-1", underlyings=("SPX", "NDX"), exchange="CBOE"),
@@ -50,6 +62,7 @@ def _config() -> PlatformConfig:
         ),
         solver=SolverConfig(version="s-1", iv_tolerance=1e-8, max_iterations=100),
         surface=_surface("surf-1"),
+        forward=_forward("fwd-1"),
         scenario=ScenarioConfig(
             version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
         ),
@@ -88,6 +101,7 @@ def test_section_versions_lists_every_section_stamp() -> None:
         "qc_threshold": "qc-1",
         "solver": "s-1",
         "surface": "surf-1",
+        "forward": "fwd-1",
         "scenario": "sc-1",
     }
 
@@ -104,7 +118,7 @@ def test_config_hash_is_stable_across_processes() -> None:
     expected = config_hash(_config())
     code = (
         "from algotrading.core import (PlatformConfig, UniverseConfig, QcThresholdConfig,"
-        " SolverConfig, SurfaceConfig, ScenarioConfig, config_hash);"
+        " SolverConfig, SurfaceConfig, ForwardConfig, ScenarioConfig, config_hash);"
         "print(config_hash(PlatformConfig("
         "universe=UniverseConfig(version='u-1', underlyings=('SPX','NDX'), exchange='CBOE'),"
         "qc_threshold=QcThresholdConfig(version='qc-1', max_spread_pct=0.05,"
@@ -113,6 +127,8 @@ def test_config_hash_is_stable_across_processes() -> None:
         "surface=SurfaceConfig(version='surf-1', svi_a_bounds=(0.0,10.0), svi_b_bounds=(1e-8,10.0),"
         " svi_rho_bounds=(-0.999,0.999), svi_m_bounds=(-5.0,5.0), svi_sigma_bounds=(1e-8,10.0),"
         " svi_bound_hit_tol=1e-5, svi_max_iterations=200),"
+        "forward=ForwardConfig(version='fwd-1', good_rel_residual=1e-3, fair_rel_residual=1e-2,"
+        " full_credit_pairs=4.0, rel_residual_halflife=1e-3, single_pair_confidence=0.30),"
         "scenario=ScenarioConfig(version='sc-1', spot_shocks=(-0.1,0.0,0.1),"
         " vol_shocks=(-0.02,0.02)))))"
     )
@@ -167,6 +183,13 @@ surface:
   svi_sigma_bounds: [1.0e-8, 10.0]
   svi_bound_hit_tol: 1.0e-5
   svi_max_iterations: 200
+forward:
+  version: fwd-base
+  good_rel_residual: 1.0e-3
+  fair_rel_residual: 1.0e-2
+  full_credit_pairs: 4.0
+  rel_residual_halflife: 1.0e-3
+  single_pair_confidence: 0.30
 scenario:
   version: sc-base
   spot_shocks: [-0.1, 0.0, 0.1]
@@ -243,6 +266,9 @@ _BUNDLES = {
         "  svi_b_bounds: [1.0e-8, 10.0]\n  svi_rho_bounds: [-0.999, 0.999]\n"
         "  svi_m_bounds: [-5.0, 5.0]\n  svi_sigma_bounds: [1.0e-8, 10.0]\n"
         "  svi_bound_hit_tol: 1.0e-5\n  svi_max_iterations: 200\n"
+        "forward:\n  version: fwd-1\n  good_rel_residual: 1.0e-3\n"
+        "  fair_rel_residual: 1.0e-2\n  full_credit_pairs: 4.0\n"
+        "  rel_residual_halflife: 1.0e-3\n  single_pair_confidence: 0.30\n"
     ),
     "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\nroll_down_days: [1]\n",
 }
@@ -277,6 +303,7 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
             ),
             solver=SolverConfig(version="s-1", iv_tolerance=1e-8, max_iterations=100),
             surface=_surface("surf-1"),
+            forward=_forward("fwd-1"),
             scenario=ScenarioConfig(
                 version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
             ),

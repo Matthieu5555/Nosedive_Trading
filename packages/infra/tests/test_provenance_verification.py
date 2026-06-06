@@ -40,7 +40,7 @@ from algotrading.infra.contracts import (
 from algotrading.infra.contracts.instrument_key import InstrumentKey
 from algotrading.infra.storage import ParquetStore
 from fixtures.events import quote_events
-from fixtures.library import SURFACE_CONFIG, ChainFixture, get_fixture
+from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_fixture
 
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
@@ -69,6 +69,7 @@ def _config() -> PlatformConfig:
         ),
         solver=SolverConfig(version="iv-1", iv_tolerance=1e-12, max_iterations=200),
         surface=SURFACE_CONFIG,
+        forward=FORWARD_CONFIG,
         scenario=ScenarioConfig(
             version="scn-1", spot_shocks=(-0.05, 0.05), vol_shocks=(0.05, -0.05)
         ),

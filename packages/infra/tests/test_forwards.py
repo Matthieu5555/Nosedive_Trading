@@ -35,10 +35,20 @@ from algotrading.infra.utils.robust import (
     outlier_flags,
     theil_sen_line,
 )
+from fixtures.library import FORWARD_CONFIG
 from fixtures.synthetic import SyntheticSurface, build_synthetic_surface
 
 # A fixed spot for the synthetic chain: the fixture sets underlying_spot = F * DF.
 _SYNTH_SPOT = 100.0 * 0.99  # 99.0
+
+
+def _estimate_fwd(*args: object, **kwargs: object) -> object:
+    """Call estimate_forward with the canonical test ForwardConfig injected.
+
+    The confidence heuristics are economic config now (C7); these tests exercise the
+    estimator, not config plumbing, so they share one fixed config.
+    """
+    return estimate_forward(*args, config=FORWARD_CONFIG, **kwargs)  # type: ignore[arg-type]
 
 
 def _pair(strike: float, call_mid: float, put_mid: float, liquidity: float = 1.0) -> ForwardPair:
@@ -141,7 +151,7 @@ def test_outlier_flags_floor_prevents_false_positives_on_clean_data() -> None:
 # --------------------------------------------------------------------------- #
 def test_recovers_known_forward_and_discount_factor() -> None:
     surface = build_synthetic_surface()  # F=100, DF=0.99, T=0.25
-    estimate = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
     assert estimate.is_usable
     assert estimate.forward == pytest.approx(surface.forward, rel=1e-9)
@@ -158,7 +168,7 @@ def test_recovers_implied_carry_and_dividend() -> None:
     # Eq 5. The fixture sets spot = F * DF, i.e. carry == rate, so q == 0 by hand:
     #   r = -ln(0.99)/0.25 ; b = ln(100/99)/0.25 ; q = r - b == 0.
     surface = build_synthetic_surface()
-    estimate = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
     assert estimate.implied_rate == pytest.approx(-math.log(0.99) / 0.25, rel=1e-9)
     assert estimate.implied_carry == pytest.approx(math.log(100.0 / 99.0) / 0.25, rel=1e-9)
@@ -187,7 +197,7 @@ def test_single_outlier_is_rejected_and_forward_is_unchanged(
         )
         for point in surface.points
     )
-    estimate = estimate_forward("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
     rejected = [point.strike for point in estimate.points if point.rejected]
     assert rejected == [bad_strike]
     assert estimate.rejected_count == 1
@@ -196,7 +206,7 @@ def test_single_outlier_is_rejected_and_forward_is_unchanged(
 
 def test_clean_chain_rejects_nothing() -> None:
     surface = build_synthetic_surface()
-    estimate = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
     assert estimate.rejected_count == 0
     assert all(not point.rejected for point in estimate.points)
@@ -226,11 +236,11 @@ def test_forward_is_stable_across_strike_subset_changes() -> None:
             if p.strike in strikes
         )
 
-    full = estimate_forward("AAPL", surface.maturity_years,
+    full = _estimate_fwd("AAPL", surface.maturity_years,
                             pairs_for((80.0, 90.0, 100.0, 110.0, 120.0)), spot=_SYNTH_SPOT)
     assert full.forward is not None
     for subset in [(90.0, 100.0, 110.0), (80.0, 90.0, 100.0, 110.0), (90.0, 100.0, 110.0, 120.0)]:
-        sub = estimate_forward("AAPL", surface.maturity_years, pairs_for(subset), spot=_SYNTH_SPOT)
+        sub = _estimate_fwd("AAPL", surface.maturity_years, pairs_for(subset), spot=_SYNTH_SPOT)
         assert sub.forward is not None
         assert abs(sub.forward - full.forward) / full.forward < 1e-3
 
@@ -253,7 +263,7 @@ def test_zero_liquidity_strike_does_not_move_the_forward() -> None:
         )
         for p in surface.points
     )
-    estimate = estimate_forward("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
     assert estimate.forward == pytest.approx(100.0, abs=1e-6)
     zero_point = next(point for point in estimate.points if point.strike == 100.0)
     assert zero_point.weight == 0.0
@@ -263,7 +273,7 @@ def test_zero_liquidity_strike_does_not_move_the_forward() -> None:
 # Degenerate and negative paths — labeled, never a crash                      #
 # --------------------------------------------------------------------------- #
 def test_no_pairs_returns_low_confidence_reason() -> None:
-    estimate = estimate_forward("AAPL", 0.25, (), spot=100.0)
+    estimate = _estimate_fwd("AAPL", 0.25, (), spot=100.0)
     assert not estimate.is_usable
     assert estimate.forward is None
     assert estimate.reason_code == "no_pairs"
@@ -273,7 +283,7 @@ def test_no_pairs_returns_low_confidence_reason() -> None:
 def test_single_pair_without_discount_factor_is_unidentified() -> None:
     # One pair is one equation in two unknowns (F and DF) -> not identifiable.
     pair = _pair(100.0, 6.0, 4.0)
-    estimate = estimate_forward("AAPL", 0.25, (pair,), spot=100.0)
+    estimate = _estimate_fwd("AAPL", 0.25, (pair,), spot=100.0)
     assert not estimate.is_usable
     assert estimate.reason_code == "single_pair_no_discount_factor"
 
@@ -282,7 +292,7 @@ def test_single_pair_with_fallback_discount_factor_is_low_confidence() -> None:
     # Given a DF, one pair yields a forward via parity, but it is structurally
     # low-confidence and labeled as a fallback.
     pair = _pair(100.0, 6.0, 4.0)
-    estimate = estimate_forward("AAPL", 0.25, (pair,), spot=100.0, fallback_discount_factor=0.95)
+    estimate = _estimate_fwd("AAPL", 0.25, (pair,), spot=100.0, fallback_discount_factor=0.95)
     assert estimate.is_usable
     assert estimate.method == "single_pair_fallback"
     assert estimate.reason_code == "single_pair_fallback"
@@ -296,7 +306,7 @@ def test_degenerate_fit_is_labeled_not_raised() -> None:
     # Two strikes that imply an impossible (non-positive) discount factor: C - P rises
     # with K, so the slope is positive and DF would be negative. Labeled, not a crash.
     pairs = (_pair(100.0, 1.0, 5.0), _pair(110.0, 5.0, 1.0))
-    estimate = estimate_forward("AAPL", 0.25, pairs, spot=100.0)
+    estimate = _estimate_fwd("AAPL", 0.25, pairs, spot=100.0)
     assert not estimate.is_usable
     assert estimate.reason_code == "degenerate_fit"
 
@@ -309,7 +319,7 @@ def test_non_finite_and_negative_mids_are_dropped() -> None:
         _pair(140.0, math.inf, 1.0),
         _pair(150.0, -1.0, 1.0),
     )
-    estimate = estimate_forward("AAPL", surface.maturity_years, good + junk, spot=_SYNTH_SPOT)
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, good + junk, spot=_SYNTH_SPOT)
     # The three junk pairs are filtered out; only the five valid strikes are candidates.
     assert estimate.candidate_count == 5
     assert estimate.forward == pytest.approx(100.0, rel=1e-9)
@@ -317,9 +327,9 @@ def test_non_finite_and_negative_mids_are_dropped() -> None:
 
 def test_confidence_orders_clean_above_single_pair() -> None:
     surface = build_synthetic_surface()
-    clean = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    clean = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                              spot=_SYNTH_SPOT)
-    single = estimate_forward(
+    single = _estimate_fwd(
         "AAPL", 0.25,
         (_pair(100.0, 6.0, 4.0),),
         spot=100.0, fallback_discount_factor=0.95,
@@ -336,7 +346,7 @@ def test_two_clean_strikes_are_fair_not_good() -> None:
     surface = build_synthetic_surface()
     points = {point.strike: point for point in surface.points}
     pairs = tuple(_pair(k, points[k].call_price, points[k].put_price) for k in (90.0, 110.0))
-    estimate = estimate_forward("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
     assert estimate.is_usable
     assert estimate.used_count == 2
     assert estimate.quality_label == "fair"
@@ -354,7 +364,7 @@ def test_high_residual_fit_is_labeled_poor() -> None:
         _pair(k, points[k].call_price + bow[k], points[k].put_price)
         for k in (80.0, 90.0, 100.0, 110.0, 120.0)
     )
-    estimate = estimate_forward("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
     assert estimate.is_usable
     assert estimate.rejected_count == 0  # symmetric scatter, not a lone outlier
     assert estimate.quality_label == "poor"
@@ -364,7 +374,7 @@ def test_high_residual_fit_is_labeled_poor() -> None:
 def test_carry_is_unavailable_without_a_spot() -> None:
     # Forward and DF come from parity alone, but carry/dividend need a spot (Eq 5).
     surface = build_synthetic_surface()
-    estimate = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=None)
     assert estimate.is_usable
     assert estimate.implied_rate is not None
@@ -375,7 +385,7 @@ def test_carry_is_unavailable_without_a_spot() -> None:
 def test_single_pair_fallback_refuses_nonpositive_forward() -> None:
     # A pair whose C - P is very negative gives a negative parity forward at the
     # supplied DF, so no usable forward is emitted (labeled, not a crash).
-    estimate = estimate_forward(
+    estimate = _estimate_fwd(
         "AAPL", 0.25, (_pair(10.0, 0.0, 100.0),), spot=50.0, fallback_discount_factor=0.5
     )
     assert not estimate.is_usable
@@ -387,7 +397,7 @@ def test_single_pair_fallback_refuses_nonpositive_forward() -> None:
 # --------------------------------------------------------------------------- #
 def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
     surface = build_synthetic_surface()
-    estimate = estimate_forward("AAPL", surface.maturity_years, _synthetic_pairs(surface),
+    estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
     point = forward_curve_point(
@@ -411,7 +421,7 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
 
 
 def test_forward_curve_point_refuses_an_unusable_estimate() -> None:
-    estimate = estimate_forward("AAPL", 0.25, (), spot=100.0)
+    estimate = _estimate_fwd("AAPL", 0.25, (), spot=100.0)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
     with pytest.raises(ForwardError):
         forward_curve_point(

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-from algotrading.core.config import SurfaceConfig
+from algotrading.core.config import ForwardConfig, SurfaceConfig
 from algotrading.infra.contracts import InstrumentKey
 
 from .quotes import ChainFixture, OptionQuoteFixture
@@ -42,6 +42,17 @@ SURFACE_CONFIG = SurfaceConfig(
     svi_sigma_bounds=(1e-8, 10.0),
     svi_bound_hit_tol=1e-5,
     svi_max_iterations=200,
+)
+
+# The canonical forward-estimate config for tests — the same heuristics the shipped
+# configs/pricing.yaml carries, so test estimates reproduce production estimates exactly.
+FORWARD_CONFIG = ForwardConfig(
+    version="forward-test",
+    good_rel_residual=1e-3,
+    fair_rel_residual=1e-2,
+    full_credit_pairs=4.0,
+    rel_residual_halflife=1e-3,
+    single_pair_confidence=0.30,
 )
 
 NEAR_EXPIRY = date(2026, 6, 19)

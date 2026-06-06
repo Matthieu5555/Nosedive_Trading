@@ -16,6 +16,7 @@ from __future__ import annotations
 from .loader import ConfigError, config_from_mapping, from_config, load_platform_config
 from .platform_config import (
     SECTION_NAMES,
+    ForwardConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -35,6 +36,7 @@ __all__ = [
     "SECTION_NAMES",
     "ConfigError",
     "ConfigFieldError",
+    "ForwardConfig",
     "LoadedConfig",
     "PlatformConfig",
     "QcThresholdConfig",

@@ -40,7 +40,7 @@ from algotrading.core.config import SolverConfig
 from algotrading.infra.forwards import ForwardPair, estimate_forward, forward_curve_point
 from algotrading.infra.iv import iv_point, solve_iv
 from algotrading.infra.surfaces import fit_slice, surface_grid_cells, surface_parameters
-from fixtures.library import SURFACE_CONFIG
+from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -71,7 +71,9 @@ def compute_pipeline_summary() -> dict[str, Any]:
     surface = build_synthetic_surface()
     spot = surface.forward * surface.discount_factor
 
-    estimate = estimate_forward("AAPL", surface.maturity_years, _forward_pairs(surface), spot=spot)
+    estimate = estimate_forward(
+        "AAPL", surface.maturity_years, _forward_pairs(surface), config=FORWARD_CONFIG, spot=spot
+    )
     fwd = forward_curve_point(estimate, snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365",
                               source_snapshot_ts=TS, calc_ts=TS, config_hash=CONFIG_HASH)
 
@@ -151,12 +153,14 @@ def test_forward_is_invariant_to_input_pair_order() -> None:
     pairs = _forward_pairs(surface)
 
     forward_a = forward_curve_point(
-        estimate_forward("AAPL", surface.maturity_years, pairs, spot=spot),
+        estimate_forward("AAPL", surface.maturity_years, pairs, config=FORWARD_CONFIG, spot=spot),
         snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365", source_snapshot_ts=TS,
         calc_ts=TS, config_hash=CONFIG_HASH,
     )
     forward_b = forward_curve_point(
-        estimate_forward("AAPL", surface.maturity_years, tuple(reversed(pairs)), spot=spot),
+        estimate_forward(
+            "AAPL", surface.maturity_years, tuple(reversed(pairs)), config=FORWARD_CONFIG, spot=spot
+        ),
         snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365", source_snapshot_ts=TS,
         calc_ts=TS, config_hash=CONFIG_HASH,
     )

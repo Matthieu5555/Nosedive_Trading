@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .platform_config import (
+    ForwardConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -39,6 +40,7 @@ _PLATFORM_SECTIONS: dict[str, tuple[type, str, str | None]] = {
     "qc_threshold": (QcThresholdConfig, "qc.yaml", None),
     "solver": (SolverConfig, "pricing.yaml", "solver"),
     "surface": (SurfaceConfig, "pricing.yaml", "surface"),
+    "forward": (ForwardConfig, "pricing.yaml", "forward"),
     "scenario": (ScenarioConfig, "scenarios.yaml", None),
 }
 

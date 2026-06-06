@@ -4,12 +4,13 @@ A practical, broker-by-broker guide to connecting a market-data provider and cap
 chain, backed by facts **verified live on 2026-06-03** (in the pre-merge tree).
 
 > **Ported from the pre-merge reference tree (2026-06-05).** The broker connector/capture scripts
-> this guide invokes (`deribit_collector_run.py`, `saxo_oauth.py`, `ibkr_bootstrap.py`, …) lived in
-> the pre-merge `scripts/` directory and have **not yet been relocated** into the canonical monorepo
-> tree — only the plot/export tooling has (`scripts/plot_live_surface.py` and the `export_*`/
-> `reconstruct_sample` utilities). Until the connector scripts are ported, treat their command lines
-> below as the *intended* shape of the workflow and the live broker facts (URLs, payload shapes,
-> entitlement walls) as the load-bearing content. The per-broker verified facts now live under
+> this guide invokes (`deribit_collector_run.py`, `saxo_oauth.py`, …) lived in the pre-merge
+> `scripts/` directory and **most have not yet been relocated** into the canonical monorepo tree —
+> the plot/export tooling has (`scripts/plot_live_surface.py` and the `export_*`/`reconstruct_sample`
+> utilities), and **`scripts/ibkr_bootstrap.py` is now ported** (the IBKR smoke test below). Until the
+> remaining connector scripts are ported, treat their command lines below as the *intended* shape of
+> the workflow and the live broker facts (URLs, payload shapes, entitlement walls) as the load-bearing
+> content. The per-broker verified facts now live under
 > `packages/infra-{saxo,ibkr,deribit}/README.md`. Provider runs through the web app go via
 > `algotrading.infra.orchestration.provider_flow` (`IbkrFlow`/`SaxoFlow` from the pre-merge tree are
 > gone — collection is unified on the push `RawCollector` seam, ADR 0027).
@@ -31,9 +32,13 @@ are the proven way to confirm a connection and that option data flows.
 
 ## Prerequisites (all brokers)
 
-- `uv sync` once (installs the workspace). IBKR also needs the optional group: `uv run --group ibkr ...`.
-- Create a local `.env` at the repo root with the keys for the broker(s) you use (the per-broker
-  variables are listed in the steps below). `.env` is gitignored; never commit credentials.
+- `uv sync` once (installs the workspace). IBKR also needs the optional extra: `uv sync --extra ibkr`
+  (the extra is `nautilus-trader[ib]`; it is **not** a `--group`). ⚠️ The lightweight
+  `IbkrTransport` (and so `ibkr_bootstrap.py`) imports `ib_async`, which is **not yet declared** by
+  the `ibkr` extra — until it is added, install it alongside (`uv pip install ib_async`). Tracked as
+  a follow-up.
+- Copy `.env.example` → `.env` at the repo root and fill in the keys for the broker(s) you use (the
+  per-broker variables are listed in the steps below). `.env` is gitignored; never commit credentials.
 - **Never live-trade.** These flows are read-only / market-data only. For Saxo the read-only guarantee
   is **broker-side** (register the app without the "Write" claim — see below).
 
@@ -109,9 +114,9 @@ Client Portal REST transport also exists; see `packages/infra-ibkr/README.md` an
 
 ```bash
 # 1. Smoke test — connect, clock skew, resolve underlying, one stock snapshot (exit 0 = healthy):
-uv run --group ibkr python scripts/ibkr_bootstrap.py
+uv run --extra ibkr python scripts/ibkr_bootstrap.py
 # 2. Option capture — discover the chain and stream delayed ticks for an ATM contract:
-uv run --group ibkr python scripts/ibkr_probe_option.py --symbol SPY --duration 15
+uv run --extra ibkr python scripts/ibkr_probe_option.py --symbol SPY --duration 15
 ```
 
 Expected (step 2): `spot ~ ...` then ticks for bid/ask/last/close. Two gotchas the probe handles and

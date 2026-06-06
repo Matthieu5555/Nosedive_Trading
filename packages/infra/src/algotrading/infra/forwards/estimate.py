@@ -26,6 +26,7 @@ import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from algotrading.core.config import ForwardConfig
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
 from algotrading.infra.contracts import ForwardCurvePoint, ForwardDiagnostics
 from algotrading.infra.utils.robust import (
@@ -44,16 +45,13 @@ from .parity import (
 # Bump only on a real change to the forward logic, never on config.
 FORWARD_VERSION = "forward-1.0.0"
 
-# A regression identifies two unknowns (F and DF), so it needs at least two pairs.
+# A regression identifies two unknowns (F and DF), so it needs at least two pairs. A
+# mathematical invariant (two equations for two unknowns), not a tunable — stays code.
 _MIN_PAIRS_FOR_REGRESSION = 2
 
-# Confidence/quality heuristics. Documented here because they shape every consumer's
-# trust in a maturity. relative_residual == residual_mad / forward is dimensionless.
-_GOOD_REL_RESIDUAL = 1e-3  # at or below this, with >=3 used pairs -> "good"
-_FAIR_REL_RESIDUAL = 1e-2  # at or below this, with >=2 used pairs -> "fair"
-_FULL_CREDIT_PAIRS = 4.0  # used-pair count at which the count term saturates to 1.0
-_REL_RESIDUAL_HALFLIFE = 1e-3  # relative residual that halves the fit term
-_SINGLE_PAIR_CONFIDENCE = 0.30  # a one-pair fallback is structurally low-confidence
+# The confidence/quality heuristics that shape every consumer's trust in a maturity now
+# live in ForwardConfig (pricing.yaml under forward:); they are economic inputs, not code
+# constants. relative_residual == residual_mad / forward is dimensionless.
 
 # Outlier-scale floor as a fraction of the price level (|intercept| == DF*F): a parity
 # residual smaller than this is quote rounding, not an outlier. It stops the MAD scale
@@ -184,7 +182,7 @@ def _carry_and_dividend(
 
 
 def _quality_and_confidence(
-    used_count: int, forward: float, residual_mad: float
+    used_count: int, forward: float, residual_mad: float, *, config: ForwardConfig
 ) -> tuple[str, float]:
     """Map used-pair count and relative fit residual to a label and a 0..1 score.
 
@@ -192,14 +190,14 @@ def _quality_and_confidence(
     ``forward > 0``), so the relative residual is always well-defined.
     """
     relative_residual = residual_mad / forward
-    if used_count >= 3 and relative_residual <= _GOOD_REL_RESIDUAL:
+    if used_count >= 3 and relative_residual <= config.good_rel_residual:
         label = "good"
-    elif used_count >= 2 and relative_residual <= _FAIR_REL_RESIDUAL:
+    elif used_count >= 2 and relative_residual <= config.fair_rel_residual:
         label = "fair"
     else:
         label = "poor"
-    count_term = min(1.0, used_count / _FULL_CREDIT_PAIRS)
-    fit_term = 1.0 / (1.0 + relative_residual / _REL_RESIDUAL_HALFLIFE)
+    count_term = min(1.0, used_count / config.full_credit_pairs)
+    fit_term = 1.0 / (1.0 + relative_residual / config.rel_residual_halflife)
     confidence = max(0.0, min(1.0, count_term * fit_term))
     return label, confidence
 
@@ -253,6 +251,7 @@ def estimate_forward(
     maturity_years: float,
     pairs: tuple[ForwardPair, ...],
     *,
+    config: ForwardConfig,
     spot: float | None = None,
     fallback_discount_factor: float | None = None,
 ) -> ForwardEstimate:
@@ -274,7 +273,9 @@ def estimate_forward(
     distinct_strikes = {pair.strike for pair in weighted}
 
     if len(distinct_strikes) < _MIN_PAIRS_FOR_REGRESSION:
-        return _single_pair(underlying, maturity_years, valid, spot, fallback_discount_factor)
+        return _single_pair(
+            underlying, maturity_years, valid, spot, fallback_discount_factor, config=config
+        )
 
     works = [_Work(pair=pair, parity_spread=pair.call_mid - pair.put_mid) for pair in valid]
     _flag_outliers(works)
@@ -293,7 +294,9 @@ def estimate_forward(
     implied_rate, implied_carry, implied_dividend = _carry_and_dividend(
         forward, discount_factor, spot, maturity_years
     )
-    quality_label, confidence = _quality_and_confidence(len(kept), forward, residual_mad)
+    quality_label, confidence = _quality_and_confidence(
+        len(kept), forward, residual_mad, config=config
+    )
 
     return ForwardEstimate(
         underlying=underlying,
@@ -322,6 +325,8 @@ def _single_pair(
     valid: list[ForwardPair],
     spot: float | None,
     fallback_discount_factor: float | None,
+    *,
+    config: ForwardConfig,
 ) -> ForwardEstimate:
     """Handle the one-identifiable-strike case: fall back on a supplied DF, or label."""
     weighted = [pair for pair in valid if pair.liquidity > 0.0]
@@ -368,7 +373,7 @@ def _single_pair(
         method="single_pair_fallback",
         reason_code=REASON_SINGLE_PAIR_FALLBACK,
         quality_label="poor",
-        confidence=_SINGLE_PAIR_CONFIDENCE,
+        confidence=config.single_pair_confidence,
         candidate_count=len(valid),
         used_count=1,
         rejected_count=0,

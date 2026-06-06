@@ -8,6 +8,7 @@ any domain dependency. This layer depends on nothing above it.
 from __future__ import annotations
 
 from .config import (
+    ForwardConfig,
     LoadedConfig,
     PlatformConfig,
     QcThresholdConfig,
@@ -38,6 +39,7 @@ from .provenance import (
 )
 
 __all__ = [
+    "ForwardConfig",
     "LoadedConfig",
     "Manifest",
     "PlatformConfig",

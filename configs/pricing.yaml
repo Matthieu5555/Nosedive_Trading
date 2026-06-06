@@ -1,10 +1,10 @@
-# pricing.yaml — IV inversion and surface-fit parameters (blueprint Part VII).
+# pricing.yaml — IV inversion, surface-fit, and forward-estimate parameters (blueprint
+# Part VII).
 #
-# HASHED (config_hashes["pricing"]). Solver tolerances/bounds and the SVI fit bounds
-# change computed values, so they are reproducibility inputs. Two sections live here
-# side by side: `solver:` (the IV inversion) and `surface:` (the SVI calibration).
-#
-# Forward-confidence heuristics join here under `forward:` in a later increment.
+# HASHED (config_hashes["pricing"]). Solver tolerances/bounds, the SVI fit bounds, and
+# the forward-confidence heuristics change computed values, so they are reproducibility
+# inputs. Three sections live here side by side: `solver:` (the IV inversion),
+# `surface:` (the SVI calibration), and `forward:` (the parity forward estimate).
 
 solver:                        # IV inversion (SolverConfig)
   version: "2026.05.31"
@@ -22,3 +22,11 @@ surface:                       # SVI calibration (SurfaceConfig)
   svi_sigma_bounds: [1.0e-8, 10.0]   # curvature, strictly > 0
   svi_bound_hit_tol: 1.0e-5          # "at the bound" detection, relative to each range
   svi_max_iterations: 200            # least-squares evaluation budget per parameter
+
+forward:                       # parity forward-estimate confidence heuristics (ForwardConfig)
+  version: "2026.05.31"
+  good_rel_residual: 1.0e-3          # rel. residual at/below which (with >=3 pairs) quality is "good"
+  fair_rel_residual: 1.0e-2          # rel. residual at/below which (with >=2 pairs) quality is "fair"
+  full_credit_pairs: 4.0             # used-pair count at which the count term saturates to 1.0
+  rel_residual_halflife: 1.0e-3      # relative residual that halves the fit term
+  single_pair_confidence: 0.30       # confidence for a one-pair fallback (structurally low)

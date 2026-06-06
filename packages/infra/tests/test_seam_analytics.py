@@ -39,7 +39,7 @@ from algotrading.infra.snapshots import SnapshotContext, build_snapshot
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.surfaces import fit_slice, surface_grid_cells, surface_parameters
 from fixtures.events import UNDERLYING, quote_events
-from fixtures.library import SURFACE_CONFIG
+from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -71,6 +71,7 @@ def _forward_pairs() -> tuple[ForwardPair, ...]:
 
 def make_forward_point() -> ForwardCurvePoint:
     estimate = estimate_forward("AAPL", SURFACE.maturity_years, _forward_pairs(),
+                                config=FORWARD_CONFIG,
                                 spot=SURFACE.forward * SURFACE.discount_factor)
     return forward_curve_point(estimate, snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365",
                                source_snapshot_ts=TS, calc_ts=TS, config_hash="cfg-hash-0")

@@ -6,9 +6,10 @@
 > and the decisions are made.
 
 > **Ported from the pre-merge reference tree (2026-06-05).** Config paths and the collector
-> entrypoint have been re-pointed to the current monorepo layout. Two referenced artifacts do **not
-> yet exist** in the canonical tree and are flagged inline where they appear: the standalone
-> `scripts/collector_run.py` entrypoint and a repo-root `.env.example`. The pre-merge flat
+> entrypoint have been re-pointed to the current monorepo layout. The repo-root **`.env.example`
+> now exists** (added with `scripts/ibkr_bootstrap.py`, the non-compute connectivity slice). One
+> referenced artifact still does **not yet exist** and is flagged inline where it appears: the
+> standalone `scripts/collector_run.py` capture entrypoint (the gated 1C/1G work). The pre-merge flat
 > `packages/infra/configs/{broker,collectors}.yaml` were superseded — IBKR capture config now lives
 > in `packages/infra-ibkr/configs/capture.yaml`, and host/port/clock-skew are arguments to the
 > Nautilus IBKR client builder (`infra_ibkr.connectivity.nautilus_ibkr.build_data_client_config`),
@@ -46,7 +47,7 @@ Linux server (Tailscale-only reachable)
 │     • handles IBKR's mandatory daily restart automatically
 │     • paper login + Read-Only API; socket on internal port 4002
 │
-└── service: collector    →  this repo, `uv sync --group ibkr`
+└── service: collector    →  this repo, `uv sync --extra ibkr`
       • connects to ib-gateway over the internal network (localhost-equivalent)
       • runs the capture entrypoint under a supervisor (restart on exit)
       • writes the raw store to a mounted volume under the deployer's home
@@ -128,10 +129,9 @@ Layers **1 + 3 + 4** are sufficient for this case; **2** makes it airtight; **5*
 ### Repo work (later, when decisions are made — its own branch `chore/server-deploy`)
 - [ ] `docker-compose.yml`: `ib-gateway` (image `gnzsnz/ib-gateway-docker`, paper) + `collector`
       (this repo).
-- [ ] Add a repo-root **`.env.example`** (one does not exist canonically yet) enriched with the IBC
-      auto-login variables the image expects (paper username + password placeholders,
-      `TRADING_MODE=paper`, Read-Only flag) plus the IBKR socket vars (`IBKR_HOST`, `IBKR_PORT`,
-      `IBKR_CLIENT_ID`, `IBKR_ACCOUNT`).
+- [x] Add a repo-root **`.env.example`** enriched with the IBC auto-login variables the image
+      expects (paper username + password placeholders, `TRADING_MODE=paper`, Read-Only flag) plus
+      the IBKR socket vars (`IBKR_HOST`, `IBKR_PORT`, `IBKR_CLIENT_ID`, `IBKR_ACCOUNT`). **Done.**
 - [ ] Relocate a **collector entrypoint** into the canonical `scripts/` (pre-merge
       `scripts/collector_run.py` is not yet ported) and add a small **supervisor wrapper** so it
       runs continuously (loop with a long window + restart, or a market-hours scheduler honoring the
@@ -155,7 +155,7 @@ work in the deployer's home dir, not the shared project folder.
   host/port (defaults: IB Gateway `4002` paper / `4001` live) and market-data type; this replaced
   the flat `broker.yaml` host/port/reconnect block.
 - **`.env`** (gitignored) for per-machine `IBKR_HOST` / `IBKR_PORT` / `IBKR_CLIENT_ID` /
-  `IBKR_ACCOUNT` overrides — a committed `.env.example` template is a to-do (above).
+  `IBKR_ACCOUNT` overrides — copy the committed **`.env.example`** template (now present) to `.env`.
 - The collection entrypoint (pre-merge `scripts/collector_run.py`) — **not yet relocated** into the
   canonical `scripts/`; supervision for continuous runs is a to-do.
 

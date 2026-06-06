@@ -46,7 +46,7 @@ from collections.abc import Callable, Sequence
 from datetime import date, datetime
 
 import structlog
-from algotrading.core.config import PlatformConfig, SurfaceConfig
+from algotrading.core.config import ForwardConfig, PlatformConfig, SurfaceConfig
 from algotrading.infra.collectors import is_observation, replay_day
 from algotrading.infra.contracts import (
     ForwardCurvePoint,
@@ -169,7 +169,8 @@ def run_analytics(
 
     # 2. Forwards per (underlying, maturity) from the usable option pairs.
     forward_estimates, forward_points = _build_forwards(
-        batch, masters_by_key, as_of_date, as_of=as_of, calc_ts=calc_ts, config_hash=config_hash
+        batch, masters_by_key, as_of_date,
+        as_of=as_of, calc_ts=calc_ts, config_hash=config_hash, forward=config.forward,
     )
 
     # 3. IV points per usable, converged option quote.
@@ -260,6 +261,7 @@ def _build_forwards(
     as_of: datetime,
     calc_ts: datetime,
     config_hash: str,
+    forward: ForwardConfig,
 ) -> tuple[list[ForwardEstimate], list[ForwardCurvePoint]]:
     """Estimate a forward per (underlying, maturity) and project the usable ones.
 
@@ -284,6 +286,7 @@ def _build_forwards(
             underlying,
             maturity_years,
             pairs,
+            config=forward,
             spot=spot_by_underlying.get(underlying),
         )
         estimates.append(estimate)

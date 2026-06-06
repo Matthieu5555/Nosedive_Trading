@@ -57,6 +57,7 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
+| Matthieu (Claude) | C7 config hardening: `configs/**`, `packages/core/**/config`, `core/provenance.py`, `infra/{iv,surfaces,forwards,risk}` + actor/orchestration `config_hash` threading | 2026-06-06 | Increments 1–2 landed (six Part VII YAMLs + bundle loader; roll_down / solver-bracket / SVI / forward heuristics → typed config). **In progress: increment 3** — per-bundle `config_hashes` dict on `ProvenanceStamp` + code identity. Then increment 4 (validate_manifest + effective-dated profiles). Operational broker.yaml client-id bands deferred. |
 
 ## What's next — the index-analytics build
 

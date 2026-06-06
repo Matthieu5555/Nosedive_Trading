@@ -57,7 +57,6 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
-| Matthieu (Claude) | C7 config hardening — **landed** (clearing claim) | 2026-06-06 | Inc 1–5 done + broker.yaml wiring: six Part VII YAMLs + bundle loader; every hashed economic param in typed config; per-bundle `config_hashes` on every `ProvenanceStamp`; injected code identity (SHA+dirty) + per-run config freeze + `validate_manifest`; operational broker.yaml client-id bands + backoff wired (`BrokerConfig`). **Replay-a-run reproducibility is locked — the owner gate for new compute is reopened.** One staged carry-forward remains (non-blocking, see C7 spec): the effective-dated profile *store* (ADR 0028 "Next" — replaying a *past day* fresh). Gate green. |
 
 ## What's next — the index-analytics build
 
@@ -78,6 +77,16 @@ converged seam → contract-test map. Code without the named tests is not done.
 
 ## Known carried-forward items
 
+- **C7 — effective-dated profile store (queued, when Phase 1C needs it).** C7 is done bar
+  this one piece, which ADR 0028 **stages by design** ("Next"): a runtime metadata store
+  (the SQLite tier) that resolves "the config in force on day D" so a *past day* replays
+  fresh. The "now" stage it mandates — YAML overlays + per-run manifest freeze +
+  `validate_manifest` — is **done**, so *replay-a-run* reproducibility is locked and the
+  owner gate is open. Build the store when Phase 1C (daily-close capture + **history**)
+  actually needs as-of resolution; until then it is non-blocking. Shape: an append-only
+  profile record (`name → versions`, each with `effective_from` + a content hash a run
+  pins) + an as-of resolver. Details in [C7-config-hardening.md](C7-config-hardening.md)
+  (task 5, point 9) and its STATUS header.
 - **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) (queued, after C7).** The two merged
   projects left debris worth sweeping once C7 lands: obsolete/duplicate dirs (e.g. `.agent/`
   canonical vs `.agents/`, `.codex/`), stray tool caches, and dead paths. Do it as a **read-only

@@ -17,44 +17,19 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
+
+from algotrading.core.config import LoadedConfig, load_yaml_config
 
 from .clock import Clock
 from .errors import ClientIdError, ConnectionFailed, UnknownServiceError
 
-# Reserved client-id bands, one per service. Bands are spaced by _BAND_WIDTH so a
-# service's instance ids (band + instance) never reach into the next service's band.
-# A live gateway rejects a second connection that reuses a client id, so two services
-# must never collide; drawing from disjoint bands guarantees they cannot.
-_CLIENT_ID_BANDS: dict[str, int] = {
-    "universe": 1000,
-    "collector": 2000,
-    "replay": 3000,
-    "smoke": 9000,
-}
-_BAND_WIDTH = 1000
-
 # Cap the backoff exponent so base * factor**attempt can never overflow a float on a
 # very long outage. Once the delay reaches the cap it stays there, so clamping the
-# exponent well past that point changes no observable delay.
+# exponent well past that point changes no observable delay. A float-overflow guard,
+# not a tunable, so it stays a code constant (C7 / ADR 0028 carve-out).
 _MAX_BACKOFF_EXPONENT = 32
-
-
-def client_id_for(service: str, instance: int = 0) -> int:
-    """Return the gateway client id for one instance of a named service.
-
-    Different services get ids from disjoint bands, so they never collide; instances
-    of the same service get distinct ids within its band. An unknown service or an
-    out-of-band instance is refused with diagnostics rather than handed a colliding
-    id.
-    """
-    try:
-        band = _CLIENT_ID_BANDS[service]
-    except KeyError:
-        raise UnknownServiceError(service, tuple(sorted(_CLIENT_ID_BANDS))) from None
-    if not 0 <= instance < _BAND_WIDTH:
-        raise ClientIdError(service, instance, _BAND_WIDTH)
-    return band + instance
 
 
 class SupervisedSession(Protocol):
@@ -98,6 +73,65 @@ class BackoffSchedule:
             raise ValueError(f"backoff attempt must be >= 0, got {attempt}")
         exponent = min(attempt, _MAX_BACKOFF_EXPONENT)
         return min(self.cap_seconds, self.base_seconds * self.factor**exponent)
+
+
+@dataclass(frozen=True, slots=True)
+class BrokerConfig:
+    """Operational broker connectivity policy, loaded from ``broker.yaml`` (not hashed).
+
+    Carries the client-id band convention and the reconnect ``BackoffSchedule``. It is
+    operational, never a reproducibility input (nothing here changes which records exist
+    or their values), so it travels the un-hashed path — separate from the typed economic
+    :class:`~algotrading.core.config.PlatformConfig`. Per-broker hosts/ports and
+    credentials are *not* here; they live in each broker package's config and ``.env``.
+    """
+
+    client_id_bands: Mapping[str, int]
+    client_id_band_width: int
+    backoff: BackoffSchedule
+
+    def __post_init__(self) -> None:
+        if not self.client_id_bands:
+            raise ValueError("broker config must define at least one client-id band")
+        if self.client_id_band_width <= 0:
+            raise ValueError(
+                f"client_id_band_width must be > 0, got {self.client_id_band_width}"
+            )
+
+    def client_id_for(self, service: str, instance: int = 0) -> int:
+        """Return the gateway client id for one instance of a named service.
+
+        Different services get ids from disjoint bands, so they never collide; instances
+        of the same service get distinct ids within its band. An unknown service or an
+        out-of-band instance is refused with diagnostics rather than handed a colliding id.
+        """
+        try:
+            band = self.client_id_bands[service]
+        except KeyError:
+            raise UnknownServiceError(service, tuple(sorted(self.client_id_bands))) from None
+        if not 0 <= instance < self.client_id_band_width:
+            raise ClientIdError(service, instance, self.client_id_band_width)
+        return band + instance
+
+    @classmethod
+    def from_config(cls, config: LoadedConfig) -> BrokerConfig:
+        """Build a BrokerConfig from a loaded ``broker.yaml`` (top-level keys)."""
+        data = config.data
+        reconnect = data["reconnect"]
+        return cls(
+            client_id_bands={str(k): int(v) for k, v in data["client_id_bands"].items()},
+            client_id_band_width=int(data["client_id_band_width"]),
+            backoff=BackoffSchedule(
+                base_seconds=float(reconnect["base_seconds"]),
+                factor=float(reconnect["factor"]),
+                cap_seconds=float(reconnect["cap_seconds"]),
+            ),
+        )
+
+
+def load_broker_config(configs_dir: str | Path) -> BrokerConfig:
+    """Load the operational :class:`BrokerConfig` from ``broker.yaml`` in ``configs_dir``."""
+    return BrokerConfig.from_config(load_yaml_config(Path(configs_dir) / "broker.yaml"))
 
 
 @dataclass(frozen=True, slots=True)

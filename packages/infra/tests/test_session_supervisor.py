@@ -12,19 +12,25 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from algotrading.infra.connectivity import (
     BackoffSchedule,
+    BrokerConfig,
     ClientIdError,
     ConnectionFailed,
     ManualClock,
     SessionSupervisor,
     UnknownServiceError,
-    client_id_for,
+    load_broker_config,
 )
 
 _T0 = datetime(2026, 6, 1, 13, 30, tzinfo=UTC)
+
+# The operational broker policy loaded from the shipped configs/broker.yaml — the same
+# bands and backoff production runs, so these tests prove the YAML actually flows.
+_BROKER: BrokerConfig = load_broker_config(Path(__file__).resolve().parents[3] / "configs")
 
 
 class _FakeSession:
@@ -77,18 +83,25 @@ def test_backoff_rejects_a_negative_attempt() -> None:
 
 def test_client_id_bands_are_disjoint_across_services() -> None:
     # Each service draws from its own band; instances offset within it. Hand-derived from the
-    # band table (collector=2000, replay=3000, smoke=9000) — disjoint by construction.
-    assert client_id_for("collector") == 2000
-    assert client_id_for("collector", 5) == 2005
-    assert client_id_for("replay") == 3000
-    assert client_id_for("smoke") == 9000
+    # band table in configs/broker.yaml (collector=2000, replay=3000, smoke=9000) — disjoint
+    # by construction, and loaded from YAML rather than a code constant (C7).
+    assert _BROKER.client_id_for("collector") == 2000
+    assert _BROKER.client_id_for("collector", 5) == 2005
+    assert _BROKER.client_id_for("replay") == 3000
+    assert _BROKER.client_id_for("smoke") == 9000
 
 
 def test_unknown_service_and_out_of_band_instance_are_refused() -> None:
     with pytest.raises(UnknownServiceError):
-        client_id_for("nope")
+        _BROKER.client_id_for("nope")
     with pytest.raises(ClientIdError):
-        client_id_for("collector", 1000)  # one past the band width
+        _BROKER.client_id_for("collector", 1000)  # one past the band width
+
+
+def test_broker_config_backoff_comes_from_yaml() -> None:
+    # The reconnect backoff is loaded from broker.yaml too, not a code default.
+    assert _BROKER.backoff.delay_for(0) == 1.0   # base_seconds
+    assert _BROKER.backoff.delay_for(5) == 30.0  # capped at cap_seconds
 
 
 # -- connect / recover ------------------------------------------------------

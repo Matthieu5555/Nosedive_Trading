@@ -33,10 +33,11 @@ from .market_data_policy import (
 )
 from .supervisor import (
     BackoffSchedule,
+    BrokerConfig,
     GapInterval,
     SessionSupervisor,
     SupervisedSession,
-    client_id_for,
+    load_broker_config,
 )
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "OTHER",
     "PACING",
     "BackoffSchedule",
+    "BrokerConfig",
     "ClientIdError",
     "Clock",
     "ConnectionFailed",
@@ -59,7 +61,7 @@ __all__ = [
     "UnknownServiceError",
     "assess_market_data",
     "classify_feed_notice",
-    "client_id_for",
+    "load_broker_config",
     "content_event_id",
     "market_data_type_name",
 ]

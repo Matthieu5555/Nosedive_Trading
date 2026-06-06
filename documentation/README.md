@@ -15,6 +15,12 @@ Start with the runbook for the task in front of you. The five live in
 straight to incident response — it routes you to the right QC check and the right
 runbook.
 
+The runbooks operate a *running* system. To **connect a provider** or **stand collection up** in
+the first place, see [`connectivity/`](connectivity/): broker-by-broker connection
+([connect-providers.md](connectivity/connect-providers.md)), the scheduled capture-forward path
+([capture-forward.md](connectivity/capture-forward.md)), and the unattended server-deployment plan
+([server-deployment-plan.md](connectivity/server-deployment-plan.md)).
+
 The other three documents are reference, not procedure.
 [`interface-contracts.md`](interface-contracts.md) is the frozen list of the typed
 objects that cross a workstream line and the rule for changing one.

@@ -47,10 +47,13 @@ notebooks = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-# `ruff check .` lints only the workspace. The read-only reference checkout,
-# notebooks, and scratch dirs are out of this gate.
+# `ruff check .` lints only the workspace (packages/ + apps/). The read-only
+# reference checkout, notebooks, operator scripts, and scratch dirs are out of
+# this gate. `scripts/` is operator CLI tooling, not a workspace member — same
+# status as `notebooks/` (see scripts/README.md); run it manually with `uv run`.
 extend-exclude = [
     "notebooks",
+    "scripts",
     "Vincent's Code",
     "Test Lenny",
     "ThomasOssen",
@@ -82,12 +85,14 @@ no_implicit_optional = true
 strict_equality = true
 # Workspace packages are installed editable by `uv sync`; import them by name.
 files = ["packages", "apps"]
-# `mypy .` must not wander into the read-only reference checkout, scratch dirs, or
-# per-package test dirs (which share the name `tests` and would collide under the
-# workspace). Tests run under pytest, not mypy.
+# `mypy .` must not wander into the read-only reference checkout, scratch dirs,
+# operator scripts, or per-package test dirs (which share the name `tests` and
+# would collide under the workspace). Tests run under pytest, not mypy; `scripts/`
+# is out-of-gate operator tooling (see scripts/README.md), like `notebooks/`.
 exclude = [
     "Vincent's Code/",
     "Test Lenny/",
+    "scripts/",
     "/tests/",
 ]
 

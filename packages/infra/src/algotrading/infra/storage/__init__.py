@@ -41,12 +41,18 @@ from .errors import (
     StorageError,
     VersionedWriteNotAllowed,
 )
-from .factory import make_run_repository
+from .factory import make_profile_repository, make_run_repository
 from .json_io import events_from_json, events_to_json
-from .ports import RunRepository
+from .ports import ProfileRepository, RunRepository
+from .profiles import (
+    ProfileVersion,
+    build_profile_version,
+    platform_config_from_profile,
+)
 from .runs import RunRecord, RunRegistry, RunStatus
 from .schema import arrow_schema
 from .serialization import from_row, to_row
+from .sqlite_profiles import SqliteProfileRepository
 from .sqlite_runs import SqliteRunRepository
 
 __all__ = [
@@ -74,4 +80,11 @@ __all__ = [
     "RunStatus",
     "SqliteRunRepository",
     "make_run_repository",
+    # Metadata tier — effective-dated config profiles (C7 / ADR 0028 as-of stage).
+    "ProfileRepository",
+    "ProfileVersion",
+    "SqliteProfileRepository",
+    "build_profile_version",
+    "make_profile_repository",
+    "platform_config_from_profile",
 ]

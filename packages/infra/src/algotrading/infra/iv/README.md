@@ -55,11 +55,14 @@ failure without sinking the batch.
 returns a `non_convergence` diagnostic (brentq runs with `disp=False`, so it reports
 rather than raises).
 
-## Search-range constants (top of `solver.py`)
+## Search range and tolerances
 
-- `_VOL_MIN = 1e-9`, `_VOL_MAX = 5.0` — the vol bracket. A price needing more than
-  500% vol is reported `above_max` rather than resolved to an absurd number.
-- `_PRICE_RTOL`, `_PRICE_ATOL` — the price-space slack for the bound checks.
+- The vol bracket is an **economic input**: `SolverConfig.vol_min` / `vol_max`
+  (authored in `configs/pricing.yaml`, C7 / ADR 0028), passed in per solve — not a
+  `.py` literal. A price needing more vol than `vol_max` is reported `above_max`
+  rather than resolved to an absurd number.
+- `_PRICE_RTOL`, `_PRICE_ATOL` (code constants in `solver.py`) — the price-space
+  slack for the bound checks.
 
 ## Worked example
 

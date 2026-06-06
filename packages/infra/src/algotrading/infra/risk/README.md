@@ -172,7 +172,7 @@ truth.
 A scenario is an explicit shocked market *state*, never a Greek multiplier.
 `scenario_grid(config)` builds a deterministic grid from `ScenarioConfig` (`spot_shocks`,
 `vol_shocks`) plus two construction rules: a combined crash (most adverse spot move paired
-with the largest vol spike) and a small time roll-down (`ROLL_DOWN_DAYS`, Actual/365).
+with the largest vol spike) and a small time roll-down (`ScenarioConfig.roll_down_days`, Actual/365).
 `scenario_line_pnls` produces every `(scenario, line)` cell (the cartesian product, so
 completeness is structural); `worst_case` returns the scenario with the largest portfolio
 loss plus its lines ranked worst-first. `scenario_result` projects a full-reprice cell

@@ -57,7 +57,6 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
-| Vincent (Claude) | H1 **landed**; H2 in flight — doc layer: `packages/**`+`apps/**` READMEs, `.agent/map.md`+`glossary.md`, `blueprint/09`+`10` catalogs, `documentation/` index, root `README.md`, + gate-wired doc-freshness check | 2026-06-06 | branch `chore/h1-h2-hygiene-and-docs` off `e0ab3ab`. Touches docs only — **not** `packages/`/`apps/` code, **not** `blueprint/` domain content. H1 report: [tasks/H1-repo-hygiene-report.md](H1-repo-hygiene-report.md). |
 
 ## What's next — the index-analytics build
 
@@ -96,13 +95,17 @@ converged seam → contract-test map. Code without the named tests is not done.
   never-tracked merge stubs `.agents/` and `.codex/`. `Test Lenny/`, `Vincent's Code/`, `ThomasOssen/`
   left in place and flagged. Gate green. `Vincent's Code/` on-disk removal stays a `matthieu`/admin
   step (see below).
-- **[H2 — doc reconciliation](H2-doc-reconciliation.md) (queued, after H1).** Refresh the layered
-  docs to the **post-merge** behavior (Nautilus spine, push collection seam, C7 config) and complete
-  the bottom-up README ladder leaf→root, so `map → directory README → code` actually holds. The
-  layered system already exists — this is a reconciliation, not a new system. Catalog stays **curated
-  by hand** (data dictionary + per-module public-interface prose; no autogen) and the task adds a
-  **gate-wired freshness guard** (every package/module has a README, `map.md` is complete, the
-  `documentation/modules/` symlinks resolve). Depends on H1 + C7 + the migration being done.
+- **[H2 — doc reconciliation](H2-doc-reconciliation.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
+  Report: [H2-doc-reconciliation-report.md](H2-doc-reconciliation-report.md). The **gate-wired
+  freshness guard** is in (`packages/infra/tests/test_doc_freshness.py`, 33 cases: README coverage,
+  symlink resolution, map routes every area, no dead doc links). Audited all 18 infra-module + 8
+  package READMEs; fixed five concrete drifts (four C7 "param is now typed config, not a `.py`
+  literal" in forwards/iv/surfaces/risk + execution's layer position). Glossary gained the merge
+  terms (config bundle, push collection seam / `RawCollector`). `map.md` verified current; the docs
+  index gate command fixed (it omitted `lint-imports`). **Raised, not edited:** the blueprint
+  data-dictionary vs code contract field-name split, recorded as
+  [OQ-7](../.agent/open-questions.md) for an owner ruling (ADR 0011 — blueprint wins on domain, so
+  it's a bug to raise, not a doc edit). Gate green incl. the new check.
 - **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
   imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process

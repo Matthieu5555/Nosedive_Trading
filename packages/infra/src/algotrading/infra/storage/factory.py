@@ -25,7 +25,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .ports import RunRepository
+from .ports import ProfileRepository, RunRepository
 
 
 def make_run_repository(
@@ -53,3 +53,14 @@ def make_run_repository(
         "No run-registry backend configured. "
         "Set POSTGRES_URL for Postgres, or pass sqlite_path for SQLite."
     )
+
+
+def make_profile_repository(*, sqlite_path: str | Path) -> ProfileRepository:
+    """Return a ``ProfileRepository`` backend (SQLite — the config-profile metadata tier).
+
+    The profile store is the SQLite "higher layer" of the storage direction (ADR 0028);
+    a Postgres backend can be added later behind the same port without touching callers.
+    """
+    from .sqlite_profiles import SqliteProfileRepository
+
+    return SqliteProfileRepository(Path(sqlite_path))

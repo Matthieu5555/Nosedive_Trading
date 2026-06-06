@@ -78,11 +78,12 @@ the headline number an operator reads first — at-the-money vol, `sqrt(w(0)/T)`
 the calibrated SVI parameters via the same `SviParams.total_variance`, so the summary
 can never drift from the curve it describes.
 
-## Tunable constants (top of `svi.py` / `fit.py` / `arbitrage.py`)
+## Tuning — config vs. code constants
 
-- Parameter bounds `_A_BOUNDS`, `_B_BOUNDS`, `_RHO_BOUNDS`, `_M_BOUNDS`,
-  `_SIGMA_BOUNDS` and `_BOUND_HIT_TOL` — the SVI feasible box and the bound-hit
-  threshold.
+- The SVI feasible box and the bound-hit threshold are **economic inputs**, so
+  they live in `SurfaceConfig` (`configs/pricing.yaml` under `surface:`, C7 /
+  ADR 0028), not in code: `svi_a_bounds`, `svi_b_bounds`, `svi_rho_bounds`,
+  `svi_m_bounds`, `svi_sigma_bounds`, and `svi_bound_hit_tol`.
 - `MIN_POINTS_FOR_SVI = 5` — below this a slice goes nonparametric.
 - `_ARB_GRID_PAD`, `_ARB_GRID_POINTS` — the log-moneyness grid the butterfly check
   probes, padded past the observed strikes.

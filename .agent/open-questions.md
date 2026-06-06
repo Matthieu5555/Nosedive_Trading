@@ -25,7 +25,8 @@ without searching.
 
 ## Open
 
-_None currently. OQ-1 through OQ-6 were ruled on 2026-06-05; see Resolved._
+_OQ-7 is open (raised 2026-06-06 by the H2 doc reconciliation). OQ-1 through OQ-6 were
+ruled on 2026-06-05; see Resolved._
 
 _OQ-1 through OQ-4 were ruled on 2026-06-05; see Resolved. The `(blueprint)` rulings (OQ-1, OQ-3)
 and futures capture still need a blueprint amendment + ADR to land formally — those follow-ups are
@@ -51,6 +52,23 @@ covers live and recent data well, but "the max of daily historical snapshots" ac
 constituents may need a different vendor for real depth. This is an *alimentation* decision,
 not a design one — it does not block building the pipeline, but it blocks the pipeline being
 useful, so decide it early.
+
+### OQ-7 — blueprint data-dictionary field names vs. the code contract field names
+
+The blueprint data dictionary (`documentation/blueprint/09-data-dictionary.md`,
+authoritative on domain — ADR 0011) names several persisted fields differently from the
+frozen code contracts (`infra/contracts/tables.py`). Confirmed divergences: `forward_price`
+(dict) vs `forward` (code) on `ForwardCurvePoint`; `implied_vol` vs `iv` on `IvPoint`;
+`scenario_pnl` vs `pnl` on `ScenarioResult`; `qc_status` vs `status` on `QcResult`. The
+dict also names some fields the contracts fold into a `diagnostics` bundle rather than
+expose as top-level columns (`solver_converged`, `forward_confidence`, `surface_model`,
+`fit_rmse`). Per ADR 0011 the blueprint wins on domain, so this is **raised, not silently
+doc-edited**. The ruling is an owner's: either (a) rename the contract fields to the
+blueprint names (a contract change with storage-migration implications — the contracts are
+frozen seams), or (b) accept the short code names as the convention and amend the
+data-dictionary entries (a blueprint amendment + ADR). Not blocking the gate; it is a
+naming/authority reconciliation, surfaced so the next field-touching change resolves it
+deliberately instead of entrenching the split. Owner / blueprint decides.
 
 ## Resolved
 

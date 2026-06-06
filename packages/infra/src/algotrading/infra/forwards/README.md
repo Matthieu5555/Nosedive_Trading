@@ -70,15 +70,20 @@ and rejected flag. Thread the estimate from here into the IV solver (which needs
   (the forward and `DF` still come back from parity alone).
 - `fallback_discount_factor` — only consulted for the single-pair case.
 
-## Tunable constants (top of `estimate.py` and `parity.py`)
+## Tuning — config vs. code constants
 
-- `_MAD_REJECTION_Z = 3.5` — robust z-score cutoff for outlier rejection.
-- `_RESIDUAL_REL_FLOOR = 1e-4` — outlier-scale floor as a fraction of the price
-  level, so the MAD scale can't collapse on a clean chain.
-- `_GOOD_REL_RESIDUAL`, `_FAIR_REL_RESIDUAL`, `_FULL_CREDIT_PAIRS`,
-  `_REL_RESIDUAL_HALFLIFE`, `_SINGLE_PAIR_CONFIDENCE` — the quality/confidence
-  heuristic. These shape every consumer's trust in a maturity; change them
-  deliberately.
+The quality/confidence heuristic is an **economic input**, so it lives in typed
+config, not in `.py` literals (C7 / ADR 0028). `ForwardConfig` (authored in
+`configs/pricing.yaml` under `forward:`) carries `good_rel_residual`,
+`fair_rel_residual`, `full_credit_pairs`, `rel_residual_halflife`, and
+`single_pair_confidence`. These shape every consumer's trust in a maturity; change
+them deliberately, in the YAML.
+
+What remains a code constant in `estimate.py` is only what is mathematical, not
+economic: `_MIN_PAIRS_FOR_REGRESSION = 2` (a regression needs two points) and
+`_RESIDUAL_REL_FLOOR = 1e-4` (a quote-rounding floor so the MAD scale can't
+collapse on a clean chain). MAD outlier rejection runs through
+`infra.utils.robust`.
 
 ## Worked example
 

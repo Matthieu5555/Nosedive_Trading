@@ -1,3 +1,4 @@
 # execution
 
-Live execution engine skeleton. Top of the layer stack.
+Live execution engine skeleton. An upper layer, below `frontend` in the import
+stack (`core ← infra ← infra-<broker> ← {strategy, execution} ← frontend`).

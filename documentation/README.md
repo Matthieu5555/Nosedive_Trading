@@ -47,7 +47,7 @@ Confirm the gate is green before you touch anything — this is the same gate ev
 change must pass.
 
 ```
-uv run ruff check . && uv run mypy . && uv run pytest -q
+uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q
 ```
 
 Second, run the connectivity smoke test. It is the bootstrap the start-of-day runbook

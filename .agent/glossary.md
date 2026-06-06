@@ -49,7 +49,14 @@ instead.
   table plus *full* canonical primary key, so lineage resolves to exactly one row.
 - **Config hash** — SHA-256 of the config's canonical JSON, stamped onto derived
   records to tie a result to the exact economic settings that produced it.
-  Environment settings (data root, hosts) deliberately stay out of it.
+  Environment settings (data root, hosts) deliberately stay out of it. Post-C7 the
+  stamp carries a per-**bundle** `config_hashes` dict, not one global hash.
+- **Config bundle** — one of the six blueprint Part VII YAML files under `configs/`
+  (`environment` / `broker` / `universe` / `qc` / `scenarios` / `pricing`); the unit
+  of config authoring, validation, and hashing. The four economic bundles load into
+  the typed `PlatformConfig` and each hashes independently so a result ties to the
+  exact bundle versions that produced it (C7 /
+  [ADR 0028](decisions/0028-configuration-and-reproducibility-standard.md)).
 - **Table family / contract** — one of the twelve frozen dataclasses
   (`contracts.tables`) that may cross a workstream seam; its metadata (key, layer,
   append-only, provenance) lives in the registry `TableSpec`.
@@ -78,6 +85,12 @@ instead.
 - **Session id** — the collector's idempotency scope; stable across restarts
   (typically derived from the trade date) so a restarted collector recognizes
   already-written events.
+- **Push collection seam / `RawCollector`** — the unified, push-canonical boundary
+  ([ADR 0027](decisions/0027-collection-seam-push-canonical.md)) where a broker's
+  live feed *pushes* events through a `MarketDataAdapter` into the broker-agnostic
+  `RawCollector`, which normalizes them into the append-only `RawMarketEvent` table.
+  Replaces the earlier pull/`BrokerSession.ticks()` model (now retired); idempotency
+  comes from the content-addressed event id.
 
 ### Analytics (Workstream C)
 

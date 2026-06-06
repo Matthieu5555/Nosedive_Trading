@@ -1,13 +1,24 @@
-# pricing.yaml — IV inversion and pricing parameters (blueprint Part VII).
+# pricing.yaml — IV inversion and surface-fit parameters (blueprint Part VII).
 #
-# HASHED (config_hashes["pricing"]). Solver tolerances and bounds change computed
-# values, so they are reproducibility inputs.
+# HASHED (config_hashes["pricing"]). Solver tolerances/bounds and the SVI fit bounds
+# change computed values, so they are reproducibility inputs. Two sections live here
+# side by side: `solver:` (the IV inversion) and `surface:` (the SVI calibration).
 #
-# Increment 1 carries the SolverConfig fields and increment 2 adds the solver vol
-# bracket; the SVI bounds/tolerances and forward-confidence heuristics join here in a
-# later increment.
-version: "2026.05.31"
-iv_tolerance: 1.0e-8          # implied-vol inversion convergence tolerance
-max_iterations: 100
-vol_min: 1.0e-9               # search-bracket floor (stands in for "zero vol")
-vol_max: 5.0                  # search-bracket ceiling (500% annualized; above it is unresolvable)
+# Forward-confidence heuristics join here under `forward:` in a later increment.
+
+solver:                        # IV inversion (SolverConfig)
+  version: "2026.05.31"
+  iv_tolerance: 1.0e-8         # implied-vol inversion convergence tolerance
+  max_iterations: 100
+  vol_min: 1.0e-9             # search-bracket floor (stands in for "zero vol")
+  vol_max: 5.0               # search-bracket ceiling (500% annualized; above it is unresolvable)
+
+surface:                       # SVI calibration (SurfaceConfig)
+  version: "2026.05.31"
+  svi_a_bounds: [0.0, 10.0]          # level (total variance)
+  svi_b_bounds: [1.0e-8, 10.0]       # wing slope, strictly > 0
+  svi_rho_bounds: [-0.999, 0.999]    # skew, strictly inside (-1, 1)
+  svi_m_bounds: [-5.0, 5.0]          # shift (log-moneyness)
+  svi_sigma_bounds: [1.0e-8, 10.0]   # curvature, strictly > 0
+  svi_bound_hit_tol: 1.0e-5          # "at the bound" detection, relative to each range
+  svi_max_iterations: 200            # least-squares evaluation budget per parameter

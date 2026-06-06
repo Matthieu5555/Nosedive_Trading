@@ -46,6 +46,7 @@ from algotrading.infra.surfaces import (
     surface_grid_cells,
     surface_parameters,
 )
+from fixtures.library import SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface, svi_total_variance
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -80,7 +81,9 @@ def _synthetic_points() -> tuple[IvPoint, ...]:
 def _fit(points: tuple[IvPoint, ...], *, maturity: float = _SURFACE.maturity_years,
          expiry: date = EXPIRY) -> SliceFit:
     """fit_slice with the common AAPL/ACT-365 arguments, to keep the tests readable."""
-    return fit_slice("AAPL", maturity, points, expiry_date=expiry, day_count="ACT/365")
+    return fit_slice(
+        "AAPL", maturity, points, expiry_date=expiry, day_count="ACT/365", config=SURFACE_CONFIG
+    )
 
 
 def _params(fit: SliceFit) -> SurfaceParameters:
@@ -152,7 +155,7 @@ def test_svi_derivatives_match_finite_difference() -> None:
 def test_fit_recovers_known_svi_parameters() -> None:
     ks = tuple(p.log_moneyness for p in _SURFACE.points)
     ws = tuple(p.total_variance for p in _SURFACE.points)
-    fit = fit_svi(ks, ws)
+    fit = fit_svi(ks, ws, config=SURFACE_CONFIG)
     assert fit.converged
     recovered = (fit.params.a, fit.params.b, fit.params.rho, fit.params.m, fit.params.sigma)
     for got, true in zip(recovered, _TRUE, strict=True):
@@ -163,17 +166,21 @@ def test_fit_recovers_known_svi_parameters() -> None:
 
 def test_fit_svi_needs_five_points() -> None:
     with pytest.raises(ValueError, match="at least 5"):
-        fit_svi((0.0, 0.1, 0.2), (0.04, 0.05, 0.06))
+        fit_svi((0.0, 0.1, 0.2), (0.04, 0.05, 0.06), config=SURFACE_CONFIG)
 
 
 def test_bound_hit_flags_are_set_when_a_parameter_pins() -> None:
     ks = (-0.25, -0.1, 0.0, 0.1, 0.25)
     # Generate from b at its upper bound (10); the fit must pin b there and flag it.
     upper = SviParams(a=0.04, b=10.0, rho=-0.3, m=0.0, sigma=0.2)
-    assert "b_upper" in fit_svi(ks, tuple(upper.total_variance(k) for k in ks)).bound_hits
+    assert "b_upper" in fit_svi(
+        ks, tuple(upper.total_variance(k) for k in ks), config=SURFACE_CONFIG
+    ).bound_hits
     # Generate from rho at its lower bound (-0.999); the fit must flag rho_lower.
     lower = SviParams(a=0.04, b=0.1, rho=-0.999, m=0.0, sigma=0.2)
-    assert "rho_lower" in fit_svi(ks, tuple(lower.total_variance(k) for k in ks)).bound_hits
+    assert "rho_lower" in fit_svi(
+        ks, tuple(lower.total_variance(k) for k in ks), config=SURFACE_CONFIG
+    ).bound_hits
 
 
 # --------------------------------------------------------------------------- #

@@ -77,12 +77,13 @@ converged seam → contract-test map. Code without the named tests is not done.
 
 ## Known carried-forward items
 
-- **Repo-hygiene audit (queued, after C7).** The two merged projects left debris worth sweeping
-  once C7 lands: obsolete/duplicate dirs (e.g. `.agent/` canonical vs `.agents/`, `.codex/`),
-  stray tool caches, and dead paths. Do it as a **read-only classification first** — tag every
-  suspect path as obsolete / debris / reference / human-decision and get the report reviewed
-  *before* moving anything. Decision so far: `Test Lenny/` and `Vincent's Code/` **stay in place**,
-  each flagged by its own README banner; their on-disk removal is the admin's call, not the audit's.
+- **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) (queued, after C7).** The two merged
+  projects left debris worth sweeping once C7 lands: obsolete/duplicate dirs (e.g. `.agent/`
+  canonical vs `.agents/`, `.codex/`), stray tool caches, and dead paths. Do it as a **read-only
+  classification first** — tag every suspect path as obsolete / debris / reference / human-decision
+  and get the report reviewed *before* moving anything. Decision so far: `Test Lenny/` and
+  `Vincent's Code/` **stay in place**, each flagged by its own README banner; their on-disk removal
+  is the admin's call, not the audit's. Full method + done criteria in the spec.
 - **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
   imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process

@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from algotrading.core.config import SurfaceConfig
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
 from algotrading.infra.contracts import (
     IvPoint,
@@ -127,18 +128,19 @@ def fit_slice(
     *,
     expiry_date: date,
     day_count: str,
+    config: SurfaceConfig,
 ) -> SliceFit:
     """Fit one maturity slice, choosing SVI or a labeled nonparametric fallback.
 
     Total and pure: an empty slice returns a labeled ``insufficient`` fit rather than
     raising. With at least :data:`~surfaces.svi.MIN_POINTS_FOR_SVI` distinct strikes
-    it calibrates SVI and runs the butterfly check; with fewer it falls back to
-    interpolation, labeled ``nonparametric``.
+    it calibrates SVI under the ``config`` bounds and runs the butterfly check; with
+    fewer it falls back to interpolation, labeled ``nonparametric``.
     """
     ks, ws = _distinct_sorted_points(points)
 
     if len(ks) >= MIN_POINTS_FOR_SVI:
-        svi_fit: SviFit = fit_svi(ks, ws)
+        svi_fit: SviFit = fit_svi(ks, ws, config=config)
         breaches = butterfly_violations(svi_fit.params, _arb_grid(ks))
         return SliceFit(
             underlying=underlying, maturity_years=maturity_years, expiry_date=expiry_date,

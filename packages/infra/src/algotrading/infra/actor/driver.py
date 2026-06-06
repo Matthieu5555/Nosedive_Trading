@@ -46,7 +46,7 @@ from collections.abc import Callable, Sequence
 from datetime import date, datetime
 
 import structlog
-from algotrading.core.config import PlatformConfig
+from algotrading.core.config import PlatformConfig, SurfaceConfig
 from algotrading.infra.collectors import is_observation, replay_day
 from algotrading.infra.contracts import (
     ForwardCurvePoint,
@@ -192,6 +192,7 @@ def run_analytics(
         as_of=as_of,
         calc_ts=calc_ts,
         config_hash=config_hash,
+        surface=config.surface,
         moneyness_buckets=moneyness_buckets,
     )
 
@@ -416,6 +417,7 @@ def _build_surfaces(
     as_of: datetime,
     calc_ts: datetime,
     config_hash: str,
+    surface: SurfaceConfig,
     moneyness_buckets: tuple[float, ...],
 ) -> tuple[list[SliceFit], list[SurfaceParameters], list[SurfaceGrid]]:
     """Fit a slice per (underlying, maturity); keep the rich fit, project the curves.
@@ -441,7 +443,8 @@ def _build_surfaces(
     for (underlying, maturity_years, expiry) in sorted(by_maturity, key=lambda k: (k[0], k[1])):
         points = tuple(by_maturity[(underlying, maturity_years, expiry)])
         fit = fit_slice(
-            underlying, maturity_years, points, expiry_date=expiry, day_count=DAY_COUNT
+            underlying, maturity_years, points,
+            expiry_date=expiry, day_count=DAY_COUNT, config=surface,
         )
         slice_fits.append(fit)
         projection = project_surface_fit(

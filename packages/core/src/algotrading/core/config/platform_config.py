@@ -119,6 +119,58 @@ class SolverConfig:
             )
 
 
+def _bound_pair(section: str, field: str, value: tuple[float, ...]) -> None:
+    """Reject a feasible-range pair that is not a finite, strictly increasing (low, high)."""
+    if len(value) != 2:
+        raise ConfigFieldError(section, field, value, "must be a (low, high) pair")
+    low, high = value
+    _finite(section, field, low)
+    _finite(section, field, high)
+    if not low < high:
+        raise ConfigFieldError(section, field, value, "need low < high")
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceConfig:
+    """Bounds and tolerances for the SVI surface fit.
+
+    The five parameter feasible ranges constrain the calibration search and back the
+    bound-hit diagnostic; ``svi_bound_hit_tol`` is how close (relative to a range) a
+    fitted parameter must sit to count as "at the bound"; ``svi_max_iterations`` caps the
+    least-squares budget. Each ``*_bounds`` is a ``(low, high)`` pair. Authored in
+    ``pricing.yaml`` under ``surface:``. (The minimum-points floor for SVI is a
+    mathematical invariant — five parameters need five points — and stays a code
+    constant, not a tunable.)
+    """
+
+    version: str
+    svi_a_bounds: tuple[float, ...]
+    svi_b_bounds: tuple[float, ...]
+    svi_rho_bounds: tuple[float, ...]
+    svi_m_bounds: tuple[float, ...]
+    svi_sigma_bounds: tuple[float, ...]
+    svi_bound_hit_tol: float
+    svi_max_iterations: int
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ConfigFieldError("surface", "version", self.version, "must be non-empty")
+        _bound_pair("surface", "svi_a_bounds", self.svi_a_bounds)
+        _bound_pair("surface", "svi_b_bounds", self.svi_b_bounds)
+        _bound_pair("surface", "svi_rho_bounds", self.svi_rho_bounds)
+        _bound_pair("surface", "svi_m_bounds", self.svi_m_bounds)
+        _bound_pair("surface", "svi_sigma_bounds", self.svi_sigma_bounds)
+        _finite("surface", "svi_bound_hit_tol", self.svi_bound_hit_tol)
+        if self.svi_bound_hit_tol <= 0.0:
+            raise ConfigFieldError(
+                "surface", "svi_bound_hit_tol", self.svi_bound_hit_tol, "must be > 0"
+            )
+        if self.svi_max_iterations < 1:
+            raise ConfigFieldError(
+                "surface", "svi_max_iterations", self.svi_max_iterations, "must be >= 1"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class ScenarioConfig:
     """The stress grid applied by the risk engine.
@@ -149,17 +201,18 @@ class ScenarioConfig:
 
 @dataclass(frozen=True, slots=True)
 class PlatformConfig:
-    """The whole economic configuration: four versioned sections."""
+    """The whole economic configuration: the versioned typed sections."""
 
     universe: UniverseConfig
     qc_threshold: QcThresholdConfig
     solver: SolverConfig
+    surface: SurfaceConfig
     scenario: ScenarioConfig
 
 
-# The four section names, in the order they hash, exposed so callers (and tests)
+# The section names, in the order they hash, exposed so callers (and tests)
 # can iterate the version stamps without hand-listing them.
-SECTION_NAMES = ("universe", "qc_threshold", "solver", "scenario")
+SECTION_NAMES = ("universe", "qc_threshold", "solver", "surface", "scenario")
 
 
 def _canonical(value: Any) -> Any:

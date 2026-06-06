@@ -39,6 +39,7 @@ from algotrading.infra.snapshots import SnapshotContext, build_snapshot
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.surfaces import fit_slice, surface_grid_cells, surface_parameters
 from fixtures.events import UNDERLYING, quote_events
+from fixtures.library import SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -89,14 +90,14 @@ def make_iv_points() -> list[IvPoint]:
 
 def make_surface_parameters() -> SurfaceParameters:
     fit = fit_slice("AAPL", SURFACE.maturity_years, tuple(make_iv_points()),
-                    expiry_date=EXPIRY, day_count="ACT/365")
+                    expiry_date=EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG)
     return surface_parameters(fit, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
                               config_hash="cfg-hash-0")
 
 
 def make_surface_grid() -> SurfaceGrid:
     fit = fit_slice("AAPL", SURFACE.maturity_years, tuple(make_iv_points()),
-                    expiry_date=EXPIRY, day_count="ACT/365")
+                    expiry_date=EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG)
     cells = surface_grid_cells(fit, (-0.1, 0.0, 0.1), snapshot_ts=TS, source_snapshot_ts=TS,
                                calc_ts=TS, config_hash="cfg-hash-0")
     return cells[0]

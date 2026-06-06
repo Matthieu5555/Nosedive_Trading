@@ -23,6 +23,7 @@ from algotrading.infra.surfaces import (
     fit_slice,
     project_surface_fit,
 )
+from fixtures.library import SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface
 
 _TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -47,7 +48,8 @@ def _iv_point(k: float, w: float, key: str) -> IvPoint:
 
 def _fit(points: tuple[IvPoint, ...]) -> SliceFit:
     return fit_slice(
-        "AAPL", _SURFACE.maturity_years, points, expiry_date=_EXPIRY, day_count="ACT/365"
+        "AAPL", _SURFACE.maturity_years, points,
+        expiry_date=_EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG,
     )
 
 

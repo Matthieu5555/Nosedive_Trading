@@ -21,22 +21,25 @@ from .platform_config import (
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
+    SurfaceConfig,
     UniverseConfig,
 )
 from .reflective import build_dataclass
 from .yaml_config import LoadedConfig, load_yaml_config
 
-# The four economic bundle files that feed :class:`PlatformConfig` and enter the
-# reproducibility hashes, mapped to the section each one populates (blueprint Part VII
-# taxonomy). The two operational bundles — ``environment.yaml`` (paths, log levels) and
-# ``broker.yaml`` (client-id bands, reconnect policy) — travel a separate, un-hashed
-# path and are deliberately *not* loaded here: nothing in them changes which records
-# exist or their values.
-PLATFORM_BUNDLE_FILES: dict[str, str] = {
-    "universe": "universe.yaml",
-    "qc_threshold": "qc.yaml",
-    "solver": "pricing.yaml",
-    "scenario": "scenarios.yaml",
+# Each PlatformConfig section, mapped to the typed class that builds it and the bundle
+# file + in-file key it is authored under (blueprint Part VII taxonomy). A ``subkey`` of
+# ``None`` means the whole file root is the section; a string means the section is that
+# nested block (``pricing.yaml`` carries ``solver:`` and ``surface:`` side by side). The
+# two operational bundles — ``environment.yaml`` (paths, log levels) and ``broker.yaml``
+# (client-id bands, reconnect policy) — travel a separate, un-hashed path and are
+# deliberately absent here: nothing in them changes which records exist or their values.
+_PLATFORM_SECTIONS: dict[str, tuple[type, str, str | None]] = {
+    "universe": (UniverseConfig, "universe.yaml", None),
+    "qc_threshold": (QcThresholdConfig, "qc.yaml", None),
+    "solver": (SolverConfig, "pricing.yaml", "solver"),
+    "surface": (SurfaceConfig, "pricing.yaml", "surface"),
+    "scenario": (ScenarioConfig, "scenarios.yaml", None),
 }
 
 
@@ -47,19 +50,14 @@ class ConfigError(Exception):
 def config_from_mapping(data: Mapping[str, Any]) -> PlatformConfig:
     """Build a validated config from a plain mapping (e.g. resolved YAML).
 
-    Each of the four economic sections is built by the one reflective
-    :func:`build_dataclass` seam (coerce by declared type, reject unknown/missing keys,
-    validate in ``__post_init__``), so the YAML↔dataclass schema cannot drift and a bad
-    field raises a labelled :class:`ConfigFieldError` naming the section and field.
+    Each economic section is built by the one reflective :func:`build_dataclass` seam
+    (coerce by declared type, reject unknown/missing keys, validate in ``__post_init__``),
+    so the YAML↔dataclass schema cannot drift and a bad field raises a labelled
+    :class:`ConfigFieldError` naming the section and field. ``data`` is keyed by section
+    name (``universe``, ``qc_threshold``, ``solver``, ``surface``, ``scenario``).
     """
-    sections = {
-        "universe": UniverseConfig,
-        "qc_threshold": QcThresholdConfig,
-        "solver": SolverConfig,
-        "scenario": ScenarioConfig,
-    }
     built: dict[str, Any] = {}
-    for name, cls in sections.items():
+    for name, (cls, _filename, _subkey) in _PLATFORM_SECTIONS.items():
         if name not in data:
             raise ConfigError(f"config is missing required section '{name}'")
         built[name] = build_dataclass(cls, data[name], section=name)
@@ -84,23 +82,33 @@ def from_config(loaded: LoadedConfig) -> PlatformConfig:
 def load_platform_config(configs_dir: str | Path) -> PlatformConfig:
     """Build the validated :class:`PlatformConfig` from the Part VII bundle files.
 
-    Reads the four economic bundles in ``configs_dir`` (``universe.yaml``, ``qc.yaml``,
-    ``pricing.yaml``, ``scenarios.yaml``) — each authored as one file per the blueprint
-    Part VII taxonomy — and assembles them into the typed config through the one
-    reflective :func:`config_from_mapping` seam. The operational bundles
+    Reads the economic bundles in ``configs_dir`` (``universe.yaml``, ``qc.yaml``,
+    ``pricing.yaml``, ``scenarios.yaml``) — each authored per the blueprint Part VII
+    taxonomy — and assembles them into the typed config through the one reflective
+    :func:`config_from_mapping` seam. A bundle may carry more than one section:
+    ``pricing.yaml`` holds both ``solver:`` and ``surface:``. The operational bundles
     (``environment.yaml``, ``broker.yaml``) are not loaded here: they are not economics
     and must not enter the reproducibility hashes.
 
-    A missing bundle file raises :class:`ConfigError` naming the file, rather than a bare
-    ``FileNotFoundError`` from deep inside, so a misconfigured deployment fails loudly.
+    A missing bundle file raises :class:`ConfigError` naming the file, and a missing
+    in-file section block raises one naming the block — rather than a bare
+    ``FileNotFoundError``/``KeyError`` from deep inside — so a misconfigured deployment
+    fails loudly.
     """
     configs_dir = Path(configs_dir)
+    files: dict[str, Mapping[str, Any]] = {}
     mapping: dict[str, Any] = {}
-    for section, filename in PLATFORM_BUNDLE_FILES.items():
-        path = configs_dir / filename
-        try:
-            loaded = load_yaml_config(path)
-        except FileNotFoundError as exc:
-            raise ConfigError(f"config bundle '{filename}' not found in {configs_dir}") from exc
-        mapping[section] = dict(loaded.data)
+    for section, (_cls, filename, subkey) in _PLATFORM_SECTIONS.items():
+        if filename not in files:
+            try:
+                files[filename] = load_yaml_config(configs_dir / filename).data
+            except FileNotFoundError as exc:
+                raise ConfigError(f"config bundle '{filename}' not found in {configs_dir}") from exc
+        contents = files[filename]
+        if subkey is None:
+            mapping[section] = dict(contents)
+        else:
+            if subkey not in contents:
+                raise ConfigError(f"config bundle '{filename}' is missing the '{subkey}:' block")
+            mapping[section] = dict(contents[subkey])
     return config_from_mapping(mapping)

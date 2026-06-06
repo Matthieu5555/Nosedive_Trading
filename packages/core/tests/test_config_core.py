@@ -18,6 +18,7 @@ from algotrading.core import (
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
+    SurfaceConfig,
     UniverseConfig,
     composite_config_hash,
     config_hash,
@@ -28,6 +29,19 @@ from algotrading.core import (
 )
 
 
+def _surface(version: str = "surf-1") -> SurfaceConfig:
+    return SurfaceConfig(
+        version=version,
+        svi_a_bounds=(0.0, 10.0),
+        svi_b_bounds=(1e-8, 10.0),
+        svi_rho_bounds=(-0.999, 0.999),
+        svi_m_bounds=(-5.0, 5.0),
+        svi_sigma_bounds=(1e-8, 10.0),
+        svi_bound_hit_tol=1e-5,
+        svi_max_iterations=200,
+    )
+
+
 def _config() -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(version="u-1", underlyings=("SPX", "NDX"), exchange="CBOE"),
@@ -35,6 +49,7 @@ def _config() -> PlatformConfig:
             version="qc-1", max_spread_pct=0.05, max_quote_age_seconds=30.0, min_chain_count=5
         ),
         solver=SolverConfig(version="s-1", iv_tolerance=1e-8, max_iterations=100),
+        surface=_surface("surf-1"),
         scenario=ScenarioConfig(
             version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
         ),
@@ -67,11 +82,12 @@ def test_section_hash_isolates_one_section() -> None:
     assert section_hash(moved, "solver") == section_hash(base, "solver")
 
 
-def test_section_versions_lists_the_four_stamps() -> None:
+def test_section_versions_lists_every_section_stamp() -> None:
     assert section_versions(_config()) == {
         "universe": "u-1",
         "qc_threshold": "qc-1",
         "solver": "s-1",
+        "surface": "surf-1",
         "scenario": "sc-1",
     }
 
@@ -88,12 +104,15 @@ def test_config_hash_is_stable_across_processes() -> None:
     expected = config_hash(_config())
     code = (
         "from algotrading.core import (PlatformConfig, UniverseConfig, QcThresholdConfig,"
-        " SolverConfig, ScenarioConfig, config_hash);"
+        " SolverConfig, SurfaceConfig, ScenarioConfig, config_hash);"
         "print(config_hash(PlatformConfig("
         "universe=UniverseConfig(version='u-1', underlyings=('SPX','NDX'), exchange='CBOE'),"
         "qc_threshold=QcThresholdConfig(version='qc-1', max_spread_pct=0.05,"
         " max_quote_age_seconds=30.0, min_chain_count=5),"
         "solver=SolverConfig(version='s-1', iv_tolerance=1e-8, max_iterations=100),"
+        "surface=SurfaceConfig(version='surf-1', svi_a_bounds=(0.0,10.0), svi_b_bounds=(1e-8,10.0),"
+        " svi_rho_bounds=(-0.999,0.999), svi_m_bounds=(-5.0,5.0), svi_sigma_bounds=(1e-8,10.0),"
+        " svi_bound_hit_tol=1e-5, svi_max_iterations=200),"
         "scenario=ScenarioConfig(version='sc-1', spot_shocks=(-0.1,0.0,0.1),"
         " vol_shocks=(-0.02,0.02)))))"
     )
@@ -139,6 +158,15 @@ solver:
   max_iterations: 100
   vol_min: 1.0e-9
   vol_max: 5.0
+surface:
+  version: surf-base
+  svi_a_bounds: [0.0, 10.0]
+  svi_b_bounds: [1.0e-8, 10.0]
+  svi_rho_bounds: [-0.999, 0.999]
+  svi_m_bounds: [-5.0, 5.0]
+  svi_sigma_bounds: [1.0e-8, 10.0]
+  svi_bound_hit_tol: 1.0e-5
+  svi_max_iterations: 200
 scenario:
   version: sc-base
   spot_shocks: [-0.1, 0.0, 0.1]
@@ -208,7 +236,14 @@ def test_config_hash_collapses_signed_zero() -> None:
 _BUNDLES = {
     "universe.yaml": "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n",
     "qc.yaml": "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n",
-    "pricing.yaml": "version: s-1\niv_tolerance: 1.0e-8\nmax_iterations: 100\nvol_min: 1.0e-9\nvol_max: 5.0\n",
+    "pricing.yaml": (
+        "solver:\n  version: s-1\n  iv_tolerance: 1.0e-8\n  max_iterations: 100\n"
+        "  vol_min: 1.0e-9\n  vol_max: 5.0\n"
+        "surface:\n  version: surf-1\n  svi_a_bounds: [0.0, 10.0]\n"
+        "  svi_b_bounds: [1.0e-8, 10.0]\n  svi_rho_bounds: [-0.999, 0.999]\n"
+        "  svi_m_bounds: [-5.0, 5.0]\n  svi_sigma_bounds: [1.0e-8, 10.0]\n"
+        "  svi_bound_hit_tol: 1.0e-5\n  svi_max_iterations: 200\n"
+    ),
     "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\nroll_down_days: [1]\n",
 }
 
@@ -241,6 +276,7 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
                 version="qc-1", max_spread_pct=0.05, max_quote_age_seconds=30.0, min_chain_count=5
             ),
             solver=SolverConfig(version="s-1", iv_tolerance=1e-8, max_iterations=100),
+            surface=_surface("surf-1"),
             scenario=ScenarioConfig(
                 version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
             ),

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+from algotrading.core.config import SurfaceConfig
 from algotrading.infra.contracts import InstrumentKey
 
 from .quotes import ChainFixture, OptionQuoteFixture
@@ -29,6 +30,19 @@ from .synthetic import build_synthetic_surface
 
 # A fixed "now" for every fixture, so staleness and time-to-expiry are reproducible.
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
+
+# The canonical surface-fit config for tests — the same SVI bounds/tolerances the
+# shipped configs/pricing.yaml carries, so test fits reproduce production fits exactly.
+SURFACE_CONFIG = SurfaceConfig(
+    version="surface-test",
+    svi_a_bounds=(0.0, 10.0),
+    svi_b_bounds=(1e-8, 10.0),
+    svi_rho_bounds=(-0.999, 0.999),
+    svi_m_bounds=(-5.0, 5.0),
+    svi_sigma_bounds=(1e-8, 10.0),
+    svi_bound_hit_tol=1e-5,
+    svi_max_iterations=200,
+)
 
 NEAR_EXPIRY = date(2026, 6, 19)
 FAR_EXPIRY = date(2026, 9, 18)

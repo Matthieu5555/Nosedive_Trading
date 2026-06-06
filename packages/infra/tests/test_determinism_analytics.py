@@ -40,6 +40,7 @@ from algotrading.core.config import SolverConfig
 from algotrading.infra.forwards import ForwardPair, estimate_forward, forward_curve_point
 from algotrading.infra.iv import iv_point, solve_iv
 from algotrading.infra.surfaces import fit_slice, surface_grid_cells, surface_parameters
+from fixtures.library import SURFACE_CONFIG
 from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -84,7 +85,7 @@ def compute_pipeline_summary() -> dict[str, Any]:
                                   config_hash=CONFIG_HASH))
 
     fit = fit_slice("AAPL", surface.maturity_years, tuple(iv_points), expiry_date=EXPIRY,
-                    day_count="ACT/365")
+                    day_count="ACT/365", config=SURFACE_CONFIG)
     params = surface_parameters(fit, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
                                 config_hash=CONFIG_HASH)
     grid = surface_grid_cells(fit, (0.0,), snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,

@@ -25,28 +25,32 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from algotrading.core.config import SurfaceConfig
 from scipy.optimize import least_squares
 
 # Bump only on a real change to the surface logic, never on config.
 SURFACE_VERSION = "svi-1.0.0"
 
-# Parameter bounds for the fit, named so the bound-hit diagnostic can report which
-# one a calibrated parameter pinned against. b and sigma are floored strictly above
-# zero so the contract's positivity rule (svi_b > 0, svi_sigma > 0) always holds.
-_A_BOUNDS = (0.0, 10.0)
-_B_BOUNDS = (1e-8, 10.0)
-_RHO_BOUNDS = (-0.999, 0.999)
-_M_BOUNDS = (-5.0, 5.0)
-_SIGMA_BOUNDS = (1e-8, 10.0)
+# The five SVI parameters, in fit order. Their feasible ranges and the bound-hit
+# tolerance are economic inputs and live in SurfaceConfig (pricing.yaml), not here.
 _PARAM_NAMES = ("a", "b", "rho", "m", "sigma")
-_LOWER = (_A_BOUNDS[0], _B_BOUNDS[0], _RHO_BOUNDS[0], _M_BOUNDS[0], _SIGMA_BOUNDS[0])
-_UPPER = (_A_BOUNDS[1], _B_BOUNDS[1], _RHO_BOUNDS[1], _M_BOUNDS[1], _SIGMA_BOUNDS[1])
 
-# A parameter within this (relative-to-range) distance of a bound is "at the bound".
-_BOUND_HIT_TOL = 1e-5
-
-# SVI has five parameters, so a genuine fit needs at least five points.
+# SVI has five parameters, so a genuine fit needs at least five points. A mathematical
+# invariant (you cannot identify five parameters from fewer than five points), not a
+# tunable — it stays a code constant per the config standard's invariant carve-out.
 MIN_POINTS_FOR_SVI = 5
+
+
+def _svi_bounds(config: SurfaceConfig) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """The (lower, upper) least-squares bounds for the five SVI params, from config."""
+    pairs = (
+        config.svi_a_bounds,
+        config.svi_b_bounds,
+        config.svi_rho_bounds,
+        config.svi_m_bounds,
+        config.svi_sigma_bounds,
+    )
+    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,33 +97,40 @@ class SviFit:
     converged: bool
 
 
-def _bound_hits(values: tuple[float, ...]) -> tuple[str, ...]:
+def _bound_hits(
+    values: tuple[float, ...],
+    *,
+    lower: tuple[float, ...],
+    upper: tuple[float, ...],
+    tol: float,
+) -> tuple[str, ...]:
     """Name the parameters sitting at a lower/upper bound after the fit."""
     hits: list[str] = []
-    for name, value, low, high in zip(_PARAM_NAMES, values, _LOWER, _UPPER, strict=True):
+    for name, value, low, high in zip(_PARAM_NAMES, values, lower, upper, strict=True):
         span = high - low
-        if value - low <= _BOUND_HIT_TOL * span:
+        if value - low <= tol * span:
             hits.append(f"{name}_lower")
-        elif high - value <= _BOUND_HIT_TOL * span:
+        elif high - value <= tol * span:
             hits.append(f"{name}_upper")
     return tuple(hits)
 
 
 def fit_svi(
-    ks: tuple[float, ...], total_variances: tuple[float, ...], *, max_iterations: int = 200
+    ks: tuple[float, ...], total_variances: tuple[float, ...], *, config: SurfaceConfig
 ) -> SviFit:
     """Calibrate raw SVI to ``(k, w)`` points by bounded least squares (Eq 20).
 
     Minimizes the sum of squared total-variance residuals with
-    :func:`scipy.optimize.least_squares` under the parameter bounds. The initial
-    guess anchors ``a`` at the lowest observed variance and ``m`` at the lowest-w
-    strike, which converges cleanly for a well-formed smile. Raises ``ValueError``
-    for fewer than five points (SVI has five parameters); the slice orchestrator
-    routes sparse slices to the nonparametric fallback instead.
+    :func:`scipy.optimize.least_squares` under the parameter bounds from ``config``.
+    The initial guess anchors ``a`` at the lowest observed variance and ``m`` at the
+    lowest-w strike, which converges cleanly for a well-formed smile. Raises
+    ``ValueError`` for fewer than five points (SVI has five parameters); the slice
+    orchestrator routes sparse slices to the nonparametric fallback instead.
     """
     if len(ks) < MIN_POINTS_FOR_SVI:
         raise ValueError(f"SVI needs at least {MIN_POINTS_FOR_SVI} points, got {len(ks)}")
 
+    lower, upper = _svi_bounds(config)
     k_array = np.asarray(ks, dtype=float)
     w_array = np.asarray(total_variances, dtype=float)
 
@@ -131,8 +142,9 @@ def fit_svi(
     k_at_min = float(k_array[int(np.argmin(w_array))])
     initial = (float(w_array.min()), 0.1, 0.0, k_at_min, 0.1)
     result = least_squares(
-        residuals, initial, bounds=(_LOWER, _UPPER),
-        xtol=1e-14, ftol=1e-14, gtol=1e-14, max_nfev=max_iterations * len(_PARAM_NAMES),
+        residuals, initial, bounds=(lower, upper),
+        xtol=1e-14, ftol=1e-14, gtol=1e-14,
+        max_nfev=config.svi_max_iterations * len(_PARAM_NAMES),
     )
     fitted = tuple(float(value) for value in result.x)
     rmse = float(np.sqrt(np.mean(np.asarray(result.fun) ** 2)))
@@ -140,6 +152,6 @@ def fit_svi(
         params=SviParams(*fitted),
         rmse=rmse,
         n_points=len(ks),
-        bound_hits=_bound_hits(fitted),
+        bound_hits=_bound_hits(fitted, lower=lower, upper=upper, tol=config.svi_bound_hit_tol),
         converged=bool(result.success),
     )

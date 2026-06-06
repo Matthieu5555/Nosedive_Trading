@@ -95,6 +95,17 @@ def test_code_version_reads_installed_distribution() -> None:
     assert code_version("algotrading-core") == "0.1.0"
 
 
+def test_code_identity_returns_a_non_empty_label() -> None:
+    # The gate runs inside the git repo, so this is the commit SHA (optionally
+    # ``-dirty``); off a checkout without git it is the labelled ``"unknown"`` fallback,
+    # never empty. Either way it is a stable, non-empty record of the code that ran.
+    from algotrading.core import code_identity
+
+    identity = code_identity()
+    assert isinstance(identity, str) and identity
+    assert identity == "unknown" or len(identity.removesuffix("-dirty")) >= 7
+
+
 def test_stamp_hash_is_stable_across_processes() -> None:
     # Cross-process stability (TESTING.md): the hash must not depend on PYTHONHASHSEED.
     expected = _two_source_stamp("forward").stamp_hash

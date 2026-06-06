@@ -85,6 +85,13 @@ converged seam → contract-test map. Code without the named tests is not done.
   and get the report reviewed *before* moving anything. Decision so far: `Test Lenny/` and
   `Vincent's Code/` **stay in place**, each flagged by its own README banner; their on-disk removal
   is the admin's call, not the audit's. Full method + done criteria in the spec.
+- **[H2 — doc reconciliation](H2-doc-reconciliation.md) (queued, after H1).** Refresh the layered
+  docs to the **post-merge** behavior (Nautilus spine, push collection seam, C7 config) and complete
+  the bottom-up README ladder leaf→root, so `map → directory README → code` actually holds. The
+  layered system already exists — this is a reconciliation, not a new system. Catalog stays **curated
+  by hand** (data dictionary + per-module public-interface prose; no autogen) and the task adds a
+  **gate-wired freshness guard** (every package/module has a README, `map.md` is complete, the
+  `documentation/modules/` symlinks resolve). Depends on H1 + C7 + the migration being done.
 - **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
   imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process

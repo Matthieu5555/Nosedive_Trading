@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 
 from algotrading.core.log import get_logger
 from algotrading.core.manifest import Manifest
+from algotrading.core.provenance import code_identity as _code_identity
 from algotrading.infra.storage import RunRecord, RunRegistry, RunStatus
 
 _log = get_logger(__name__)
@@ -52,6 +53,7 @@ def run_job[T](
     code_version: str,
     config_hashes: Mapping[str, str],
     clock: Callable[[], datetime] = _now,
+    code_identity: str | None = None,
     run_id: str | None = None,
     correlation_id: str | None = None,
     input_partitions: Mapping[str, str] | None = None,
@@ -69,12 +71,17 @@ def run_job[T](
     started_at = clock()
     run_id = run_id or f"{name}-{started_at.strftime('%Y%m%dT%H%M%S%fZ')}"
     correlation_id = correlation_id or uuid.uuid4().hex
+    # Resolve the code identity once, at the entrypoint — never deeper in compute. Injected
+    # for a deterministic caller (a test/replay supplies a fixed value); the default reads
+    # git for the live run.
+    resolved_code_identity = code_identity if code_identity is not None else _code_identity()
 
     def _record(status: str) -> RunRecord:
         manifest = Manifest(
             run_id=run_id,
             environment=environment,
             code_version=code_version,
+            code_identity=resolved_code_identity,
             config_hashes=dict(config_hashes),
             input_partitions=dict(input_partitions or {}),
             output_partitions=dict(output_partitions or {}),

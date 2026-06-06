@@ -18,6 +18,7 @@ from algotrading.infra.storage import RunRegistry, RunStatus
 
 
 def _run(registry: RunRegistry, fn, **kwargs):  # type: ignore[no-untyped-def]
+    kwargs.setdefault("code_identity", "test-sha-clean")  # injected, deterministic (no git read)
     return run_job(
         "reconstruct",
         fn,
@@ -73,3 +74,13 @@ def test_generated_run_id_when_absent(tmp_path: Path) -> None:
 
     result = _run(registry, lambda: None, clock=clock)
     assert result.record.manifest.run_id.startswith("reconstruct-")
+
+
+def test_injected_code_identity_is_recorded_and_round_trips(tmp_path: Path) -> None:
+    # Code identity is injected at the entrypoint (like the clock) — a deterministic caller
+    # supplies a fixed value, so a run's manifest records the exact code without reading git.
+    registry = RunRegistry(tmp_path)
+    result = _run(registry, lambda: None, run_id="ci", code_identity="abc123-dirty")
+    assert result.record.manifest.code_identity == "abc123-dirty"
+    # And it survives the registry round-trip.
+    assert registry.list_runs("reconstruct")[0].manifest.code_identity == "abc123-dirty"

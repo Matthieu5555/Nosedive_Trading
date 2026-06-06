@@ -58,6 +58,7 @@ class RunRecord:
                 run_id=m["run_id"],
                 environment=m["environment"],
                 code_version=m["code_version"],
+                code_identity=m.get("code_identity", "unknown"),
                 config_hashes=m["config_hashes"],
                 input_partitions=m["input_partitions"],
                 output_partitions=m["output_partitions"],

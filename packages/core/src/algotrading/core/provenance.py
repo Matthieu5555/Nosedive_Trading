@@ -313,3 +313,38 @@ def code_version(distribution: str) -> str:
     except metadata.PackageNotFoundError:
         _log.warning("distribution %s not found; using fallback version", distribution)
         return _FALLBACK_VERSION
+
+
+_UNKNOWN_CODE_IDENTITY = "unknown"
+
+
+def code_identity() -> str:
+    """Return the VCS code identity: the commit SHA, suffixed ``-dirty`` if the tree is dirty.
+
+    ``code_version`` (the installed distribution version) is necessary but not sufficient
+    for reproducibility — a dirty tree or a same-version edit defeats it (ADR 0028). This
+    records the *exact* code: ``<sha>`` for a clean checkout, ``<sha>-dirty`` when there are
+    uncommitted changes. A non-repo or missing ``git`` yields ``"unknown"`` — a labelled
+    failure to record, not a silent pass.
+
+    It reads git via a subprocess, so it is the *run-time* code identity stamped onto a
+    run's manifest at the orchestration entrypoint — never inside :func:`stamp`, whose
+    output must stay byte-identical on replay regardless of the working tree.
+    """
+    import subprocess
+
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        _log.warning("git code identity unavailable; using fallback")
+        return _UNKNOWN_CODE_IDENTITY
+    if not sha:
+        return _UNKNOWN_CODE_IDENTITY
+    return f"{sha}-dirty" if dirty else sha

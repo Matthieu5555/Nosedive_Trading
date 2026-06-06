@@ -106,7 +106,7 @@ def result_headline(result: QcResult) -> str:
     measured = result.measured_value
     measured_text = f"{measured:g}" if math.isfinite(measured) else str(measured)
     where = f" [{named}]" if named is not None else ""
-    return f"{result.check_name} {result.status} (measured={measured_text}){where}"
+    return f"{result.check_name} {result.qc_status} (measured={measured_text}){where}"
 
 
 def build_report(
@@ -122,7 +122,7 @@ def build_report(
     clean ``pass`` report (nothing checked, nothing wrong) — the report does not
     invent a failure from missing input.
     """
-    counts = Counter(result.status for result in results)
+    counts = Counter(result.qc_status for result in results)
     fail_count = counts.get(STATUS_FAIL, 0)
     warn_count = counts.get(STATUS_WARN, 0)
     pass_count = counts.get(STATUS_PASS, 0)
@@ -154,7 +154,7 @@ def escalation_level(report: QcReport) -> str:
     per plane so the policy cannot drift within it.
     """
     has_critical_fail = any(
-        result.status == STATUS_FAIL and result.severity == SEVERITY_CRITICAL
+        result.qc_status == STATUS_FAIL and result.severity == SEVERITY_CRITICAL
         for result in report.results
     )
     if has_critical_fail:

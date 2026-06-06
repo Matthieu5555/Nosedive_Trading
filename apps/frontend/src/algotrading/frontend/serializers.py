@@ -87,7 +87,7 @@ def scenario_result_to_dict(row: ScenarioResult) -> dict[str, object]:
         "spot_shock": row.spot_shock,
         "vol_shock": row.vol_shock,
         "time_shock": row.time_shock,
-        "pnl": row.pnl,
+        "scenario_pnl": row.scenario_pnl,
         "scenario_version": row.scenario_version,
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),

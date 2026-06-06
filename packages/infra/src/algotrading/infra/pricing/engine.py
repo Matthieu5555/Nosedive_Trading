@@ -10,10 +10,10 @@ its inputs with no wall-clock read.
 Cash-Greek conventions, per unit of underlying (the risk engine multiplies by the
 contract multiplier and the held quantity):
 
-* ``cash_delta = delta * spot`` — dollar value change for a 1.0 move in spot.
-* ``cash_gamma = gamma * spot**2`` — dollar gamma; P&L of a move dS is about
-  ``0.5 * cash_gamma * (dS / spot)**2``.
-* ``cash_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
+* ``dollar_delta = delta * spot`` — dollar value change for a 1.0 move in spot.
+* ``dollar_gamma = gamma * spot**2`` — dollar gamma; P&L of a move dS is about
+  ``0.5 * dollar_gamma * (dS / spot)**2``.
+* ``dollar_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def pricing_result(
     source_snapshot_ts: datetime,
     provenance: ProvenanceStamp,
 ) -> PricingResult:
-    """Project price and Greeks into A's ``PricingResult`` contract with cash Greeks."""
+    """Project price and Greeks into A's ``PricingResult`` contract with dollar Greeks."""
     return PricingResult(
         snapshot_ts=snapshot_ts,
         contract_key=contract_key,
@@ -69,9 +69,9 @@ def pricing_result(
         vega=greeks.vega,
         theta=greeks.theta,
         rho=greeks.rho,
-        cash_delta=greeks.delta * state.spot,
-        cash_gamma=greeks.gamma * state.spot * state.spot,
-        cash_vega=greeks.vega * 0.01,
+        dollar_delta=greeks.delta * state.spot,
+        dollar_gamma=greeks.gamma * state.spot * state.spot,
+        dollar_vega=greeks.vega * 0.01,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
     )

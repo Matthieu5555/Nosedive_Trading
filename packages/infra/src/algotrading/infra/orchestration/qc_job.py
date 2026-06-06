@@ -111,7 +111,7 @@ def run_qc(
         triage_headlines=[
             result_headline(result)
             for result in report.results
-            if result.status != STATUS_PASS
+            if result.qc_status != STATUS_PASS
         ],
     )
     return QcJobResult(

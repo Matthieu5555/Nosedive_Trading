@@ -433,7 +433,7 @@ def scenario_result(
         spot_shock=cell.scenario.spot_shock,
         vol_shock=cell.scenario.vol_shock,
         time_shock=cell.scenario.time_shock,
-        pnl=cell.full_reprice_pnl,
+        scenario_pnl=cell.full_reprice_pnl,
         scenario_version=scenario_version,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,

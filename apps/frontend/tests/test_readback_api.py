@@ -153,7 +153,7 @@ def _seed_store(root: Path) -> None:
                 spot_shock=-0.10,
                 vol_shock=0.0,
                 time_shock=0.0,
-                pnl=SCENARIO_PNL,
+                scenario_pnl=SCENARIO_PNL,
                 scenario_version="scn-1",
                 source_snapshot_ts=AS_OF,
                 provenance=_prov("scenario:AAPL"),
@@ -219,7 +219,7 @@ def test_risk_scenarios_read_back_persisted_cell(seeded_client: TestClient) -> N
     cell = payload["cells"][0]
     assert cell["scenario_id"] == "spot-down-10"
     assert cell["spot_shock"] == pytest.approx(-0.10)
-    assert cell["pnl"] == pytest.approx(SCENARIO_PNL)
+    assert cell["scenario_pnl"] == pytest.approx(SCENARIO_PNL)
 
 
 def test_risk_portfolio_filter_selects_the_seeded_portfolio(seeded_client: TestClient) -> None:

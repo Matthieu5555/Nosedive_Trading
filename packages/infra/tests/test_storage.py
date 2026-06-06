@@ -70,7 +70,7 @@ def _forward(forward: float) -> ForwardCurvePoint:
         maturity_years=0.5,
         expiry_date=date(2026, 12, 18),
         day_count="ACT/365F",
-        forward=forward,
+        forward_price=forward,
         diagnostics=ForwardDiagnostics(
             method="parity", candidate_count=8, residual_mad=0.1, quality_label="good"
         ),
@@ -156,8 +156,8 @@ def test_a_newer_version_does_not_overwrite_the_older_analytic(tmp_path: Path) -
     store.write("forward_curve", [_forward(5050.0)])  # live
     store.write("forward_curve", [_forward(5060.0)], version="reproc-2")
     assert store.list_versions("forward_curve", _TD, "SPX") == ["reproc-2"]
-    assert store.read("forward_curve", version="reproc-2")[0].forward == 5060.0
-    assert store.read("forward_curve")[0].forward == 5050.0  # live survives
+    assert store.read("forward_curve", version="reproc-2")[0].forward_price == 5060.0
+    assert store.read("forward_curve")[0].forward_price == 5050.0  # live survives
 
 
 def test_a_version_blind_read_returns_live_rows_only(tmp_path: Path) -> None:
@@ -165,7 +165,7 @@ def test_a_version_blind_read_returns_live_rows_only(tmp_path: Path) -> None:
     store.write("forward_curve", [_forward(5050.0)])
     store.write("forward_curve", [_forward(5060.0)], version="reproc-2")
     live = store.read("forward_curve")
-    assert len(live) == 1 and live[0].forward == 5050.0  # restatement not mixed in
+    assert len(live) == 1 and live[0].forward_price == 5050.0  # restatement not mixed in
 
 
 def test_a_versioned_write_to_an_append_only_table_is_refused(tmp_path: Path) -> None:

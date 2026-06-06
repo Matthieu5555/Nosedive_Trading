@@ -38,7 +38,7 @@ first:
 
 - **Persisted contracts, Greeks/bumps/valuation, scenario engine, reconciliation core —
   ours.** The frozen `RiskAggregate (… group_key, net_*)` and `ScenarioResult (…
-  scenario_id, contract_key, … pnl)` shapes are exactly the blueprint's data dictionary
+  scenario_id, contract_key, … scenario_pnl)` shapes are exactly the blueprint's data dictionary
   rows (`04-implementation-guides.md`), and our emission adapters project straight into
   them. The shared versioned bump source answers the blueprint's explicit anti-drift
   requirement (`05-math-notes.md` §4); `effective_scenario_version` makes the grid

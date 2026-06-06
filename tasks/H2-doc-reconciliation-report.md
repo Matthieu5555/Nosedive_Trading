@@ -42,15 +42,20 @@ bundles, three adapters; routes every top-level area). `documentation/README.md`
 (operations handbook) gate command corrected — it omitted `lint-imports`. The
 `documentation/modules/` symlink mirror is complete and unbroken (18/18 resolve).
 
-## Raised, not edited (owner ruling required)
+## OQ-7 — raised, then ruled (code conforms to the blueprint)
 
-**OQ-7 — blueprint data-dictionary field names vs. code contract field names.** The
-data dictionary (`blueprint/09`, authoritative on domain — ADR 0011) names fields
-the frozen contracts spell differently (`forward_price`/`forward`,
-`implied_vol`/`iv`, `scenario_pnl`/`pnl`, `qc_status`/`status`; plus several fields
-the contracts fold into `diagnostics` bundles). Per ADR 0011 + this task's "raise,
-don't silently doc-edit" rule, recorded as [OQ-7](../.agent/open-questions.md) for an
-owner ruling (rename contracts vs amend the dictionary). Not gate-blocking.
+The data dictionary (`blueprint/09`, authoritative on domain — ADR 0011) named fields
+the frozen contracts spelled differently (`forward_price`/`forward`, `implied_vol`/`iv`,
+`log_moneyness`/`k`, `scenario_pnl`/`pnl`, `qc_status`/`status`, `dollar_*`/`cash_*`).
+Surfaced as OQ-7 rather than silently doc-edited. **Owner ruled (2026-06-06): follow the
+blueprint, code conforms, data starts from scratch** — see
+[ADR 0029](../.agent/decisions/0029-contract-field-names-conform-to-blueprint.md). The six
+persisted-column renames landed across `tables.py`, the validation registry, every
+producer/consumer (mypy-enumerated), the scenario serializer key, tests, and the module
+READMEs/docstrings. The data dictionary now describes the code exactly — no dict edit was
+needed, the code moved to it. `InstrumentKey.broker_contract_id` (dict: `contract_id_broker`)
+was left as-is — it's embedded in the canonical key, not a standalone column — flagged as an
+optional follow-up. Full root gate green after the rename (mypy 176 files, pytest 0 failures).
 
 ## Deliberately not done (scoped out / non-blocking)
 

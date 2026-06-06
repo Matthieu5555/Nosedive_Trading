@@ -83,7 +83,7 @@ def build_result(
         check_name=check_name,
         target_key=target_key,
         run_ts=run_ts,
-        status=status,
+        qc_status=status,
         severity=severity,
         measured_value=measured_value,
         threshold_version=threshold_version,

@@ -61,8 +61,8 @@ These are asserted by the convention tests, not just written here:
 
 `pricing_result(...)` projects these into A's `PricingResult` contract and adds the
 monetized Greeks, per unit of underlying (the risk engine multiplies by the
-contract multiplier and quantity): `cash_delta = delta * spot`,
-`cash_gamma = gamma * spot**2`, `cash_vega = vega * 0.01`. The provenance stamp is
+contract multiplier and quantity): `dollar_delta = delta * spot`,
+`dollar_gamma = gamma * spot**2`, `dollar_vega = vega * 0.01`. The provenance stamp is
 built by the caller with an injected `calc_ts` and passed in, so the engine itself
 reads no wall clock and is a pure function of its inputs.
 

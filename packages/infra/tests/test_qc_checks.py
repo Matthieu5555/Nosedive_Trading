@@ -237,7 +237,7 @@ def _assert_full_shape(
 ) -> dict[str, Any]:
     """Assert the four QcResult facets and return the parsed context for specificity."""
     assert result.check_name == check_name
-    assert result.status == status
+    assert result.qc_status == status
     assert result.severity == severity
     assert result.threshold_version == QC_CONFIG.version
     assert result.run_id == RUN_ID
@@ -253,7 +253,7 @@ def test_collector_continuity_passes_clean_session() -> None:
     result = check_collector_continuity(
         _summary(gap_count=0), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_collector_continuity_fails_and_names_session() -> None:
@@ -277,7 +277,7 @@ def test_collector_continuity_warns_in_gap_band() -> None:
     result = check_collector_continuity(
         _summary(gap_count=3), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_WARN
+    assert result.qc_status == STATUS_WARN
 
 
 def test_collector_continuity_fails_on_thin_coverage() -> None:
@@ -288,7 +288,7 @@ def test_collector_continuity_fails_on_thin_coverage() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
 
 
 def test_collector_continuity_boundary_gap_exact_passes() -> None:
@@ -296,7 +296,7 @@ def test_collector_continuity_boundary_gap_exact_passes() -> None:
     result = check_collector_continuity(
         _summary(gap_count=5), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_WARN
+    assert result.qc_status == STATUS_WARN
 
 
 def test_collector_continuity_empty_subscription_degenerate() -> None:
@@ -307,7 +307,7 @@ def test_collector_continuity_empty_subscription_degenerate() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert deserialize_context(result.context)["coverage_ratio"] == 1.0
 
 
@@ -322,7 +322,7 @@ def test_quote_health_passes_tight_quote() -> None:
     result = check_underlying_quote_health(
         batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_quote_health_fails_and_names_quote() -> None:
@@ -356,7 +356,7 @@ def test_quote_health_boundary_spread_exact_passes() -> None:
     result = check_underlying_quote_health(
         batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_quote_health_ignores_rejected_quotes() -> None:
@@ -368,7 +368,7 @@ def test_quote_health_ignores_rejected_quotes() -> None:
     result = check_underlying_quote_health(
         batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_quote_health_empty_batch_passes() -> None:
@@ -376,7 +376,7 @@ def test_quote_health_empty_batch_passes() -> None:
     result = check_underlying_quote_health(
         batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 # ================================================================================
@@ -404,7 +404,7 @@ def test_chain_coverage_passes_full_chain() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 4.0
 
 
@@ -435,7 +435,7 @@ def test_chain_coverage_empty_batch_lists_all_missing() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     assert deserialize_context(result.context)["missing_contracts"] == sorted(_EXPECTED_CHAIN)
 
 
@@ -447,7 +447,7 @@ def test_forward_stability_passes_tight_forward() -> None:
     result = check_forward_stability(
         _forward(residual_mad=0.01), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_forward_stability_fails_and_names_maturity() -> None:
@@ -475,7 +475,7 @@ def test_forward_stability_fails_on_low_confidence() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
 
 
 def test_forward_stability_boundary_mad_exact_passes() -> None:
@@ -483,7 +483,7 @@ def test_forward_stability_boundary_mad_exact_passes() -> None:
     result = check_forward_stability(
         _forward(residual_mad=0.05), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 # ================================================================================
@@ -499,7 +499,7 @@ def test_parity_residual_passes_small_residuals() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_parity_residual_fails_and_names_maturity_and_index() -> None:
@@ -525,7 +525,7 @@ def test_parity_residual_empty_residuals_passes() -> None:
     result = check_parity_residual(
         _parity_line(()), "AAPL", 0.25, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert deserialize_context(result.context)["worst_residual_index"] == -1
 
 
@@ -534,7 +534,7 @@ def test_parity_residual_boundary_exact_passes() -> None:
     result = check_parity_residual(
         _parity_line((0.10,)), "AAPL", 0.25, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 # ================================================================================
@@ -545,7 +545,7 @@ def test_iv_convergence_passes_all_converged() -> None:
     result = check_iv_solver_convergence(
         results, "AAPL@0.25", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 0.0
 
 
@@ -572,7 +572,7 @@ def test_iv_convergence_boundary_ratio_exact_passes() -> None:
     result = check_iv_solver_convergence(
         results, "AAPL@0.25", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_iv_convergence_empty_passes() -> None:
@@ -580,7 +580,7 @@ def test_iv_convergence_empty_passes() -> None:
     result = check_iv_solver_convergence(
         [], "AAPL@0.25", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 0.0
 
 
@@ -593,7 +593,7 @@ def test_iv_convergence_single_failed_element() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     context = deserialize_context(result.context)
     assert context["failing_solvers"][0]["contract_key"] == "AAPL-ONLY"
 
@@ -606,7 +606,7 @@ def test_surface_fit_passes_tight_fit() -> None:
     result = check_surface_fit_error(
         _slice_fit(rmse=0.005), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_surface_fit_fails_and_names_maturity() -> None:
@@ -631,7 +631,7 @@ def test_surface_fit_boundary_rmse_exact_passes() -> None:
     result = check_surface_fit_error(
         _slice_fit(rmse=0.02), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 # ================================================================================
@@ -641,7 +641,7 @@ def test_calendar_sanity_passes_no_violations() -> None:
     result = check_calendar_sanity(
         [], "AAPL", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 0.0
 
 
@@ -675,7 +675,7 @@ def test_calendar_sanity_single_violation() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     assert deserialize_context(result.context)["failing_maturity_short"] == 0.25
 
 
@@ -687,7 +687,7 @@ def test_greek_sanity_passes_clean_line() -> None:
     result = check_greek_sanity(
         _position(CALL_100), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 0.0
 
 
@@ -713,7 +713,7 @@ def test_greek_sanity_fails_call_delta_out_of_range() -> None:
     result = check_greek_sanity(
         _position(CALL_100, greeks=bad), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     reasons = {breach["reason"] for breach in deserialize_context(result.context)["breaches"]}
     assert "call_delta_out_of_range" in reasons
 
@@ -724,7 +724,7 @@ def test_greek_sanity_fails_put_delta_out_of_range() -> None:
     result = check_greek_sanity(
         _position(PUT_100, greeks=bad), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     reasons = {breach["reason"] for breach in deserialize_context(result.context)["breaches"]}
     assert "put_delta_out_of_range" in reasons
 
@@ -735,7 +735,7 @@ def test_greek_sanity_fails_non_finite_greek() -> None:
     result = check_greek_sanity(
         _position(CALL_100, greeks=bad), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     reasons = {breach["reason"] for breach in deserialize_context(result.context)["breaches"]}
     assert "non_finite" in reasons
 
@@ -747,7 +747,7 @@ def test_greek_sanity_broker_reconcile_breach_named() -> None:
     result = check_greek_sanity(
         line, broker=broker, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     breaches = deserialize_context(result.context)["breaches"]
     assert any(
         b.get("reason") == "broker_reconcile_breach" and b["greek"] == "delta" for b in breaches
@@ -764,7 +764,7 @@ def test_greek_sanity_broker_within_tolerance_passes() -> None:
     result = check_greek_sanity(
         line, broker=broker, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_greek_sanity_contract_key_mismatch_raises_naming_both_keys() -> None:
@@ -798,7 +798,7 @@ def test_scenario_completeness_passes_full_grid() -> None:
         run_id=RUN_ID,
         run_ts=RUN_TS,
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
     assert result.measured_value == 0.0
 
 
@@ -825,7 +825,7 @@ def test_scenario_completeness_empty_expected_passes() -> None:
     result = check_scenario_completeness(
         (), (), "PORT-1", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 # ================================================================================
@@ -837,7 +837,7 @@ def test_anomaly_flags_injected_spike() -> None:
     result = detect_anomaly(
         500.0, baseline, "event_rate", "AAPL", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_FAIL
+    assert result.qc_status == STATUS_FAIL
     context = deserialize_context(result.context)
     assert context["metric"] == "event_rate"  # names which metric spiked
     assert context["target"] == "AAPL"
@@ -850,7 +850,7 @@ def test_anomaly_does_not_flag_value_within_baseline() -> None:
     result = detect_anomaly(
         50.2, baseline, "event_rate", "AAPL", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert result.status == STATUS_PASS
+    assert result.qc_status == STATUS_PASS
 
 
 def test_anomaly_empty_baseline_raises() -> None:
@@ -873,11 +873,11 @@ def test_anomaly_single_element_baseline() -> None:
     same = detect_anomaly(
         7.0, [7.0], "stale_ratio", "MSFT", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert same.status == STATUS_PASS
+    assert same.qc_status == STATUS_PASS
     far = detect_anomaly(
         99.0, [7.0], "stale_ratio", "MSFT", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
-    assert far.status == STATUS_FAIL
+    assert far.qc_status == STATUS_FAIL
 
 
 def test_robust_z_score_matches_hand_computed_mad() -> None:

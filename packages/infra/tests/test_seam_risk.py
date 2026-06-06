@@ -111,7 +111,7 @@ def test_derived_contract_round_trips_and_keeps_its_stamp(
     [
         ("positions", lambda: risk_positions()[0], "quantity"),
         ("risk_aggregates", make_risk_aggregate, "net_delta"),
-        ("scenario_results", make_scenario_result, "pnl"),
+        ("scenario_results", make_scenario_result, "scenario_pnl"),
     ],
 )
 def test_malformed_contract_is_rejected_by_validation(

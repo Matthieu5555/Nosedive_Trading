@@ -121,7 +121,7 @@ def _forward(version_label: str) -> ForwardCurvePoint:
         maturity_years=0.5,
         expiry_date=date(2026, 12, 18),
         day_count="ACT/365F",
-        forward=5050.0 if version_label == "live" else 5060.0,
+        forward_price=5050.0 if version_label == "live" else 5060.0,
         diagnostics=ForwardDiagnostics(
             method="parity", candidate_count=8, residual_mad=0.1, quality_label="good"
         ),

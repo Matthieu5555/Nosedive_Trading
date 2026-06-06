@@ -118,8 +118,8 @@ def make_pricing_result() -> PricingResult:
 # (table, factory, malformed-field, broken-value) for each of C's six contracts.
 _CASES = [
     ("market_state_snapshots", make_snapshot, "reference_spot", 0.0),
-    ("forward_curve", make_forward_point, "forward", -1.0),
-    ("iv_points", make_iv_points, "iv", -1.0),
+    ("forward_curve", make_forward_point, "forward_price", -1.0),
+    ("iv_points", make_iv_points, "implied_vol", -1.0),
     ("surface_parameters", make_surface_parameters, "svi_b", 0.0),
     ("surface_grid", make_surface_grid, "total_variance", -1.0),
     ("pricing_results", make_pricing_result, "vega", -1.0),

@@ -308,4 +308,4 @@ def test_scenario_result_projects_into_frozen_contract() -> None:
     assert isinstance(result, ScenarioResult)
     assert result.scenario_id == "spot_down_5"
     assert result.spot_shock == -0.05
-    assert result.pnl == cell.full_reprice_pnl
+    assert result.scenario_pnl == cell.full_reprice_pnl

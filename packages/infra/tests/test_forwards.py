@@ -412,7 +412,7 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
     assert isinstance(point, ForwardCurvePoint)
     validate(point)  # raises if any contract field rule is violated
     assert table_for_contract(ForwardCurvePoint) == "forward_curve"
-    assert point.forward == pytest.approx(100.0, rel=1e-9)
+    assert point.forward_price == pytest.approx(100.0, rel=1e-9)
     assert point.diagnostics.method == "parity_regression"
     assert point.diagnostics.candidate_count == 5
     assert point.diagnostics.quality_label == "good"

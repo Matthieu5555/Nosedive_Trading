@@ -114,7 +114,7 @@ def compute_risk_summary() -> dict[str, Any]:
         "net_theta": agg.net_theta,
         "aggregate_stamp_hash": agg.provenance.stamp_hash,
         "scenario_version": scenario_version,
-        "scenario_pnl": {f"{r.scenario_id}|{r.contract_key}": r.pnl for r in results},
+        "scenario_pnl": {f"{r.scenario_id}|{r.contract_key}": r.scenario_pnl for r in results},
         "scenario_result_count": len(results),
         "first_scenario_stamp_hash": results[0].provenance.stamp_hash,
         "worst_case_scenario": wc.scenario.scenario_id,

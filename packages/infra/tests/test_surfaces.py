@@ -66,7 +66,7 @@ def _iv_point(k: float, w: float, key: str) -> IvPoint:
     )
     iv = math.sqrt(w / _SURFACE.maturity_years) if w > 0 else 0.0
     return IvPoint(
-        snapshot_ts=TS, contract_key=key, iv=iv, k=k, total_variance=w, solver_version="iv-1",
+        snapshot_ts=TS, contract_key=key, implied_vol=iv, log_moneyness=k, total_variance=w, solver_version="iv-1",
         diagnostics=IvDiagnostics(converged=True, iterations=5, residual=1e-12, status="converged"),
         source_snapshot_ts=TS, provenance=a_stamp,
     )
@@ -281,13 +281,13 @@ def test_sparse_slice_falls_back_to_labeled_nonparametric() -> None:
     # The nonparametric curve passes through its own knots and interpolates between.
     for p in _SURFACE.points[:3]:
         assert fit.total_variance(p.log_moneyness) == pytest.approx(p.total_variance, abs=1e-12)
-    mid_k = 0.5 * (points[0].k + points[1].k)
+    mid_k = 0.5 * (points[0].log_moneyness + points[1].log_moneyness)
     between = fit.total_variance(mid_k)
     lo, hi = sorted((points[0].total_variance, points[1].total_variance))
     assert lo <= between <= hi
     # A point in the *second* interval (between knots 1 and 2) exercises the walk
     # past the first bracket, and still lands between its two neighbours.
-    upper_mid_k = 0.5 * (points[1].k + points[2].k)
+    upper_mid_k = 0.5 * (points[1].log_moneyness + points[2].log_moneyness)
     upper_between = fit.total_variance(upper_mid_k)
     lo2, hi2 = sorted((points[1].total_variance, points[2].total_variance))
     assert lo2 <= upper_between <= hi2

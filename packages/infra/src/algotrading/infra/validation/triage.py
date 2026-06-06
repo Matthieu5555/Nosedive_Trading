@@ -112,7 +112,7 @@ def triage_from_qc(report: QcReport) -> tuple[TriageRecord, ...]:
     """Fold a QC report's non-passing rows into unified triage records (``source="qc"``)."""
     records = []
     for result in report.results:
-        if result.status == STATUS_PASS:
+        if result.qc_status == STATUS_PASS:
             continue
         offender = named_offender(result)
         records.append(
@@ -123,7 +123,7 @@ def triage_from_qc(report: QcReport) -> tuple[TriageRecord, ...]:
                 source=SOURCE_QC,
                 name=result.check_name,
                 target_key=offender if offender is not None else result.target_key,
-                status=result.status,
+                status=result.qc_status,
                 severity=result.severity,
                 reason_code=_qc_reason(result),
                 detail=result_headline(result),

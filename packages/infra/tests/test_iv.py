@@ -265,7 +265,7 @@ def test_iv_point_is_a_valid_stamped_contract() -> None:
     assert isinstance(emitted, IvPoint)
     validate(emitted)  # raises if any contract field rule is violated
     assert table_for_contract(IvPoint) == "iv_points"
-    assert emitted.iv == pytest.approx(point.sigma, abs=1e-7)
+    assert emitted.implied_vol == pytest.approx(point.sigma, abs=1e-7)
     assert emitted.diagnostics.converged is True
     assert emitted.diagnostics.status == "converged"
 

@@ -94,7 +94,7 @@ REGISTRY: dict[str, TableSpec] = {
         append_only=False,
         requires_provenance=True,
         requires_source_snapshot_ts=True,
-        positive_fields=("forward", "maturity_years"),
+        positive_fields=("forward_price", "maturity_years"),
         non_negative_fields=(),
     ),
     "iv_points": TableSpec(
@@ -106,7 +106,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_provenance=True,
         requires_source_snapshot_ts=True,
         positive_fields=(),
-        non_negative_fields=("iv", "total_variance"),
+        non_negative_fields=("implied_vol", "total_variance"),
     ),
     "surface_parameters": TableSpec(
         name="surface_parameters",

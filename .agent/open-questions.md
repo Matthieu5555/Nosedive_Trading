@@ -25,8 +25,8 @@ without searching.
 
 ## Open
 
-_OQ-7 is open (raised 2026-06-06 by the H2 doc reconciliation). OQ-1 through OQ-6 were
-ruled on 2026-06-05; see Resolved._
+_None currently. OQ-7 was ruled on 2026-06-06 (see Resolved); OQ-1 through OQ-6 were ruled
+on 2026-06-05._
 
 _OQ-1 through OQ-4 were ruled on 2026-06-05; see Resolved. The `(blueprint)` rulings (OQ-1, OQ-3)
 and futures capture still need a blueprint amendment + ADR to land formally — those follow-ups are
@@ -53,27 +53,11 @@ constituents may need a different vendor for real depth. This is an *alimentatio
 not a design one — it does not block building the pipeline, but it blocks the pipeline being
 useful, so decide it early.
 
-### OQ-7 — blueprint data-dictionary field names vs. the code contract field names
-
-The blueprint data dictionary (`documentation/blueprint/09-data-dictionary.md`,
-authoritative on domain — ADR 0011) names several persisted fields differently from the
-frozen code contracts (`infra/contracts/tables.py`). Confirmed divergences: `forward_price`
-(dict) vs `forward` (code) on `ForwardCurvePoint`; `implied_vol` vs `iv` on `IvPoint`;
-`scenario_pnl` vs `pnl` on `ScenarioResult`; `qc_status` vs `status` on `QcResult`. The
-dict also names some fields the contracts fold into a `diagnostics` bundle rather than
-expose as top-level columns (`solver_converged`, `forward_confidence`, `surface_model`,
-`fit_rmse`). Per ADR 0011 the blueprint wins on domain, so this is **raised, not silently
-doc-edited**. The ruling is an owner's: either (a) rename the contract fields to the
-blueprint names (a contract change with storage-migration implications — the contracts are
-frozen seams), or (b) accept the short code names as the convention and amend the
-data-dictionary entries (a blueprint amendment + ADR). Not blocking the gate; it is a
-naming/authority reconciliation, surfaced so the next field-touching change resolves it
-deliberately instead of entrenching the split. Owner / blueprint decides.
-
 ## Resolved
 
 | # | Question | Ruling | Recorded in |
 |---|----------|--------|-------------|
+| OQ-7 | Blueprint data-dictionary field names vs. code contract field names (`forward_price`/`forward`, `implied_vol`/`iv`, `log_moneyness`/`k`, `scenario_pnl`/`pnl`, `qc_status`/`status`, `dollar_*`/`cash_*`). | **Follow the blueprint — code conforms.** Owner ruled "suivre le blueprint, repartir de zéro pour la data" (2026-06-06): rename the frozen contract fields to the Part IX names; data starts fresh so the Parquet/hash schema change needs no migration. `InstrumentKey.broker_contract_id` left as-is (embedded in the canonical key, not a standalone column) — flagged as an optional follow-up. | [ADR 0029](decisions/0029-contract-field-names-conform-to-blueprint.md) |
 | OQ-0 | Does IBKR-over-REST belong in the build, given the Nautilus-spine direction (ADR 0023)? | Yes — build the custom IBKR-REST connector into the catalog (Saxo/Deribit pattern), REST preferred, Nautilus-TWS as a manual-flip fallback. Owner ruled 2026-06-05. | [ADR 0024](decisions/0024-ibkr-rest-transport-alongside-tws.md) |
 | OQ-1 | Greek/metric monetization convention — "dollars per what"? | Store raw per-unit Greeks as source of truth; expose a dollar layer with explicit units — **Delta\$ = Δ·S·mult** (per \$1), **Gamma\$ = Γ·S²/100** (per 1% move), **Vega\$** per 1 vol point (0.01), **Theta\$** per calendar day (÷365), **Rho\$** per 1% rate; per-contract→per-position additive. Gamma normalisation (1% vs \$1) and theta day-count (365 vs 252) become config flags. Owner ruled 2026-06-05; blueprint amendment + ADR pending. | [roadmap](../documentation/roadmap-index-analytics.md) §2 |
 | OQ-2 | Historical data source | **IBKR is the source** (owner/prof mandate; Yahoo excluded as unreliable). Underlying daily price history (index + every constituent, for charts) is feasible via IBKR historical bars (`reqHistoricalData` / `/hmds/history`) — years of daily depth, ~51 requests, within pacing — but **not yet implemented** in our adapter (`cp_rest_adapter.py` is live snapshot + WS only). Deep option-chain history is IBKR's weak spot, so the options dataset is built **forward** via daily close snapshots (IBKR best-effort backfill at the start). No third-party vendor by default; revisit only if a deep options backfill proves necessary and IBKR insufficient (prof's call). Owner ruled 2026-06-05; building the IBKR historical-bar fetch is a Phase-0 task. | [roadmap](../documentation/roadmap-index-analytics.md) §2 |

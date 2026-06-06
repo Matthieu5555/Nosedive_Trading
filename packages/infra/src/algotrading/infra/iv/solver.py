@@ -314,8 +314,8 @@ def iv_point(
     return IvPoint(
         snapshot_ts=snapshot_ts,
         contract_key=result.contract_key,
-        iv=result.iv,
-        k=result.k,
+        implied_vol=result.iv,
+        log_moneyness=result.k,
         total_variance=result.total_variance,
         solver_version=SOLVER_VERSION,
         diagnostics=IvDiagnostics(

@@ -510,7 +510,7 @@ def forward_curve_point(
         maturity_years=estimate.maturity_years,
         expiry_date=expiry_date,
         day_count=day_count,
-        forward=estimate.forward,
+        forward_price=estimate.forward,
         diagnostics=diagnostics,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,

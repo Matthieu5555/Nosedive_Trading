@@ -40,7 +40,7 @@ def _iv_point(k: float, w: float, key: str) -> IvPoint:
     )
     iv = math.sqrt(w / _SURFACE.maturity_years) if w > 0 else 0.0
     return IvPoint(
-        snapshot_ts=_TS, contract_key=key, iv=iv, k=k, total_variance=w, solver_version="iv-1",
+        snapshot_ts=_TS, contract_key=key, implied_vol=iv, log_moneyness=k, total_variance=w, solver_version="iv-1",
         diagnostics=IvDiagnostics(converged=True, iterations=5, residual=1e-12, status="converged"),
         source_snapshot_ts=_TS, provenance=a_stamp,
     )

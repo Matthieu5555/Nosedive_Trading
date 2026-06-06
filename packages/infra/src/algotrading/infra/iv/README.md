@@ -25,7 +25,7 @@ if result.converged:
 volatility comes back with a status — `below_intrinsic`, `above_max`, or
 `non_convergence` — plus the iteration count, the final price residual, and the
 search bracket. It is never a bare `NaN`, and such a result is never projected to an
-`IvPoint` (the contract requires a finite `iv >= 0`); `iv_point` raises if you try.
+`IvPoint` (the contract requires a finite `implied_vol >= 0`); `iv_point` raises if you try.
 
 ## How it works
 

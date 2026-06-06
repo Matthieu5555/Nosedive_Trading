@@ -655,7 +655,7 @@ def test_qc_fail_alert_pages_on_a_critical_qc_failure(tmp_path: Path) -> None:
     assert alert.kind == "qc_fail"
     # The QC rows were persisted and read back.
     rows = store.read("qc_results")
-    assert any(r.check_name == "collector_continuity" and r.status == "fail" for r in rows)
+    assert any(r.check_name == "collector_continuity" and r.qc_status == "fail" for r in rows)
 
 
 def test_qc_job_clean_summary_does_not_page(tmp_path: Path) -> None:

@@ -94,11 +94,11 @@ def compute_pipeline_summary() -> dict[str, Any]:
                               config_hashes=CONFIG_HASH)[0]
 
     return {
-        "forward": fwd.forward,
+        "forward": fwd.forward_price,
         "discount_factor": estimate.discount_factor,
         "forward_stamp_hash": fwd.provenance.stamp_hash,
         "iv_by_strike": {
-            f"{p.strike:g}": pt.iv
+            f"{p.strike:g}": pt.implied_vol
             for p, pt in zip(surface.points, iv_points, strict=True)
         },
         "svi": {"a": params.svi_a, "b": params.svi_b, "rho": params.svi_rho,
@@ -164,7 +164,7 @@ def test_forward_is_invariant_to_input_pair_order() -> None:
         snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365", source_snapshot_ts=TS,
         calc_ts=TS, config_hashes=CONFIG_HASH,
     )
-    assert forward_a.forward == forward_b.forward
+    assert forward_a.forward_price == forward_b.forward_price
     # Source records are canonicalized before hashing, so the stamp is order-free.
     assert forward_a.provenance.stamp_hash == forward_b.provenance.stamp_hash
 

@@ -90,7 +90,7 @@ class ForwardCurvePoint:
     maturity_years: float
     expiry_date: date
     day_count: str
-    forward: float
+    forward_price: float
     diagnostics: ForwardDiagnostics
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
@@ -102,8 +102,8 @@ class IvPoint:
 
     snapshot_ts: datetime
     contract_key: str
-    iv: float
-    k: float
+    implied_vol: float
+    log_moneyness: float
     total_variance: float
     solver_version: str
     diagnostics: IvDiagnostics
@@ -158,9 +158,9 @@ class PricingResult:
     vega: float
     theta: float
     rho: float
-    cash_delta: float
-    cash_gamma: float
-    cash_vega: float
+    dollar_delta: float
+    dollar_gamma: float
+    dollar_vega: float
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
 
@@ -202,7 +202,7 @@ class ScenarioResult:
     spot_shock: float
     vol_shock: float
     time_shock: float
-    pnl: float
+    scenario_pnl: float
     scenario_version: str
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
@@ -220,7 +220,7 @@ class QcResult:
     check_name: str
     target_key: str
     run_ts: datetime
-    status: str
+    qc_status: str
     severity: str
     measured_value: float
     threshold_version: str

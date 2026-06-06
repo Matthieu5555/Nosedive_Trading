@@ -401,9 +401,9 @@ def test_pricing_result_is_a_valid_stamped_contract() -> None:
     validate(result)  # raises if any field rule is violated
     assert table_for_contract(PricingResult) == "pricing_results"
     # Cash Greeks use the documented per-unit-of-underlying conventions.
-    assert result.cash_delta == pytest.approx(greeks.delta * state.spot)
-    assert result.cash_gamma == pytest.approx(greeks.gamma * state.spot * state.spot)
-    assert result.cash_vega == pytest.approx(greeks.vega * 0.01)
+    assert result.dollar_delta == pytest.approx(greeks.delta * state.spot)
+    assert result.dollar_gamma == pytest.approx(greeks.gamma * state.spot * state.spot)
+    assert result.dollar_vega == pytest.approx(greeks.vega * 0.01)
     assert result.price == pytest.approx(greeks.price)
     assert result.pricer_version == PRICER_VERSION
 

@@ -108,8 +108,8 @@ def _distinct_sorted_points(
     """
     by_k: dict[float, float] = {}
     for point in points:
-        if point.total_variance >= 0.0 and point.k not in by_k:
-            by_k[point.k] = point.total_variance
+        if point.total_variance >= 0.0 and point.log_moneyness not in by_k:
+            by_k[point.log_moneyness] = point.total_variance
     ks = tuple(sorted(by_k))
     return ks, tuple(by_k[k] for k in ks)
 

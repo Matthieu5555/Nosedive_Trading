@@ -66,7 +66,7 @@ sequence and the one task already specced:
 
 | When | Work | Spec |
 |------|------|------|
-| **✅ Done (gate reopened)** | **C7 — config hardening.** Tasks 1–5 landed: six Part VII YAMLs + bundle loader; every hashed economic param in validated typed config (no `.py` literals at the audited sites); per-bundle `config_hashes` on every stamp; injected code identity + per-run config freeze + `validate_manifest`. The owner prerequisite — *no new compute until params are in YAML and reproducibility is locked* — is **met for replay-a-run**. Carry-forwards (staged, non-blocking): the effective-dated profile **store** (ADR 0028 "Next" — replaying a past day *fresh*) and operational broker.yaml client-id bands. | [C7-config-hardening.md](C7-config-hardening.md) |
+| **✅ Done (100% — gate open)** | **C7 — config hardening.** Tasks 1–5 **and both carry-forwards** landed: six Part VII YAMLs + bundle loader; every hashed economic param in validated typed config (no `.py` literals at the audited sites); per-bundle `config_hashes` on every stamp; injected code identity + per-run config freeze + `validate_manifest`; broker.yaml bands/backoff wired; and the **effective-dated profile store** on SQLite (`ProfileRepository`/`resolve_as_of`). Both halves locked: replay-a-run **and** replay-a-past-day-fresh. The owner prerequisite — *no new compute until params are in YAML and reproducibility is locked* — is fully met. Ready to archive the spec. | [C7-config-hardening.md](C7-config-hardening.md) |
 | **Phase 0** | Pin the tenor grid + $-Greek units/flags; build the IBKR historical-bar fetch (underlying daily OHLC); decide futures capture (ADR + blueprint amendment, or defer). | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 0 |
 | **Phase 1 (Tab 1)** | 1A membership → 1B delta-band selection → 1C capture (daily close + history) → 1F (tenor×Δ-band) projection → 1G cron → 1H QC → 1I front page. (1D futures gated, parallel; 1E raw store is a no-op.) | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 1 |
 | **Phase 2 (Tab 2)** | Basket builder → stress/scenario (±50% spot/vol) → PnL attribution by Greek → strategy composition. | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 2 |
@@ -77,16 +77,6 @@ converged seam → contract-test map. Code without the named tests is not done.
 
 ## Known carried-forward items
 
-- **C7 — effective-dated profile store (queued, when Phase 1C needs it).** C7 is done bar
-  this one piece, which ADR 0028 **stages by design** ("Next"): a runtime metadata store
-  (the SQLite tier) that resolves "the config in force on day D" so a *past day* replays
-  fresh. The "now" stage it mandates — YAML overlays + per-run manifest freeze +
-  `validate_manifest` — is **done**, so *replay-a-run* reproducibility is locked and the
-  owner gate is open. Build the store when Phase 1C (daily-close capture + **history**)
-  actually needs as-of resolution; until then it is non-blocking. Shape: an append-only
-  profile record (`name → versions`, each with `effective_from` + a content hash a run
-  pins) + an as-of resolver. Details in [C7-config-hardening.md](C7-config-hardening.md)
-  (task 5, point 9) and its STATUS header.
 - **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
   Read-only classification done; report at [H1-repo-hygiene-report.md](H1-repo-hygiene-report.md).
   Outcome: **no tracked dead paths** (nothing to `git rm`). Applied safe patch — added the five

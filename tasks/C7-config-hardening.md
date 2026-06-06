@@ -1,18 +1,18 @@
 # C7 — Config hardening: kill hardcoding, wire validated config, lock reproducibility
 
-> **STATUS (2026-06-06): landed — tasks 1–5 done; gate reopened for new compute.**
+> **STATUS (2026-06-06): COMPLETE — tasks 1–5 + both carry-forwards done. Gate green.**
 > Six Part VII YAML bundles + the bundle-aware `load_platform_config`; every hashed
 > economic param (solver vol bracket, SVI bounds, forward-confidence heuristics, scenario
 > `roll_down_days`) repatriated into validated typed config and threaded by DI; per-bundle
 > `config_hashes` dict on every `ProvenanceStamp`; injected code identity (commit SHA +
-> dirty) on the run manifest; per-run config freeze + `validate_manifest`. The owner
-> prerequisite (*no new compute until params are in YAML and reproducibility is locked*)
-> is met for **replay-a-run**. The operational `broker.yaml` client-id bands + backoff are
-> now wired too (typed `BrokerConfig` via `load_broker_config`). **One carry-forward
-> remains**, explicitly staged later (non-blocking):
-> - **Effective-dated profile store** — ADR 0028's "Next" stage (a runtime metadata
->   store) for resolving "the config in force on day D" to replay a *past day fresh*. The
->   "now" stage it mandates (YAML overlays + per-run manifest freeze) is done.
+> dirty) on the run manifest; per-run config freeze + `validate_manifest`; operational
+> `broker.yaml` client-id bands + backoff wired (`BrokerConfig` / `load_broker_config`);
+> and the **effective-dated profile store** — ADR 0028's as-of stage — on SQLite behind a
+> `ProfileRepository` port (`ProfileVersion`, `resolve_as_of`, `make_profile_repository`),
+> so a *past day* replays through the config in force *then*. Both reproducibility halves
+> are locked: replay-a-run (manifest freeze) **and** replay-a-past-day-fresh (as-of
+> resolution). A Postgres profile backend can be added later behind the same port; nothing
+> economic is a `.py` literal at the audited sites. Spec ready to move to `archive/`.
 
 
 - **Owns:** `packages/core/src/algotrading/core/config/**`, new `packages/infra/**/configs/*.yaml`,

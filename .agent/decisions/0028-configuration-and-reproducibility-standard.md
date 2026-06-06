@@ -1,6 +1,9 @@
 # 0028 — Configuration & reproducibility standard: YAML → typed config → per-bundle hashes, as-of profiles
 
-- **Status:** accepted, 2026-06-05. Ratifies
+- **Status:** accepted, 2026-06-05; **implemented (C7 complete) 2026-06-06** — all five
+  staged pieces landed, including the as-of profile store (the "Next" stage built early on
+  SQLite behind a `ProfileRepository` port, since the storage-port pattern already existed).
+  Ratifies
   [`documentation/configuration-and-reproducibility.md`](../../documentation/configuration-and-reproducibility.md)
   as a binding house standard, and resolves **OQ-5** and **OQ-6** (`.agent/open-questions.md`).
 - **Date:** 2026-06-05

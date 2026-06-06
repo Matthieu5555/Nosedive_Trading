@@ -12,25 +12,18 @@ in a notebook and copied into the code).
 | `demo_pricing_greeks.ipynb` | Pricing engine: price and Greeks vs spot, European (analytic) vs American (lattice). |
 | `demo_pipeline_deribit.ipynb` | End-to-end pipeline demo: Deribit → collection → surface → risk. Runs against the Deribit testnet (public API, no auth). |
 | `demo_pipeline_deribit_v2.ipynb` | Deribit pipeline v2: updated to post-provider-dimension and ProviderFlow seam. |
-| `demo_pipeline_ibkr.ipynb` | IBKR pipeline demo: universe expansion, IbkrBrokerSession, surface collection. Requires `uv sync --extra ibkr` and a running Gateway. |
-| `demo_pipeline_saxo.ipynb` | Saxo pipeline demo: OAuth2 flow, OptionsChain endpoint, IV surface. Requires a live Saxo token. |
+| `demo_pipeline_ibkr.ipynb` | IBKR pipeline demo: reconstruct a surface from a committed real sample through the actor pipeline (no Gateway needed); a credential-gated live cell uses the unified collector. |
+| `demo_pipeline_saxo.ipynb` | Saxo pipeline demo: reconstruct a surface from a committed real sample (no token needed); a credential-gated live cell uses the unified collector. |
 | `vol_surface_pedagogique.ipynb` | Interactive pedagogy: vol surface intuition, smile anatomy, Greeks, no-arb diagnostics. Companion to `documentation/vol-surface/vol_surface_pedagogique.md`. |
 
-The three no-credential demos (`demo_surface_fit`, `demo_pricing_greeks`, `vol_surface_pedagogique`)
-run on synthetic inputs (reproducible, no broker needed). The pipeline demos require live
-credentials or a testnet; see the cell-level setup instructions in each notebook.
-
-> **Status (2026-06-05, post-merge):** the three no-credential demos are **rewired to the merged
-> API and verified** (they execute clean against `algotrading.infra.*` under `--group notebooks`).
-> The four broker-pipeline demos (`demo_pipeline_{deribit,deribit_v2,ibkr,saxo}`) were carried over
-> from the pre-merge tree and **still import pre-merge module paths** (e.g. `surfaces.engine`,
-> `infra_{ibkr,saxo}.flow`, the old `forwards`/`iv`/`qc`/`risk`/`snapshots` names); they need a
-> rewire to the merged collection seam (C6: `orchestration.provider_flow`, the unified collector)
-> before they run, plus live credentials/testnet/Gateway to execute end-to-end.
-
-> **ADR 0023:** Nautilus is the runtime spine — IBKR moved onto Nautilus's adapter (the old
-> `demo_pipeline_ibkr` `IbkrBrokerSession` path is superseded), while Saxo/Deribit keep their own
-> adapters. The pipeline demos will reflect that wiring once rewired.
+> **Status (post-merge): all seven demos are rewired to the merged API and verified.**
+> - **No-credential, synthetic** (`demo_surface_fit`, `demo_pricing_greeks`, `vol_surface_pedagogique`) — run on reproducible synthetic inputs.
+> - **Deribit** (`demo_pipeline_deribit`, `_v2`) — run end-to-end against the public Deribit **testnet** (no auth); v2 also demonstrates `orchestration.run_provider_flow`.
+> - **IBKR / Saxo** (`demo_pipeline_ibkr`, `_saxo`) — run **off the committed real samples** (`packages/infra-{ibkr,saxo}/samples/*.json`) through `orchestration.reconstruction.reconstruct_day`, **no Gateway/token needed**. Each keeps a `RUN_LIVE=False` credential-gated cell that uses the unified collection seam (`orchestration.run_provider_flow`) for a real feed.
+>
+> All call the high-level orchestration use-cases (`build_surface` / `reconstruct_day` / `run_provider_flow`), never re-stitched low-level engines. Per ADR 0023 Nautilus is the runtime spine; per ADR 0027 collection is unified on one `RawCollector` (the old `infra_{ibkr,saxo}.flow` paths are gone).
+>
+> Known gap (minimalism sweep): the broker samples are in the broker-raw `RawMarketEvent` schema while the store/actor use the contracts schema; the IBKR/Saxo notebooks bridge it with a tiny in-notebook relabelling helper until the two shapes are collapsed (deferred ADR 0021).
 
 ## Run
 ```bash

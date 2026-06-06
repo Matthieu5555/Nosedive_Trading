@@ -92,10 +92,13 @@ converged seam → contract-test map. Code without the named tests is not done.
   package READMEs; fixed five concrete drifts (four C7 "param is now typed config, not a `.py`
   literal" in forwards/iv/surfaces/risk + execution's layer position). Glossary gained the merge
   terms (config bundle, push collection seam / `RawCollector`). `map.md` verified current; the docs
-  index gate command fixed (it omitted `lint-imports`). **Raised, not edited:** the blueprint
-  data-dictionary vs code contract field-name split, recorded as
-  [OQ-7](../.agent/open-questions.md) for an owner ruling (ADR 0011 — blueprint wins on domain, so
-  it's a bug to raise, not a doc edit). Gate green incl. the new check.
+  index gate command fixed (it omitted `lint-imports`). The blueprint data-dictionary vs code
+  contract field-name split was raised as OQ-7 and **ruled (owner, 2026-06-06): follow the
+  blueprint, code conforms** — the six field renames (`forward_price`/`implied_vol`/`log_moneyness`/
+  `scenario_pnl`/`qc_status`/`dollar_*`) landed across contracts + producers/consumers + tests +
+  docs; data starts fresh so no migration. See
+  [ADR 0029](../.agent/decisions/0029-contract-field-names-conform-to-blueprint.md). Gate green
+  incl. the new check.
 - **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
   imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process

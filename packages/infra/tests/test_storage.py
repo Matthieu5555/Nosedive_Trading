@@ -42,7 +42,7 @@ def _stamp(event_id: str = "evt-a"):
     return stamp(
         calc_ts=_TS,
         code_version="algotrading-infra-0.1.0",
-        config_hash="cfg",
+        config_hashes={"cfg": "cfg"},
         source_records=(source_ref("raw_market_events", "sess-1", event_id),),
         source_timestamps=(_TS,),
     )

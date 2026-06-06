@@ -1,7 +1,7 @@
 {
   "discount_factor": 0.9899999999999997,
   "forward": 100.0,
-  "forward_stamp_hash": "a3a80bbbc8dfddc50f809139ff94d3eba4a879a8af9bbda97b57a64169ef31d9",
+  "forward_stamp_hash": "f0be992627f00c24a38fbb4e273f1095f5cc836c01b977b7ff6be5b34f99a7bd",
   "grid_total_variance_at_atm": 0.060000000000000046,
   "iv_by_strike": {
     "100": 0.4898979485566356,
@@ -10,7 +10,7 @@
     "80": 0.5537501028555797,
     "90": 0.5128988593943778
   },
-  "surface_stamp_hash": "1552776143d4422c3e83ae3bf911221e4e749701a6926bc9b2299839fef9fb9a",
+  "surface_stamp_hash": "fb05db7b578d84413685a8cfdb744bfd96d81a5788832921758b00d4ac50a323",
   "svi": {
     "a": 0.039999999999987254,
     "b": 0.10000000000002121,

@@ -37,7 +37,7 @@ from algotrading.infra.contracts import (
 )
 
 CODE_VERSION = "0.1.0-fixture"
-CONFIG_HASH = "cfg-hash-0"
+CONFIG_HASH = {"cfg": "cfg-hash-0"}
 
 TRADE_DATE = date(2026, 5, 29)
 EXPIRY = date(2026, 6, 19)
@@ -83,7 +83,7 @@ def make_stamp(
     return stamp(
         calc_ts=CALC_TS,
         code_version=CODE_VERSION,
-        config_hash=CONFIG_HASH,
+        config_hashes=CONFIG_HASH,
         source_records=source_records,
         source_timestamps=(SNAPSHOT_TS,),
     )

@@ -59,7 +59,7 @@ CALC_TS = SNAPSHOT_TS + timedelta(seconds=5)
 def context(**overrides: object) -> SnapshotContext:
     """A SnapshotContext with test defaults, overridable per case."""
     base: dict[str, object] = dict(
-        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hash="cfg-test"
+        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hashes={"cfg": "cfg-test"}
     )
     base.update(overrides)
     return SnapshotContext(**base)  # type: ignore[arg-type]
@@ -184,7 +184,7 @@ def test_option_inherits_stale_underlying_via_batch() -> None:
     )
     batch = build_snapshots(
         [UNDERLYING, OPTION], events,
-        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hash="cfg-test",
+        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hashes={"cfg": "cfg-test"},
     )
     by_key = {snap.instrument_key: snap for snap in batch.snapshots}
     option_snapshot = by_key[OPTION.canonical()]
@@ -235,7 +235,7 @@ def test_crossed_quote_does_not_feed_mid() -> None:
 def test_batch_collects_insufficient_as_labeled_skip() -> None:
     batch = build_snapshots(
         [UNDERLYING], single_bid_event(),
-        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hash="cfg-test",
+        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hashes={"cfg": "cfg-test"},
     )
     assert batch.snapshots == ()
     assert len(batch.skipped) == 1
@@ -248,7 +248,7 @@ def test_batch_collects_an_option_with_no_spot_as_a_labeled_skip() -> None:
     events = (event(OPTION, "bid", 3.0, ts=SNAPSHOT_TS),)
     batch = build_snapshots(
         [OPTION], events,
-        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hash="cfg-test",
+        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hashes={"cfg": "cfg-test"},
     )
     assert batch.snapshots == ()
     assert [skip.instrument_key for skip in batch.skipped] == [OPTION.canonical()]
@@ -437,7 +437,7 @@ def test_batch_keeps_full_set_and_qc_filtered_usable_view() -> None:
     )
     batch = build_snapshots(
         [UNDERLYING, OPTION], events,
-        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hash="cfg-test",
+        snapshot_ts=SNAPSHOT_TS, qc=QC, calc_ts=CALC_TS, config_hashes={"cfg": "cfg-test"},
     )
     assert len(batch.snapshots) == 2  # full set: both built
     assert len(batch.assessed) == 2

@@ -17,7 +17,7 @@ and the report keeps them different.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 
 import structlog
@@ -86,7 +86,7 @@ def reconstruct_day(
     instruments: Sequence[InstrumentKey],
     masters: Sequence[InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
@@ -132,7 +132,7 @@ def reconstruct_day(
         instruments=instruments,
         masters=masters,
         config=config,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         as_of=as_of,
         calc_ts=calc_ts,
         exercise_style_for=exercise_style_for,
@@ -174,7 +174,7 @@ def reconstruct_range(
     instruments: Sequence[InstrumentMaster] | Sequence[InstrumentKey],
     masters: Sequence[InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of_for: Callable[[date], datetime],
     calc_ts_for: Callable[[date], datetime],
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
@@ -211,7 +211,7 @@ def reconstruct_range(
             instruments=instrument_keys,
             masters=masters,
             config=config,
-            config_hash=config_hash,
+            config_hashes=config_hashes,
             as_of=as_of_for(trade_date),
             calc_ts=calc_ts_for(trade_date),
             exercise_style_for=exercise_style_for,

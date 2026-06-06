@@ -34,7 +34,7 @@ _BUCKETS = (-0.2, -0.1, 0.0, 0.1, 0.2)
 
 def _iv_point(k: float, w: float, key: str) -> IvPoint:
     a_stamp = stamp(
-        calc_ts=_TS, code_version="iv-1", config_hash="c",
+        calc_ts=_TS, code_version="iv-1", config_hashes={"cfg": "c"},
         source_records=(source_ref("market_state_snapshots", _TS, key),),
         source_timestamps=(_TS,),
     )
@@ -56,7 +56,7 @@ def _fit(points: tuple[IvPoint, ...]) -> SliceFit:
 def _project(points: tuple[IvPoint, ...]) -> SurfaceProjection:
     return project_surface_fit(
         _fit(points), _BUCKETS,
-        snapshot_ts=_TS, source_snapshot_ts=_TS, calc_ts=_TS, config_hash="cfg",
+        snapshot_ts=_TS, source_snapshot_ts=_TS, calc_ts=_TS, config_hashes={"cfg": "cfg"},
     )
 
 

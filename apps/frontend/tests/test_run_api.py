@@ -197,7 +197,7 @@ def test_sample_run_builds_a_surface_and_leaves_the_source_store_untouched(
     assert summary["n_fitted_maturities"] == 1
     assert summary["n_surface_params"] >= 1
     assert summary["code_version"] is not None
-    assert summary["config_hash"]
+    assert summary["config_hashes"]
 
     # The source store must be untouched — the build wrote only to its throwaway temp store.
     raw_after = len(replay_day(ctx.store, trade_date, underlying="AAPL"))

@@ -32,7 +32,7 @@ The pipeline, in order, for one as-of instant:
 
 Every derived output carries a provenance stamp. C's ``build_snapshots``,
 ``forward_curve_point``, ``iv_point``, ``surface_parameters`` and
-``surface_grid_cells`` take the injected ``calc_ts``/``config_hash`` and build their
+``surface_grid_cells`` take the injected ``calc_ts``/``config_hashes`` and build their
 own stamps; C's ``pricing_result`` and D's ``risk_aggregate``/``scenario_result``
 take a stamp the actor builds via :func:`actor.stamping.build_stamp` with the *same*
 injected ``calc_ts``. Nothing in this module reads a clock — ``calc_ts`` and
@@ -42,7 +42,7 @@ E's provenance-verification test checks across every persisted row.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, datetime
 
 import structlog
@@ -133,7 +133,7 @@ def run_analytics(
     instruments: Sequence[InstrumentKey],
     masters: Sequence[InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
@@ -162,7 +162,7 @@ def run_analytics(
         snapshot_ts=as_of,
         qc=config.qc_threshold,
         calc_ts=calc_ts,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         session_open=session_open,
     )
     as_of_date = as_of.date()
@@ -170,7 +170,7 @@ def run_analytics(
     # 2. Forwards per (underlying, maturity) from the usable option pairs.
     forward_estimates, forward_points = _build_forwards(
         batch, masters_by_key, as_of_date,
-        as_of=as_of, calc_ts=calc_ts, config_hash=config_hash, forward=config.forward,
+        as_of=as_of, calc_ts=calc_ts, config_hashes=config_hashes, forward=config.forward,
     )
 
     # 3. IV points per usable, converged option quote.
@@ -182,7 +182,7 @@ def run_analytics(
         config=config,
         as_of=as_of,
         calc_ts=calc_ts,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
     )
 
     # 4. Surface fits per (underlying, maturity); keep the rich SliceFit for the join.
@@ -192,7 +192,7 @@ def run_analytics(
         as_of_date,
         as_of=as_of,
         calc_ts=calc_ts,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         surface=config.surface,
         moneyness_buckets=moneyness_buckets,
     )
@@ -205,7 +205,7 @@ def run_analytics(
         slices=slice_fits,
         masters={master.instrument_key: master for master in masters},
         config=config,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         as_of=as_of,
         calc_ts=calc_ts,
         exercise_style_for=exercise_style_for,
@@ -260,7 +260,7 @@ def _build_forwards(
     *,
     as_of: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     forward: ForwardConfig,
 ) -> tuple[list[ForwardEstimate], list[ForwardCurvePoint]]:
     """Estimate a forward per (underlying, maturity) and project the usable ones.
@@ -301,7 +301,7 @@ def _build_forwards(
                 day_count=DAY_COUNT,
                 source_snapshot_ts=as_of,
                 calc_ts=calc_ts,
-                config_hash=config_hash,
+                config_hashes=config_hashes,
             )
         )
     return estimates, points
@@ -358,7 +358,7 @@ def _build_iv_points(
     config: PlatformConfig,
     as_of: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> list[IvPoint]:
     """Solve and project an IvPoint per usable, converged option quote.
 
@@ -404,7 +404,7 @@ def _build_iv_points(
             snapshot_ts=as_of,
             source_snapshot_ts=as_of,
             calc_ts=calc_ts,
-            config_hash=config_hash,
+            config_hashes=config_hashes,
         )
         sort_key = (instrument.underlying_symbol, maturity_years, instrument.strike, right)
         rows.append((sort_key, point))
@@ -419,7 +419,7 @@ def _build_surfaces(
     *,
     as_of: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     surface: SurfaceConfig,
     moneyness_buckets: tuple[float, ...],
 ) -> tuple[list[SliceFit], list[SurfaceParameters], list[SurfaceGrid]]:
@@ -456,7 +456,7 @@ def _build_surfaces(
             snapshot_ts=as_of,
             source_snapshot_ts=as_of,
             calc_ts=calc_ts,
-            config_hash=config_hash,
+            config_hashes=config_hashes,
         )
         if projection.parameters is not None:
             params.append(projection.parameters)
@@ -472,7 +472,7 @@ def _build_risk(
     slices: Sequence[SliceFit],
     masters: dict[str, InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str],
@@ -506,7 +506,7 @@ def _build_risk(
     netted = net_lots(lines)
 
     pricings = [
-        _pricing_for_line(line, as_of=as_of, calc_ts=calc_ts, config_hash=config_hash)
+        _pricing_for_line(line, as_of=as_of, calc_ts=calc_ts, config_hashes=config_hashes)
         for line in netted
     ]
 
@@ -518,7 +518,7 @@ def _build_risk(
             provenance=build_stamp(
                 calc_ts=calc_ts,
                 code_version=RISK_ENGINE_VERSION,
-                config_hash=config_hash,
+                config_hashes=config_hashes,
                 sources=_risk_sources(net.lines, as_of),
             ),
         )
@@ -538,7 +538,7 @@ def _build_risk(
             provenance=build_stamp(
                 calc_ts=calc_ts,
                 code_version=RISK_ENGINE_VERSION,
-                config_hash=config_hash,
+                config_hashes=config_hashes,
                 sources=_risk_sources((cell.line,), as_of),
             ),
         )
@@ -548,7 +548,7 @@ def _build_risk(
 
 
 def _pricing_for_line(
-    line: PositionRisk, *, as_of: datetime, calc_ts: datetime, config_hash: str
+    line: PositionRisk, *, as_of: datetime, calc_ts: datetime, config_hashes: Mapping[str, str]
 ) -> PricingResult:
     """Reprice one netted line into a stamped :class:`PricingResult`.
 
@@ -572,7 +572,7 @@ def _pricing_for_line(
     provenance = build_stamp(
         calc_ts=calc_ts,
         code_version=PRICER_VERSION,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         sources=(StampSource("market_state_snapshots", (as_of, valuation.contract_key), as_of),),
     )
     return pricing_result(
@@ -650,7 +650,7 @@ def run_day(
     instruments: Sequence[InstrumentKey],
     masters: Sequence[InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
@@ -684,7 +684,7 @@ def run_day(
         instruments=instruments,
         masters=masters,
         config=config,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         as_of=as_of,
         calc_ts=calc_ts,
         exercise_style_for=exercise_style_for,

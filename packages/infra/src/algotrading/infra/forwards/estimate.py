@@ -23,6 +23,7 @@ keeps that coupling typed and explicit rather than re-deriving ``DF`` downstream
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -470,7 +471,7 @@ def forward_curve_point(
     day_count: str,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> ForwardCurvePoint:
     """Project a usable estimate into A's stamped ``ForwardCurvePoint`` contract.
 
@@ -493,7 +494,7 @@ def forward_curve_point(
     provenance: ProvenanceStamp = stamp(
         calc_ts=calc_ts,
         code_version=FORWARD_VERSION,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         source_records=tuple(refs),
         source_timestamps=tuple(source_snapshot_ts for _ in refs),
     )

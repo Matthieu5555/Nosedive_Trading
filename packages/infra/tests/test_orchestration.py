@@ -95,7 +95,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_f
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
 TRADE_DATE = AS_OF.date()
-CONFIG_HASH = "cfg-hash-orch"
+CONFIG_HASH = {"cfg": "cfg-hash-orch"}
 
 # A capture-time reference instant for the clock-driven alert tests (no wall clock read).
 _T0 = datetime(2026, 5, 29, 13, 30, tzinfo=UTC)
@@ -258,7 +258,7 @@ def test_collection_and_analytics_share_one_correlation_id_end_to_end(tmp_path: 
         trade_date=TRADE_DATE, clock=clock, drive=adapter.pump, correlation_id="corr-shared",
     )
     analytics = run_incremental_analytics(
-        store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+        store=store, config=_config(), config_hashes=CONFIG_HASH, positions=[],
         instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
         calc_ts=CALC_TS, clock=clock, correlation_id="corr-shared",
     )
@@ -346,7 +346,7 @@ def _eod_stages(
         if analytics_explodes:
             raise RuntimeError("simulated kill mid-analytics")
         return run_incremental_analytics(
-            store=store, config=config, config_hash=CONFIG_HASH, positions=positions,
+            store=store, config=config, config_hashes=CONFIG_HASH, positions=positions,
             instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
             calc_ts=CALC_TS, clock=clock, correlation_id=correlation_id,
         )
@@ -413,7 +413,7 @@ def test_kill_mid_pipeline_then_restart_converges_with_no_duplicate_rows(tmp_pat
 
     # Run the analytics once more (idempotent replace-semantics) — no duplication.
     rerun = run_incremental_analytics(
-        store=store, config=_config(), config_hash=CONFIG_HASH, positions=positions,
+        store=store, config=_config(), config_hashes=CONFIG_HASH, positions=positions,
         instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
         calc_ts=CALC_TS, clock=clock, correlation_id="corr-rerun",
     )
@@ -500,7 +500,7 @@ def test_correlation_id_links_collector_session_to_analytics(tmp_path: Path) -> 
     structlog.configure(processors=[capture])
     try:
         analytics = run_incremental_analytics(
-            store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+            store=store, config=_config(), config_hashes=CONFIG_HASH, positions=[],
             instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
             calc_ts=CALC_TS, clock=ManualClock(start=CALC_TS), correlation_id=correlation_id,
         )
@@ -537,7 +537,7 @@ def test_solver_failure_metric_increments_when_a_usable_quote_has_no_iv(tmp_path
     metrics = build_metrics()
 
     run_incremental_analytics(
-        store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+        store=store, config=_config(), config_hashes=CONFIG_HASH, positions=[],
         instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
         calc_ts=CALC_TS, clock=ManualClock(start=CALC_TS), correlation_id="corr-solver",
         metrics=metrics, persist=False,
@@ -557,7 +557,7 @@ def test_stale_quote_gauge_reflects_unusable_quotes(tmp_path: Path) -> None:
     _seed_raw_layer(store, events)
     metrics = build_metrics()
     run_incremental_analytics(
-        store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+        store=store, config=_config(), config_hashes=CONFIG_HASH, positions=[],
         instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
         calc_ts=CALC_TS, clock=ManualClock(start=CALC_TS), correlation_id="corr-stale",
         metrics=metrics, persist=False,
@@ -574,7 +574,7 @@ def test_analytics_run_time_is_observed_on_the_histogram(tmp_path: Path) -> None
     # Advance the manual clock by 0.0s naturally (run_analytics does not sleep); the
     # histogram still records one observation for the analytics job.
     run_incremental_analytics(
-        store=store, config=_config(), config_hash=CONFIG_HASH, positions=[],
+        store=store, config=_config(), config_hashes=CONFIG_HASH, positions=[],
         instruments=instruments, masters=masters, trade_date=TRADE_DATE, as_of=AS_OF,
         calc_ts=CALC_TS, clock=ManualClock(start=CALC_TS), correlation_id="corr-hist",
         metrics=metrics, persist=False,

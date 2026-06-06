@@ -34,7 +34,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from algotrading.core.config import PlatformConfig, config_hash, load_platform_config
+from algotrading.core.config import PlatformConfig, config_hashes, load_platform_config
 from algotrading.infra.collectors import BrokerTick, RawCollector, summarize_session
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.contracts import InstrumentMaster, Position
@@ -116,8 +116,8 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     # and a ParquetStore on a data root. Both must produce a real, hashable object.
     config: PlatformConfig = load_platform_config(_CONFIGS_DIR)
     assert config.universe.underlyings, "the shipped config must name underlyings to trade"
-    cfg_hash = config_hash(config)
-    assert isinstance(cfg_hash, str) and cfg_hash, "config_hash must produce a stable string"
+    cfg_hashes = config_hashes(config)
+    assert cfg_hashes and all(cfg_hashes.values()), "config_hashes must name every bundle"
 
     store = ParquetStore(tmp_path / "data")
     assert store.root == tmp_path / "data", "the store opens on the requested data root"
@@ -136,7 +136,7 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     day = reconstruct_day(
         store, _AS_OF.date(), positions,
         instruments=instruments, masters=masters,
-        config=config, config_hash=cfg_hash,
+        config=config, config_hashes=cfg_hashes,
         as_of=_AS_OF, calc_ts=_CALC_TS,
         correlation_id="handover-replay", persist=True,
     )

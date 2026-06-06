@@ -31,7 +31,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import structlog
-from algotrading.core.config import config_hash, load_platform_config
+from algotrading.core.config import config_hashes, load_platform_config
 from algotrading.infra.collectors import ReplaySource, replay_day
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
@@ -126,7 +126,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
         ctx.store.read("instrument_master", trade_date=trade_date, underlying=underlying)
     )
     config = load_platform_config(ctx.configs_dir)
-    cfg_hash = config_hash(config)
+    cfg_hashes = config_hashes(config)
     # Value as-of the last quote in the day — no look-ahead, and reproducible from the events.
     as_of = max(event.canonical_ts for event in events)
     replay_source = ReplaySource(events)
@@ -146,7 +146,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
             ),
             store=temp_store,
             config=config,
-            config_hash=cfg_hash,
+            config_hashes=cfg_hashes,
             adapter=replay_source,
             masters=masters,
             drive=lambda _collector: replay_source.pump(),
@@ -160,7 +160,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
         "trade_date": trade_date.isoformat(),
         "n_surface_params": len(params),
         "n_fitted_maturities": result.fitted_maturities,
-        "config_hash": cfg_hash,
+        "config_hashes": cfg_hashes,
         "code_version": params[0].provenance.code_version if params else None,
     }
 

@@ -51,7 +51,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_f
 _AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 _CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
 _TRADE_DATE = _AS_OF.date()
-_CONFIG_HASH = "cfg-hash-usecases"
+_CONFIG_HASH = {"cfg": "cfg-hash-usecases"}
 # Saxo's delayed-feed market-data type code, recorded on the surface job's feed status.
 _MARKET_DATA_TYPE = 3
 
@@ -142,7 +142,7 @@ def test_build_surface_captures_quotes_and_fits_a_surface(tmp_path: Path) -> Non
             symbol="AAPL", trade_date=_TRADE_DATE, market_data_type=_MARKET_DATA_TYPE,
             as_of=_AS_OF, calc_ts=_CALC_TS,
         ),
-        store=store, config=_config(), config_hash=_CONFIG_HASH,
+        store=store, config=_config(), config_hashes=_CONFIG_HASH,
         adapter=adapter, masters=masters, drive=adapter.pump,
         clock=ManualClock(start=_AS_OF), correlation_id="surface-corr",
     )
@@ -166,7 +166,7 @@ def test_build_surface_status_reflects_no_diagnostics(tmp_path: Path) -> None:
             symbol="AAPL", trade_date=_TRADE_DATE, market_data_type=_MARKET_DATA_TYPE,
             as_of=_AS_OF, calc_ts=_CALC_TS, persist=False,
         ),
-        store=store, config=_config(), config_hash=_CONFIG_HASH,
+        store=store, config=_config(), config_hashes=_CONFIG_HASH,
         adapter=adapter, masters=masters, drive=adapter.pump,
         clock=ManualClock(start=_AS_OF), correlation_id="surface-corr",
         diagnostics=None,
@@ -295,11 +295,11 @@ def test_live_and_replay_capture_yield_identical_content_and_derived_outputs(
     # The same actor over either captured raw layer yields identical derived outputs.
     live_out = run_analytics(
         live_events, [], instruments=instruments, masters=masters,
-        config=_config(), config_hash=_CONFIG_HASH, as_of=_AS_OF, calc_ts=_CALC_TS,
+        config=_config(), config_hashes=_CONFIG_HASH, as_of=_AS_OF, calc_ts=_CALC_TS,
     )
     replay_out = run_analytics(
         replay_events, [], instruments=instruments, masters=masters,
-        config=_config(), config_hash=_CONFIG_HASH, as_of=_AS_OF, calc_ts=_CALC_TS,
+        config=_config(), config_hashes=_CONFIG_HASH, as_of=_AS_OF, calc_ts=_CALC_TS,
     )
     assert live_out == replay_out
     assert not live_out.is_empty()

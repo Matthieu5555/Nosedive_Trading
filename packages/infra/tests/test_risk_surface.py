@@ -51,7 +51,7 @@ def _stamp(keys: tuple[str, ...]) -> ProvenanceStamp:
     return stamp(
         calc_ts=TS,
         code_version=RISK_ENGINE_VERSION,
-        config_hash="cfg-hash-0",
+        config_hashes={"cfg": "cfg-hash-0"},
         source_records=tuple(source_ref("market_state_snapshots", TS, k) for k in keys),
         source_timestamps=(TS,),
     )

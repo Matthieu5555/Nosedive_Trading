@@ -32,7 +32,7 @@ def provenance_to_dict(stamp: ProvenanceStamp) -> dict[str, object]:
     return {
         "calc_ts": _iso(stamp.calc_ts),
         "code_version": stamp.code_version,
-        "config_hash": stamp.config_hash,
+        "config_hashes": dict(stamp.config_hashes),
         "stamp_hash": stamp.stamp_hash,
         "n_sources": len(stamp.source_records),
     }

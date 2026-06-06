@@ -73,7 +73,7 @@ def _prov(source: str) -> ProvenanceStamp:
     return stamp(
         calc_ts=AS_OF,
         code_version="readback-test",
-        config_hash="cfg-readback",
+        config_hashes={"cfg": "cfg-readback"},
         source_records=(source_ref("raw_market_events", "sess-readback", source),),
         source_timestamps=(AS_OF,),
     )
@@ -205,7 +205,7 @@ def test_risk_router_reads_back_persisted_aggregate(seeded_client: TestClient) -
     assert agg["group_key"] == UNDERLYING
     assert agg["net_delta"] == pytest.approx(NET_DELTA)
     assert agg["net_vega"] == pytest.approx(NET_VEGA)
-    assert agg["provenance"]["config_hash"] == "cfg-readback"
+    assert agg["provenance"]["config_hashes"] == {"cfg": "cfg-readback"}
 
 
 def test_risk_portfolios_lists_the_persisted_portfolio(seeded_client: TestClient) -> None:

@@ -42,7 +42,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from importlib import metadata
 
@@ -92,16 +93,25 @@ class ProvenanceStamp:
     Attributes:
         calc_ts: when the computation ran (timezone-aware).
         code_version: version string of the code that produced the value.
-        config_hash: hash of the active config (links to exact settings).
+        config_hashes: per-bundle config hashes — a mapping ``{bundle: hash}`` (the
+            blueprint manifest form, e.g. ``{"universe": …, "qc": …, "pricing": …,
+            "scenarios": …}``), not a single folded composite. Carrying the dict says
+            *which* bundle changed, and lets a record be reproduced from its exact
+            settings (ADR 0028).
         source_records: typed references to the source records used, in canonical
             order.
         source_timestamps: timestamps of those sources, in canonical order.
         stamp_hash: content hash of all of the above; the determinism handle.
+
+    ``config_hashes`` is excluded from the dataclass ``__hash__`` (a ``Mapping`` is
+    unhashable) but kept in equality; the ``stamp_hash`` is the value handle, and it
+    *does* fold the config hashes in, so two stamps that differ only in config still
+    compare unequal.
     """
 
     calc_ts: datetime
     code_version: str
-    config_hash: str
+    config_hashes: Mapping[str, str] = field(hash=False)
     source_records: tuple[SourceRecordRef, ...]
     source_timestamps: tuple[datetime, ...]
     stamp_hash: str
@@ -178,19 +188,21 @@ def _canonical_stamp_hash(
     *,
     calc_ts: datetime,
     code_version: str,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     source_records: tuple[SourceRecordRef, ...],
     source_timestamps: tuple[datetime, ...],
 ) -> str:
     """SHA-256 of the canonical JSON of a stamp's contents.
 
     The source lists are expected already in canonical order (see
-    :func:`_sorted_sources`); this function only renders and hashes them.
+    :func:`_sorted_sources`); this function only renders and hashes them. The
+    per-bundle ``config_hashes`` are folded in as a sorted mapping (``sort_keys``
+    canonicalizes the nested dict), so the stamp hash moves when any bundle moves.
     """
     payload = {
         "calc_ts": _as_utc_iso(calc_ts),
         "code_version": code_version,
-        "config_hash": config_hash,
+        "config_hashes": dict(config_hashes),
         "source_records": [_ref_payload(ref) for ref in source_records],
         "source_timestamps": [_as_utc_iso(ts) for ts in source_timestamps],
     }
@@ -202,28 +214,31 @@ def stamp(
     *,
     calc_ts: datetime,
     code_version: str,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     source_records: tuple[SourceRecordRef, ...],
     source_timestamps: tuple[datetime, ...],
 ) -> ProvenanceStamp:
     """Build a provenance stamp with a canonical, order-independent content hash.
 
-    The source references and source timestamps are sorted into canonical order
-    before anything is stored or hashed, so the resulting stamp does not depend on
-    the order the caller passed them in.
+    ``config_hashes`` is the per-bundle ``{bundle: hash}`` mapping that shaped the
+    record (blueprint manifest form). The source references and source timestamps are
+    sorted into canonical order before anything is stored or hashed, so the resulting
+    stamp does not depend on the order the caller passed them in. The stored mapping is
+    copied into a plain ``dict`` so the stamp does not alias a caller's mutable map.
     """
     sorted_records, sorted_ts = _sorted_sources(source_records, source_timestamps)
+    frozen_hashes = dict(config_hashes)
     stamp_hash = _canonical_stamp_hash(
         calc_ts=calc_ts,
         code_version=code_version,
-        config_hash=config_hash,
+        config_hashes=frozen_hashes,
         source_records=sorted_records,
         source_timestamps=sorted_ts,
     )
     return ProvenanceStamp(
         calc_ts=calc_ts,
         code_version=code_version,
-        config_hash=config_hash,
+        config_hashes=frozen_hashes,
         source_records=sorted_records,
         source_timestamps=sorted_ts,
         stamp_hash=stamp_hash,
@@ -243,10 +258,19 @@ def validate_stamp(candidate: ProvenanceStamp) -> None:
         raise ProvenanceValidationError("stamp", candidate, "must be a ProvenanceStamp")
     if candidate.calc_ts.tzinfo is None:
         raise ProvenanceValidationError("calc_ts", candidate.calc_ts, "must be timezone-aware")
-    for field_name in ("code_version", "config_hash", "stamp_hash"):
+    for field_name in ("code_version", "stamp_hash"):
         value = getattr(candidate, field_name)
         if not value:
             raise ProvenanceValidationError(field_name, value, "must be non-empty")
+    if not candidate.config_hashes:
+        raise ProvenanceValidationError(
+            "config_hashes", candidate.config_hashes, "must carry at least one bundle hash"
+        )
+    for bundle, digest in candidate.config_hashes.items():
+        if not bundle or not digest:
+            raise ProvenanceValidationError(
+                "config_hashes", {bundle: digest}, "every bundle and hash must be non-empty"
+            )
     for source_ts in candidate.source_timestamps:
         if source_ts.tzinfo is None:
             raise ProvenanceValidationError(
@@ -265,7 +289,7 @@ def validate_stamp(candidate: ProvenanceStamp) -> None:
     expected = _canonical_stamp_hash(
         calc_ts=candidate.calc_ts,
         code_version=candidate.code_version,
-        config_hash=candidate.config_hash,
+        config_hashes=candidate.config_hashes,
         source_records=sorted_records,
         source_timestamps=sorted_ts,
     )

@@ -26,6 +26,7 @@ from .platform_config import (
     canonical_json,
     composite_config_hash,
     config_hash,
+    config_hashes,
     section_hash,
     section_versions,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "composite_config_hash",
     "config_from_mapping",
     "config_hash",
+    "config_hashes",
     "from_config",
     "load_platform_config",
     "load_yaml_config",

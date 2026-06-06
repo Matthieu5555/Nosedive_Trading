@@ -48,7 +48,7 @@ from algotrading.infra.risk import (
 from fixtures.positions import CALL_100, PUT_100, RISK_VALUATIONS, risk_positions
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
-CONFIG_HASH = "cfg-hash-0"
+CONFIG_HASH = {"cfg": "cfg-hash-0"}
 SCENARIO_CONFIG = ScenarioConfig(
     version="scn-1", spot_shocks=(-0.05, 0.05), vol_shocks=(0.05, -0.05)
 )
@@ -74,7 +74,7 @@ def _stamp_for(contract_keys: tuple[str, ...]) -> ProvenanceStamp:
     return stamp(
         calc_ts=TS,
         code_version=RISK_ENGINE_VERSION,
-        config_hash=CONFIG_HASH,
+        config_hashes=CONFIG_HASH,
         source_records=tuple(
             source_ref("market_state_snapshots", TS, key) for key in contract_keys
         ),

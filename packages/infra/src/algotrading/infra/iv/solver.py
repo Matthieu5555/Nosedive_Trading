@@ -33,7 +33,7 @@ its own.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -290,7 +290,7 @@ def iv_point(
     snapshot_ts: datetime,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> IvPoint:
     """Project a converged result into A's stamped ``IvPoint`` contract.
 
@@ -305,7 +305,7 @@ def iv_point(
     provenance: ProvenanceStamp = stamp(
         calc_ts=calc_ts,
         code_version=SOLVER_VERSION,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         source_records=(
             source_ref("market_state_snapshots", source_snapshot_ts, result.contract_key),
         ),

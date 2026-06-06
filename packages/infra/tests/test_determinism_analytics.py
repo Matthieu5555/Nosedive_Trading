@@ -45,7 +45,7 @@ from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 EXPIRY = date(2026, 6, 19)
-CONFIG_HASH = "cfg-hash-0"
+CONFIG_HASH = {"cfg": "cfg-hash-0"}
 SOLVER = SolverConfig(version="iv-1", iv_tolerance=1e-12, max_iterations=200)
 _GOLDEN_PATH = Path(__file__).parent / "golden" / "analytics_pipeline.json"
 # The analytics modules are installed in the workspace venv, so a fresh interpreter
@@ -75,7 +75,7 @@ def compute_pipeline_summary() -> dict[str, Any]:
         "AAPL", surface.maturity_years, _forward_pairs(surface), config=FORWARD_CONFIG, spot=spot
     )
     fwd = forward_curve_point(estimate, snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365",
-                              source_snapshot_ts=TS, calc_ts=TS, config_hash=CONFIG_HASH)
+                              source_snapshot_ts=TS, calc_ts=TS, config_hashes=CONFIG_HASH)
 
     iv_points = []
     for p in surface.points:
@@ -84,14 +84,14 @@ def compute_pipeline_summary() -> dict[str, Any]:
                           maturity_years=surface.maturity_years,
                           discount_factor=surface.discount_factor, option_right="C", config=SOLVER)
         iv_points.append(iv_point(result, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                                  config_hash=CONFIG_HASH))
+                                  config_hashes=CONFIG_HASH))
 
     fit = fit_slice("AAPL", surface.maturity_years, tuple(iv_points), expiry_date=EXPIRY,
                     day_count="ACT/365", config=SURFACE_CONFIG)
     params = surface_parameters(fit, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                                config_hash=CONFIG_HASH)
+                                config_hashes=CONFIG_HASH)
     grid = surface_grid_cells(fit, (0.0,), snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                              config_hash=CONFIG_HASH)[0]
+                              config_hashes=CONFIG_HASH)[0]
 
     return {
         "forward": fwd.forward,
@@ -155,14 +155,14 @@ def test_forward_is_invariant_to_input_pair_order() -> None:
     forward_a = forward_curve_point(
         estimate_forward("AAPL", surface.maturity_years, pairs, config=FORWARD_CONFIG, spot=spot),
         snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365", source_snapshot_ts=TS,
-        calc_ts=TS, config_hash=CONFIG_HASH,
+        calc_ts=TS, config_hashes=CONFIG_HASH,
     )
     forward_b = forward_curve_point(
         estimate_forward(
             "AAPL", surface.maturity_years, tuple(reversed(pairs)), config=FORWARD_CONFIG, spot=spot
         ),
         snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365", source_snapshot_ts=TS,
-        calc_ts=TS, config_hash=CONFIG_HASH,
+        calc_ts=TS, config_hashes=CONFIG_HASH,
     )
     assert forward_a.forward == forward_b.forward
     # Source records are canonicalized before hashing, so the stamp is order-free.

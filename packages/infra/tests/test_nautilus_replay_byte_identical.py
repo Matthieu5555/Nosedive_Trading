@@ -55,7 +55,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_f
 # fixed isolates the event driver (Nautilus engine vs direct call) as the single variable.
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
-CONFIG_HASH = "cfg-hash-nautilus"
+CONFIG_HASH = {"cfg": "cfg-hash-nautilus"}
 
 # The named liquid chains span three distinct underlyings; combining them is how a
 # multi-underlying day — and therefore a multi-partition derived layout — is exercised.
@@ -172,7 +172,7 @@ def _request(
         instruments=instruments,
         masters=masters,
         config=_config(),
-        config_hash=CONFIG_HASH,
+        config_hashes=CONFIG_HASH,
         as_of=AS_OF,
         calc_ts=CALC_TS,
         store=store,
@@ -215,7 +215,7 @@ def test_nautilus_host_matches_direct_run_analytics() -> None:
         instruments=instruments,
         masters=masters,
         config=_config(),
-        config_hash=CONFIG_HASH,
+        config_hashes=CONFIG_HASH,
         as_of=AS_OF,
         calc_ts=CALC_TS,
     )
@@ -243,7 +243,7 @@ def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> Non
             instruments=instruments,
             masters=masters,
             config=_config(),
-            config_hash=CONFIG_HASH,
+            config_hashes=CONFIG_HASH,
             as_of=AS_OF,
             calc_ts=CALC_TS,
         ),

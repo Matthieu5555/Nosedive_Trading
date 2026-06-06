@@ -33,7 +33,7 @@ def _params(
     arb_free: bool = True,
 ) -> SurfaceParameters:
     a_stamp = stamp(
-        calc_ts=_TS, code_version="surface-1", config_hash="c",
+        calc_ts=_TS, code_version="surface-1", config_hashes={"cfg": "c"},
         source_records=(), source_timestamps=(),
     )
     return SurfaceParameters(

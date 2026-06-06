@@ -48,7 +48,7 @@ class InsufficientSnapshotData(Exception):
 class SnapshotContext:
     """Everything the builder needs beyond the events themselves.
 
-    The thresholds come from A's config (``qc``); ``calc_ts`` and ``config_hash``
+    The thresholds come from A's config (``qc``); ``calc_ts`` and ``config_hashes``
     feed the provenance stamp; ``session_open`` is the venue session state; the
     prior close and prior spot are the fallback rungs; ``underlying_stale`` flags an
     option whose underlying's own quote is stale.
@@ -61,7 +61,7 @@ class SnapshotContext:
     snapshot_ts: datetime
     qc: QcThresholdConfig
     calc_ts: datetime
-    config_hash: str
+    config_hashes: Mapping[str, str]
     session_open: bool = True
     prior_close: float | None = None
     prior_spot: float | None = None
@@ -147,7 +147,7 @@ def _stamp_for(
     return stamp(
         calc_ts=context.calc_ts,
         code_version=SNAPSHOT_VERSION,
-        config_hash=context.config_hash,
+        config_hashes=context.config_hashes,
         source_records=refs,
         source_timestamps=timestamps,
     )
@@ -266,7 +266,7 @@ def build_snapshots(
     snapshot_ts: datetime,
     qc: QcThresholdConfig,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     session_open: bool = True,
     prior_closes: Mapping[str, float] | None = None,
     prior_spots: Mapping[str, float] | None = None,
@@ -289,7 +289,7 @@ def build_snapshots(
             snapshot_ts=snapshot_ts,
             qc=qc,
             calc_ts=calc_ts,
-            config_hash=config_hash,
+            config_hashes=config_hashes,
             session_open=session_open,
             prior_close=prior_closes.get(key),
             prior_spot=prior_spots.get(key),

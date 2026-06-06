@@ -386,7 +386,7 @@ def test_pricing_result_is_a_valid_stamped_contract() -> None:
     a_stamp = stamp(
         calc_ts=snap_ts,
         code_version=PRICER_VERSION,
-        config_hash="cfg-hash-0",
+        config_hashes={"cfg": "cfg-hash-0"},
         source_records=(source_ref("market_state_snapshots", snap_ts, _option_key().canonical()),),
         source_timestamps=(snap_ts,),
     )

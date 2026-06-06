@@ -61,7 +61,7 @@ _CALENDAR_K_GRID = (-0.4, -0.2, 0.0, 0.2, 0.4)  # log-moneyness probed by the ca
 def _iv_point(k: float, w: float, key: str) -> IvPoint:
     """A minimal valid IvPoint carrying log-moneyness k and total variance w."""
     a_stamp = stamp(
-        calc_ts=TS, code_version="iv-1", config_hash="c",
+        calc_ts=TS, code_version="iv-1", config_hashes={"cfg": "c"},
         source_records=(source_ref("market_state_snapshots", TS, key),), source_timestamps=(TS,),
     )
     iv = math.sqrt(w / _SURFACE.maturity_years) if w > 0 else 0.0
@@ -88,12 +88,12 @@ def _fit(points: tuple[IvPoint, ...], *, maturity: float = _SURFACE.maturity_yea
 
 def _params(fit: SliceFit) -> SurfaceParameters:
     return surface_parameters(fit, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                              config_hash="cfg-hash-0")
+                              config_hashes={"cfg": "cfg-hash-0"})
 
 
 def _grid(fit: SliceFit, buckets: tuple[float, ...]) -> tuple[SurfaceGrid, ...]:
     return surface_grid_cells(fit, buckets, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                              config_hash="c")
+                              config_hashes={"cfg": "c"})
 
 
 def _svi_slice(params: SviParams, *, maturity: float) -> SliceFit:

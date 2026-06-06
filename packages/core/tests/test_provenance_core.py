@@ -39,7 +39,7 @@ def _two_source_stamp(order: str):
     return stamp(
         calc_ts=_CALC,
         code_version="algotrading-infra-0.1.0",
-        config_hash="cfg-abc",
+        config_hashes={"cfg": "cfg-abc"},
         source_records=refs,
         source_timestamps=times,
     )
@@ -61,7 +61,7 @@ def test_naive_calc_ts_is_refused() -> None:
         stamp(
             calc_ts=datetime(2026, 6, 5, 14, 30),  # naive
             code_version="v",
-            config_hash="c",
+            config_hashes={"cfg": "c"},
             source_records=(source_ref("raw_market_events", "s", "e"),),
             source_timestamps=(_T1,),
         )
@@ -81,7 +81,7 @@ def test_tampered_field_breaks_validation() -> None:
 
     s = _two_source_stamp("forward")
     # Same stored hash, mutated config — the recomputed hash no longer matches.
-    tampered = dataclasses.replace(s, config_hash="cfg-OTHER")
+    tampered = dataclasses.replace(s, config_hashes={"cfg": "cfg-OTHER"})
     with pytest.raises(ProvenanceValidationError):
         validate_stamp(tampered)
 
@@ -102,7 +102,7 @@ def test_stamp_hash_is_stable_across_processes() -> None:
         "from datetime import UTC, datetime;"
         "from algotrading.core import stamp, source_ref;"
         "print(stamp(calc_ts=datetime(2026,6,5,14,30,tzinfo=UTC),"
-        "code_version='algotrading-infra-0.1.0', config_hash='cfg-abc',"
+        "code_version='algotrading-infra-0.1.0', config_hashes={'cfg': 'cfg-abc'},"
         "source_records=(source_ref('raw_market_events','sess-1','evt-a'),"
         "source_ref('raw_market_events','sess-1','evt-b')),"
         "source_timestamps=(datetime(2026,6,5,9,0,tzinfo=UTC),"

@@ -261,7 +261,7 @@ def test_iv_point_is_a_valid_stamped_contract() -> None:
     result = _solve_call(point.call_price, point.strike)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
     emitted = iv_point(result, snapshot_ts=snap_ts, source_snapshot_ts=snap_ts,
-                       calc_ts=snap_ts, config_hash="cfg-hash-0")
+                       calc_ts=snap_ts, config_hashes={"cfg": "cfg-hash-0"})
     assert isinstance(emitted, IvPoint)
     validate(emitted)  # raises if any contract field rule is violated
     assert table_for_contract(IvPoint) == "iv_points"
@@ -278,4 +278,4 @@ def test_iv_point_refuses_an_unconverged_solve() -> None:
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
     with pytest.raises(ValueError, match="unconverged"):
         iv_point(failed, snapshot_ts=snap_ts, source_snapshot_ts=snap_ts,
-                 calc_ts=snap_ts, config_hash="c")
+                 calc_ts=snap_ts, config_hashes={"cfg": "c"})

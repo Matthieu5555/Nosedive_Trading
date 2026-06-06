@@ -174,7 +174,7 @@ def test_a_missing_partition_is_flagged_explicitly_not_masked(tmp_path: Path) ->
         instruments=instruments,
         masters=masters,
         config=_config(),
-        config_hash="cfg",
+        config_hashes={"cfg": "cfg"},
         as_of_for=_as_of,
         calc_ts_for=_calc_ts,
     )
@@ -234,7 +234,7 @@ def test_a_day_with_a_raw_partition_but_no_usable_quotes_is_empty_not_missing(
         instruments=instruments,
         masters=masters,
         config=_config(),
-        config_hash="cfg",
+        config_hashes={"cfg": "cfg"},
         as_of=as_of,
         calc_ts=_calc_ts(trade_date),
     )
@@ -269,7 +269,7 @@ def test_a_multi_day_range_reconstructs_end_to_end(tmp_path: Path) -> None:
         instruments=instruments,
         masters=masters,
         config=_config(),
-        config_hash="cfg",
+        config_hashes={"cfg": "cfg"},
         as_of_for=_as_of,
         calc_ts_for=_calc_ts,
     )
@@ -307,7 +307,7 @@ def test_restated_outputs_write_to_versioned_partitions_old_survives(
 
     v1 = reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg-v1", as_of=as_of, calc_ts=calc_ts, version="v1",
+        config=_config(), config_hashes={"cfg": "cfg-v1"}, as_of=as_of, calc_ts=calc_ts, version="v1",
     )
     assert v1.status == RECONSTRUCTED
 
@@ -321,7 +321,7 @@ def test_restated_outputs_write_to_versioned_partitions_old_survives(
     # Newer code: same day, restated under v2 with a different config hash.
     v2 = reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg-v2", as_of=as_of, calc_ts=calc_ts, version="v2",
+        config=_config(), config_hashes={"cfg": "cfg-v2"}, as_of=as_of, calc_ts=calc_ts, version="v2",
     )
     assert v2.status == RECONSTRUCTED
 
@@ -338,8 +338,9 @@ def test_restated_outputs_write_to_versioned_partitions_old_survives(
     # And the two versions are genuinely distinct analytics, not the same rows twice:
     # the differing config hash rode into every v2 stamp, so v1 and v2 disagree there.
     v2_iv = store.read("iv_points", trade_date=trade_date, underlying="AAPL", version="v2")
-    assert {point.provenance.config_hash for point in v1_iv_after} == {"cfg-v1"}
-    assert {point.provenance.config_hash for point in v2_iv} == {"cfg-v2"}
+    assert all(point.provenance.config_hashes == {"cfg": "cfg-v1"} for point in v1_iv_after)
+    assert all(point.provenance.config_hashes == {"cfg": "cfg-v2"} for point in v2_iv)
+    assert v2_iv, "v2 must have written iv points"
 
 
 def test_replay_and_live_agree_on_overlapping_dates_same_code_version(
@@ -361,14 +362,14 @@ def test_replay_and_live_agree_on_overlapping_dates_same_code_version(
     # Live: run and persist (unversioned, replace-in-place — the live layout).
     live = reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg", as_of=as_of, calc_ts=calc_ts, persist=True,
+        config=_config(), config_hashes={"cfg": "cfg"}, as_of=as_of, calc_ts=calc_ts, persist=True,
     )
     assert live.status == RECONSTRUCTED
 
     # Replay: reconstruct the same day under the same code version, compute only.
     replay = reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg", as_of=as_of, calc_ts=calc_ts, persist=False,
+        config=_config(), config_hashes={"cfg": "cfg"}, as_of=as_of, calc_ts=calc_ts, persist=False,
     )
     assert replay.outputs is not None
     comparison = compare_replay_to_live(store, trade_date, replay.outputs)
@@ -402,11 +403,11 @@ def test_replay_vs_live_names_the_divergent_table_when_they_differ(
 
     reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg-live", as_of=as_of, calc_ts=calc_ts, persist=True,
+        config=_config(), config_hashes={"cfg": "cfg-live"}, as_of=as_of, calc_ts=calc_ts, persist=True,
     )
     drifted = reconstruct_day(
         store, trade_date, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash="cfg-drift", as_of=as_of, calc_ts=calc_ts, persist=False,
+        config=_config(), config_hashes={"cfg": "cfg-drift"}, as_of=as_of, calc_ts=calc_ts, persist=False,
     )
     assert drifted.outputs is not None
     comparison = compare_replay_to_live(store, trade_date, drifted.outputs)
@@ -434,7 +435,7 @@ def test_an_inverted_date_range_is_refused(tmp_path: Path) -> None:
             instruments=_instruments_and_masters(chain, date(2026, 3, 4))[0],
             masters=_instruments_and_masters(chain, date(2026, 3, 4))[1],
             config=_config(),
-            config_hash="cfg",
+            config_hashes={"cfg": "cfg"},
             as_of_for=_as_of,
             calc_ts_for=_calc_ts,
         )

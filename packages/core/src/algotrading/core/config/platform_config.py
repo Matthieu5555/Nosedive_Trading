@@ -258,15 +258,17 @@ SECTION_NAMES = ("universe", "qc_threshold", "solver", "surface", "forward", "sc
 def _canonical(value: Any) -> Any:
     """Turn a config value into something with one, stable JSON form.
 
-    Tuples and lists become lists; dataclasses become key-sorted dicts; floats
-    are left to JSON. The point is that the same logical config always produces
-    byte-identical JSON.
+    Tuples and lists become lists; dataclasses and mappings become dicts (their
+    values canonicalized too); floats are left to JSON. The point is that the same
+    logical config always produces byte-identical JSON.
     """
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
             field.name: _canonical(getattr(value, field.name))
             for field in dataclasses.fields(value)
         }
+    if isinstance(value, Mapping):
+        return {str(k): _canonical(v) for k, v in value.items()}
     if isinstance(value, (tuple, list)):
         return [_canonical(item) for item in value]
     if isinstance(value, float):
@@ -309,6 +311,32 @@ def section_hash(config: PlatformConfig, section: str) -> str:
 def section_versions(config: PlatformConfig) -> dict[str, str]:
     """Return the four independent version stamps keyed by section name."""
     return {name: getattr(config, name).version for name in SECTION_NAMES}
+
+
+# Each hashed bundle (a manifest ``config_hashes`` key, named for its Part VII YAML
+# file) → the PlatformConfig section attributes authored in that file. ``pricing`` groups
+# the solver/surface/forward sections that share ``pricing.yaml``.
+_BUNDLE_SECTIONS: dict[str, tuple[str, ...]] = {
+    "universe": ("universe",),
+    "qc": ("qc_threshold",),
+    "pricing": ("solver", "surface", "forward"),
+    "scenarios": ("scenario",),
+}
+
+
+def config_hashes(config: PlatformConfig) -> dict[str, str]:
+    """Return the per-bundle reproducibility hashes — the blueprint manifest form.
+
+    One SHA-256 over canonical JSON per hashed Part VII bundle
+    (``{universe, qc, pricing, scenarios}``), each covering the typed sections authored
+    in that bundle's file. This is the canonical key branded onto every derived record's
+    :class:`~algotrading.core.provenance.ProvenanceStamp` (ADR 0028): the dict says which
+    bundle changed, and a folded ``config_hash`` is at most a derived convenience.
+    """
+    return {
+        bundle: _sha256(canonical_json({name: getattr(config, name) for name in names}))
+        for bundle, names in _BUNDLE_SECTIONS.items()
+    }
 
 
 def composite_config_hash(parts: Mapping[str, str]) -> str:

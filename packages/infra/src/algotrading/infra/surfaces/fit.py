@@ -19,7 +19,7 @@ bracketing slices. Pure throughout: ``calc_ts`` is injected at emission.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -227,7 +227,11 @@ def slice_plot_series(fit: SliceFit, *, n_grid: int = 50) -> SlicePlotSeries:
 
 
 def _slice_stamp(
-    fit: SliceFit, *, source_snapshot_ts: datetime, calc_ts: datetime, config_hash: str
+    fit: SliceFit,
+    *,
+    source_snapshot_ts: datetime,
+    calc_ts: datetime,
+    config_hashes: Mapping[str, str],
 ) -> ProvenanceStamp:
     """Stamp a surface output, naming the IvPoints that fed the slice as sources."""
     refs = tuple(
@@ -237,7 +241,7 @@ def _slice_stamp(
     return stamp(
         calc_ts=calc_ts,
         code_version=SURFACE_VERSION,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         source_records=refs,
         source_timestamps=tuple(source_snapshot_ts for _ in refs),
     )
@@ -249,7 +253,7 @@ def surface_parameters(
     snapshot_ts: datetime,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> SurfaceParameters:
     """Project a calibrated SVI slice into A's stamped ``SurfaceParameters``.
 
@@ -275,7 +279,7 @@ def surface_parameters(
         ),
         source_snapshot_ts=source_snapshot_ts,
         provenance=_slice_stamp(
-            fit, source_snapshot_ts=source_snapshot_ts, calc_ts=calc_ts, config_hash=config_hash
+            fit, source_snapshot_ts=source_snapshot_ts, calc_ts=calc_ts, config_hashes=config_hashes
         ),
     )
 
@@ -287,7 +291,7 @@ def surface_grid_cells(
     snapshot_ts: datetime,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> tuple[SurfaceGrid, ...]:
     """Reconstruct a regularized total-variance grid for one slice (any method).
 
@@ -299,7 +303,7 @@ def surface_grid_cells(
     if fit.method == METHOD_INSUFFICIENT:
         raise ValueError("cannot build a grid for an insufficient slice")
     provenance = _slice_stamp(
-        fit, source_snapshot_ts=source_snapshot_ts, calc_ts=calc_ts, config_hash=config_hash
+        fit, source_snapshot_ts=source_snapshot_ts, calc_ts=calc_ts, config_hashes=config_hashes
     )
     cells: list[SurfaceGrid] = []
     for bucket in moneyness_buckets:
@@ -340,7 +344,7 @@ def project_surface_fit(
     snapshot_ts: datetime,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
 ) -> SurfaceProjection:
     """Project a fitted slice into the stamped contracts it is allowed to emit.
 
@@ -360,7 +364,7 @@ def project_surface_fit(
             snapshot_ts=snapshot_ts,
             source_snapshot_ts=source_snapshot_ts,
             calc_ts=calc_ts,
-            config_hash=config_hash,
+            config_hashes=config_hashes,
         )
         if fit.method == METHOD_SVI
         else None
@@ -371,6 +375,6 @@ def project_surface_fit(
         snapshot_ts=snapshot_ts,
         source_snapshot_ts=source_snapshot_ts,
         calc_ts=calc_ts,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
     )
     return SurfaceProjection(parameters=parameters, grid_cells=cells)

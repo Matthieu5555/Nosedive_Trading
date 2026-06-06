@@ -20,7 +20,7 @@ no-RNG discipline carry through the engine unchanged.
 # on ``RawMarketEventData``, which stringized annotations would break. Python 3.13
 # evaluates the PEP 604 unions below at runtime fine without it.
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
@@ -144,7 +144,7 @@ class RunRequest:
     instruments: Sequence[InstrumentKey]
     masters: Sequence[InstrumentMaster]
     config: PlatformConfig
-    config_hash: str
+    config_hashes: Mapping[str, str]
     as_of: datetime
     calc_ts: datetime
     store: ParquetStore | None = None
@@ -184,7 +184,7 @@ class AnalyticsActor(Actor):
             instruments=request.instruments,
             masters=request.masters,
             config=request.config,
-            config_hash=request.config_hash,
+            config_hashes=request.config_hashes,
             as_of=request.as_of,
             calc_ts=request.calc_ts,
             exercise_style_for=request.exercise_style_for,

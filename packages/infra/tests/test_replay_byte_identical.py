@@ -51,7 +51,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_f
 # them fixed isolates the event source as the single variable under test.
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
-CONFIG_HASH = "cfg-hash-replay"
+CONFIG_HASH = {"cfg": "cfg-hash-replay"}
 
 
 def _config() -> PlatformConfig:
@@ -201,7 +201,7 @@ def test_live_and_replay_runs_produce_equal_actor_outputs(tmp_path: Path) -> Non
     # Live path: events arrive as an in-memory stream and are computed directly.
     live = run_analytics(
         events, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
     )
 
     # Replay path: the same events are written to the immutable raw layer, then
@@ -210,7 +210,7 @@ def test_live_and_replay_runs_produce_equal_actor_outputs(tmp_path: Path) -> Non
     replay_store.write("raw_market_events", events)
     replay = run_day(
         replay_store, AS_OF.date(), positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
         correlation_id="replay-session", persist=True,
     )
 
@@ -233,7 +233,7 @@ def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> Non
     # Live: compute then persist into its own store.
     live = run_analytics(
         events, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
     )
     live_store = ParquetStore(tmp_path / "live")
     persist_outputs(live_store, live)
@@ -243,7 +243,7 @@ def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> Non
     replay_store.write("raw_market_events", events)
     run_day(
         replay_store, AS_OF.date(), positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
         persist=True,
     )
 
@@ -275,7 +275,7 @@ def test_event_arrival_order_does_not_change_the_replay_result(tmp_path: Path, s
 
     live = run_analytics(
         events, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
     )
 
     shuffled = events[:]
@@ -284,7 +284,7 @@ def test_event_arrival_order_does_not_change_the_replay_result(tmp_path: Path, s
     store.write("raw_market_events", shuffled)
     replay = run_day(
         store, AS_OF.date(), positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=False,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=False,
     )
     assert replay == live
 
@@ -301,7 +301,7 @@ def test_multi_underlying_day_is_byte_identical_across_every_partition(tmp_path:
 
     live = run_analytics(
         events, positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
     )
     live_store = ParquetStore(tmp_path / "live")
     persist_outputs(live_store, live)
@@ -310,7 +310,7 @@ def test_multi_underlying_day_is_byte_identical_across_every_partition(tmp_path:
     replay_store.write("raw_market_events", events)
     replay = run_day(
         replay_store, AS_OF.date(), positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
     )
 
     # Values agree, and the run is genuinely multi-underlying — every per-underlying

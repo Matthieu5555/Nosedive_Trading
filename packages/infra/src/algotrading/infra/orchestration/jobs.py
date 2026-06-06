@@ -24,7 +24,7 @@ fake feed (or a replay source) with no broker and no second code path.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -225,7 +225,7 @@ def run_incremental_analytics(
     *,
     store: ParquetStore,
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     positions: Sequence[Position],
     instruments: Sequence[InstrumentKey],
     masters: Sequence[InstrumentMaster],
@@ -267,7 +267,7 @@ def run_incremental_analytics(
         instruments=instruments,
         masters=masters,
         config=config,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         as_of=as_of,
         calc_ts=calc_ts,
     )
@@ -276,7 +276,7 @@ def run_incremental_analytics(
     if metrics is not None:
         metrics.record_run_seconds("analytics", run_seconds)
         _record_analytics_metrics(
-            events, outputs, masters, config, config_hash, as_of, calc_ts, metrics
+            events, outputs, masters, config, config_hashes, as_of, calc_ts, metrics
         )
     if persist:
         persist_outputs(store, outputs)
@@ -304,7 +304,7 @@ def _record_analytics_metrics(
     outputs: ActorOutputs,
     masters: Sequence[InstrumentMaster],
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     as_of: datetime,
     calc_ts: datetime,
     metrics: OrchestrationMetrics,
@@ -329,7 +329,7 @@ def _record_analytics_metrics(
         snapshot_ts=as_of,
         qc=config.qc_threshold,
         calc_ts=calc_ts,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
     )
     _record_stale_ratio(batch, metrics)
     _record_solver_failures(batch, outputs, instrument_by_key, metrics)

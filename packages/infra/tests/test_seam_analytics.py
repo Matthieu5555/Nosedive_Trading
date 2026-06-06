@@ -57,7 +57,7 @@ def _qc() -> QcThresholdConfig:
 # -- C's six contracts, each produced by C's real code ----------------------
 def make_snapshot() -> MarketStateSnapshot:
     events = quote_events(UNDERLYING, bid=190.4, ask=190.6, last=190.5, ts=TS)
-    context = SnapshotContext(snapshot_ts=TS, qc=_qc(), calc_ts=TS, config_hash="cfg-hash-0")
+    context = SnapshotContext(snapshot_ts=TS, qc=_qc(), calc_ts=TS, config_hashes={"cfg": "cfg-hash-0"})
     return build_snapshot(UNDERLYING, events, context=context)
 
 
@@ -74,7 +74,7 @@ def make_forward_point() -> ForwardCurvePoint:
                                 config=FORWARD_CONFIG,
                                 spot=SURFACE.forward * SURFACE.discount_factor)
     return forward_curve_point(estimate, snapshot_ts=TS, expiry_date=EXPIRY, day_count="ACT/365",
-                               source_snapshot_ts=TS, calc_ts=TS, config_hash="cfg-hash-0")
+                               source_snapshot_ts=TS, calc_ts=TS, config_hashes={"cfg": "cfg-hash-0"})
 
 
 def make_iv_points() -> list[IvPoint]:
@@ -85,7 +85,7 @@ def make_iv_points() -> list[IvPoint]:
                           maturity_years=SURFACE.maturity_years,
                           discount_factor=SURFACE.discount_factor, option_right="C", config=SOLVER)
         points.append(iv_point(result, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                               config_hash="cfg-hash-0"))
+                               config_hashes={"cfg": "cfg-hash-0"}))
     return points
 
 
@@ -93,14 +93,14 @@ def make_surface_parameters() -> SurfaceParameters:
     fit = fit_slice("AAPL", SURFACE.maturity_years, tuple(make_iv_points()),
                     expiry_date=EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG)
     return surface_parameters(fit, snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
-                              config_hash="cfg-hash-0")
+                              config_hashes={"cfg": "cfg-hash-0"})
 
 
 def make_surface_grid() -> SurfaceGrid:
     fit = fit_slice("AAPL", SURFACE.maturity_years, tuple(make_iv_points()),
                     expiry_date=EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG)
     cells = surface_grid_cells(fit, (-0.1, 0.0, 0.1), snapshot_ts=TS, source_snapshot_ts=TS,
-                               calc_ts=TS, config_hash="cfg-hash-0")
+                               calc_ts=TS, config_hashes={"cfg": "cfg-hash-0"})
     return cells[0]
 
 
@@ -108,7 +108,7 @@ def make_pricing_result() -> PricingResult:
     state = from_forward(forward=100.0, strike=100.0, maturity_years=0.25, volatility=0.2,
                          discount_factor=0.99, option_right="C")
     greeks = price(state)
-    a_stamp = stamp(calc_ts=TS, code_version=PRICER_VERSION, config_hash="cfg-hash-0",
+    a_stamp = stamp(calc_ts=TS, code_version=PRICER_VERSION, config_hashes={"cfg": "cfg-hash-0"},
                     source_records=(source_ref("market_state_snapshots", TS, "AAPL|OPT|C|100"),),
                     source_timestamps=(TS,))
     return pricing_result(state, greeks, snapshot_ts=TS, contract_key="AAPL|OPT|C|100",

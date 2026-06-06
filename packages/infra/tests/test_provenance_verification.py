@@ -44,7 +44,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_f
 
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
-CONFIG_HASH = "cfg-hash-prov"
+CONFIG_HASH = {"cfg": "cfg-hash-prov"}
 
 # Every derived table a populated day must land rows in. The walk asserts each one
 # is actually present, so a silently-unpersisted family fails loudly rather than
@@ -125,7 +125,7 @@ def _populated_store(tmp_path: Path) -> ParquetStore:
     store.write("raw_market_events", events)
     run_day(
         store, AS_OF.date(), _positions(chain), instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
     )
     return store
 
@@ -157,7 +157,7 @@ def test_every_persisted_cd_output_carries_a_wellformed_nonempty_stamp(tmp_path:
             # wiring bug this test exists to catch.
             assert stamp.calc_ts == CALC_TS, f"{table}: calc_ts not the injected value"
             assert stamp.code_version, f"{table}: empty code_version"
-            assert stamp.config_hash == CONFIG_HASH, f"{table}: config_hash not threaded through"
+            assert stamp.config_hashes == CONFIG_HASH, f"{table}: config_hash not threaded through"
             assert stamp.source_records, f"{table}: stamp has no source lineage"
             assert len(stamp.source_timestamps) == len(stamp.source_records), (
                 f"{table}: source_timestamps and source_records disagree in length"
@@ -194,7 +194,7 @@ def _multi_populated_store(tmp_path: Path) -> ParquetStore:
     store.write("raw_market_events", events)
     run_day(
         store, AS_OF.date(), positions, instruments=instruments, masters=masters,
-        config=_config(), config_hash=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
+        config=_config(), config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS, persist=True,
     )
     return store
 
@@ -234,7 +234,7 @@ def test_every_underlying_in_a_multi_underlying_day_carries_a_wellformed_stamp(
         assert underlyings == {"AAPL", "MSFT", "SPY"}, f"{table}: not all underlyings stamped"
         for record in store.read(table):
             validate_stamp(record.provenance)
-            assert record.provenance.config_hash == CONFIG_HASH
+            assert record.provenance.config_hashes == CONFIG_HASH
             assert record.provenance.source_records, f"{table}: empty lineage on a row"
 
 
@@ -245,6 +245,8 @@ def test_a_tampered_stamp_is_rejected_by_the_same_validator(tmp_path: Path) -> N
 
     store = _populated_store(tmp_path)
     good = store.read("iv_points")[0].provenance
-    tampered = dataclasses.replace(good, config_hash=good.config_hash + "-tampered")
+    tampered = dataclasses.replace(
+        good, config_hashes={**good.config_hashes, "cfg": "tampered"}
+    )
     with pytest.raises(ProvenanceValidationError):
         validate_stamp(tampered)

@@ -20,6 +20,7 @@ the quotes it read), keeping the analytics reproducible.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol, runtime_checkable
@@ -104,7 +105,7 @@ def build_surface(
     request: SurfaceJobRequest,
     store: ParquetStore,
     config: PlatformConfig,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     adapter: MarketDataAdapter,
     masters: list[InstrumentMaster],
     drive: FeedDriver,
@@ -159,7 +160,7 @@ def build_surface(
     analytics = run_incremental_analytics(
         store=store,
         config=config,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         positions=[],
         instruments=instruments,
         masters=masters,

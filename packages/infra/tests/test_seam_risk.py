@@ -53,7 +53,7 @@ def _stamp() -> ProvenanceStamp:
     return stamp(
         calc_ts=TS,
         code_version=RISK_ENGINE_VERSION,
-        config_hash="cfg-hash-0",
+        config_hashes={"cfg": "cfg-hash-0"},
         source_records=(source_ref("market_state_snapshots", TS, "AAPL|OPT|C|100"),),
         source_timestamps=(TS,),
     )

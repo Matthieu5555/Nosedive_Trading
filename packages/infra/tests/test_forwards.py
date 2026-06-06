@@ -407,7 +407,7 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
         day_count="ACT/365",
         source_snapshot_ts=snap_ts,
         calc_ts=snap_ts,
-        config_hash="cfg-hash-0",
+        config_hashes={"cfg": "cfg-hash-0"},
     )
     assert isinstance(point, ForwardCurvePoint)
     validate(point)  # raises if any contract field rule is violated
@@ -426,5 +426,5 @@ def test_forward_curve_point_refuses_an_unusable_estimate() -> None:
     with pytest.raises(ForwardError):
         forward_curve_point(
             estimate, snapshot_ts=snap_ts, expiry_date=date(2026, 6, 19),
-            day_count="ACT/365", source_snapshot_ts=snap_ts, calc_ts=snap_ts, config_hash="c",
+            day_count="ACT/365", source_snapshot_ts=snap_ts, calc_ts=snap_ts, config_hashes={"cfg": "c"},
         )

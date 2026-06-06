@@ -6,7 +6,7 @@ two of D's adapters (``risk_aggregate``, ``scenario_result``) and C's
 ``pricing_result`` take a *pre-built* stamp rather than a ``calc_ts`` — so the
 actor must construct those stamps itself. The other C adapters
 (``forward_curve_point``, ``iv_point``, ``surface_parameters``,
-``surface_grid_cells``) and ``build_snapshots`` take ``calc_ts``/``config_hash``
+``surface_grid_cells``) and ``build_snapshots`` take ``calc_ts``/``config_hashes``
 and build their own stamps internally; the actor passes them the same injected
 ``calc_ts`` so every output on a run shares one computation time.
 
@@ -20,7 +20,7 @@ in any order.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -47,7 +47,7 @@ def build_stamp(
     *,
     calc_ts: datetime,
     code_version: str,
-    config_hash: str,
+    config_hashes: Mapping[str, str],
     sources: Sequence[StampSource],
 ) -> ProvenanceStamp:
     """Assemble a provenance stamp from injected ``calc_ts`` and the source rows.
@@ -65,7 +65,7 @@ def build_stamp(
     return stamp(
         calc_ts=calc_ts,
         code_version=code_version,
-        config_hash=config_hash,
+        config_hashes=config_hashes,
         source_records=refs,
         source_timestamps=timestamps,
     )

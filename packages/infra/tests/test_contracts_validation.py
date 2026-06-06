@@ -31,7 +31,7 @@ def _stamp():
     return stamp(
         calc_ts=_TS,
         code_version="algotrading-infra-0.1.0",
-        config_hash="cfg",
+        config_hashes={"cfg": "cfg"},
         source_records=(source_ref("raw_market_events", "s", "e"),),
         source_timestamps=(_TS,),
     )

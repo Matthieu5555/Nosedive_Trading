@@ -59,7 +59,7 @@ live adapter.
 
 ## Test surface
 
-Cross-cutting rules live in [TESTING.md](TESTING.md) — read it first. Your tier's
+Cross-cutting rules live in [TESTING.md](../TESTING.md) — read it first. Your tier's
 bugs live in wiring and timing, so you are held to behavior tests, not a coverage
 number. The non-negotiable one is the kill-and-restart test below.
 

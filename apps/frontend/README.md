@@ -1,8 +1,8 @@
 # apps/frontend
 
 The operator frontend: a FastAPI backend-for-frontend (BFF) plus a React/Vite web
-app. Top of the layer stack — it reads only *down* into `packages/infra`, never into
-`backend`. Owner: **M8**.
+app. Top of the layer stack — it reads only *down* into `packages/infra`, never up into
+`strategy`/`execution` (import-linter enforces this). Owner: **M8**.
 
 ## TL;DR
 
@@ -42,15 +42,16 @@ Seven pages over `react-router`, wrapped in a shared `AppLayout` (top-bar nav):
 - **Surfaces** — the fitted SVI slices for an underlying (default `AAPL`, the symbol
   the offline sample chain produces), read back from the `surface_parameters` table.
 - **Risk** — net portfolio sensitivities, read back from `risk_aggregates`.
-- **Run** — provider listing, pipeline launch, and job polling. The `SAMPLE` provider's
-  surface build is stubbed pending C6 (see below); the job lifecycle is live.
+- **Run** — provider listing, pipeline launch, and job polling. The `SAMPLE` provider
+  builds a **real** surface by replaying a committed day through the actor pipeline (see
+  the live-run path below); the job lifecycle is live.
 - **Config** — list and read the platform config files (read-only, traversal-guarded).
 - **NotFound** — the catch-all 404.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
 `market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture
-data, had no `backend` equivalent, and are superseded by the store-backed surfaces/risk
-routes. No live broker orders were ever sent.
+data with no equivalent in the canonical stack, and are superseded by the store-backed
+surfaces/risk routes. No live broker orders were ever sent.
 
 ## API
 
@@ -71,17 +72,21 @@ The OAuth flow's verifiable half (single-use CSRF state, authorize-URL construct
 replay/forgery rejection) is real; the token exchange fails closed with a typed `501`
 until `packages/infra-saxo` lands.
 
-## Pending C6 — the live-run build path
+## The live-run build path (SAMPLE)
 
-A surface build starts with a live capture (resolve the chain off a broker session,
-collect a window of quotes into the raw layer, then run the actor), so it depends on the
-broker-session → `RawMarketEvent` collection seam. That seam
-(`orchestration.surface_job` / `collect_live`) is owned by **C6** and has not yet landed
-on the `packages` stack — the C3 orchestration package deliberately did *not* port
-`build_surface` rather than wire a second, divergent collection path. Until C6 closes the
-seam, a `SAMPLE` run settles to `ERROR` with a typed "C6 pending" message; the
-queue/poll/state-machine lifecycle around it is fully exercised. See
-`runner.py`'s `TODO(C6)` and `tasks/C6-collection-seam-unification.md`.
+A surface build runs the unified collection seam (`orchestration.build_surface` over
+`collect_live`, ADR 0027) end to end. The `SAMPLE` provider drives it deterministically:
+`runner.py` reads the store's most recent committed day, replays it through the **exact**
+actor pipeline into a **throwaway temp store** (`persist=False`, so a SAMPLE run never
+writes back into `data/` — re-capturing the same content-addressed events would be a
+no-op append anyway), and reduces the fitted surface to a small job summary the web app
+polls. The queue/poll/state-machine job lifecycle wraps it; any failure marks the job
+`ERROR` and is logged. A run needs a committed day to replay — a `SAMPLE` against an
+empty store fails fast with a typed error.
+
+Live broker providers (Saxo/Deribit/IBKR) capture through the same `build_surface` seam;
+the broker-session → `RawMarketEvent` normalization lives in the
+`packages/infra-{saxo,deribit,ibkr}` adapters. See `runner.py` and `infra/orchestration`.
 
 ## Verify
 

@@ -115,6 +115,7 @@ The actor (Workstream E) feeds solved `IvPoint` records in and persists the emit
 ## Verify
 
 ```
-cd backend && uv run ruff check src/surfaces && uv run mypy src/surfaces \
-  && uv run pytest -q tests/test_surfaces.py
+uv run ruff check packages/infra/src/algotrading/infra/surfaces \
+  && uv run mypy packages/infra/src/algotrading/infra/surfaces \
+  && uv run pytest -q packages/infra/tests/test_surfaces.py
 ```

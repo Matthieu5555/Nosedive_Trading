@@ -1,6 +1,6 @@
 # C1 — Land the market-data plane + actor spine in `packages/infra`, on Nautilus
 
-> **Direction reset by [ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) (2026-06-05).**
+> **Direction reset by [ADR 0023](../../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) (2026-06-05).**
 > This spec replaces the earlier "framework-free actor, no Nautilus, delete the M5 fork,
 > retarget all three leaves onto the scalar `contracts.BrokerSession`" plan. The new direction:
 > **Nautilus is the runtime spine; IBKR rides Nautilus's adapter; Vincent's Saxo/Deribit
@@ -14,9 +14,9 @@
 
 > **RESOLVED 2026-06-05.** The three "decide first" items below are answered:
 > **(1) catalog topology** — our `RawMarketEvent` + `ParquetStore` stays the system of record,
-> Nautilus bridges ([ADR 0025](../.agent/decisions/0025-nautilus-host-catalog-topology.md));
+> Nautilus bridges ([ADR 0025](../../.agent/decisions/0025-nautilus-host-catalog-topology.md));
 > **(2) unifying broker seam** — the push `RawCollector` is canonical, the scalar pull
-> `BrokerSession` retired ([ADR 0027](../.agent/decisions/0027-collection-seam-push-canonical.md)),
+> `BrokerSession` retired ([ADR 0027](../../.agent/decisions/0027-collection-seam-push-canonical.md)),
 > and the `BrokerTick`/`RawMarketEvent` reconciliation + content-addressed-id restore (item 4 in
 > "What to do") **moved to [C6](C6-collection-seam-unification.md)** — they are no longer C1's;
 > **(3) provenance bridging** — recorded in ADR 0025 §3. Kept below as the original framing.

@@ -22,32 +22,32 @@ if you have not today.
 uv sync
 ```
 
-1. Run the connectivity smoke test. This is the bootstrap end to end: resolve one
-   contract off a broker session, request one quote, write one event, place no orders.
-   It uses the in-memory fake session, so it proves the *seam* and the collector code
-   path, not the live socket.
+1. Run the collection-seam smoke. This exercises the bootstrap end to end with a fake
+   adapter — capture a window of quotes through the one push `RawCollector`, stamp each
+   tick, write it to the raw layer, place no orders — so it proves the *seam* and the
+   collector code path, not the live socket.
 
    ```
-   uv run pytest tests/test_smoke_bootstrap.py -q
+   uv run pytest packages/infra/tests/test_collection_use_cases.py packages/infra/tests/test_collectors.py -q
    ```
 
-   Healthy output: all tests pass. The smoke asserts exactly one event is written, its
-   value round-trips, and the positions layer stays empty (nothing places an order).
+   Healthy output: all tests pass. They assert the captured events round-trip, that a
+   kill-and-restart writes each content-addressed event exactly once (idempotency), and
+   that nothing places an order.
 
-   > **ADR 0023 (2026-06-05):** under the new direction IBKR connectivity moves to Nautilus's
-   > shipped adapter; the `IbkrBrokerSession` / `ibkr_live_smoke.py` path below is the current
-   > (pre-migration) one, kept until C1 lands the Nautilus runtime.
+   > **Broker plane (ADR 0023/0024):** IBKR captures via Nautilus's shipped adapter plus a
+   > custom Client-Portal REST transport (`packages/infra-ibkr`, `select_ibkr_transport`,
+   > REST preferred); Saxo/Deribit via our own adapters (`packages/infra-{saxo,deribit}`).
+   > All normalize into the one `contracts.RawMarketEvent` on the unified push seam.
 
-   To prove the *live socket* against a running Gateway/TWS — connect read-only, expand a
-   bounded option chain, subscribe, and write at least one raw event — you would run the live
-   IBKR smoke (it needs the optional broker SDK and a reachable gateway). That manual smoke
-   script lived in the retired `backend/scripts/` tree (`ibkr_live_smoke.py`) and was *not*
-   ported to the monorepo, so there is no current entrypoint for it — treat live-socket
-   smoke as a known gap until it is reinstated.
+   To prove the *live socket* against a running Gateway/TWS or a broker API — connect
+   read-only, expand a bounded option chain, subscribe, and write at least one raw event —
+   use the per-broker connect + smoke procedure in
+   [`documentation/connectivity/connect-providers.md`](../connectivity/connect-providers.md),
+   which also documents each broker's entitlement walls. A standalone repo-root live-smoke
+   CLI is a known gap (the pre-merge `ibkr_live_smoke.py` was not ported).
 
-   Healthy output ended with an `OK:` line and a non-zero event count; any failure printed a
-   `FAIL:` line naming the step (connect, qualify, materialize, or no events) and exited
-   non-zero. See ADR 0008 and `../../packages/infra/src/algotrading/infra/connectivity/README.md`.
+   See ADR 0008/0024 and `../../packages/infra/src/algotrading/infra/connectivity/README.md`.
 
 2. Refresh the universe for the trade date. This resolves the broker's option-chain
    rows into canonical `InstrumentMaster` rows and writes them append-only. It is
@@ -55,21 +55,20 @@ uv sync
 
    ```python
    from datetime import date
-   from connectivity import SessionSupervisor, SystemClock, client_id_for
-   from universe import materialize_universe, UniverseService
-   from storage import ParquetStore
+   from algotrading.infra.connectivity import SessionSupervisor, SystemClock, client_id_for
+   from algotrading.infra.universe import materialize_universe, UniverseService
+   from algotrading.infra.storage import ParquetStore
 
    store = ParquetStore("<data-root>")
-   # `session` is a BrokerSession implementation: IbkrBrokerSession for a live feed
-   # (needs `uv sync --extra ibkr` and a running gateway), or FakeBrokerSession /
-   # ReplayBrokerSession with no broker. The supervisor wraps it with reconnect/heartbeat.
-   #   from connectivity import IbkrBrokerSession
-   #   session = IbkrBrokerSession(host="127.0.0.1", port=4002)  # read-only
+   # `session` implements the SupervisedSession protocol (connect / subscribe /
+   # option-chain / ticks). For a live feed it is the broker leaf's session
+   # (packages/infra-{ibkr,saxo,deribit}); offline, a fake/replay session. The
+   # supervisor is the one reconnect home (backoff / client-id / gap recovery).
    supervisor = SessionSupervisor(session, client_id=client_id_for("sod"), clock=SystemClock())
    rows = supervisor.request_option_chain("AAPL")   # one call per configured underlying;
-   #                                                  # for IBKR this returns the underlying
-   #                                                  # plus every qualified option contract
-   materialize_universe(store, rows, date(2026, 6, 1))
+   #                                                  # returns the underlying plus every
+   #                                                  # qualified option contract
+   materialize_universe(store, rows, date(2026, 6, 1))   # resolve + write masters (idempotent)
    universe = UniverseService.load_active_universe(store, date(2026, 6, 1))
    ```
 
@@ -79,24 +78,35 @@ uv sync
    raises `UnresolvedContractError` naming the offending field — a loud failure, never a
    silent drop. See `../../packages/infra/src/algotrading/infra/universe/README.md`.
 
-3. Start collection for the day. The collector subscribes, normalizes each tick to a
-   `RawMarketEvent`, stamps it, and persists append-only. The `session_id` must be
-   stable across restarts (derive it from the trade date) — that is what makes a
-   kill-and-restart write each event exactly once.
+3. Start collection for the day. `orchestration.collect_live` wraps the injected push
+   `adapter` (the broker leaf's `MarketDataAdapter`) with sequence stamping, builds the
+   one `RawCollector` over the store, subscribes, and pumps the feed through the injected
+   `drive` callable; each tick is normalized to a `RawMarketEvent`, stamped, and persisted
+   append-only. The `session_id` must be stable across restarts (derive it from the trade
+   date) — that, with the content-addressed `event_id`, is what makes a kill-and-restart
+   write each event exactly once.
 
    ```python
-   from collectors import MarketDataCollector
-   from connectivity import SystemClock
+   from algotrading.infra.orchestration import collect_live
 
-   collector = MarketDataCollector(
-       store=store, universe=universe,
-       session_id="2026-06-01", trade_date=date(2026, 6, 1), clock=SystemClock(),
+   result = collect_live(
+       store=store,
+       adapter=adapter,                 # the broker leaf MarketDataAdapter (push)
+       subscribe=["o-AAPL-C-100", "o-AAPL-P-100"],
+       session_id="2026-06-01",         # stable across restarts → exactly-once on replay
+       trade_date=date(2026, 6, 1),
+       clock=SystemClock(),
+       drive=drive,                     # FeedDriver: pumps the feed to completion
+       correlation_id="sod-2026-06-01",
    )
-   summary = collector.collect(supervisor, subscribe=["o-AAPL-C-100", "o-AAPL-P-100"])
    ```
 
-4. Confirm data is flowing. `summary.event_count` should be climbing and
-   `summary.coverage_ratio` should be near 1.0 (every subscribed instrument produced at
+   The broker leaf supplies the `adapter` and `drive`; for the wired per-broker capture
+   recipes see [`documentation/connectivity/connect-providers.md`](../connectivity/connect-providers.md)
+   and the `orchestration.provider_flow` façades.
+
+4. Confirm data is flowing. The returned `CollectionResult` summary's event count should
+   be climbing and its coverage ratio near 1.0 (every subscribed instrument produced at
    least one observation). For a live view across underlyings, build the dashboard (see
    the [intraday health runbook](intraday-health.md)).
 

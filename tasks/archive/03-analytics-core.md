@@ -80,7 +80,7 @@ first, then the rest of C and Workstream D can build against it.
 ## Test surface
 
 Cross-cutting rules — independent oracles, the property tests, the edge-case
-floor, the coverage floor on this pure core — live in [TESTING.md](TESTING.md).
+floor, the coverage floor on this pure core — live in [TESTING.md](../TESTING.md).
 Read it first. This is the richest edge-case surface in the system; named cases
 below are the minimum, not the ceiling. Every expected value cites an independent
 oracle (TESTING.md) — no round-trips against your own code except the legitimate

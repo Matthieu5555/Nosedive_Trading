@@ -100,7 +100,7 @@ following named offenders down the chain, not guessing.
 ## When the failure is determinism
 
 If `compare_replay_to_live` reports a divergence under the *same* code version, or the
-byte-identical replay test (`tests/test_replay_byte_identical.py`) fails, this is the
+byte-identical replay test (`packages/infra/tests/test_replay_byte_identical.py`) fails, this is the
 most serious class of failure the system has: the same inputs produced different
 outputs. The comparison names the table and the diverging keys. Do not paper over it —
 this breaks the four invariants the platform exists to guarantee (see

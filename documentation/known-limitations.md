@@ -22,32 +22,35 @@ mandate. This reverses the interim framework-free stance of ADRs 0007/0020; the 
 framework-independent, so they can still be driven from a plain loop if Nautilus ever gets in the
 way (the ADR 0016 escape hatch).
 
-**The live IBKR adapter needs an opt-in extra and is not exercised by the test suite.**
-There *is* now a concrete live `IbkrBrokerSession` over `ib_async` (ADR 0008), but the
-broker SDK is an optional dependency, not installed by default — a live session requires
-`uv sync --extra ibkr` and a running Gateway/TWS. The spec still forbids a live IBKR
-session in the test suite, so the suite drives the adapter through a fake `ib_async` and
-the live socket is proven only by a manual smoke script that lived in the retired
-`backend/` tree and was not ported into the monorepo, run by hand. The
-default `uv run pytest` runs broker-free against the `FakeBrokerSession` and the disk
-`ReplayBrokerSession`. The adapter is read-only: it reads market data and never places an
-order. See `packages/infra/src/algotrading/infra/connectivity/README.md`. (Under
-[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md), IBKR
-connectivity moves to Nautilus's shipped adapter; this hand-rolled `ib_async` `IbkrBrokerSession`
-is superseded.)
+**The live broker sockets need opt-in extras and are not exercised by the test suite.**
+Market data comes from three adapters — IBKR via Nautilus's shipped adapter plus our
+custom Client-Portal REST transport (ADR 0024/0025), and Saxo + Deribit via our own
+adapters. The broker SDKs and gateways are optional: a live IBKR session needs
+`uv sync --extra ibkr` and a running Gateway/TWS (or a CP Gateway for REST), and the
+default `uv run pytest` is broker-free — it drives the adapters through recorded sample
+payloads and in-test fakes (SDK imports are `importorskip`-guarded), and the live socket
+is proven only by the per-broker smoke in
+[`documentation/connectivity/connect-providers.md`](connectivity/connect-providers.md),
+run by hand. Every adapter is read-only: it reads market data and never places an order.
+See `packages/infra/src/algotrading/infra/connectivity/README.md` and
+`packages/infra-{ibkr,saxo,deribit}/README.md`.
 
-**Single-broker, single-currency-per-contract assumptions.** The connectivity seam
-models one broker session at a time, and the universe resolution requires each contract
-to carry its own currency and multiplier (never defaulted) — there is no cross-broker
-reconciliation and no FX layer. A contract's currency is a field on its key, not a
-portfolio-level conversion.
+**No cross-broker reconciliation, single-currency-per-contract.** Universe resolution
+requires each contract to carry its own currency and multiplier (never defaulted), and a
+contract's currency is a field on its key, not a portfolio-level conversion — there is no
+FX layer. The three adapters all normalize into the one `RawMarketEvent` on a single
+collection seam, but there is no cross-broker reconciliation (the same instrument quoted
+on two venues is not netted or compared).
 
-**No FastAPI service yet.** There is no `app` object and no service entrypoint; the
-`main.py`/HTTP-service layer was never built (the old `backend/` tree carried only a
-`uv init` hello-world stub, now gone). The platform is driven as a library — from the
-runbook scripts and the pipeline entrypoints — not served over HTTP. Standing up the
-service is later work; the workspace README's `uvicorn main:app` command does not work
-today.
+**The FastAPI BFF serves read paths; live-run wiring is partial.** There *is* a FastAPI
+backend-for-frontend (`apps/frontend`, `create_app()` with a module-level `app`) plus a
+React/Vite web app, wired down into the real `packages/infra` seams: health, surfaces,
+risk, config, and run/job routers read live infra. What is *not* finished: the `SAMPLE`
+provider builds a real surface by replaying a committed day, but live broker-run wiring
+through the web app is partial (Deribit; Saxo/IBKR `provider_flow` wiring pending), and
+the Saxo OAuth token exchange fails closed with a typed `501`. The analytics core itself
+is still driven as a library (the runbook scripts and pipeline entrypoints); the BFF is a
+serving layer over it, not the system's only entrypoint.
 
 **The actor reads the rich in-memory results, not the persisted contracts, within one
 run.** The valuation join reads C's rich in-memory objects from the same run (they carry

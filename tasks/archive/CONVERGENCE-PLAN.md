@@ -102,7 +102,7 @@ With C4 green, delete `backend/src/frontend` and `backend/web` and their tests.
 
 The biggest remaining engineering chunk, and the thing that lets `backend/` fully
 retire. Per [C6-collection-seam-unification.md](C6-collection-seam-unification.md)
-and [ADR 0027](../.agent/decisions/0027-collection-seam-push-canonical.md): collapse
+and [ADR 0027](../../.agent/decisions/0027-collection-seam-push-canonical.md): collapse
 the two `BrokerTick` shapes into one (EAV push shape + `sequence`), restore the
 content-addressed `event_id` on the **live** capture path, keep `SessionSupervisor`
 as the sole reconnect home beneath the adapter, retire the pull seam, port the four
@@ -166,7 +166,7 @@ moment *either* side of it drifts.
 ## 11. Config and reproducibility (Q3)
 
 The last solidity layer, per
-[configuration-and-reproducibility.md](../documentation/configuration-and-reproducibility.md):
+[configuration-and-reproducibility.md](../../documentation/configuration-and-reproducibility.md):
 the five fix-tasks — TOML→YAML, the six base YAMLs
 (`environment/broker/universe/qc/scenarios/pricing`), generalize the typed
 `from_config` + `__post_init__` + `version` pattern, wire config into `infra`, and

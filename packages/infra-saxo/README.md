@@ -25,6 +25,7 @@ broker SDK and no secret is needed to import the package or run the test suite.
 **Direction set by ADR 0023 (2026-06-05):** Nautilus ships no Saxo adapter, so **this leaf is a
 survivor — kept**. It implements the `algotrading.infra.collectors.MarketDataAdapter` seam and feeds
 the catalog Nautilus replays through the one unified `RawCollector` (ADR 0027 / C6: the pull
-`contracts.BrokerSession` seam has been retired). `flow.py` is deferred until the analytics pipeline
-lands in `packages/infra`. OAuth refresh/persist/expiry are tested against a fake auth server; real
+`contracts.BrokerSession` seam has been retired). There is no `flow.py`: `SaxoMarketDataAdapter`
+emits `collectors.BrokerTick` onto the unified push collection seam (ADR 0027) and orchestration
+drives the analytics pipeline — there is no per-broker flow façade. OAuth refresh/persist/expiry are tested against a fake auth server; real
 sample: `samples/asml_real_2026-06-04.json`.

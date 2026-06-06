@@ -54,7 +54,9 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
 
 The hand-rolled `ib_async` modules (`connectivity/ibkr_transport.py`,
 `collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) are
-**superseded** (ADR 0023). They are kept as files — reached only by direct import, not surfaced
-from the package `__init__`, tests `importorskip("ib_async")` — until **C5** removes them. Real
-captured samples for the gate's SDK-free replay test:
-`samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.
+**superseded** by the two live transports (CP-REST + Nautilus-TWS, ADR 0023/0024). They are
+**not** wired into `select_ibkr_transport` and are not surfaced from the package `__init__` —
+reached only by direct import, and their tests `importorskip("ib_async")`. They are retained
+only as dead reference for now; deleting them is a loose cleanup (it was *not* part of C5, which
+retired the flat `backend/` tree, only). Real captured samples for the gate's SDK-free replay
+test: `samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.

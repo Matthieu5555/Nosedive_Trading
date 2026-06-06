@@ -107,6 +107,7 @@ into the IV solver in-process.
 ## Verify
 
 ```
-cd backend && uv run ruff check src/forwards && uv run mypy src/forwards \
-  && uv run pytest -q tests/test_forwards.py
+uv run ruff check packages/infra/src/algotrading/infra/forwards \
+  && uv run mypy packages/infra/src/algotrading/infra/forwards \
+  && uv run pytest -q packages/infra/tests/test_forwards.py
 ```

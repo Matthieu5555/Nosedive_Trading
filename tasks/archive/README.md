@@ -24,20 +24,39 @@ The ten-workstream merge fan-out (M0–M10) that followed A–E is now archived 
 keystone + bottom half (M0 core/contracts seam, M1 storage, M2 analytics, M3 risk, and
 the M10 Postgres serving tier) **landed** in `packages/infra`; its top half (market-data,
 actor, qc, orchestration, frontend) was either stuck in the old flat tree or forked, and
-is finished by the **convergence tasks (C1–C6)** on the active board. The fan-out decisions
-live in `.agent/decisions/` and the results in the code.
+was finished by the **convergence tasks (C1–C8)**, which are now complete and archived
+below. The fan-out decisions live in `.agent/decisions/` and the results in the code.
 
 - [M0-monorepo-keystone.md](M0-monorepo-keystone.md) — layered uv-workspace, merged `core`, frozen `contracts` seam + gate. Landed.
 - [M1-storage.md](M1-storage.md) — `ParquetStore` behind `StorageRepository`, immutable raw EAV. Landed.
 - [M2-analytics-core.md](M2-analytics-core.md) — snapshots/forwards/iv/surfaces/pricing, frozen pricer. Landed.
 - [M3-risk-engine.md](M3-risk-engine.md) — greeks/aggregation/scenarios/reconciliation on the M2 seam. Landed.
-- [M4-market-data-actor.md](M4-market-data-actor.md) — market-data plane + actor spine. Built in flat tree; relocation is **C1**.
-- [M5-broker-adapters.md](M5-broker-adapters.md) — IBKR/Saxo/Deribit leaves. Forked against ADR 0020; the leaf packages land in **C1**, the collection-seam fork resolves in **C6** (ADR 0027).
-- [M6-qc-validation.md](M6-qc-validation.md) — QC + validation/triage. Contract collapsed; logic port is **C2**.
-- [M7-orchestration-observability.md](M7-orchestration-observability.md) — orchestration/observability + acceptance tests. Port + gating is **C3**.
-- [M8-frontend.md](M8-frontend.md) — FastAPI BFF + React/Vite web. Two copies; consolidation is **C4**.
+- [M4-market-data-actor.md](M4-market-data-actor.md) — market-data plane + actor spine. Built in flat tree; relocated in **C1** (done).
+- [M5-broker-adapters.md](M5-broker-adapters.md) — IBKR/Saxo/Deribit leaves. Forked against ADR 0020; the leaf packages landed in **C1**, the collection-seam fork resolved in **C6** (ADR 0027) (done).
+- [M6-qc-validation.md](M6-qc-validation.md) — QC + validation/triage. Contract collapsed; logic ported in **C2** (done).
+- [M7-orchestration-observability.md](M7-orchestration-observability.md) — orchestration/observability + acceptance tests. Ported + gated in **C3** (done).
+- [M8-frontend.md](M8-frontend.md) — FastAPI BFF + React/Vite web. Two copies; consolidated in **C4** (done).
 - [M9-discipline-docs.md](M9-discipline-docs.md) — blueprint, vol-surface docs, notebooks, ADRs, glossary. Landed; doc upkeep is now continuous per `AGENTS.md`.
 - [M10-postgres-serving-tier.md](M10-postgres-serving-tier.md) — `RunRepository` + SQLite/Postgres behind M1's port. Landed; further expansion is trigger-gated.
+
+The **convergence series (C1–C8)** that closed the merge is complete and merged to `main`;
+its specs are archived here as the record of what was built. The linear runbook that
+sequenced them is [CONVERGENCE-PLAN.md](CONVERGENCE-PLAN.md). The one convergence task still
+*live* is **C7** (config hardening) — only Task 1 of 5 landed — so its spec stays on the
+active board at [`tasks/C7-config-hardening.md`](../C7-config-hardening.md), not here.
+
+- [C1-actor-and-market-data-plane.md](C1-actor-and-market-data-plane.md) — market-data plane + actor spine relocated to `packages`; Nautilus runtime spine (ADR 0023/0025); IBKR on Nautilus + the custom Client-Portal REST transport (ADR 0024). Done.
+- [C2-qc-validation.md](C2-qc-validation.md) — QC + validation/triage ported to `packages/infra`, one `triage_records` table (ADR 0010). Done.
+- [C3-orchestration-and-acceptance.md](C3-orchestration-and-acceptance.md) — orchestration/observability + the four headline acceptance tests, in the root gate (ADR 0026). Done.
+- [C4-frontend.md](C4-frontend.md) — the two frontends consolidated into `apps/frontend` on real infra seams. Done.
+- [C5-retire-backend.md](C5-retire-backend.md) — the flat `backend/` tree deleted; docs/symlinks repointed onto `packages/infra`. Done. (The `Vincent's Code/` clone removal was permission-blocked and is carried forward on the active board — not a code item.)
+- [C6-collection-seam-unification.md](C6-collection-seam-unification.md) — the collection seam unified on the push `RawCollector`; the four deferred use-cases ported (ADR 0027). Done.
+- [C8-hygiene-fixes.md](C8-hygiene-fixes.md) — valuation-join + quote-quality seam tests; Deribit discovery determinism (inject `as_of`, not the wall clock); Saxo cleanups. Done.
+- [ibkr-rest-api-evaluation.md](ibkr-rest-api-evaluation.md) — the research record behind the IBKR-over-REST decision (ADR 0024, accepted + landed). Reference, not an open spike.
+
+The next epoch — the **index options-analytics pipeline** — is planned in
+[`documentation/roadmap-index-analytics.md`](../../documentation/roadmap-index-analytics.md);
+its per-workstream specs land on the active board as each phase opens.
 
 | Who | Area / files | Branch | Done | What was done |
 |-----|--------------|--------|------|---------------|

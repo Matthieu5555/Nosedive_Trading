@@ -1,6 +1,6 @@
 # infra.contracts — the frozen seam
 
-The typed data contracts and the two protocols every other workstream imports.
+The typed data contracts and the one storage protocol every other workstream imports.
 **M0 owns this package; nobody else edits it in place.** A needed change is a
 request routed through M0, because every field ripples to the other workstreams.
 
@@ -18,18 +18,23 @@ request routed through M0, because every field ripples to the other workstreams.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).
-- **The two frozen protocols:**
-  - `StorageRepository` (`ports.py`) — the storage seam. Table-keyed read/write/list
-    over the contract dataclasses, with the versioned-restatement semantics
-    (`version=None` = live; `version=<V>` = one restatement; the two never mix; raw
-    append-only tables refuse a versioned write). M1 implements it; everyone reads
-    and writes through it.
-  - `BrokerSession` (`broker.py`) — the M0 broker-agnostic market-data seam (`BrokerTick`
-    plus connect/subscribe/option-chain/ticks; `content_event_id` gives a tick a
-    deterministic, cross-process id). **Being retired by ADR 0023** (Nautilus is the runtime
-    spine): the live seam becomes "normalize every broker into `RawMarketEvent` in the
-    catalog," IBKR via Nautilus and Saxo/Deribit on `collectors.MarketDataAdapter`.
-    `content_event_id` stays — the determinism invariant C1 restores over the vendored counter.
+- **The frozen storage protocol** — `StorageRepository` (`ports.py`): the storage seam.
+  Table-keyed read/write/list over the contract dataclasses, with the
+  versioned-restatement semantics (`version=None` = live; `version=<V>` = one
+  restatement; the two never mix; raw append-only tables refuse a versioned write). M1
+  implements it; everyone reads and writes through it.
+- **The content-addressed event id** — `content_event_id` (`broker.py`): derives a
+  deterministic, cross-process id for a tick from `(instrument_key, field_name,
+  sequence)`. This is the idempotency primitive for capture; re-capturing the same
+  observation yields the same id.
+
+> The old broker-agnostic *pull* seam — `BrokerSession`/`BrokerTick` protocols that
+> once lived here — is **retired** (ADRs 0023/0027). The live market-data seam is now
+> "normalize every broker into `RawMarketEvent` in the catalog": IBKR via Nautilus's
+> adapter (plus our Client-Portal REST transport), Saxo/Deribit via our own adapters,
+> all emitting the push `collectors.BrokerTick` onto the one `RawCollector`. Only
+> `content_event_id` survives here. So this package now exposes exactly one protocol
+> (`StorageRepository`).
 
 ## Rules
 

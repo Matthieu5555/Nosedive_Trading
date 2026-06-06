@@ -54,7 +54,7 @@ only generic risk control, capacity, and margin-style diagnostics.
 ## Test surface
 
 Cross-cutting rules — independent oracles, property tests, the edge-case and
-coverage floors on this pure core — live in [TESTING.md](TESTING.md). Read it
+coverage floors on this pure core — live in [TESTING.md](../TESTING.md). Read it
 first. You build against C's frozen pricing interface using A's fixtures, so a
 pinned interface test (below) is what keeps a C-side change from surfacing as a
 mystery in E.

@@ -1,7 +1,7 @@
 # C6 — Collection-seam unification + port the four collection-coupled use-cases
 
 - **Owns:** collapsing the two collection seams into one (per
-  [ADR 0027](../.agent/decisions/0027-collection-seam-push-canonical.md)), then porting the
+  [ADR 0027](../../.agent/decisions/0027-collection-seam-push-canonical.md)), then porting the
   four use-cases that ADR 0026 §4 left deferred, and wiring Saxo/Deribit onto the runtime.
 - **Depends on:** ADR 0027 (accepted). The push `RawCollector` seam, the pull
   `SessionSupervisor`/`contracts.broker.BrokerTick`, and all four live adapters already exist

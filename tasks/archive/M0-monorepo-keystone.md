@@ -47,7 +47,7 @@ Stand up the empty-but-enforced chassis and freeze every cross-package seam, so 
 
 ## Test surface
 
-Read [TESTING.md](TESTING.md) first. Specific to M0:
+Read [TESTING.md](../TESTING.md) first. Specific to M0:
 - import-linter actually fails on a planted upward import (assert the guard bites, don't trust the config).
 - A round-trip test for each frozen protocol against a trivial in-memory fake, so M1/M4/M5 build against a proven contract.
 - The provenance stamp survives the core bake-off: an existing stamp from either repo still validates.

@@ -71,7 +71,7 @@ and D to have landed their interfaces.
 
 ## Test surface
 
-Cross-cutting rules live in [TESTING.md](TESTING.md) — read it first. You converge
+Cross-cutting rules live in [TESTING.md](../TESTING.md) — read it first. You converge
 last and you verify everyone else's invariants, so two of your tests are the
 system's headline guarantees and must be real, not prose.
 

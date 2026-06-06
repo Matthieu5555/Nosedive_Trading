@@ -21,17 +21,14 @@ cells = scenario_line_pnls([line], scenario_grid(scenario_config))
 wc    = worst_case(cells)   # most negative portfolio PnL + ranked contributors
 ```
 
-## Status: structural port, gate blocked on M2
+## Status: landed and in the gate
 
-This package is a **structural port** landed ahead of its dependency. It binds M2's
-pricing seam (`algotrading.infra.pricing`: `PricingState`, `from_spot`, `price`,
-`PriceGreeks`) and the M0-frozen contracts (`algotrading.infra.contracts`:
-`RiskAggregate`, `ScenarioResult`). M2 analytics is being ported in parallel and is
-freezing `pricing=ours`, which is the interface bound here. **Until M2 lands, the gate
-(`mypy`, `pytest`) cannot run green** — the pricing module is still a skeleton. The one
-place that binds the pricing seam is `valuation.py`; if M2 freezes different names, that
-adapter is the single point to reconcile, because the rest of the package depends on
-`ContractValuationInput`, not on the pricer.
+This package is complete and green in the root gate. It binds the pricing seam
+(`algotrading.infra.pricing`: `PricingState`, `from_spot`, `price`, `PriceGreeks`) and
+the M0-frozen contracts (`algotrading.infra.contracts`: `RiskAggregate`,
+`ScenarioResult`). The one place that binds the pricing seam is `valuation.py`; if the
+pricer ever changes names, that adapter is the single point to reconcile, because the
+rest of the package depends on `ContractValuationInput`, not on the pricer directly.
 
 ## How this package was merged (blueprint-driven bake-off)
 
@@ -243,11 +240,11 @@ I/O. The caller fixes the input.
 A low-confidence contract is *not* a failure: the `"low"` quote-QC label rides through on
 the line so it can be surfaced, and the position is still priced.
 
-## Fastest way to exercise it (once M2 lands)
+## Fastest way to exercise it
 
 ```bash
-uv run pytest packages/infra/tests/risk -q          # unit + oracle + report
-uv run pytest packages/infra/tests/risk --cov       # with the branch-coverage floor
+uv run pytest packages/infra/tests/test_risk.py packages/infra/tests/test_scenario.py -q
+uv run pytest packages/infra/tests --cov            # with the branch-coverage floor
 ```
 
 `test_risk.py` covers step 11 (Greeks vs. an independent oracle, the

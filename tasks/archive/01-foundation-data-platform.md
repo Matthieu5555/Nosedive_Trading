@@ -82,7 +82,7 @@ request routed to you, never an in-place edit in another workstream.
 ## Test surface
 
 Cross-cutting rules — independent oracles, determinism mechanism, seam tests,
-the edge-case floor, coverage — live in [TESTING.md](TESTING.md). Read it first.
+the edge-case floor, coverage — live in [TESTING.md](../TESTING.md). Read it first.
 You own the machinery the other four lean on, so your tests are load-bearing.
 
 Contract validation, per dataclass:

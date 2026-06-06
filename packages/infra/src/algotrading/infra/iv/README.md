@@ -8,7 +8,7 @@ pricing engine maps vol → price, this module inverts that map, and the two are
 ## TL;DR
 
 ```python
-from config import SolverConfig
+from algotrading.core.config import SolverConfig
 from algotrading.infra.iv import solve_iv, iv_point
 
 cfg = SolverConfig(version="...", iv_tolerance=1e-10, max_iterations=100)
@@ -85,6 +85,7 @@ the `(F, DF)` from the forward engine, and the solver config, and persists the e
 ## Verify
 
 ```
-cd backend && uv run ruff check src/iv && uv run mypy src/iv \
-  && uv run pytest -q tests/test_iv.py
+uv run ruff check packages/infra/src/algotrading/infra/iv \
+  && uv run mypy packages/infra/src/algotrading/infra/iv \
+  && uv run pytest -q packages/infra/tests/test_iv.py
 ```

@@ -6,7 +6,7 @@
   import-guarded on the ``ibkr`` extra.
 
 :func:`select_ibkr_transport` picks one by config. The hand-rolled ``ib_async`` ``IbkrTransport``
-is **superseded** — kept as a file until C5, reached only by direct import, not surfaced here.
+is **superseded** — retained as dead reference, reached only by direct import, not surfaced here.
 """
 
 from .cp_rest_session import CpRestSession

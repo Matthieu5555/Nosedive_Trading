@@ -3,7 +3,7 @@
 - **Branch:** `feat/ibkr-rest-api` (spike first; only widen to a migration if the spike clears the blocker below)
 - **Owns:** `backend/src/connectivity/**` (today's `ibkr_session.py`), and in the merged repo `packages/infra-ibkr/**`.
 - **Depends on:** M0 (`BrokerSession` protocol — the seam any new transport must satisfy), M4 (adapter-to-actor wiring).
-- **Relates to:** [M5-broker-adapters.md](M5-broker-adapters.md) — this is a **fourth option** in the IBKR bake-off, which today weighs only TWS-API transports (`ib_async`, Vincent's `ibkr_transport`, Nautilus's built-in). ADR [`0008-live-ibkr-adapter`](../.agent/decisions/0008-live-ibkr-adapter.md) records why the current adapter is TWS-API-over-`ib_async`.
+- **Relates to:** [M5-broker-adapters.md](M5-broker-adapters.md) — this is a **fourth option** in the IBKR bake-off, which today weighs only TWS-API transports (`ib_async`, Vincent's `ibkr_transport`, Nautilus's built-in). ADR [`0008-live-ibkr-adapter`](../../.agent/decisions/0008-live-ibkr-adapter.md) records why the current adapter is TWS-API-over-`ib_async`.
 
 ## Update 2026-06-05 — two things changed the same day; read both
 
@@ -11,14 +11,14 @@ This doc's disposition was written when REST was an *optional* operational migra
 hand-rolled `ib_async` adapter. **Two things have since changed and they interact:**
 
 1. **REST is now a hard course requirement**, not an optional spike.
-2. **ADR [0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) landed**
+2. **ADR [0023](../../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md) landed**
    and reversed the spine to **Nautilus**, with direction "IBKR rides Nautilus's shipped adapter,
    retiring the `ib_async` session this doc evaluates."
 
 These pull opposite ways for IBKR: **Nautilus's IBKR adapter is TWS-API/Gateway, not REST**
 (verified 2026-06-05 against the Nautilus docs — TWS-socket only, no Client Portal/REST option),
 so adopting it as-is does *not* meet the course requirement. The reconciliation is in
-**ADR [0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md) — now ACCEPTED and
+**ADR [0024](../../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md) — now ACCEPTED and
 LANDED** (owner ruled 2026-06-05): IBKR-over-REST is the same case as Saxo/Deribit (a custom adapter
 normalizing into the catalog, because Nautilus's coverage is "insufficient" for the REST
 requirement), with the Nautilus-TWS path as a config-flip manual fallback. **No automatic
@@ -76,7 +76,7 @@ Re-implement the IBKR `BrokerSession` over REST while keeping the seam byte-for-
 
 ## Test surface
 
-Read [TESTING.md](TESTING.md) first. Specific to this task:
+Read [TESTING.md](../TESTING.md) first. Specific to this task:
 - A **fake REST/WebSocket transport** drives the full adapter → `BrokerSession` → M4 plane with no live socket in the suite (the live-broker ban stands; a live REST session proves out via a smoke script, not pytest — mirror `scripts/ibkr_live_smoke.py`).
 - **Equivalence:** the same captured chain must reconstruct into the *same normalized raw events* the TWS-API adapter produces (carry/extend the real-sample reconstruct test). This is the headline assertion — swapping transports must not move a single downstream byte.
 - Auth: token/keepalive/refresh and session-expiry paths tested against a fake auth server; **no real token or session cookie in git** (lives in `$HOME`/`.env`, per AGENTS.md).

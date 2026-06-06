@@ -141,6 +141,7 @@ scenario:
   version: sc-base
   spot_shocks: [-0.1, 0.0, 0.1]
   vol_shocks: [-0.02, 0.02]
+  roll_down_days: [1]
 """
 
 
@@ -206,7 +207,7 @@ _BUNDLES = {
     "universe.yaml": "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n",
     "qc.yaml": "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n",
     "pricing.yaml": "version: s-1\niv_tolerance: 1.0e-8\nmax_iterations: 100\n",
-    "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\n",
+    "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\nroll_down_days: [1]\n",
 }
 
 
@@ -321,11 +322,14 @@ def test_build_dataclass_coerces_by_declared_type() -> None:
     # tuple[float, ...] coercion: a YAML list of numbers becomes a tuple of floats.
     sc = build_dataclass(
         ScenarioConfig,
-        {"version": "sc", "spot_shocks": [-0.1, 0, 0.1], "vol_shocks": [0.0]},
+        {"version": "sc", "spot_shocks": [-0.1, 0, 0.1], "vol_shocks": [0.0], "roll_down_days": [1, 7]},
         section="scenario",
     )
     assert sc.spot_shocks == (-0.1, 0.0, 0.1)
     assert all(isinstance(x, float) for x in sc.spot_shocks)
+    # tuple[int, ...] coercion: a YAML list of day counts becomes a tuple of ints.
+    assert sc.roll_down_days == (1, 7)
+    assert all(isinstance(d, int) for d in sc.roll_down_days)
 
 
 def test_build_dataclass_rejects_unknown_key() -> None:

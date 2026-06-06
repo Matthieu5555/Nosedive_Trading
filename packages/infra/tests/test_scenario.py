@@ -206,6 +206,10 @@ def test_persisted_scenario_version_moves_with_grid_construction_constants() -> 
     assert scenario_mod._grid_construction_hash(roll_down_days=(1,)) != (
         scenario_mod._grid_construction_hash(roll_down_days=(1, 7))
     )
-    assert scenario_mod._grid_construction_hash(crash_rule_tag="other") != (
-        scenario_mod._grid_construction_hash(crash_rule_tag="crash=min_spot+max_vol")
+    assert scenario_mod._grid_construction_hash((1,), crash_rule_tag="other") != (
+        scenario_mod._grid_construction_hash((1,), crash_rule_tag="crash=min_spot+max_vol")
+    )
+    # The configured roll-down set now drives the persisted version too.
+    assert scenario_mod.effective_scenario_version(config) != scenario_mod.effective_scenario_version(
+        ScenarioConfig(version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,), roll_down_days=(1, 7))
     )

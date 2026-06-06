@@ -49,11 +49,9 @@ from .bumps import DEFAULT_BUMPS, BumpSpec
 from .greeks import PositionRisk, central_difference_greeks, net_lots
 from .valuation import ContractValuationInput, pricing_state_for
 
-# Day-count for the time roll-down, and the roll-down set (in days). Fixed code
-# keyed to the scenario version; a change here is a deliberate grid change and moves
-# the effective scenario version (see ``effective_scenario_version``).
+# Day-count for the time roll-down (years↔days). A fixed calendar convention, not a
+# tunable economic input; the configurable roll-down *set* lives in ScenarioConfig.
 _DAYS_PER_YEAR = 365.0
-ROLL_DOWN_DAYS = (1,)
 
 # The grid-construction policy, versioned independently of the economic config. Bump
 # on any change to how the grid is built; it is hashed into the persisted scenario
@@ -84,12 +82,13 @@ def _unique_preserving_order(values: tuple[float, ...]) -> tuple[float, ...]:
 
 
 def _grid_construction_hash(
-    roll_down_days: tuple[int, ...] = ROLL_DOWN_DAYS, crash_rule_tag: str = _CRASH_RULE_TAG
+    roll_down_days: tuple[int, ...], crash_rule_tag: str = _CRASH_RULE_TAG
 ) -> str:
     """A short, stable hash of the grid-construction constants.
 
-    Folded into the persisted scenario version, so changing ``ROLL_DOWN_DAYS`` or the
-    crash rule moves the version automatically even when ``config.version`` does not.
+    Folded into the persisted scenario version, so changing the configured
+    ``roll_down_days`` or the crash rule moves the version automatically even when
+    ``config.version`` does not.
     """
     payload = {
         "version": GRID_CONSTRUCTION_VERSION,
@@ -106,10 +105,10 @@ def effective_scenario_version(config: ScenarioConfig) -> str:
     Combines the config section version with a hash of the grid-construction
     constants, so a report regenerates exactly from positions + snapshot + this
     version: changing either the economic shocks (config) or the construction rules
-    (``ROLL_DOWN_DAYS``, the crash rule) moves it. Persisting ``config.version`` alone
-    would let two different grids share one version.
+    (``config.roll_down_days``, the crash rule) moves it. Persisting ``config.version``
+    alone would let two different grids share one version.
     """
-    return f"{config.version}+{_grid_construction_hash()}"
+    return f"{config.version}+{_grid_construction_hash(config.roll_down_days)}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,7 +152,7 @@ def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
         )
     scenarios += [
         Scenario(f"roll_{days}d", "time", 0.0, 0.0, days / _DAYS_PER_YEAR)
-        for days in ROLL_DOWN_DAYS
+        for days in config.roll_down_days
     ]
     grid = tuple(scenarios)
     ids = [scenario.scenario_id for scenario in grid]

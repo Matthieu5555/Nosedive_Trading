@@ -103,17 +103,30 @@ class SolverConfig:
 
 @dataclass(frozen=True, slots=True)
 class ScenarioConfig:
-    """The stress grid applied by the risk engine."""
+    """The stress grid applied by the risk engine.
+
+    ``roll_down_days`` carries the (default-bearing) construction parameter for the
+    time-roll family of the grid. The dataclass default is for in-memory/test
+    construction only: the YAML loader (:func:`build_dataclass`) still requires the
+    field to be present in ``scenarios.yaml``, so an economic field is never silently
+    defaulted on the load path.
+    """
 
     version: str
     spot_shocks: tuple[float, ...]
     vol_shocks: tuple[float, ...]
+    roll_down_days: tuple[int, ...] = (1,)
 
     def __post_init__(self) -> None:
         # Empty shock tuples are valid — a grid with no spot/vol shocks is just the
         # time-roll scenario. Only the shock *values* are constrained: they must be finite.
         for shock in (*self.spot_shocks, *self.vol_shocks):
             _finite("scenario", "shock", shock)
+        for days in self.roll_down_days:
+            if days <= 0:
+                raise ConfigFieldError(
+                    "scenario", "roll_down_days", days, "must be a positive day count"
+                )
 
 
 @dataclass(frozen=True, slots=True)

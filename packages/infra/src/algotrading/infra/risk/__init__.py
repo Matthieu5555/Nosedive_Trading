@@ -48,7 +48,6 @@ from .reconciliation import (
 )
 from .scenarios import (
     GRID_CONSTRUCTION_VERSION,
-    ROLL_DOWN_DAYS,
     FamilyAttribution,
     Scenario,
     ScenarioGridError,
@@ -137,7 +136,6 @@ __all__ = [
     "scenario_result",
     "ScenarioGridError",
     "GRID_CONSTRUCTION_VERSION",
-    "ROLL_DOWN_DAYS",
     # reconciliation
     "BrokerGreeks",
     "GreekDiscrepancy",

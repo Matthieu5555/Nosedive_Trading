@@ -31,7 +31,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 import structlog
-from algotrading.core.config import config_hash, from_config, load_yaml_config
+from algotrading.core.config import config_hash, load_platform_config
 from algotrading.infra.collectors import ReplaySource, replay_day
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
@@ -44,8 +44,6 @@ _LOGGER = structlog.get_logger("frontend.runner")
 
 # The market-data type a replayed SAMPLE session records on its status (3 = delayed/last).
 _SAMPLE_MARKET_DATA_TYPE = 3
-# The config the SAMPLE run values the surface under (the BFF's single default profile).
-_SAMPLE_CONFIG_FILE = "default.yaml"
 
 
 class JobState(StrEnum):
@@ -127,7 +125,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
     masters = list(
         ctx.store.read("instrument_master", trade_date=trade_date, underlying=underlying)
     )
-    config = from_config(load_yaml_config(ctx.configs_dir / _SAMPLE_CONFIG_FILE))
+    config = load_platform_config(ctx.configs_dir)
     cfg_hash = config_hash(config)
     # Value as-of the last quote in the day — no look-ahead, and reproducible from the events.
     as_of = max(event.canonical_ts for event in events)

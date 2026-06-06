@@ -20,7 +20,7 @@ nbformat): run them with `uv run --group notebooks python scripts/<tool>.py`.
 ## Provenance & re-pointing (2026-06-05)
 
 Ported from the pre-merge reference tree and re-pointed to current canonical APIs:
-`core.config.load_config` (takes a `pathlib.Path`), `infra.collectors.replay_day` / `ReplaySource`,
+`core.config.load_platform_config` (takes the `configs/` dir), `infra.collectors.replay_day` / `ReplaySource`,
 `infra.orchestration.build_surface`, `infra.storage.{ParquetStore,events_from_json,events_to_json}`.
 The pre-merge `IbkrFlow`/`SaxoFlow` façades and the in-memory `pipeline.reconstruct_day(events, …)`
 signature are gone; collection is unified on the push `RawCollector` seam (ADR 0027).

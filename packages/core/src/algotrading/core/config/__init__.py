@@ -13,7 +13,7 @@ Two paths share this package:
 
 from __future__ import annotations
 
-from .loader import ConfigError, config_from_mapping, from_config
+from .loader import ConfigError, config_from_mapping, from_config, load_platform_config
 from .platform_config import (
     SECTION_NAMES,
     PlatformConfig,
@@ -46,6 +46,7 @@ __all__ = [
     "config_from_mapping",
     "config_hash",
     "from_config",
+    "load_platform_config",
     "load_yaml_config",
     "mapping_config_hash",
     "section_hash",

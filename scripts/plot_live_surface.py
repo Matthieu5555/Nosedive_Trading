@@ -22,7 +22,7 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import plotly.graph_objects as go
-from algotrading.core.config import config_hash, load_config
+from algotrading.core.config import config_hash, load_platform_config
 from algotrading.infra.actor.outputs import ActorOutputs
 from algotrading.infra.collectors import ReplaySource, replay_day
 from algotrading.infra.connectivity import ManualClock
@@ -31,7 +31,7 @@ from algotrading.infra.storage import ParquetStore
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DATA_ROOT = _REPO_ROOT / "data"
-_CONFIG = _REPO_ROOT / "configs" / "default.toml"
+_CONFIGS_DIR = _REPO_ROOT / "configs"
 # Market-data type the replayed session records on its status (3 = delayed/last).
 _MARKET_DATA_TYPE = 3
 
@@ -51,7 +51,7 @@ def _reconstruct(store: ParquetStore, symbol: str, day: date) -> ActorOutputs:
     if not events:
         raise SystemExit(f"No events for {symbol} on {day} in {store!r}.")
     masters = list(store.read("instrument_master", trade_date=day, underlying=symbol))
-    config = load_config(_CONFIG)
+    config = load_platform_config(_CONFIGS_DIR)
     cfg_hash = config_hash(config)
     # Value as-of the last quote in the day — no look-ahead, reproducible from the events.
     as_of = max(event.canonical_ts for event in events)

@@ -1,0 +1,11 @@
+# qc.yaml — quote/chain quality cut-offs (blueprint Part VII).
+#
+# HASHED (config_hashes["qc"]). These thresholds decide whether a quote or chain is
+# usable, so they shape which records survive QC and must be reproducible.
+#
+# Increment 1 carries the QcThresholdConfig fields; the blueprint's `forward_engine`,
+# fit-tolerance, and anomaly z-band blocks join here in C7 increment 2.
+version: "2026.05.31"
+max_spread_pct: 0.05          # reject quotes wider than 5% of mid
+max_quote_age_seconds: 30.0   # an option quote older than this is stale
+min_chain_count: 6            # minimum eligible calls+puts per maturity

@@ -1,0 +1,11 @@
+# universe.yaml — which instruments the platform tracks (blueprint Part VII).
+#
+# HASHED. Changes here change which records exist, so this bundle enters the
+# reproducibility hashes (config_hashes["universe"], C7 / ADR 0028). `version` is a
+# human label only — the content hash is authoritative.
+#
+# Increment 1 carries the UniverseConfig fields; the strike-selection delta band
+# (`ChainSelection`) and capture cadence join here in C7 increment 2.
+version: "2026.05.31"
+underlyings: [AAPL, MSFT, SPY]
+exchange: SMART

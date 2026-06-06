@@ -197,6 +197,94 @@ def test_config_hash_collapses_signed_zero() -> None:
     assert config_hash(neg) == config_hash(pos)
 
 
+# -- load_platform_config: the six-bundle Part VII loader (C7 increment 1) -----------
+
+# The four economic bundle files, each authored as one file per the blueprint Part VII
+# taxonomy. environment.yaml + broker.yaml are operational and must NOT be loaded into
+# the hashed typed config — the loader ignores them.
+_BUNDLES = {
+    "universe.yaml": "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n",
+    "qc.yaml": "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n",
+    "pricing.yaml": "version: s-1\niv_tolerance: 1.0e-8\nmax_iterations: 100\n",
+    "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\n",
+}
+
+
+def _write_bundles(configs_dir, *, extra: dict[str, str] | None = None) -> None:
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    for name, text in {**_BUNDLES, **(extra or {})}.items():
+        (configs_dir / name).write_text(text, encoding="utf-8")
+
+
+def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
+    # The four economic bundles compose into one validated PlatformConfig, by the same
+    # values an equivalent hand-built config carries — so the per-file split is purely a
+    # layout choice, not a semantic one.
+    from algotrading.core.config import load_platform_config
+
+    _write_bundles(tmp_path)
+    config = load_platform_config(tmp_path)
+
+    assert isinstance(config, PlatformConfig)
+    assert config.universe.underlyings == ("SPX", "NDX")        # universe.yaml
+    assert config.qc_threshold.min_chain_count == 5             # qc.yaml
+    assert config.solver.iv_tolerance == 1e-8                   # pricing.yaml → solver section
+    assert config.scenario.spot_shocks == (-0.1, 0.0, 0.1)     # scenarios.yaml
+    # Hashable and equal to the same config built directly: layout does not change content.
+    assert config_hash(config) == config_hash(
+        PlatformConfig(
+            universe=UniverseConfig(version="u-1", underlyings=("SPX", "NDX"), exchange="CBOE"),
+            qc_threshold=QcThresholdConfig(
+                version="qc-1", max_spread_pct=0.05, max_quote_age_seconds=30.0, min_chain_count=5
+            ),
+            solver=SolverConfig(version="s-1", iv_tolerance=1e-8, max_iterations=100),
+            scenario=ScenarioConfig(
+                version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
+            ),
+        )
+    )
+
+
+def test_load_platform_config_ignores_the_operational_bundles(tmp_path) -> None:
+    # environment.yaml + broker.yaml are operational (not hashed) — present in a real
+    # configs/ dir but never loaded into the typed economic config. A junk economic field
+    # inside one of them must not reach validation (the loader does not read them).
+    from algotrading.core.config import load_platform_config
+
+    _write_bundles(
+        tmp_path,
+        extra={
+            "environment.yaml": "version: e\nstorage:\n  root: data\n",
+            "broker.yaml": "version: b\nnonsense_economic_field: 1\n",
+        },
+    )
+    config = load_platform_config(tmp_path)
+    assert isinstance(config, PlatformConfig)
+
+
+def test_load_platform_config_names_a_missing_bundle(tmp_path) -> None:
+    # A misconfigured deployment fails loudly: a missing economic bundle raises the typed
+    # ConfigError naming the file, never a bare FileNotFoundError from deep inside.
+    from algotrading.core.config import ConfigError, load_platform_config
+
+    _write_bundles(tmp_path)
+    (tmp_path / "pricing.yaml").unlink()
+    with pytest.raises(ConfigError, match="pricing.yaml"):
+        load_platform_config(tmp_path)
+
+
+def test_load_platform_config_loads_the_shipped_bundles() -> None:
+    # The real checked-in configs/ dir loads and hashes — production runs this exact path.
+    from pathlib import Path
+
+    from algotrading.core.config import load_platform_config
+
+    repo_root = Path(__file__).resolve().parents[3]
+    config = load_platform_config(repo_root / "configs")
+    assert config.universe.underlyings, "the shipped universe bundle must name underlyings"
+    assert isinstance(config_hash(config), str)
+
+
 def test_mapping_hash_collapses_signed_zero() -> None:
     from algotrading.core.config import mapping_config_hash
 

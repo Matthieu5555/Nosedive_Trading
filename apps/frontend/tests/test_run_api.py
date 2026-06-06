@@ -160,7 +160,8 @@ def _seed_committed_day(store: ParquetStore, configs_dir: Path) -> object:
     store.write("instrument_master", masters)
 
     configs_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy(_REPO_ROOT / "configs" / "default.yaml", configs_dir / "default.yaml")
+    for bundle in _REPO_ROOT.glob("configs/*.yaml"):
+        shutil.copy(bundle, configs_dir / bundle.name)
     return chain.as_of.date()
 
 

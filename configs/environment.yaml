@@ -1,0 +1,16 @@
+# environment.yaml — operational wiring only (blueprint Part VII).
+#
+# NOT hashed (C7 / ADR 0028). Nothing here changes which records exist or their
+# values — only where bytes live and how the process is run. The sharp rule: if it
+# changes content it is economic and is hashed; if it only changes where/how fast
+# bytes move, it is environment and is not. A storage path that encodes a partition
+# component (a date, a venue) is not inert — that goes in the run manifest's
+# input-partition list, never here.
+#
+# Consumed by the runtime wiring, never by pure compute. Fields here document the
+# operational surface; the runner threads them in C7 increment 2.
+version: "2026.06"
+storage:
+  root: data                  # parquet raw/derived root, relative to the repo root
+logging:
+  level: INFO

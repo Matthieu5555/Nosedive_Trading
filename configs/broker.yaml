@@ -1,0 +1,21 @@
+# broker.yaml — broker connectivity and session policy (blueprint Part VII).
+#
+# NOT hashed (operational). Reconnect/retry behaviour and the client-id convention are
+# how the platform talks to a gateway, not what it computes. Per-broker hosts/ports and
+# credentials live in each broker package's own config (infra-saxo, infra-ibkr, …) and
+# in the gitignored `.env`, never here.
+#
+# Fields here document the in-code convention today (connectivity/supervisor.py); the
+# supervisor is wired to read them in C7 increment 2.
+version: "2026.06"
+client_id_bands:              # disjoint gateway client-id bands, one per service, so
+  universe: 1000             # two services connecting to one gateway never collide
+  collector: 2000
+  replay: 3000
+  smoke: 9000
+  band_width: 1000           # instance id = band + instance, instance in [0, band_width)
+reconnect:                   # BackoffSchedule: delay_for(attempt) = min(cap, base * factor**attempt)
+  base_seconds: 1.0
+  factor: 2.0
+  cap_seconds: 30.0
+  max_exponent: 32           # clamp the exponent so base * factor**attempt cannot overflow

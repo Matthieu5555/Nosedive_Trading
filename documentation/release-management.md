@@ -4,7 +4,7 @@
 
 Every change that can move a number ships a release artifact. If a change alters what
 the analytics compute — the forward estimator, the IV solver, the surface fit, the
-pricer, the risk or scenario math, or any economics in `configs/default.yaml` — it does
+pricer, the risk or scenario math, or any economics in the `configs/` bundles — it does
 not land without a short, written record of what changed, why, which tests passed, and
 which historical periods were revalidated. A change that only touches plumbing
 (logging, a runbook, a test helper, a rename with no behavior change) does not need one.
@@ -30,7 +30,8 @@ Concretely, you need a release artifact if your change touches any of:
   `packages/infra/src/algotrading/infra/actor` that changes a persisted value;
 - the QC thresholds or any check's verdict logic in
   `packages/infra/src/algotrading/infra/qc`;
-- any value in `configs/default.yaml` (and therefore a section `version` bump).
+- any economic value in the `configs/` bundles — `universe.yaml`, `qc.yaml`, `scenarios.yaml`,
+  `pricing.yaml` (and therefore a section `version` bump).
 
 If you are unsure whether a change moves a number, the cheap test is the byte-identical
 replay: run a fixed historical day before and after your change and diff the outputs. If

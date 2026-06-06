@@ -3,8 +3,11 @@
 # HASHED (config_hashes["pricing"]). Solver tolerances and bounds change computed
 # values, so they are reproducibility inputs.
 #
-# Increment 1 carries the SolverConfig fields; the solver vol bounds (vol_min/vol_max),
-# SVI bounds/tolerances, and forward-confidence heuristics join here in C7 increment 2.
+# Increment 1 carries the SolverConfig fields and increment 2 adds the solver vol
+# bracket; the SVI bounds/tolerances and forward-confidence heuristics join here in a
+# later increment.
 version: "2026.05.31"
 iv_tolerance: 1.0e-8          # implied-vol inversion convergence tolerance
 max_iterations: 100
+vol_min: 1.0e-9               # search-bracket floor (stands in for "zero vol")
+vol_max: 5.0                  # search-bracket ceiling (500% annualized; above it is unresolvable)

@@ -1,5 +1,10 @@
 # Test Lenny
 
+> **Status: throwaway test — ignore.** This directory is a standalone experiment by Lenny.
+> It is **not part of the canonical workspace** (`packages/` + `apps/`), nothing imports it,
+> and it is not on the index-analytics roadmap. Do not build on it or treat it as a reference.
+> Slated for removal in the post-C7 repo-hygiene pass — see `tasks/TASKBOARD.md`.
+
 Standalone volatility console for IBKR paper-trading data. It does not import or
 modify any other project directory.
 

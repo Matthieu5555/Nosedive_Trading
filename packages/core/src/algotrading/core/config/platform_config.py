@@ -87,18 +87,36 @@ class QcThresholdConfig:
 
 @dataclass(frozen=True, slots=True)
 class SolverConfig:
-    """How the implied-volatility inversion is run."""
+    """How the implied-volatility inversion is run.
+
+    ``vol_min``/``vol_max`` are the search bracket the bracketed solve runs on: a
+    near-zero floor standing in for "zero vol", and a ceiling above any real vol beyond
+    which a target is treated as unresolvable. They carry dataclass defaults for
+    in-memory/test construction, but the YAML loader requires them present, so the
+    economic bracket is never silently defaulted on the load path.
+    """
 
     version: str
     iv_tolerance: float
     max_iterations: int
+    vol_min: float = 1e-9
+    vol_max: float = 5.0
 
     def __post_init__(self) -> None:
         _finite("solver", "iv_tolerance", self.iv_tolerance)
+        _finite("solver", "vol_min", self.vol_min)
+        _finite("solver", "vol_max", self.vol_max)
         if self.iv_tolerance <= 0.0:
             raise ConfigFieldError("solver", "iv_tolerance", self.iv_tolerance, "must be > 0")
         if self.max_iterations < 1:
             raise ConfigFieldError("solver", "max_iterations", self.max_iterations, "must be >= 1")
+        if not 0.0 < self.vol_min < self.vol_max:
+            raise ConfigFieldError(
+                "solver",
+                "vol_min/vol_max",
+                (self.vol_min, self.vol_max),
+                "need 0 < vol_min < vol_max",
+            )
 
 
 @dataclass(frozen=True, slots=True)

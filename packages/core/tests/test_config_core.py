@@ -137,6 +137,8 @@ solver:
   version: s-base
   iv_tolerance: 1.0e-8
   max_iterations: 100
+  vol_min: 1.0e-9
+  vol_max: 5.0
 scenario:
   version: sc-base
   spot_shocks: [-0.1, 0.0, 0.1]
@@ -206,7 +208,7 @@ def test_config_hash_collapses_signed_zero() -> None:
 _BUNDLES = {
     "universe.yaml": "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n",
     "qc.yaml": "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n",
-    "pricing.yaml": "version: s-1\niv_tolerance: 1.0e-8\nmax_iterations: 100\n",
+    "pricing.yaml": "version: s-1\niv_tolerance: 1.0e-8\nmax_iterations: 100\nvol_min: 1.0e-9\nvol_max: 5.0\n",
     "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\nroll_down_days: [1]\n",
 }
 

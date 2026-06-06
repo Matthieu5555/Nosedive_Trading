@@ -46,14 +46,13 @@ from scipy.optimize import brentq
 # Bump only on a real change to the solver logic, never on config.
 SOLVER_VERSION = "iv-brentq-1.0.0"
 
-# The vol search bracket. 1e-9 stands in for "zero vol" (a price at intrinsic); 5.0 is
-# 500% annualized, far above any real equity vol, so a target needing more is treated
-# as unresolvable rather than chased to absurd vols.
-_VOL_MIN = 1e-9
-_VOL_MAX = 5.0
+# The vol search bracket now lives in SolverConfig (vol_min/vol_max), authored in
+# pricing.yaml — it is an economic input, not a code constant (C7 / ADR 0028).
 
 # Price-space tolerance for the bound checks, relative to the price ceiling plus a tiny
 # absolute floor, so "below intrinsic" / "above max" is judged at the scale of the data.
+# These are machine-precision float-comparison epsilons, not tunable economics — they
+# stay code constants per the standard's "tolerances for float comparison" carve-out.
 _PRICE_RTOL = 1e-9
 _PRICE_ATOL = 1e-12
 
@@ -143,8 +142,6 @@ def solve_implied_vol_scalar(
     intrinsic: float,
     ceiling: float,
     config: SolverConfig,
-    vol_min: float = _VOL_MIN,
-    vol_max: float = _VOL_MAX,
 ) -> SolveOutcome:
     """Invert ``price_fn`` for the vol that reprices ``target_price``; the primitive.
 
@@ -152,9 +149,12 @@ def solve_implied_vol_scalar(
     Bound checks first: a target below intrinsic or above the ceiling is impossible
     and returns the matching status with no vol. A target at the intrinsic floor is
     a zero-time-value price, so the vol is ``0`` exactly. Otherwise a bracketed
-    Brent solve runs on ``[vol_min, vol_max]``; if even ``vol_max`` underprices the
-    target the vol is beyond the resolvable range and is reported as ``above_max``.
+    Brent solve runs on the configured ``[vol_min, vol_max]`` bracket; if even
+    ``vol_max`` underprices the target the vol is beyond the resolvable range and is
+    reported as ``above_max``.
     """
+    vol_min = config.vol_min
+    vol_max = config.vol_max
     price_tolerance = _PRICE_RTOL * max(abs(ceiling), 1.0) + _PRICE_ATOL
 
     if target_price < intrinsic - price_tolerance:

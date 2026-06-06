@@ -75,11 +75,20 @@ sequence and the one task already specced:
 Before writing any test, read [TESTING.md](TESTING.md) — the shared test-surface contract and the
 converged seam → contract-test map. Code without the named tests is not done.
 
-## Known carried-forward item
+## Known carried-forward items
 
+- **Repo-hygiene audit (queued, after C7).** The two merged projects left debris worth sweeping
+  once C7 lands: obsolete/duplicate dirs (e.g. `.agent/` canonical vs `.agents/`, `.codex/`),
+  stray tool caches, and dead paths. Do it as a **read-only classification first** — tag every
+  suspect path as obsolete / debris / reference / human-decision and get the report reviewed
+  *before* moving anything. Decision so far: `Test Lenny/` and `Vincent's Code/` **stay in place**,
+  each flagged by its own README banner; their on-disk removal is the admin's call, not the audit's.
+- **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
+  imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process
   ran as `vincent`, so `rm` was permission-denied — the clone is intact). It is gitignored and not
-  canonical, so it does not affect the gate; remove it as `matthieu` (then drop its `pyproject`/
+  canonical, so it does not affect the gate; its README should be flagged as reference-only (see the
+  banner queued for `matthieu` to apply). Remove it as `matthieu` (then drop its `pyproject`/
   `.gitignore` excludes) whenever convenient. Not blocking.
 
 ## Format

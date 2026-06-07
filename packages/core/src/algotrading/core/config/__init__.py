@@ -15,12 +15,18 @@ from __future__ import annotations
 
 from .loader import ConfigError, config_from_mapping, from_config, load_platform_config
 from .platform_config import (
+    DELTA_CONVENTIONS,
+    GAMMA_NORMALISATIONS,
     SECTION_NAMES,
+    THETA_DAY_COUNTS,
     ForwardConfig,
+    GridQcConfig,
+    MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
+    StrikeSelectionConfig,
     SurfaceConfig,
     UniverseConfig,
     canonical_json,
@@ -35,15 +41,21 @@ from .reflective import ConfigFieldError, build_dataclass
 from .yaml_config import LoadedConfig, load_yaml_config, mapping_config_hash
 
 __all__ = [
+    "DELTA_CONVENTIONS",
+    "GAMMA_NORMALISATIONS",
     "SECTION_NAMES",
+    "THETA_DAY_COUNTS",
     "ConfigError",
     "ConfigFieldError",
     "ForwardConfig",
+    "GridQcConfig",
     "LoadedConfig",
+    "MonetizationConfig",
     "PlatformConfig",
     "QcThresholdConfig",
     "ScenarioConfig",
     "SolverConfig",
+    "StrikeSelectionConfig",
     "SurfaceConfig",
     "UniverseConfig",
     "build_dataclass",

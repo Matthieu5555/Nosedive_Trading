@@ -11,10 +11,18 @@ request routed through M0, because every field ripples to the other workstreams.
   (`exchange_ts`, `receipt_ts`, `canonical_ts`).
 - **Table contracts** — the frozen dataclasses, one per table family from the
   blueprint data model (Part IV.C / Part IX data dictionary): `InstrumentMaster`,
-  `RawMarketEvent`, `MarketStateSnapshot`, `ForwardCurvePoint`, `IvPoint`,
-  `SurfaceParameters`, `SurfaceGrid`, `PricingResult`, `Position`, `RiskAggregate`,
-  `ScenarioResult`, `QcResult`, `TriageRecord`. Each derived record carries a
-  `ProvenanceStamp` (from `algotrading.core`) and a `source_snapshot_ts`.
+  `RawMarketEvent`, `DailyBar`, `MarketStateSnapshot`, `ForwardCurvePoint`, `IvPoint`,
+  `SurfaceParameters`, `SurfaceGrid`, `PricingResult`, `ProjectedOptionAnalytics`,
+  `Position`, `RiskAggregate`, `ScenarioResult`, `QcResult`, `TriageRecord`. Each derived
+  record carries a `ProvenanceStamp` (from `algotrading.core`) and a `source_snapshot_ts`.
+  `DailyBar` is the underlying daily-OHLC price-history product (index + constituents, for
+  the candlestick charts) — a **distinct** product from the option `MarketStateSnapshot`,
+  provider-partitioned per ADR 0034 §4 (P0.3 / WS 1E); `PricingResult` carries the full
+  five-Greek dollar layer (`dollar_delta/gamma/vega/theta/rho`, ADR 0036) with
+  `dollar_theta`/`dollar_rho` additive-nullable. `ProjectedOptionAnalytics` is the WS 1F
+  tenor × delta-band grid cell (decimal **and** dollar Greeks side by side, each dollar
+  number unit-tagged) — provider-partitioned, stored under the `analytics` layer; produced
+  by `surfaces.project_grid`.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).

@@ -1,11 +1,18 @@
-# scenarios.yaml — the stress grid the risk engine applies (blueprint Part VII).
+# scenarios.yaml — the risk-layer params: the stress grid + the $-Greek monetization
+# conventions (blueprint Part VII).
 #
-# HASHED (config_hashes["scenarios"]). The shock grid defines the risk numbers, so it
-# is a reproducibility input.
-#
-# Increment 1 carries the ScenarioConfig fields; named scenarios, combinations, report
-# subsets, and `roll_down_days` join here in C7 increment 2.
-version: "2026.05.31"
-spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]   # fractional spot moves
-vol_shocks: [-0.05, 0.0, 0.05]                  # absolute vol moves
-roll_down_days: [1]                             # time-roll scenarios (days), one per entry
+# HASHED (config_hashes["scenarios"]). Both blocks define the risk numbers, so they are
+# reproducibility inputs. Two sections live here side by side: `scenario:` (the stress
+# shock grid) and `monetization:` (the two $-Greek convention flags, P0.2 / OQ-1 / ADR
+# 0036).
+
+scenario:                                          # the stress grid (ScenarioConfig)
+  version: "2026.05.31"
+  spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]     # fractional spot moves
+  vol_shocks: [-0.05, 0.0, 0.05]                   # absolute vol moves
+  roll_down_days: [1]                              # time-roll scenarios (days), one per entry
+
+monetization:                                      # $-Greek convention forks (MonetizationConfig)
+  version: "2026.05.31"
+  gamma_normalisation: one_pct                     # one_pct (Γ·S²/100, per 1% move) | one_dollar (Γ·S²)
+  theta_day_count: 365                             # 365 (per calendar day) | 252 (per trading day)

@@ -19,6 +19,18 @@ from typing import Any, Protocol
 _DEFAULT_KEEPALIVE_S = 60.0
 _JOIN_TIMEOUT_S = 5.0
 
+# Brokerage-session open endpoint (ADR 0031 §3): POST it, then poll status until the
+# session reports `established: true` before any history request.
+_SSODH_INIT_PATH = "/iserver/auth/ssodh/init"
+
+
+class SessionNotEstablishedError(Exception):
+    """The brokerage session never reported ``established: true`` within the wait budget.
+
+    A labeled error (never a silent proceed): a history request fired into a not-yet-
+    established session is exactly the failure the established-wait guards against.
+    """
+
 
 class _SupportsRest(Protocol):
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
@@ -35,6 +47,28 @@ def _auth_status_alive(payload: object) -> bool:
     if isinstance(iserver, Mapping) and isinstance(iserver.get("authStatus"), Mapping):
         status = iserver["authStatus"]
     return bool(status.get("authenticated")) and not bool(status.get("competing"))
+
+
+def _session_established(payload: object) -> bool:
+    """True when a status/ssodh payload reports the brokerage session established.
+
+    ``ssodh/init`` and ``/iserver/auth/status`` both carry the brokerage-session readiness
+    under ``connected`` + ``authenticated``; the explicit ``established`` flag (when present)
+    must also be true. Reads the same nested/flat shapes :func:`_auth_status_alive` does.
+    """
+    if not isinstance(payload, Mapping):
+        return False
+    status: Mapping[str, object] = payload
+    iserver = payload.get("iserver")
+    if isinstance(iserver, Mapping) and isinstance(iserver.get("authStatus"), Mapping):
+        status = iserver["authStatus"]
+    if not _auth_status_alive(payload):
+        return False
+    # `established` is the authoritative readiness flag when the payload carries it; absent,
+    # an authenticated+connected session is treated as established (the status endpoint shape).
+    if "established" in status:
+        return bool(status.get("established"))
+    return bool(status.get("connected"))
 
 
 class CpRestSession:
@@ -62,6 +96,47 @@ class CpRestSession:
     def tickle(self) -> bool:
         """POST ``/tickle`` to keep the session alive; return whether it is still live."""
         return _auth_status_alive(self._transport.post("/tickle"))
+
+    def open_brokerage_session(self) -> bool:
+        """POST ``ssodh/init`` to open the brokerage session; return whether it is established.
+
+        Idempotent on IBKR's side — re-initialising an already-open session is harmless. The
+        returned bool is whether the immediate response already reports the session
+        established; a not-yet-established response is normal and the caller polls via
+        :meth:`wait_until_established`.
+        """
+        return _session_established(self._transport.post(_SSODH_INIT_PATH))
+
+    def established(self) -> bool:
+        """GET ``/iserver/auth/status`` → whether the brokerage session is established.
+
+        Distinct from :meth:`authenticated`: a session can be authenticated yet not yet
+        established (the brokerage handshake still completing). History requires established.
+        """
+        return _session_established(self._transport.get("/iserver/auth/status"))
+
+    def wait_until_established(
+        self, *, max_polls: int, poll_seconds: float
+    ) -> None:
+        """Open the brokerage session and block until it is established (injected sleep).
+
+        Posts ``ssodh/init`` once, then polls ``/iserver/auth/status`` up to ``max_polls``
+        times, sleeping ``poll_seconds`` between polls via the injected ``_sleep`` (no real
+        wait in tests). Returns as soon as the session is established; raises a labeled
+        :class:`SessionNotEstablishedError` if it never establishes within the budget —
+        never silently proceeds to fire a history request into a dead session.
+        """
+        if self.open_brokerage_session():
+            return
+        for _poll in range(max_polls):
+            self._sleep(poll_seconds)
+            if self._stop_event.is_set():
+                raise SessionNotEstablishedError("stopped while waiting for established session")
+            if self.established():
+                return
+        raise SessionNotEstablishedError(
+            f"brokerage session not established after {max_polls} polls"
+        )
 
     def start(self) -> None:
         """Spawn the daemon keepalive thread (idempotent)."""

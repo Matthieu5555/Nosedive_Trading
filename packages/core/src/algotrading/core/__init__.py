@@ -10,6 +10,7 @@ from __future__ import annotations
 from .config import (
     ForwardConfig,
     LoadedConfig,
+    MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -46,6 +47,7 @@ __all__ = [
     "LoadedConfig",
     "Manifest",
     "ManifestValidationError",
+    "MonetizationConfig",
     "PlatformConfig",
     "ProvenanceError",
     "ProvenanceStamp",

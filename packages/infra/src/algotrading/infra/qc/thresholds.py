@@ -19,15 +19,23 @@ produced it. The supplementary defaults live here, at the top of the file, each
 with a comment on what it gates — the one place a future operator looks to retune
 the validation plane.
 
+The grid-aware cut-offs (WS 1H) are the exception to the leftover-literal pattern: the
+per-tenor coverage floors and the Δ-band window live in the typed ``config.grid``
+(``GridQcConfig``) block and are surfaced here via ``.grid`` / ``.tenor_floor(tenor)`` /
+``.band_low_delta`` / ``.band_high_delta`` / ``.max_delta_step`` — read *only* from typed
+config, with **no** module-level ``.py`` literal. They set the ADR-0028 precedent the
+leftover ``DEFAULT_*`` supplements above are later pulled into.
+
 Every threshold is the boundary itself: a value *exactly on* the boundary passes
 (``<=``/``>=`` as documented per check), and the edge-case tests pin that.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
-from algotrading.core.config import QcThresholdConfig
+from algotrading.core.config import GridQcConfig, QcThresholdConfig
 
 # --- supplementary defaults (not in QcThresholdConfig) ---------------------------
 # Collector continuity: at most this many gap events in a session before we fail; a
@@ -94,6 +102,45 @@ class QcThresholds:
     def min_chain_count(self) -> int:
         """Chain-coverage cut-off, read straight from the platform config."""
         return self.config.min_chain_count
+
+    @property
+    def grid(self) -> GridQcConfig:
+        """The grid-aware QC cut-offs (per-tenor floors + Δ-band window), from typed config.
+
+        These are the cut-offs the two grid checks (WS 1H) read. Unlike the leftover
+        supplementary ``DEFAULT_*`` literals above, they come *only* from the typed/hydrated
+        config block (ADR 0028) — no module-level ``.py`` literal — so they set the precedent
+        the leftover defaults are later pulled into.
+        """
+        return self.config.grid
+
+    @property
+    def tenor_floors(self) -> Mapping[str, int]:
+        """The per-tenor coverage floors, keyed on the P0.1 pinned tenor grid."""
+        return self.config.grid.tenor_floors
+
+    def tenor_floor(self, tenor: str) -> int:
+        """The configured coverage floor for ``tenor``; raises if a pinned tenor has none.
+
+        Delegates to :meth:`GridQcConfig.floor_for` so a missing per-tenor floor is a config
+        error (it never silently defaults to zero, which would pass a tenor for free).
+        """
+        return self.config.grid.floor_for(tenor)
+
+    @property
+    def band_low_delta(self) -> float:
+        """The low (signed) edge of the Δ-band the selected strikes must span (e.g. -0.30)."""
+        return self.config.grid.band_low_delta
+
+    @property
+    def band_high_delta(self) -> float:
+        """The high (signed) edge of the Δ-band the selected strikes must span (e.g. +0.30)."""
+        return self.config.grid.band_high_delta
+
+    @property
+    def max_delta_step(self) -> float:
+        """The largest acceptable gap between consecutive selected deltas inside the band."""
+        return self.config.grid.max_delta_step
 
 
 def thresholds_from_config(config: QcThresholdConfig) -> QcThresholds:

@@ -9,3 +9,62 @@
 version: "2026.05.31"
 underlyings: [AAPL, MSFT, SPY]
 exchange: SMART
+
+# Delta-band strike selection (WS 1B, ADR 0028). The 30Δ bound is economic — it decides
+# which strikes the captured chain holds — so it is hashed config here, never a `.py`
+# literal (the C7 audited "ChainSelection (delta band)" hardcode site). The band keeps,
+# per tenor, the contiguous block of listed strikes from the 30Δ put through ATM to the
+# 30Δ call.
+#   - delta_bound: the absolute (unsigned) delta cut. 0.30 = the 30-delta band.
+#   - delta_convention: which delta the bound is read against. Built at carry == 0 (the
+#     pricer's `from_forward(spot=None)`), where spot delta and forward delta coincide;
+#     `forward_undiscounted` measures the bound against N(d1) (the undiscounted forward
+#     delta), `spot_discounted` against the engine's discounted spot delta (DF·N(d1)).
+#     A typo is rejected (ConfigFieldError), never silently defaulted.
+#   - min_strikes_per_side: the per-tenor floor — keep at least this many nearest-the-money
+#     strikes each side of the forward even when fewer fall inside the delta window, so a
+#     thin tenor still yields a fittable slice (a labeled floor, not an empty silent result).
+strike_selection:
+  version: "2026.06.07"
+  delta_bound: 0.30
+  delta_convention: forward_undiscounted
+  min_strikes_per_side: 2
+
+# Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
+# the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary
+# (ADR 0011); this must equal it as an ordered list (a test guards the drift). Economic →
+# enters config_hashes["universe"]. Order is meaningful — kept as written.
+tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
+
+# Index registry (ADR 0035): which indices the platform tracks. Keyed by index symbol —
+# the same `index` key 1A membership, 1C capture, 1G cron, and the 1I picker consume.
+# HASHED: this block lives in universe.yaml and changes which records exist (enabling an
+# index starts its snapshots/bars landing), so it travels inside config_hashes["universe"]
+# with no separate hash.
+#
+# Per-field rules (validated by IndexRegistry at load, never silently defaulted):
+#   - calendar: an exchange_calendars MIC code; the close instant is DERIVED from it at run
+#     time (not stored). A typo is rejected, never defaulted (a wrong calendar = wrong close
+#     instant = a look-ahead bug).
+#   - currency: 3-letter uppercase ISO code.
+#   - ibkr: the provider-specific sub-block (conid/secType/exchange). The other fields are
+#     provider-agnostic; a future saxo:/deribit: sibling joins under the same key (ADR 0023).
+#   - enabled: the scheduler's on/off switch.
+#
+# Both seed entries are `enabled: false`: their IBKR conids are unverified placeholders (0)
+# and equity/index capture at scale is gated on D1's `provider` partition segment
+# (ADR 0034 §4). Listing them disabled parks them safely until a verified conid and the
+# capture path land — the spec's safe default rather than guessing a conid.
+indices:
+  SX5E:
+    name: "EURO STOXX 50"
+    calendar: XEUR
+    currency: EUR
+    ibkr: { conid: 0, secType: IND, exchange: EUREX }
+    enabled: false
+  SPX:
+    name: "S&P 500"
+    calendar: XNYS
+    currency: USD
+    ibkr: { conid: 0, secType: IND, exchange: CBOE }
+    enabled: false

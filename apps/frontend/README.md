@@ -6,12 +6,13 @@ app. Top of the layer stack — it reads only *down* into `packages/infra`, neve
 
 ## TL;DR
 
-The BFF is the only place infra meets HTTP. Its six routers read the real
+The BFF is the only place infra meets HTTP. Its routers read the real
 `packages/infra` seams — `ParquetStore` for the persisted contract tables, the pure
-`surfaces`/`risk` engines, and `orchestration.build_dashboard` — and serialize the
-result to JSON-primitive payloads. No business logic lives in the routers; they call
-infra and serialize, and surface errors as typed payloads rather than 500s. The web app
-is the only consumer above this layer.
+`surfaces`/`risk` engines, the as-of `universe.members` resolver, the `run_state` ledger,
+and `orchestration.build_dashboard` — and serialize the result to JSON-primitive payloads.
+No business logic lives in the routers; they call infra and serialize, and surface errors
+as typed payloads rather than 500s. The store opens read-only — only the EOD cron writes
+(ADR 0034 §1). The web app is the only consumer above this layer.
 
 Run the BFF:
 
@@ -35,7 +36,14 @@ production CORS.
 
 Seven pages over `react-router`, wrapped in a shared `AppLayout` (top-bar nav):
 
-- **Home** — landing page linking the other views.
+- **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
+  (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
+  point-in-time, price-first constituent list (TanStack Table), then select a ticker to
+  see its **price-first** detail — the daily **candlestick** (Plotly), the **3D IV
+  surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
+  **dollar Greeks**, each tagged with its P0.2 unit string. Charts are Plotly only
+  (ADR 0030); every panel self-labels. Picking a past date re-resolves the basket and
+  analytics as-of that date (never today-defaulted).
 - **Health** — the operator dashboard: the four flags (data flowing / surfaces
   building / QC passing / scenarios current), the trade date, and the EOD backlog,
   read from `orchestration.build_dashboard` over the store and the run-state ledger.
@@ -65,6 +73,15 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/providers`, `GET /api/run/underlyings`, `POST /api/run`,
   `GET /api/jobs`, `GET /api/jobs/{id}`.
 - `GET /api/config`, `GET /api/config/{filename}`.
+- `GET /api/price-history[?underlying=&start=&end=]` — daily OHLC bars for one ticker over a
+  window, from the `daily_bar` table (WS 1I).
+- `GET /api/constituents[?index=&as_of=]` — the point-in-time, price-first index basket via
+  the as-of `members` resolver (the no-look-ahead gate), from `index_constituents` (WS 1I).
+- `GET /api/analytics[?underlying=&trade_date=]` — the projected tenor × delta-band grid
+  (smile + surface slice + dollar Greeks with unit strings) from
+  `projected_option_analytics` (WS 1I).
+- `GET /api/recorded-dates[?index=]` — the completed, gap-free trade dates + count, from the
+  1G run-state ledger (only complete runs, never a raw partition listing) (WS 1I).
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

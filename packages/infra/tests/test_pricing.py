@@ -432,6 +432,9 @@ def test_public_surface_is_frozen() -> None:
         "EXERCISE_STYLES", "PRICER_VERSION", "PriceGreeks", "PricingError",
         "PricingState", "bjerksund_stensland_price", "from_forward", "from_spot",
         "price", "price_american", "price_european", "pricing_result",
+        # The $-Greek convention layer (P0.2 / OQ-1, ADR 0036).
+        "UNIT_STRINGS", "DollarGreeks", "dollar_greeks", "gamma_unit_string",
+        "theta_unit_string",
     }
 
 

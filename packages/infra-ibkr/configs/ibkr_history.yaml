@@ -1,0 +1,40 @@
+# ibkr_history.yaml — IBKR Client Portal historical-bar fetch policy (ADR 0031).
+#
+# Operational connectivity config for the unattended backfill: hosts/URLs, timeouts, the
+# concurrency cap, the established-session wait, and the retry/backoff around IBKR
+# maintenance windows. NOT economic (it does not change *what* is computed, only how the
+# fetch talks to IBKR), so it is not part of a hashed bundle.
+#
+# Secrets are NEVER here: the OAuth consumer key/secret and the Live Session Token live in
+# `.env` (IBKR_CP_CONSUMER_KEY, IBKR_CP_LIVE_SESSION_TOKEN, …) and the dedicated backfill
+# username is an account credential, not a config literal. This file holds only the
+# non-secret, no-hardcode economic-free knobs the C7 discipline pushes out of the .py.
+version: "2026.06"
+
+# The Client Portal Web API base (OAuth 1.0a hits the hosted endpoint, not localhost:5000).
+base_url: "https://api.ibkr.com/v1/api"
+request_timeout_seconds: 30.0
+
+# ADR 0031 §5: honour IBKR's 5-concurrent-request cap and the history "warmup" call.
+max_concurrent_requests: 5
+warmup_required: true
+
+# Wait for the brokerage session (`ssodh/init`) to report `established: true` before any
+# history request. Poll the status this many times, sleeping this long between polls; give
+# up (labeled) rather than firing a request into a not-yet-established session.
+established_wait:
+  max_polls: 30
+  poll_seconds: 1.0
+
+# Retry/backoff around IBKR maintenance windows (ADR 0031 §5). Exponential with a cap; the
+# scheduler (1G) also schedules off-window, so this only absorbs the unavoidable overlap.
+retry:
+  max_attempts: 5
+  base_seconds: 2.0
+  factor: 2.0
+  cap_seconds: 60.0
+
+# Default history request shape (ADR 0031 §Context): daily bars over the roadmap horizon.
+# `/iserver/marketdata/history` (current), never the deprecated `/hmds/history`.
+bar: "1d"
+default_period: "1y"

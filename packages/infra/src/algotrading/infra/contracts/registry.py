@@ -21,12 +21,15 @@ from typing import Union, get_args, get_origin, get_type_hints
 
 from .errors import UnknownTableError
 from .tables import (
+    DailyBar,
     ForwardCurvePoint,
+    IndexConstituent,
     InstrumentMaster,
     IvPoint,
     MarketStateSnapshot,
     Position,
     PricingResult,
+    ProjectedOptionAnalytics,
     QcResult,
     RawMarketEvent,
     RiskAggregate,
@@ -39,7 +42,15 @@ from .tables import (
 
 @dataclass(frozen=True, slots=True)
 class TableSpec:
-    """Everything the platform needs to know about one table family."""
+    """Everything the platform needs to know about one table family.
+
+    ``provider_partitioned`` marks a table whose data is source-specific, so the
+    storage layout carries a ``provider=<P>`` segment ahead of the trade-date segment
+    (ADR 0017 / 0034 §4): two sources of the same ``(underlying, trade_date)`` then land
+    in disjoint partitions and a scan that omits ``provider`` cannot cross sources. It
+    defaults ``False`` — the historical ``(trade_date, underlying[, version])`` layout —
+    so every pre-existing table is byte-for-byte unchanged.
+    """
 
     name: str
     contract: type
@@ -50,6 +61,7 @@ class TableSpec:
     requires_source_snapshot_ts: bool
     positive_fields: tuple[str, ...]
     non_negative_fields: tuple[str, ...]
+    provider_partitioned: bool = False
 
 
 REGISTRY: dict[str, TableSpec] = {
@@ -74,6 +86,45 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+    ),
+    "daily_bar": TableSpec(
+        name="daily_bar",
+        contract=DailyBar,
+        primary_key=("provider", "underlying", "trade_date"),
+        layer="raw",
+        # Not append-only: a vendor restatement of a past day is a real event, carried as
+        # a version=<V> sub-partition beside the immutable live partition (ADR 0019 holds
+        # at version granularity — each version is written once; a default read takes the
+        # live bar for a date and never a later restatement, the no-look-ahead rule).
+        append_only=False,
+        requires_provenance=True,
+        requires_source_snapshot_ts=False,
+        positive_fields=("open", "high", "low", "close"),
+        non_negative_fields=("volume",),
+        provider_partitioned=True,
+    ),
+    "index_constituents": TableSpec(
+        name="index_constituents",
+        contract=IndexConstituent,
+        # The knowledge axis is part of the key: a vendor restatement of the same
+        # (index, constituent, effective_add_date) lands as a new row under a later
+        # knowledge_date, never overwriting the original (bitemporal immutability,
+        # ADR 0019/0034 §5).
+        primary_key=("index", "constituent", "effective_add_date", "knowledge_date"),
+        layer="reference",
+        # Append-only reference data (ADR 0034 §5): every membership fact ever recorded is
+        # retained, which is what makes the resolver survivorship-bias-free.
+        append_only=True,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        positive_fields=(),
+        # weight is intentionally NOT listed here: it is nullable (labeled-unavailable),
+        # and the registry's non-negative check is unconditional. Its sign/range is
+        # validated in the membership ingester, which understands the None case.
+        non_negative_fields=(),
+        # Reference data describes the index, not a quote source — provider-agnostic by
+        # design (ADR 0034 §5). The vendor is a field, not a partition segment.
+        provider_partitioned=False,
     ),
     "market_state_snapshots": TableSpec(
         name="market_state_snapshots",
@@ -140,6 +191,24 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=(),
         non_negative_fields=("gamma", "vega"),
+    ),
+    "projected_option_analytics": TableSpec(
+        name="projected_option_analytics",
+        contract=ProjectedOptionAnalytics,
+        # One cell per (snapshot, underlying, tenor, delta-band) — the grid's identity.
+        primary_key=("snapshot_ts", "underlying", "tenor_label", "delta_band"),
+        layer="analytics",
+        # Recompute-friendly derived analytic: a restatement lands as a version=<V>
+        # sub-partition beside the live grid, never overwriting it (ADR 0019 at version
+        # granularity, like the other derived tables).
+        append_only=False,
+        requires_provenance=True,
+        requires_source_snapshot_ts=True,
+        positive_fields=("maturity_years", "strike", "forward_price"),
+        non_negative_fields=("implied_vol", "total_variance", "gamma", "vega", "price"),
+        # Provider-partitioned (ADR 0017 / 0034 §4): the grid is computed off one source's
+        # captured chain, so two sources of the same (underlying, trade_date) never mix.
+        provider_partitioned=True,
     ),
     "positions": TableSpec(
         name="positions",
@@ -244,6 +313,21 @@ def numeric_field_names(contract: type) -> tuple[str, ...]:
     for name, annotation in resolved_field_types(contract).items():
         inner, _ = unwrap_optional(annotation)
         if inner in (int, float):
+            names.append(name)
+    return tuple(names)
+
+
+def optional_numeric_field_names(contract: type) -> tuple[str, ...]:
+    """Names of *Optional* numeric fields (``float | None`` / ``int | None``).
+
+    These are the additive-nullable numeric columns: a value of ``None`` is legitimate
+    (an older partition predates the field), while a non-``None`` value is still range
+    checked. The validator uses this to skip the finite-number check only for ``None``.
+    """
+    names: list[str] = []
+    for name, annotation in resolved_field_types(contract).items():
+        inner, is_optional = unwrap_optional(annotation)
+        if is_optional and inner in (int, float):
             names.append(name)
     return tuple(names)
 

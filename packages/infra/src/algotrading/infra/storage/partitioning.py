@@ -38,8 +38,19 @@ from .errors import StorageError
 # run_ts the QC results (whose only timestamp is when the check ran).
 _TRADE_DATE_TIMESTAMPS = ("snapshot_ts", "valuation_ts", "canonical_ts", "run_ts")
 
+# Date fields (not timestamps) used to derive a partition date when a record has no
+# explicit trade_date column and no partitioning timestamp. effective_add_date places
+# the reference-layer IndexConstituent: bitemporal membership rows partition by the
+# effective interval's start, beneath their index (ADR 0034 §4/§5).
+_TRADE_DATE_DATES = ("effective_add_date", "as_of_date")
+
 # Key fields whose first "|"-separated component is the underlying symbol.
 _UNDERLYING_KEY_FIELDS = ("instrument_key", "contract_key")
+
+# Fields naming the partition's grouping symbol when there is no `underlying` column.
+# `index` places the IndexConstituent under its index symbol (the reference-layer
+# equivalent of the underlying segment).
+_UNDERLYING_FALLBACK_FIELDS = ("index",)
 
 
 def trade_date_of(record: object) -> date:
@@ -51,9 +62,10 @@ def trade_date_of(record: object) -> date:
         value = getattr(record, field, None)
         if isinstance(value, datetime):
             return value.astimezone(UTC).date()
-    as_of = getattr(record, "as_of_date", None)
-    if isinstance(as_of, date):
-        return as_of
+    for field in _TRADE_DATE_DATES:
+        value = getattr(record, field, None)
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return value
     raise StorageError(f"cannot derive a trade date for record {record!r}")
 
 
@@ -66,7 +78,25 @@ def underlying_of(record: object) -> str:
         value = getattr(record, field, None)
         if isinstance(value, str) and value:
             return value.split("|", 1)[0]
+    for field in _UNDERLYING_FALLBACK_FIELDS:
+        value = getattr(record, field, None)
+        if isinstance(value, str) and value:
+            return value
     return "_all"
+
+
+def provider_of(record: object) -> str:
+    """Return the source provider a provider-partitioned record lands under.
+
+    Provider-partitioned tables (ADR 0017 / 0034 §4) carry a ``provider`` segment ahead
+    of the trade date so two sources of the same ``(underlying, trade_date)`` never mix on
+    disk. A provider-partitioned record without a non-empty ``provider`` cannot be placed,
+    and that is an error rather than a silent dump into a catch-all.
+    """
+    value = getattr(record, "provider", None)
+    if isinstance(value, str) and value:
+        return value
+    raise StorageError(f"cannot derive a provider for provider-partitioned record {record!r}")
 
 
 def table_dir(root: Path, table: str) -> Path:
@@ -75,16 +105,21 @@ def table_dir(root: Path, table: str) -> Path:
     return root / spec.layer / table
 
 
-def _checked_version(version: str) -> str:
-    """Return ``version`` if it is a usable single path segment, else raise.
+def _checked_segment(value: str, kind: str) -> str:
+    """Return ``value`` if it is a usable single Hive path segment, else raise.
 
-    A version names a sub-partition directory (``version=<V>``); an empty value or
-    one carrying a path separator or ``=`` would corrupt the Hive-style tree, so it
-    is refused at construction time rather than producing a misplaced file.
+    A partition segment names a directory (``<kind>=<value>``); an empty value or one
+    carrying a path separator or ``=`` would corrupt the Hive-style tree, so it is
+    refused at construction time rather than producing a misplaced file.
     """
-    if not version or "/" in version or "\\" in version or "=" in version:
-        raise StorageError(f"invalid partition version {version!r}")
-    return version
+    if not value or "/" in value or "\\" in value or "=" in value:
+        raise StorageError(f"invalid partition {kind} {value!r}")
+    return value
+
+
+def _checked_version(version: str) -> str:
+    """Return ``version`` if it is a usable single path segment, else raise."""
+    return _checked_segment(version, "version")
 
 
 def partition_dir(
@@ -93,6 +128,7 @@ def partition_dir(
     trade_date: date,
     underlying: str,
     version: str | None = None,
+    provider: str | None = None,
 ) -> Path:
     """Return the directory for one partition.
 
@@ -100,12 +136,18 @@ def partition_dir(
     the original, unversioned layout. With a version it descends one level into the
     ``version=<V>`` sub-partition, so a restated analytic lands beside, not on top of,
     the existing one.
+
+    ``provider`` is non-``None`` only for provider-partitioned tables (ADR 0017 /
+    0034 §4); it prepends a ``provider=<P>`` segment ahead of the trade date —
+    ``<table>/provider=<P>/trade_date=<D>/underlying=<SYM>[/version=<V>]`` — so two
+    sources of the same ``(underlying, trade_date)`` land in disjoint partitions. Left
+    ``None`` the layout is exactly the historical one, so every existing table is
+    untouched.
     """
-    base = (
-        table_dir(root, table)
-        / f"trade_date={trade_date.isoformat()}"
-        / f"underlying={underlying}"
-    )
+    base = table_dir(root, table)
+    if provider is not None:
+        base = base / f"provider={_checked_segment(provider, 'provider')}"
+    base = base / f"trade_date={trade_date.isoformat()}" / f"underlying={underlying}"
     if version is None:
         return base
     return base / f"version={_checked_version(version)}"
@@ -117,6 +159,7 @@ def partition_file(
     trade_date: date,
     underlying: str,
     version: str | None = None,
+    provider: str | None = None,
 ) -> Path:
-    """Return the single Parquet file path for one partition (version optional)."""
-    return partition_dir(root, table, trade_date, underlying, version) / "data.parquet"
+    """Return the single Parquet file path for one partition (version/provider optional)."""
+    return partition_dir(root, table, trade_date, underlying, version, provider) / "data.parquet"

@@ -31,6 +31,7 @@ capture — and assert the shared correlation id and the per-underlying event co
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import MutableMapping
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -68,6 +69,7 @@ from algotrading.infra.orchestration import (
     collect_live,
     collector_death_alert,
     completed_stages,
+    coverage_breach_alerts,
     elevated_failure_rate_alert,
     last_healthy_trade_date,
     missing_partition_alerts,
@@ -673,6 +675,105 @@ def test_qc_job_clean_summary_does_not_page(tmp_path: Path) -> None:
     )
     assert job.report.overall_status == "pass"
     assert qc_fail_alert(job.report) is None
+
+
+# =========================================================================== #
+# Coverage-breach alert (WS 1H) — distinct from the missing-partition alert    #
+# =========================================================================== #
+_GRID_TENORS = ("10d", "1m", "3m")
+
+
+def _grid_config() -> PlatformConfig:
+    """A config whose grid floors are 2 per pinned tenor, so a hand-built grid is judgeable."""
+    from algotrading.core.config import GridQcConfig
+
+    base = _config()
+    grid = GridQcConfig(
+        version="grid-1",
+        tenor_floors={"10d": 2, "1m": 2, "3m": 2},
+        band_low_delta=-0.30,
+        band_high_delta=0.30,
+        max_delta_step=0.35,
+    )
+    return dataclasses.replace(
+        base,
+        qc_threshold=dataclasses.replace(base.qc_threshold, grid=grid),
+    )
+
+
+class _GridCell:
+    """A minimal projected grid cell satisfying qc.GridPointInput (underlying/tenor/delta)."""
+
+    def __init__(self, underlying: str, tenor: str, delta: float) -> None:
+        self.underlying = underlying
+        self.tenor_label = tenor
+        self.delta = delta
+
+
+def _full_cells(underlying: str, tenor: str) -> list[_GridCell]:
+    # 3 points -> count 3 >= floor 2; deltas -0.30/0.0/0.30 span the band (gaps 0.30<=0.35).
+    return [_GridCell(underlying, tenor, d) for d in (-0.30, 0.0, 0.30)]
+
+
+def test_coverage_breach_alert_fires_per_breaching_tenor(tmp_path: Path) -> None:
+    # "SPX" is thin on "1m" (one point, below floor 2) and missing "3m" entirely; "10d" is
+    # full. Hand oracle: two coverage-breach alerts, one per breaching tenor, subject
+    # SPX@1m and SPX@3m. A clean grid fires none.
+    store = ParquetStore(tmp_path)
+    thresholds = thresholds_from_config(_grid_config().qc_threshold)
+    thin = _full_cells("SPX", "10d") + [_GridCell("SPX", "1m", -0.30)]  # no 3m, thin 1m
+    job = run_qc(
+        store=store, thresholds=thresholds, collector_summary=None,
+        trade_date=TRADE_DATE, run_id="qc-grid-breach", run_ts=CALC_TS,
+        correlation_id="corr-grid-breach",
+        grid_points={"SPX": thin}, tenor_grid=_GRID_TENORS,
+    )
+    alerts = coverage_breach_alerts(job.report)
+    assert {a.kind for a in alerts} == {"coverage_breach"}
+    subjects = {a.subject for a in alerts}
+    assert subjects == {"SPX@1m", "SPX@3m"}  # one alert per breaching tenor
+
+    # A clean grid fires none.
+    full = {"SPX": _full_cells("SPX", "10d") + _full_cells("SPX", "1m") + _full_cells("SPX", "3m")}
+    clean_job = run_qc(
+        store=store, thresholds=thresholds, collector_summary=None,
+        trade_date=TRADE_DATE, run_id="qc-grid-clean", run_ts=CALC_TS,
+        correlation_id="corr-grid-clean", grid_points=full, tenor_grid=_GRID_TENORS,
+    )
+    assert coverage_breach_alerts(clean_job.report) == []
+
+
+def test_coverage_breach_and_missing_partition_are_distinct(tmp_path: Path) -> None:
+    # A present-but-thin tenor trips coverage-breach, NOT missing-partition; an absent
+    # partition trips missing-partition, NOT coverage-breach. The two signals are orthogonal.
+    store = ParquetStore(tmp_path)
+    thresholds = thresholds_from_config(_grid_config().qc_threshold)
+    # SPX present but its "1m" tenor is too thin (1 < floor 2); "10d"/"3m" full.
+    thin = (
+        _full_cells("SPX", "10d")
+        + [_GridCell("SPX", "1m", -0.30)]
+        + _full_cells("SPX", "3m")
+    )
+    job = run_qc(
+        store=store, thresholds=thresholds, collector_summary=None,
+        trade_date=TRADE_DATE, run_id="qc-grid-thin", run_ts=CALC_TS,
+        correlation_id="corr-grid-thin", grid_points={"SPX": thin}, tenor_grid=_GRID_TENORS,
+    )
+    cov_alerts = coverage_breach_alerts(job.report)
+    assert {a.subject for a in cov_alerts} == {"SPX@1m"}  # thin tenor → coverage breach
+
+    # The SPX partition is present, so missing-partition does NOT fire for it. A *different*
+    # underlying ("RUT") whose partition is absent trips missing-partition, not coverage.
+    missing = missing_partition_alerts(
+        table="projected_option_analytics",
+        expected=[(TRADE_DATE, "SPX"), (TRADE_DATE, "RUT")],
+        present=[(TRADE_DATE, "SPX")],
+    )
+    assert len(missing) == 1
+    assert "RUT" in missing[0].subject
+    assert "SPX" not in missing[0].subject  # present-but-thin SPX is NOT a missing partition
+    # And coverage-breach never names RUT (it has no grid points / breaching coverage row).
+    assert all("RUT" not in a.subject for a in cov_alerts)
 
 
 # =========================================================================== #

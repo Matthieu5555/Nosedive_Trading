@@ -22,6 +22,7 @@ from .errors import ContractValidationError
 from .registry import (
     datetime_field_names,
     numeric_field_names,
+    optional_numeric_field_names,
     spec_for_table,
     table_for_contract,
 )
@@ -36,6 +37,28 @@ def _check_numeric(table: str, name: str, value: object) -> None:
         raise ContractValidationError(table, name, value, "must be finite (no NaN or inf)")
 
 
+def _check_ohlc(table: str, record: object) -> None:
+    """Reject an OHLC bar whose extremes are inconsistent (e.g. high < low).
+
+    A daily bar's ``high`` must be the day's max and ``low`` its min, so every other
+    price must sit within ``[low, high]``. A bar with ``high < low`` (or an open/close
+    outside the range) is corrupt input, not something to coerce — it is rejected with
+    the offending field named, so a bad fetch fails at the write door.
+    """
+    high = record.high  # type: ignore[attr-defined]
+    low = record.low  # type: ignore[attr-defined]
+    if high < low:
+        raise ContractValidationError(
+            table, "high", high, f"high must be >= low ({low!r})"
+        )
+    for name in ("open", "close"):
+        value = getattr(record, name)
+        if not (low <= value <= high):
+            raise ContractValidationError(
+                table, name, value, f"must lie within [low={low!r}, high={high!r}]"
+            )
+
+
 def validate_record(table: str, record: object) -> None:
     """Validate one record against its table contract. Raise on the first failure.
 
@@ -48,8 +71,14 @@ def validate_record(table: str, record: object) -> None:
         if getattr(record, pk) is None:
             raise ContractValidationError(table, pk, None, "primary-key field must not be None")
 
+    optional_numeric = set(optional_numeric_field_names(spec.contract))
     for name in numeric_field_names(spec.contract):
-        _check_numeric(table, name, getattr(record, name))
+        value = getattr(record, name)
+        # An Optional numeric field may be None (an additive-nullable field absent on an
+        # older partition); a non-None value is still range-checked.
+        if value is None and name in optional_numeric:
+            continue
+        _check_numeric(table, name, value)
 
     for name in spec.positive_fields:
         value = getattr(record, name)
@@ -77,6 +106,9 @@ def validate_record(table: str, record: object) -> None:
             None,
             "derived record must reference the source snapshot_ts it was computed from",
         )
+
+    if table == "daily_bar":
+        _check_ohlc(table, record)
 
     if spec.requires_provenance:
         prov = getattr(record, "provenance", None)

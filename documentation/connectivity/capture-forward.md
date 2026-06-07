@@ -52,6 +52,54 @@ schtasks /Create /TN "AlgoTrading-SaxoCapture" /SC WEEKLY /D MON,TUE,WED,THU,FRI
   /TR "powershell -Command \"cd C:\path\to\AlgoTrading; uv run python scripts/saxo_sustained_capture.py --symbol ASML --minutes 480 --n-expiries 1 --env live\""
 ```
 
+## Linux server — systemd timer (the daily index close-capture, WS 1G)
+
+The index options-analytics pipeline's daily close-capture runs unattended via a **systemd timer
++ `oneshot` service**, not a cron line and not an in-process scheduler ([ADR 0032](../../.agent/decisions/0032-unattended-scheduling-via-systemd-timers.md)).
+The timer is the scheduler; the runner (`scripts/eod_run.py` → `algotrading.infra.orchestration.eod_runner`)
+stays a one-shot. Committed units live next to this guide:
+
+| Unit | Role |
+|---|---|
+| `eod-capture.service` (install as `eod-capture@.service`) | the `Type=oneshot` that runs `uv run python scripts/eod_run.py --calendar %i`; `Restart=on-failure` + `RestartSec=` retry; `OnFailure=eod-capture-alert.service` |
+| `eod-capture@XEUR.timer` / `eod-capture@XNYS.timer` | one per **exchange calendar** — `OnCalendar=` shortly after that exchange's close, **timezone stated explicitly** (`Europe/Berlin` for Eurex, `America/New_York` for NYSE); `Persistent=true` for missed-run catch-up |
+| `eod-capture-alert.service` | the minimal `OnFailure=` target — one journald notification per failed run |
+
+Install (per-user, no root):
+
+```bash
+loginctl enable-linger "$USER"                         # user timers fire while logged out
+mkdir -p ~/.config/systemd/user
+cp documentation/connectivity/eod-capture.service        ~/.config/systemd/user/eod-capture@.service
+cp documentation/connectivity/eod-capture-alert.service  ~/.config/systemd/user/
+cp documentation/connectivity/eod-capture@*.timer        ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now eod-capture@XEUR.timer eod-capture@XNYS.timer
+```
+
+Operate / query the run history (journald + the run-state ledger share one `correlation_id` per fire):
+
+```bash
+systemctl --user list-timers 'eod-capture@*'           # next fire per calendar
+journalctl --user -u eod-capture@XEUR.service --since today   # the run trace + correlation_id
+uv run python scripts/eod_run.py --index SX5E --trade-date 2026-06-05   # manual catch-up / backfill
+```
+
+Why this and not more: the fixed `OnCalendar` time is only a **safe upper bound trigger** after the
+regular close; the runner resolves the *exact* close instant (and skips holidays/half-days) from the
+1J exchange-calendar (`session_close`/`is_session`), so a holiday is a clean no-op and a half-day
+resolves to its early close — no timer edit needed. **Adding an index on an already-covered calendar
+needs no new unit** (the runner reads `enabled_indices()`); a brand-new exchange calendar adds one
+timer. **Graduation trigger** (ADR 0032): move off the timer to an orchestration platform (Prefect /
+Dagster) only when this stops being one independent daily job and becomes a DAG of interdependent
+tasks/backfills needing a shared run UI — until that DAG materialises, a timer is correct.
+
+Until WS 1C closes the broker→raw-event collection seam in production, the runner's default stage
+wiring raises a labeled error; the timer path is fully exercised today through the injected
+replay/fixture wiring in `packages/infra/tests/test_eod_run.py`. Swapping the collection stage to
+`collect_live` is the one edit 1C makes — the runner, the manifest freeze, and the timer are already
+correct.
+
 ## Notes
 
 - **Never commit captured data** — `data/` is gitignored (non-redistribution). For offline/remote

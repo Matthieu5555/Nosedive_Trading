@@ -110,6 +110,11 @@ ignore_missing_imports = true
 module = ["apscheduler.*"]
 ignore_missing_imports = true
 
+# Exchange-calendar library (ADR 0035) — drives the per-index session close; ships no stubs.
+[[tool.mypy.overrides]]
+module = ["exchange_calendars.*"]
+ignore_missing_imports = true
+
 # Broker SDKs are optional extras, absent from the gate env, imported lazily.
 [[tool.mypy.overrides]]
 module = ["ib_async.*", "ibapi.*"]

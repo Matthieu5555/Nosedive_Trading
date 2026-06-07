@@ -9,7 +9,8 @@ these tell you how to *connect a provider* and *stand collection up* in the firs
   one-time setup, the smoke test, and the capture command, with verified entitlement-wall meanings.
 - [capture-forward.md](capture-forward.md) — the scheduled free-data path: capture each market day
   live, reconstruct it offline; cron / Task Scheduler recipes for the idempotent, partition-by-day
-  CLIs.
+  CLIs, **and the WS 1G daily index close-capture via a systemd timer** (install + operate the
+  committed `eod-capture*` units; ADR 0032).
 - [server-deployment-plan.md](server-deployment-plan.md) — DRAFT plan for unattended paper-mode
   collection against a headless IB Gateway on a shared server (Docker, security model, to-do list).
 

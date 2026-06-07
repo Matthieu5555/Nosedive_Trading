@@ -10,10 +10,23 @@ The storage layer. Two tiers, distinct backends, distinct guarantees — see ADR
 through that port — no module reaches into Parquet or DuckDB directly.
 
 - **Layout:** `<root>/<layer>/<table>/trade_date=<YYYY-MM-DD>/underlying=<SYM>[/version=<V>]/data.parquet`
-  (`partitioning.py`). Layer/keys come from the contract registry.
+  (`partitioning.py`). Layer/keys come from the contract registry. A
+  **provider-partitioned** table (registry `provider_partitioned=True`, e.g. `daily_bar`)
+  prepends a `provider=<P>` segment ahead of the trade date —
+  `<table>/provider=<P>/trade_date=<D>/underlying=<SYM>[/version=<V>]` (ADR 0017 / 0034 §4)
+  — so two sources of the same `(underlying, trade_date)` land in disjoint partitions and a
+  scan that omits `provider` can never cross sources. `read`/`list_versions`/
+  `delete_partition` take an optional `provider=` to scope to one source.
 - **Immutable raw (append-only):** raw events and the instrument master are written
   once and never changed; re-writing an existing primary key raises `AppendOnlyViolation`.
   This is the byte-identical-replay anchor.
+- **Reference layer (bitemporal, append-only):** point-in-time index membership
+  (`index_constituents`, WS 1A) lives in a `reference` layer, partitioned by index (the
+  `underlying=<SYM>` segment) then `effective_add_date` (the `trade_date=<D>` segment) —
+  `partitioning.py` derives both from the `IndexConstituent` fields. It is provider-agnostic
+  (no `provider=` segment) and append-only: a vendor restatement is a new row under a later
+  `knowledge_date`, never an in-place edit. Resolved by a DuckDB `ASOF JOIN` in
+  `universe.membership.members` (ADR 0033 / 0034 §5).
 - **Versioned derived (restatement):** `write(..., version=None)` is the live,
   replace-in-place layout; `write(..., version="<V>")` lands a restatement *beside* the
   live partition. A version-blind read (`version=None`) returns the live rows only — the
@@ -26,7 +39,10 @@ through that port — no module reaches into Parquet or DuckDB directly.
   schemas). A new column must be optional; a required column read back absent raises
   `SchemaCompatibilityError` rather than building an invalid contract instance.
 - **Lineage:** `source_records_for` / `raw_events_for` resolve a derived record's
-  provenance stamp back to the exact source rows by full primary key.
+  provenance stamp back to the exact source rows by full primary key. For a
+  provider-partitioned source (`daily_bar`) `provider` is part of that key, so lineage is
+  provider-scoped by construction — a stamp pointing at one source's bar never resolves to
+  another source's bar for the same `(underlying, trade_date)`.
 
 ## Metadata / serving tier (M10) — run registry, over SQLite / Postgres
 

@@ -54,6 +54,67 @@ a usable surface.
 linear in total variance between the two bracketing slices, holding the nearest
 slice flat outside the fitted range — the standard calendar-consistent rule.
 
+## Tenor × delta-band projection (`projection.py`, WS 1F)
+
+`project_grid` is the cross-maturity regrid the fit functions above do **not** do. Where
+`fit_slice` fits one smile per *listed* maturity and `surface_grid_cells` projects a single
+slice onto a log-moneyness bucket grid, `project_grid` takes the *whole* set of per-maturity
+fits and produces, for one underlying at one snapshot, a deterministic grid over the
+**pinned tenor set** (`10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y`) crossed with a **delta band**
+(the 30Δ-put → ATM → 30Δ-call window). Each cell is a stamped `ProjectedOptionAnalytics`
+contract carrying the fitted IV, the model price, and the Greeks in **both** representations
+side by side — the decimal per-unit Greeks (source of truth) and the dollar Greeks, each
+dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).
+
+```python
+from algotrading.infra.surfaces import (
+    ProjectionConfig, SnapshotMarketState, project_grid,
+)
+from algotrading.core.config import MonetizationConfig
+
+result = project_grid(
+    slices,                                   # one SliceFit per listed maturity
+    SnapshotMarketState(underlying="AAPL", provider="DERIBIT", spot=100.0,
+                        discount_factors={...}),
+    snapshot_ts=ts, source_snapshot_ts=ts, calc_ts=ts,
+    projection=ProjectionConfig(version="proj-1"),     # tenor grid + delta-band axis
+    monetization=MonetizationConfig(version="mon-1"),  # gamma-1% / theta-365 flags
+    config_hashes={"universe": ..., "pricing": ...},   # the upstream bundle hashes
+)
+result.cells   # tuple[ProjectedOptionAnalytics, ...] — produced grid cells
+result.gaps    # tuple[ProjectionGap, ...]            — labeled holes (no bare NaN)
+```
+
+The two regrids, both **no-look-ahead** (every cell uses only this snapshot's fits and
+state):
+
+- **Tenor.** The pinned tenors rarely coincide with listed expiries, so the smile is
+  regridded in **total-variance** space (`interpolate_total_variance`, calendar-no-arb,
+  Eq 21/22) — never in raw vol. A pinned tenor outside the fitted maturity span is a
+  **labeled `ProjectionGap`** (`reason_code="tenor_beyond_span"`), never a silent
+  extrapolation. `clamp_to_span` is off by default.
+- **Delta.** For each (tenor, delta-band point) the option delta is inverted against the
+  fitted IV to recover the strike, in the **spot-delta convention** of `pricing/black76.py`
+  (built at `carry == 0` so spot and forward delta coincide — the same pin 1B uses), so the
+  band lands on the right strikes and the IV used to price a cell is the IV at its own
+  solved strike (no mismatch). A target outside the fitted strike span is a labeled gap
+  (`reason_code="delta_out_of_band"`), not a guess.
+
+**One dollar-Greek home.** The five `dollar_*` numbers and the two convention forks (gamma
+per 1% vs $1, theta ÷365 vs ÷252) come from `pricing.dollar_greeks` — the projection reuses
+it rather than forking a second formula. The unit strings come from the same `UNIT_STRINGS`.
+
+**Config and reproducibility.** The tenor grid and the 30Δ bound are the hashed `universe`
+bundle; the gamma/theta flags are the hashed `scenarios` bundle (`MonetizationConfig`); the
+delta-band axis and interpolation rule are the validated `ProjectionConfig`, hashed into the
+provenance `config_hashes` under the `projection` key (`canonical_json`, so `-0.0` collapses
+onto `0.0` and the grid is byte-identical across processes without `PYTHONHASHSEED`). A
+`ProjectionConfig` whose `tenor_grid` is not exactly the pinned eight is refused at
+construction. The grid is **provider-partitioned** (ADR 0017 / 0034 §4): it lands at
+`<root>/analytics/projected_option_analytics/provider=<P>/trade_date=<D>/underlying=<SYM>[/version=<V>]/data.parquet`.
+The golden artifact is `tests/golden/projected_option_analytics.json`; regenerate
+deliberately with `F_REGEN_GOLDEN=1 uv run pytest -k golden`.
+
 ## The rich fit vs the persisted contracts
 
 `SliceFit` keeps more than the contracts persist: the SVI parameters, the fit RMSE,

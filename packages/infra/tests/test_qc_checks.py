@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
-from algotrading.core.config import QcThresholdConfig
+from algotrading.core.config import GridQcConfig, QcThresholdConfig
 from algotrading.infra.contracts import MarketStateSnapshot, QcResult
 from algotrading.infra.forwards import ForwardEstimate, ParityLine
 from algotrading.infra.iv import (
@@ -44,6 +44,7 @@ from algotrading.infra.qc import (
     EmptyBaselineError,
     check_calendar_sanity,
     check_collector_continuity,
+    check_delta_band_completeness,
     check_forward_stability,
     check_greek_sanity,
     check_iv_solver_convergence,
@@ -51,6 +52,7 @@ from algotrading.infra.qc import (
     check_parity_residual,
     check_scenario_completeness,
     check_surface_fit_error,
+    check_tenor_coverage_floor,
     check_underlying_quote_health,
     deserialize_context,
     detect_anomaly,
@@ -885,3 +887,265 @@ def test_robust_z_score_matches_hand_computed_mad() -> None:
     # scale=1.4826*3.0=4.4478; observed 40 -> |40-15.5|/4.4478 = 5.508...
     baseline = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0]
     assert robust_z_score(40.0, baseline) == pytest.approx(24.5 / (1.4826 * 3.0), rel=1e-9)
+
+
+# --- WS 1H: grid-aware QC — per-tenor coverage floor + Δ-band completeness ----------
+#
+# Expected pass/fail are hand-derived from a grid fixture built by hand from a pinned
+# tenor grid and a known delta band (TESTING.md: independent oracle — count by hand, never
+# read the verdict back from the check). The test config below pins small, round numbers
+# so every boundary case is hand-computable:
+#   - per-tenor coverage floor = 3 for every pinned tenor
+#   - delta band = [-0.30, +0.30] (the 30Δ-put → ATM → 30Δ-call window)
+#   - max interior delta step = 0.35  (so a 3-point [-0.30, 0.0, +0.30] grid spans it:
+#     the two gaps are 0.30 each, <= 0.35)
+# The pinned tenor grid the tests key on (a 3-tenor subset of the P0.1 grid; the check
+# reads it as config, never from the data under test).
+GRID_TENORS = ("10d", "1m", "3m")
+
+GRID_QC = GridQcConfig(
+    version="grid-qc-test-1",
+    tenor_floors={"10d": 3, "1m": 3, "3m": 3},
+    band_low_delta=-0.30,
+    band_high_delta=0.30,
+    max_delta_step=0.35,
+)
+GRID_THRESHOLDS = thresholds_from_config(
+    dataclasses.replace(QC_CONFIG, grid=GRID_QC)
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class _GridPoint:
+    """A minimal projected grid cell satisfying ``qc.GridPointInput``.
+
+    WS 1F's ``ProjectedOptionAnalytics`` is the real producer; the grid checks read it
+    through the structural Protocol, so this carries exactly the three fields they touch.
+    """
+
+    underlying: str
+    tenor_label: str
+    delta: float
+
+
+def _full_tenor(underlying: str, tenor: str) -> list[_GridPoint]:
+    """A band-complete, floor-clearing tenor: 3 points at -0.30, 0.0, +0.30.
+
+    Hand-derived: count = 3 (== floor 3, passes); deltas span [-0.30, 0.30] with both edges
+    reached and the two interior gaps (0.30 each) <= max step 0.35.
+    """
+    return [_GridPoint(underlying, tenor, d) for d in (-0.30, 0.0, 0.30)]
+
+
+def _full_grid(underlying: str = "SPX") -> list[_GridPoint]:
+    points: list[_GridPoint] = []
+    for tenor in GRID_TENORS:
+        points.extend(_full_tenor(underlying, tenor))
+    return points
+
+
+def test_tenor_coverage_floor_passes_when_every_tenor_clears_its_floor() -> None:
+    # Hand oracle: each of the 3 pinned tenors has exactly 3 points; floor is 3; 3 >= 3.
+    result = check_tenor_coverage_floor(
+        _full_grid(), "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+    assert result.severity == SEVERITY_CRITICAL
+    assert result.threshold_version == QC_CONFIG.version
+    context = deserialize_context(result.context)
+    assert context["breach_count"] == 0
+    assert context["breaching_tenors"] == []
+    # Worst margin across tenors is 3-3 = 0 (all exactly on floor).
+    assert result.measured_value == pytest.approx(0.0)
+
+
+def test_tenor_coverage_floor_names_the_breaching_tenor() -> None:
+    # "1m" gets one point below its floor (2 < 3); "10d"/"3m" stay full. Hand oracle: only
+    # "1m" is named, with measured=2 vs floor=3; the passing tenors are not in the list.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", d) for d in (-0.30, 0.30)]  # 2 points
+    result = check_tenor_coverage_floor(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    context = deserialize_context(result.context)
+    breaches = context["breaching_tenors"]
+    assert len(breaches) == 1
+    assert breaches[0] == {"tenor": "1m", "measured": 2, "floor": 3}
+    named = {b["tenor"] for b in breaches}
+    assert "10d" not in named and "3m" not in named
+    # Worst margin is 2-3 = -1.
+    assert result.measured_value == pytest.approx(-1.0)
+
+
+def test_tenor_coverage_floor_count_exactly_on_floor_passes() -> None:
+    # Boundary-exact: a tenor with count == floor passes (the thresholds >= convention).
+    points = _full_grid()  # every tenor has exactly 3 == floor 3
+    result = check_tenor_coverage_floor(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+
+
+def test_tenor_coverage_floor_absent_tenor_is_a_breach() -> None:
+    # "3m" has zero points (absent from the grid entirely). Hand oracle: it is a breach,
+    # named with measured=0 vs floor=3 — not silently skipped.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "1m")  # no 3m at all
+    result = check_tenor_coverage_floor(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    context = deserialize_context(result.context)
+    breaches = context["breaching_tenors"]
+    assert breaches == [{"tenor": "3m", "measured": 0, "floor": 3}]
+    assert result.measured_value == pytest.approx(-3.0)
+
+
+def test_delta_band_completeness_passes_for_full_band() -> None:
+    # Hand oracle: every tenor has [-0.30, 0.0, +0.30] — both edges reached, gaps 0.30 each
+    # <= max step 0.35. No gap anywhere -> pass.
+    result = check_delta_band_completeness(
+        _full_grid(), "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+    assert result.severity == SEVERITY_CRITICAL
+    context = deserialize_context(result.context)
+    assert context["gap_count"] == 0
+    assert result.measured_value == pytest.approx(0.0)
+
+
+def test_delta_band_completeness_flags_interior_gap() -> None:
+    # "1m" has a hole: deltas [-0.30, +0.30] only (gap 0.60 > max step 0.35). Hand oracle:
+    # "1m" is named with an interior_gap from -0.30 to +0.30; the full tenors pass.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", d) for d in (-0.30, 0.30)]
+    result = check_delta_band_completeness(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    context = deserialize_context(result.context)
+    gaps = context["band_gaps"]
+    assert len(gaps) == 1
+    assert gaps[0]["tenor"] == "1m"
+    regions = {m["region"] for m in gaps[0]["missing"]}
+    assert "interior_gap" in regions
+    interior = next(m for m in gaps[0]["missing"] if m["region"] == "interior_gap")
+    assert interior["from_delta"] == pytest.approx(-0.30)
+    assert interior["to_delta"] == pytest.approx(0.30)
+
+
+def test_delta_band_completeness_flags_one_sided_chain() -> None:
+    # "1m" has only call-side strikes [0.05, 0.20, 0.30] — never reaches the put edge -0.30.
+    # Hand oracle: low_edge_unreached for "1m" (the check does NOT let the data redefine the
+    # band to its own [0.05, 0.30] span).
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", d) for d in (0.05, 0.20, 0.30)]
+    result = check_delta_band_completeness(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    context = deserialize_context(result.context)
+    gaps = {g["tenor"]: g for g in context["band_gaps"]}
+    assert set(gaps) == {"1m"}
+    regions = {m["region"] for m in gaps["1m"]["missing"]}
+    assert "low_edge_unreached" in regions
+
+
+def test_delta_band_edge_cases() -> None:
+    # The TESTING.md negative-path floor: empty tenor and single-strike tenor are explicit,
+    # labelled breaches — not a crash and not a silent pass.
+    # "10d" empty (no points), "1m" single strike at ATM, "3m" full.
+    points = _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", 0.0)]  # single strike
+    result = check_delta_band_completeness(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    context = deserialize_context(result.context)
+    gaps = {g["tenor"]: g for g in context["band_gaps"]}
+    assert set(gaps) == {"10d", "1m"}
+    # Empty "10d": too_few_points with point_count 0, and both edges unreached.
+    empty_regions = {m["region"] for m in gaps["10d"]["missing"]}
+    assert "too_few_points" in empty_regions
+    assert {"low_edge_unreached", "high_edge_unreached"} <= empty_regions
+    assert gaps["10d"]["point_count"] == 0
+    # Single-strike "1m": too_few_points with point_count 1, both edges unreached (ATM only).
+    single_regions = {m["region"] for m in gaps["1m"]["missing"]}
+    assert "too_few_points" in single_regions
+    assert {"low_edge_unreached", "high_edge_unreached"} <= single_regions
+    assert gaps["1m"]["point_count"] == 1
+
+
+def test_grid_thresholds_missing_tenor_floor_raises() -> None:
+    # A pinned tenor with no configured floor is a config error — never defaults to zero.
+    # The grid config here floors only {"10d", "1m"}, but the pinned grid includes "3m".
+    from algotrading.core.config import ConfigFieldError
+
+    partial_grid = GridQcConfig(
+        version="grid-qc-partial",
+        tenor_floors={"10d": 3, "1m": 3},  # "3m" deliberately missing
+        band_low_delta=-0.30,
+        band_high_delta=0.30,
+        max_delta_step=0.35,
+    )
+    thresholds = thresholds_from_config(dataclasses.replace(QC_CONFIG, grid=partial_grid))
+    with pytest.raises(ConfigFieldError) as excinfo:
+        check_tenor_coverage_floor(
+            _full_grid(), "SPX", GRID_TENORS,
+            thresholds=thresholds, run_id=RUN_ID, run_ts=RUN_TS,
+        )
+    assert excinfo.value.field == "tenor_floors"
+    assert excinfo.value.value == "3m"
+
+
+def test_grid_checks_roll_into_report_and_escalation() -> None:
+    # Both new QcResults flow through build_report/escalation_level like the existing checks:
+    # a clean grid -> pass report (escalation none); a breaching grid -> fail report that
+    # escalates to a page (both checks are critical severity).
+    from algotrading.infra.qc import (
+        ESCALATION_NONE,
+        ESCALATION_PAGE,
+        build_report,
+        escalation_level,
+    )
+
+    clean = [
+        check_tenor_coverage_floor(
+            _full_grid(), "SPX", GRID_TENORS,
+            thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+        ),
+        check_delta_band_completeness(
+            _full_grid(), "SPX", GRID_TENORS,
+            thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+        ),
+    ]
+    clean_report = build_report(clean, run_id=RUN_ID, run_ts=RUN_TS)
+    assert clean_report.overall_status == STATUS_PASS
+    assert escalation_level(clean_report) == ESCALATION_NONE
+
+    # A grid missing "3m" entirely fails both checks (coverage absent + band edges unreached).
+    thin = _full_tenor("SPX", "10d") + _full_tenor("SPX", "1m")
+    breaching = [
+        check_tenor_coverage_floor(
+            thin, "SPX", GRID_TENORS,
+            thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+        ),
+        check_delta_band_completeness(
+            thin, "SPX", GRID_TENORS,
+            thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+        ),
+    ]
+    breaching_report = build_report(breaching, run_id=RUN_ID, run_ts=RUN_TS)
+    assert breaching_report.overall_status == STATUS_FAIL
+    assert breaching_report.fail_count == 2
+    # Both checks are critical-severity, so a fail escalates to a page (as the existing
+    # critical checks do).
+    assert escalation_level(breaching_report) == ESCALATION_PAGE

@@ -51,9 +51,14 @@ def get_surface(
         return JSONResponse(
             {"error": "bad_trade_date", "trade_date": trade_date}, status_code=400
         )
-    rows = ctx.store.read(
-        "surface_parameters", underlying=resolved_underlying, trade_date=resolved_date
-    )
+    # A version-blind read narrows to one partition only when both trade_date and underlying are
+    # given; with trade_date=None the store returns every underlying's slices, so filter by
+    # underlying here so a per-underlying query never bleeds in another name's surface.
+    rows = [
+        row
+        for row in ctx.store.read("surface_parameters", trade_date=resolved_date)
+        if row.underlying == resolved_underlying
+    ]
     rows.sort(key=lambda row: row.maturity_years)
     slices = [surface_parameters_to_dict(row) for row in rows]
     return JSONResponse(

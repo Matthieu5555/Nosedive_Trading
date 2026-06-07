@@ -11,7 +11,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from ..context import AppContext
-from ..serializers import risk_aggregate_to_dict, scenario_result_to_dict
+from ..serializers import (
+    pricing_result_to_dict,
+    risk_aggregate_to_dict,
+    scenario_result_to_dict,
+)
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
@@ -39,6 +43,22 @@ def get_risk(request: Request, portfolio_id: str | None = None) -> JSONResponse:
     return JSONResponse(
         {"portfolio_id": portfolio_id, "n_aggregates": len(aggregates), "aggregates": aggregates}
     )
+
+
+@router.get("/metrics")
+def get_metrics(request: Request, underlying: str | None = None) -> JSONResponse:
+    """Return per-contract price/Greeks with the unit-carrying dollar layer.
+
+    Each dollar metric is read back with the explicit unit string of the pinned
+    convention beside its raw per-unit Greek (the BFF metric contract, ADR 0036), so the
+    front never receives a bare float. Optionally filtered to one underlying.
+    """
+    ctx = _context(request)
+    rows = ctx.store.read("pricing_results")
+    if underlying is not None:
+        rows = [row for row in rows if row.contract_key.split("|", 1)[0] == underlying]
+    metrics = [pricing_result_to_dict(row) for row in rows]
+    return JSONResponse({"underlying": underlying, "n_results": len(metrics), "results": metrics})
 
 
 @router.get("/scenarios")

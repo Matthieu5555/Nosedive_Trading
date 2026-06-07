@@ -15,6 +15,13 @@ code runs live and in replay — that identity is the load-bearing invariant of 
 - `stamping.py` — `build_stamp`, the provenance the actor stamps onto pricing/risk/scenario rows.
 - `valuation_join.py` — the math-free join that turns the analytics results into the risk
   engine's per-contract inputs.
+- `close_capture.py` — **the daily close-snapshot mode (WS 1C, Part B).** Runs the same pure
+  `run_analytics` with `session_open=False` and an injected `as_of` = each enabled index's own
+  `session_close(index, trade_date)` (the 1J calendar resolver — Eurex for SX5E, NYSE for SPX,
+  never a single global close), then replace-persists one immutable set per `(provider,
+  trade_date)`. `capture_daily_close` iterates `enabled_indices()` (never a hardcoded list);
+  `make_close_capture` binds the deps into the `(trade_date, baskets) -> results` seam 1G's
+  schedule wires. Reads no wall clock, so the close set is byte-identical on replay.
 - `nautilus_host.py` — **the runtime spine (ADR 0023 / ADR 0025).** A thin Nautilus
   `Actor` (`AnalyticsActor`) that replays a `RawMarketEvent` stream through Nautilus's engine
   on its simulated clock and drives the unchanged `run_analytics`. `RawMarketEventData` +

@@ -17,6 +17,7 @@ from algotrading.core import (
     ForwardConfig,
     Manifest,
     ManifestValidationError,
+    MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
@@ -72,6 +73,9 @@ def _config() -> PlatformConfig:
         scenario=ScenarioConfig(
             version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
         ),
+        monetization=MonetizationConfig(
+            version="mon-1", gamma_normalisation="one_pct", theta_day_count=365
+        ),
     )
 
 
@@ -109,6 +113,7 @@ def test_section_versions_lists_every_section_stamp() -> None:
         "surface": "surf-1",
         "forward": "fwd-1",
         "scenario": "sc-1",
+        "monetization": "mon-1",
     }
 
 
@@ -124,7 +129,8 @@ def test_config_hash_is_stable_across_processes() -> None:
     expected = config_hash(_config())
     code = (
         "from algotrading.core import (PlatformConfig, UniverseConfig, QcThresholdConfig,"
-        " SolverConfig, SurfaceConfig, ForwardConfig, ScenarioConfig, config_hash);"
+        " SolverConfig, SurfaceConfig, ForwardConfig, ScenarioConfig, MonetizationConfig,"
+        " config_hash);"
         "print(config_hash(PlatformConfig("
         "universe=UniverseConfig(version='u-1', underlyings=('SPX','NDX'), exchange='CBOE'),"
         "qc_threshold=QcThresholdConfig(version='qc-1', max_spread_pct=0.05,"
@@ -136,7 +142,9 @@ def test_config_hash_is_stable_across_processes() -> None:
         "forward=ForwardConfig(version='fwd-1', good_rel_residual=1e-3, fair_rel_residual=1e-2,"
         " full_credit_pairs=4.0, rel_residual_halflife=1e-3, single_pair_confidence=0.30),"
         "scenario=ScenarioConfig(version='sc-1', spot_shocks=(-0.1,0.0,0.1),"
-        " vol_shocks=(-0.02,0.02)))))"
+        " vol_shocks=(-0.02,0.02)),"
+        "monetization=MonetizationConfig(version='mon-1', gamma_normalisation='one_pct',"
+        " theta_day_count=365))))"
     )
     for seed in ("0", "7", "98765"):
         out = subprocess.run(
@@ -169,11 +177,26 @@ universe:
   version: u-base
   underlyings: [SPX, NDX]
   exchange: CBOE
+  tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 qc_threshold:
   version: qc-base
   max_spread_pct: 0.05
   max_quote_age_seconds: 30.0
   min_chain_count: 5
+  grid:
+    version: grid-base
+    tenor_floors:
+      "10d": 5
+      "1m": 5
+      "3m": 5
+      "6m": 5
+      "12m": 5
+      "18m": 5
+      "2y": 5
+      "3y": 5
+    band_low_delta: -0.30
+    band_high_delta: 0.30
+    max_delta_step: 0.25
 solver:
   version: s-base
   iv_tolerance: 1.0e-8
@@ -201,6 +224,10 @@ scenario:
   spot_shocks: [-0.1, 0.0, 0.1]
   vol_shocks: [-0.02, 0.02]
   roll_down_days: [1]
+monetization:
+  version: mon-base
+  gamma_normalisation: one_pct
+  theta_day_count: 365
 """
 
 
@@ -241,7 +268,11 @@ def test_from_config_rejects_a_missing_section(tmp_path) -> None:
     from algotrading.core.config import ConfigError
 
     incomplete = tmp_path / "incomplete.yaml"
-    incomplete.write_text("universe:\n  version: u\n  underlyings: [SPX]\n  exchange: CBOE\n", "utf-8")
+    incomplete.write_text(
+        "universe:\n  version: u\n  underlyings: [SPX]\n  exchange: CBOE\n"
+        '  tenor_grid: ["1m"]\n',
+        "utf-8",
+    )
     with pytest.raises(ConfigError):
         from_config(load_yaml_config(incomplete))
 
@@ -263,8 +294,17 @@ def test_config_hash_collapses_signed_zero() -> None:
 # taxonomy. environment.yaml + broker.yaml are operational and must NOT be loaded into
 # the hashed typed config — the loader ignores them.
 _BUNDLES = {
-    "universe.yaml": "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n",
-    "qc.yaml": "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n",
+    "universe.yaml": (
+        "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n"
+        'tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]\n'
+    ),
+    "qc.yaml": (
+        "version: qc-1\nmax_spread_pct: 0.05\nmax_quote_age_seconds: 30.0\nmin_chain_count: 5\n"
+        "grid:\n  version: grid-qc-default\n  tenor_floors:\n"
+        '    "10d": 5\n    "1m": 5\n    "3m": 5\n    "6m": 5\n'
+        '    "12m": 5\n    "18m": 5\n    "2y": 5\n    "3y": 5\n'
+        "  band_low_delta: -0.30\n  band_high_delta: 0.30\n  max_delta_step: 0.25\n"
+    ),
     "pricing.yaml": (
         "solver:\n  version: s-1\n  iv_tolerance: 1.0e-8\n  max_iterations: 100\n"
         "  vol_min: 1.0e-9\n  vol_max: 5.0\n"
@@ -276,7 +316,12 @@ _BUNDLES = {
         "  fair_rel_residual: 1.0e-2\n  full_credit_pairs: 4.0\n"
         "  rel_residual_halflife: 1.0e-3\n  single_pair_confidence: 0.30\n"
     ),
-    "scenarios.yaml": "version: sc-1\nspot_shocks: [-0.1, 0.0, 0.1]\nvol_shocks: [-0.02, 0.02]\nroll_down_days: [1]\n",
+    "scenarios.yaml": (
+        "scenario:\n  version: sc-1\n  spot_shocks: [-0.1, 0.0, 0.1]\n"
+        "  vol_shocks: [-0.02, 0.02]\n  roll_down_days: [1]\n"
+        "monetization:\n  version: mon-1\n  gamma_normalisation: one_pct\n"
+        "  theta_day_count: 365\n"
+    ),
 }
 
 
@@ -312,6 +357,9 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
             forward=_forward("fwd-1"),
             scenario=ScenarioConfig(
                 version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
+            ),
+            monetization=MonetizationConfig(
+                version="mon-1", gamma_normalisation="one_pct", theta_day_count=365
             ),
         )
     )
@@ -388,7 +436,13 @@ _GOOD_QC = {
 def test_build_dataclass_coerces_by_declared_type() -> None:
     from algotrading.core.config import build_dataclass
 
-    qc = build_dataclass(QcThresholdConfig, _GOOD_QC, section="qc_threshold")
+    # ``grid`` is a nested-map-bearing field the flat reflective coercion cannot type, so it
+    # is caller-supplied (the loader builds it via ``_build_qc_threshold``); these direct
+    # build_dataclass calls exercise the scalar fields and let ``grid`` take its default.
+    qc = build_dataclass(
+        QcThresholdConfig, _GOOD_QC, section="qc_threshold",
+        caller_supplied=frozenset({"grid"}),
+    )
     assert qc.max_spread_pct == 0.05 and isinstance(qc.min_chain_count, int)
     # tuple[float, ...] coercion: a YAML list of numbers becomes a tuple of floats.
     sc = build_dataclass(
@@ -407,7 +461,10 @@ def test_build_dataclass_rejects_unknown_key() -> None:
     from algotrading.core.config import ConfigFieldError, build_dataclass
 
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "typo": 1}, section="qc_threshold")
+        build_dataclass(
+            QcThresholdConfig, {**_GOOD_QC, "typo": 1}, section="qc_threshold",
+            caller_supplied=frozenset({"grid"}),
+        )
     assert exc.value.field == "typo"
 
 
@@ -416,7 +473,10 @@ def test_build_dataclass_rejects_missing_field() -> None:
 
     incomplete = {k: v for k, v in _GOOD_QC.items() if k != "min_chain_count"}
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(QcThresholdConfig, incomplete, section="qc_threshold")
+        build_dataclass(
+            QcThresholdConfig, incomplete, section="qc_threshold",
+            caller_supplied=frozenset({"grid"}),
+        )
     assert exc.value.field == "min_chain_count" and "missing" in exc.value.reason
 
 
@@ -424,7 +484,10 @@ def test_build_dataclass_rejects_fractional_int() -> None:
     from algotrading.core.config import ConfigFieldError, build_dataclass
 
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "min_chain_count": 6.5}, section="qc_threshold")
+        build_dataclass(
+            QcThresholdConfig, {**_GOOD_QC, "min_chain_count": 6.5}, section="qc_threshold",
+            caller_supplied=frozenset({"grid"}),
+        )
     assert exc.value.field == "min_chain_count"
 
 
@@ -432,7 +495,10 @@ def test_post_init_range_validation_raises_labelled_error() -> None:
     from algotrading.core.config import ConfigFieldError, build_dataclass
 
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(QcThresholdConfig, {**_GOOD_QC, "max_spread_pct": -0.01}, section="qc_threshold")
+        build_dataclass(
+            QcThresholdConfig, {**_GOOD_QC, "max_spread_pct": -0.01}, section="qc_threshold",
+            caller_supplied=frozenset({"grid"}),
+        )
     assert exc.value.section == "qc_threshold"
     assert exc.value.field == "max_spread_pct"
     assert exc.value.value == -0.01

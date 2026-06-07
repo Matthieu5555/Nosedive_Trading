@@ -15,6 +15,7 @@ Vincent's adapters as survivors, so this is a permanent export, not a transition
 
 from __future__ import annotations
 
+from .calendar_resolver import CalendarResolver
 from .chain_planning import (
     AvailableChain,
     ChainPlan,
@@ -24,6 +25,7 @@ from .chain_planning import (
     select_chain,
     select_expiries,
     select_strikes,
+    select_strikes_delta_band,
 )
 
 # --- re-exports of the vendored M5 instrument model (kept per ADR 0023; Saxo/Deribit ride it) ---
@@ -37,14 +39,36 @@ from .contracts import (  # noqa: E402
 )
 from .discovery import OptionParams, normalize_option_params  # noqa: E402
 from .errors import (
+    CalendarResolutionError,
     DuplicateBrokerContractIdError,
+    IndexRegistryError,
     InstrumentMasterConflictError,
+    MembershipError,
+    StrikeSelectionError,
     UniverseError,
     UnknownContractError,
     UnknownInstrumentError,
     UnresolvedContractError,
 )
+from .index_registry import (
+    IbkrRef,
+    IndexEntry,
+    IndexRegistry,
+    parse_index_registry,
+)
+from .membership import (
+    BasketMember,
+    MembershipChange,
+    basket_weight_sum,
+    ingest_membership_changes,
+    members,
+)
 from .normalization import normalize_expiry, normalize_right, resolve_contract_row
+from .registry_loader import (
+    enabled_indices,
+    index_registry_from_config,
+    load_index_registry,
+)
 from .service import (
     ResolvedContract,
     UniverseService,
@@ -56,28 +80,45 @@ from .service import (
 
 __all__ = [
     "AvailableChain",
+    "BasketMember",
+    "CalendarResolutionError",
+    "CalendarResolver",
     "ChainPlan",
     "ChainSelection",
     "DuplicateBrokerContractIdError",
+    "IbkrRef",
+    "IndexEntry",
+    "IndexRegistry",
+    "IndexRegistryError",
     "InstrumentKeyError",
     "InstrumentMasterConflictError",
+    "MembershipChange",
+    "MembershipError",
     "OptionContract",
     "OptionParams",
     "ResolvedContract",
     "Right",
+    "StrikeSelectionError",
     "Underlying",
     "UniverseError",
     "UniverseService",
     "UnknownContractError",
     "UnknownInstrumentError",
     "UnresolvedContractError",
+    "basket_weight_sum",
     "build_instrument_masters",
     "canonical_payload",
+    "enabled_indices",
+    "index_registry_from_config",
+    "ingest_membership_changes",
     "instrument_key",
+    "load_index_registry",
     "materialize_universe",
+    "members",
     "normalize_expiry",
     "normalize_option_params",
     "normalize_right",
+    "parse_index_registry",
     "parse_instrument_key",
     "plan_chain",
     "resolve_chain",
@@ -86,4 +127,5 @@ __all__ = [
     "select_chain",
     "select_expiries",
     "select_strikes",
+    "select_strikes_delta_band",
 ]

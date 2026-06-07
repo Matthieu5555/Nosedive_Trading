@@ -18,6 +18,18 @@ Both stages share one :class:`ChainSelection` config, so the bound on maturities
 ATM emphasis are defined once. Everything is unit-tested with plain stand-ins, no broker
 present.
 
+Strike selection itself comes in two coexisting policies over the *same* listed-strike
+shape — one policy surface, not one per broker or per script (WS 1B):
+
+* **%-of-spot** (:func:`select_strikes`) — keep strikes inside ``spot ± strike_window_pct``
+  with a per-side floor. A request-shaping heuristic; its window lives in code.
+* **delta band** (:func:`select_strikes_delta_band`) — keep, **per tenor**, the contiguous
+  block of listed strikes from the 30Δ put through ATM to the 30Δ call. The 30Δ bound and
+  the delta convention are economic and come from typed ``universe.yaml`` config
+  (:class:`~algotrading.core.config.StrikeSelectionConfig`), never a ``.py`` literal; delta
+  is read from the pricing engine at ``carry == 0`` (so spot and forward delta coincide),
+  never re-derived here.
+
 This is where the SPY/2SPY lesson lives generally: a name lists several trading classes
 (the primary ``SPY`` plus secondary settlement classes ``2SPY``/``3SPY`` whose strike
 and expiry grids do *not* combine into the same listed contracts), so :func:`select_chain`
@@ -33,7 +45,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from algotrading.core.config import StrikeSelectionConfig
 from algotrading.infra.contracts import InstrumentKey
+from algotrading.infra.pricing import from_forward, price_european
+
+from .errors import StrikeSelectionError
 
 # Both option rights are always planned; the adapter qualifies calls and puts at each
 # (expiry, strike). Kept as a named constant so the one place that fixes the pair is here.
@@ -208,6 +224,135 @@ def select_strikes(
         windowed_above = above[: selection.min_strikes_per_side]
 
     return tuple(sorted(set(windowed_below) | set(windowed_above)))
+
+
+def _call_nd1_undiscounted(*, forward: float, strike: float, maturity_years: float,
+                           volatility: float, discount_factor: float) -> float:
+    """The undiscounted forward call delta ``N(d1)`` for one strike, via the pricing engine.
+
+    Built at ``carry == 0`` with :func:`pricing.from_forward` (``spot=None``), so spot and
+    forward delta coincide. The engine returns the *discounted* spot delta
+    (``discount_factor · N(d1)`` for a call), so dividing by the discount factor recovers
+    the undiscounted ``N(d1)`` — the engine is the single source of the delta, never a
+    re-derivation here. ``N(d1)`` is the one monotone quantity the band keys off: it falls
+    from ~1 (deep ITM call / deep OTM put) through 0.5 (ATM) to ~0 (deep OTM call) as the
+    strike rises, so the put and call sides are two thresholds on the same number.
+    """
+    state = from_forward(
+        forward=forward,
+        strike=strike,
+        maturity_years=maturity_years,
+        volatility=volatility,
+        discount_factor=discount_factor,
+        option_right="C",
+        spot=None,  # carry == 0: spot delta == forward delta (the convention pin)
+    )
+    return price_european(state).delta / discount_factor
+
+
+def select_strikes_delta_band(
+    strikes: Iterable[float],
+    *,
+    forward: float,
+    maturity_years: float,
+    discount_factor: float,
+    volatility: float,
+    selection: StrikeSelectionConfig,
+) -> tuple[float, ...]:
+    """Keep the contiguous block of listed strikes from the 30Δ put through ATM to the 30Δ call.
+
+    The second strike-selection policy over the same listed-strike shape as
+    :func:`select_strikes`, applied **per tenor** (the forward and maturity differ by
+    expiry, so the same dollar strike is a different delta at each maturity — selecting once
+    on a representative tenor is the silent wrong answer). For each listed strike a call
+    state is built at ``carry == 0`` (:func:`pricing.from_forward`, ``spot=None``) so spot
+    delta and forward delta coincide, and its delta is read from the pricing engine — never
+    re-derived here.
+
+    A strike is kept when **both** its call-delta magnitude and its put-delta magnitude are
+    at least ``selection.delta_bound``: that is exactly the central block bounded by the
+    30Δ call (where the call delta falls to the bound) and the 30Δ put (where the put delta
+    falls to the bound). ATM (both magnitudes ≈ 0.5) is always inside; the wings (one
+    magnitude below the bound) are excluded. The comparison is ``>=`` so a strike sitting
+    *exactly* on the 30Δ boundary is kept (the boundary-exact case).
+
+    ``selection.delta_convention`` pins which delta the bound is read against, built at the
+    same ``carry == 0`` so the two coincide up to the discount factor:
+    ``forward_undiscounted`` measures against the forward delta ``N(d1)`` /
+    ``1 − N(d1)``; ``spot_discounted`` measures against the engine's discounted spot delta
+    ``discount_factor · N(d1)`` / ``discount_factor · (1 − N(d1))``. They differ only by the
+    discount factor, which can move the boundary strike — hence the flag is pinned.
+
+    Returns the kept strikes ascending and de-duplicated, exactly as :func:`select_strikes`.
+    When fewer than ``selection.min_strikes_per_side`` listed strikes fall inside the band
+    on a side (a thin listing, or an all-wing ladder where nothing is inside 30Δ), the
+    nearest-the-money block of ``min_strikes_per_side`` strikes either side of the forward is
+    returned instead — a labeled floor, never an empty silent result.
+
+    No look-ahead: every input (forward, working vol, discount factor) is as-of the
+    snapshot/date being selected for; the function reads no wall clock and no later
+    observation.
+    """
+    if not (isinstance(forward, (int, float)) and math.isfinite(forward) and forward > 0.0):
+        raise StrikeSelectionError("forward", forward, "must be a finite number > 0")
+    if not (
+        isinstance(volatility, (int, float)) and math.isfinite(volatility) and volatility > 0.0
+    ):
+        raise StrikeSelectionError("volatility", volatility, "must be a finite number > 0")
+    if not (
+        isinstance(maturity_years, (int, float))
+        and math.isfinite(maturity_years)
+        and maturity_years > 0.0
+    ):
+        raise StrikeSelectionError(
+            "maturity_years", maturity_years, "must be a finite number > 0"
+        )
+    if not (
+        isinstance(discount_factor, (int, float))
+        and math.isfinite(discount_factor)
+        and 0.0 < discount_factor <= 1.0
+    ):
+        raise StrikeSelectionError(
+            "discount_factor", discount_factor, "must lie in the interval (0, 1]"
+        )
+
+    positive = sorted({float(strike) for strike in strikes if float(strike) > 0.0})
+    if not positive:
+        return ()
+
+    bound = selection.delta_bound
+    discounted = selection.delta_convention == "spot_discounted"
+    factor = discount_factor if discounted else 1.0
+
+    kept_below: list[float] = []
+    kept_above: list[float] = []
+    for strike in positive:
+        nd1 = _call_nd1_undiscounted(
+            forward=forward,
+            strike=strike,
+            maturity_years=maturity_years,
+            volatility=volatility,
+            discount_factor=discount_factor,
+        )
+        call_delta = factor * nd1
+        put_delta = factor * (1.0 - nd1)
+        if call_delta >= bound and put_delta >= bound:
+            (kept_below if strike <= forward else kept_above).append(strike)
+
+    # Per-side floor — only when the band yielded fewer than the minimum on a side, exactly
+    # as the %-of-spot select_strikes does. A thin listing or an all-wing ladder (nothing
+    # inside 30Δ) then still returns the nearest-the-money block, a labeled floor (see the
+    # docstring), never an empty silent result. A side already at or above the floor is left
+    # as the band found it, so a dense central listing is not inflated past the 30Δ window.
+    min_per_side = selection.min_strikes_per_side
+    below_all = [strike for strike in positive if strike <= forward]
+    above_all = [strike for strike in positive if strike > forward]
+    if len(kept_below) < min_per_side:
+        kept_below = below_all[-min_per_side:]
+    if len(kept_above) < min_per_side:
+        kept_above = above_all[:min_per_side]
+
+    return tuple(sorted(set(kept_below) | set(kept_above)))
 
 
 def plan_chain(

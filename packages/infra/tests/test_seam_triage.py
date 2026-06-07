@@ -163,6 +163,78 @@ def test_missing_primary_key_field_is_rejected(tmp_path: Path) -> None:
         store.write("triage_records", [bad])
 
 
+def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
+    # source="qc": a grid coverage-floor breach (WS 1H). "SPX" is missing its "3m" tenor
+    # entirely, so the per-tenor coverage-floor check fails and names the tenor.
+    import dataclasses
+
+    from algotrading.core.config import GridQcConfig
+    from algotrading.infra.qc import check_tenor_coverage_floor
+
+    grid_cfg = GridQcConfig(
+        version="grid-qc-seam",
+        tenor_floors={"10d": 2, "1m": 2, "3m": 2},
+        band_low_delta=-0.30,
+        band_high_delta=0.30,
+        max_delta_step=0.35,
+    )
+    thresholds = thresholds_from_config(dataclasses.replace(QC_CONFIG, grid=grid_cfg))
+
+    class _GP:
+        def __init__(self, underlying: str, tenor: str, delta: float) -> None:
+            self.underlying = underlying
+            self.tenor_label = tenor
+            self.delta = delta
+
+    points = [_GP("SPX", "10d", d) for d in (-0.3, 0.3)]
+    points += [_GP("SPX", "1m", d) for d in (-0.3, 0.3)]  # no "3m" at all
+    result = check_tenor_coverage_floor(
+        points, "SPX", ("10d", "1m", "3m"),
+        thresholds=thresholds, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    report = build_report([result], run_id=RUN_ID, run_ts=RUN_TS)
+    return build_triage(qc_report=report)
+
+
+def test_grid_breach_lands_in_triage_records(tmp_path: Path) -> None:
+    # A grid coverage breach routes through triage_from_qc (no new path) into the one
+    # triage_records table with source="qc" (ADR 0010), and round-trips through storage.
+    records = _grid_breach_qc_report()
+    assert len(records) == 1
+    (record,) = records
+    assert record.source == "qc"
+    assert record.name == "tenor_coverage_floor"
+    assert record.underlying == "SPX"
+    # The headline names the breaching tenor, not a generic banner.
+    assert "3m" in record.detail
+
+    store = ParquetStore(tmp_path)
+    store.write("triage_records", records)
+    assert store.read("triage_records") == list(records)
+
+
+def test_grid_breach_malformed_triage_record_rejected(tmp_path: Path) -> None:
+    # The seam negative half: a malformed grid-breach triage row (naive run_ts) is rejected
+    # by write-ahead validation, never silently coerced.
+    (good,) = _grid_breach_qc_report()
+    bad = TriageRecord(
+        run_id=good.run_id,
+        run_ts=datetime(2026, 6, 2, 23, 30),  # naive — no tzinfo
+        underlying=good.underlying,
+        source=good.source,
+        name=good.name,
+        target_key=good.target_key,
+        status=good.status,
+        severity=good.severity,
+        reason_code=good.reason_code,
+        detail=good.detail,
+        threshold_version=good.threshold_version,
+    )
+    store = ParquetStore(tmp_path)
+    with pytest.raises(ContractValidationError, match="timezone-aware"):
+        store.write("triage_records", [bad])
+
+
 def test_triage_date_partitioning_groups_by_underlying(tmp_path: Path) -> None:
     # The unified records carry their own underlying, so a mixed-underlying write lands
     # in the right partitions and reads back the same set per the round-trip above.

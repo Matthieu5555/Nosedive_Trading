@@ -31,6 +31,39 @@ real deps):
   handling → `RawMarketEvent`. **Read-only** — only `/iserver/marketdata/*` is ever touched, never
   an order endpoint (asserted in `test_cp_rest_adapter.py`).
 
+### Historical daily-OHLC backfill (ADR 0031) — unattended, OAuth 1.0a
+
+The history path the live snapshot path lacks: years of underlying daily OHLC into the immutable,
+provider-partitioned `DailyBar` table (WS 1C, Part C). Runs unattended over the hosted CP Web API
+with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
+
+- `connectivity/cp_rest_oauth.py` — the OAuth 1.0a signer (pycryptodome, referencing `ibind`, not
+  depending on it): `signature_base_string` (RFC 5849 §3.4.1), `sign_hmac_sha256` (LST-keyed
+  per-request signature), `sign_request`, `authorization_header`. Pure, no clock/nonce read
+  (both injected) → a hand-computed known-answer vector pins it (`test_cp_rest_oauth.py`). A
+  missing/expired token raises a labeled `CpOAuthError`, never a bare exception.
+- `connectivity/cp_rest_transport.py` — extended with an optional `oauth_signer`: when set, every
+  request carries the `Authorization: OAuth …` header (the hosted-endpoint path); left `None` it is
+  the unchanged ADR 0024 local-Gateway cookie path.
+- `connectivity/cp_rest_session.py` — extended with the brokerage-session open: `open_brokerage_
+  session` (POST `ssodh/init`) and `wait_until_established` — blocks (injected sleep, no real wait)
+  until the session reports `established: true`, raising `SessionNotEstablishedError` otherwise, so
+  a history request is never fired into a not-yet-established session.
+- `collectors/cp_rest_history_normalize.py` — `history_to_daily_bars`: a CP `marketdata/history`
+  payload → `DailyBar` rows; each bar's `trade_date` is read from its **own** epoch-ms timestamp
+  (no look-ahead). Malformed rows (`high < low`, close out of range, negative volume, NaN, missing
+  field) are rejected with a labeled error at the normalize door.
+- `collectors/cp_rest_history.py` — `CpRestHistoryCollector`: fetch + normalize + persist, hardened
+  per ADR 0031 §5 — established-gated, warmup call, 5-concurrent cap, exponential-with-cap retry
+  around maintenance windows, and **resumable** (`backfill` re-fetches only the missing tail;
+  idempotent on `(provider, underlying, trade_date)`). **Read-only** — only
+  `/iserver/marketdata/history`, never an order endpoint (`test_cp_rest_history.py`). Use a
+  **dedicated second IBKR username** so the backfill never knocks out the live feed (one username =
+  one brokerage session).
+- `config.py` + `configs/ibkr_history.yaml` — the no-hardcode connectivity config (base URL,
+  timeouts, the cap, established-wait, retry/backoff). Secrets (consumer key/secret, the Live
+  Session Token) stay in `.env`, never here (C7 discipline).
+
 ### Nautilus TWS (fallback, ADR 0025)
 
 - `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: the Nautilus
@@ -43,9 +76,10 @@ real deps):
 
 The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket, no secrets.
 
-- The **normalizers**, **discovery**, **session keepalive** (fake clock/transport), the adapter's
-  **REST snapshot** + **WS frame** handling, and the **REST↔TWS equivalence** test all run in CI
-  against fakes — the verifiable core.
+- The **normalizers**, **discovery**, **session keepalive** + **established-wait** (fake
+  clock/transport), the adapter's **REST snapshot** + **WS frame** handling, the **OAuth 1.0a
+  signer** (known-answer vector), the **history fetch/normalize/backfill-resume** path, and the
+  **REST↔TWS equivalence** test all run in CI against fakes — the verifiable core.
 - The Nautilus config builder's guard runs; its construction test skips without the `ibkr` extra.
 - Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the
   Nautilus-TWS path with `uv sync --extra ibkr`; the REST path needs the CP Gateway running locally.

@@ -15,20 +15,38 @@ to prevent. Every failing result carries the offender under an explicit key in i
 back out; the unified triage layer reuses them so the same offender is named the same way
 everywhere.
 
-## The ten checks (+ anomaly)
+## The twelve checks (+ anomaly)
 
-`collector_continuity`, `underlying_quote_health`, `option_chain_coverage`,
-`forward_stability`, `parity_residual`, `iv_solver_convergence`, `surface_fit_error`,
-`calendar_sanity`, `greek_sanity`, `scenario_completeness` — plus `detect_anomaly`
-(a median/MAD robust z-score against a rolling baseline). `greek_sanity` folds in ADR
-0006's deferred reconcile precondition: a broker row for a different contract is a
-mis-wired join and raises `ContractKeyMismatchError`, not a meaningless discrepancy.
+The ten instrument-agnostic checks — `collector_continuity`, `underlying_quote_health`,
+`option_chain_coverage`, `forward_stability`, `parity_residual`, `iv_solver_convergence`,
+`surface_fit_error`, `calendar_sanity`, `greek_sanity`, `scenario_completeness` — plus two
+grid-aware checks (WS 1H) that validate WS 1F's projected (tenor × delta-band) grid *as a
+grid*, not as a flat chain:
+
+- `tenor_coverage_floor` — for each pinned tenor (P0.1 grid, config) the count of usable
+  grid points clears that tenor's configured floor (`>=` passes; a tenor absent entirely is
+  a breach, not a skip). Names the specific breaching tenors with measured-vs-floor counts.
+- `delta_band_completeness` — for each pinned tenor the selected strikes' deltas span the
+  configured Δ-band (30Δ put → ATM → 30Δ call) with no interior gap wider than the
+  configured max step. The band edges come from **config**, never from the data under test,
+  so a thin chain fails rather than silently defining its own band. Empty, single-strike,
+  and one-sided tenors are explicit labelled breaches.
+
+Both grid checks are critical-severity (a grid breach pages) and key on config, not on the
+data — their cut-offs live in the typed `qc.grid` block (ADR 0028), not as `.py` literals.
+
+Plus `detect_anomaly` (a median/MAD robust z-score against a rolling baseline).
+`greek_sanity` folds in ADR 0006's deferred reconcile precondition: a broker row for a
+different contract is a mis-wired join and raises `ContractKeyMismatchError`, not a
+meaningless discrepancy.
 
 ## Entry points
 
 - `thresholds_from_config(config.qc_threshold)` → `QcThresholds` (platform cut-offs +
-  QC-owned supplements, each documented in `thresholds.py`).
-- the ten `check_*` functions and `detect_anomaly`.
+  QC-owned supplements, each documented in `thresholds.py`; the grid cut-offs are surfaced
+  via `.grid` / `.tenor_floor(tenor)` / `.band_low_delta` / `.band_high_delta` /
+  `.max_delta_step`, read from the typed `qc.grid` config block).
+- the twelve `check_*` functions and `detect_anomaly`.
 - `build_report(results, run_id=, run_ts=)` → `QcReport`; `escalation_level(report)` →
   `none` / `notice` / `page`.
 - `named_offender` / `result_headline` — the offender-naming helpers the triage layer reuses.
@@ -40,6 +58,9 @@ the exception: the market-data plane's session summary is not a persisted contra
 merged `collectors` package (C1) does not export one yet, so the check declares its minimal
 input surface as the `CollectorContinuityInput` Protocol (`inputs.py`) — any object with
 `session_id` / `gap_count` / `subscribed_count` / `covered_count` satisfies it, no adapter.
+The two grid checks take the same approach: they read WS 1F's projected grid cells through
+the `GridPointInput` Protocol (`underlying` / `tenor_label` / `delta`), so the QC plane does
+not import 1F's concrete `ProjectedOptionAnalytics` (which satisfies it with no adapter).
 
 ## What it does *not* do
 

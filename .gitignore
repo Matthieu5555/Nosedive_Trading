@@ -54,3 +54,6 @@ Test Lenny/
 # OS / editor cruft
 .DS_Store
 *.swp
+
+# Claude Code runtime lock
+.claude/scheduled_tasks.lock

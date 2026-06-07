@@ -40,3 +40,29 @@ class CollectorContinuityInput(Protocol):
 
     @property
     def covered_count(self) -> int: ...
+
+
+@runtime_checkable
+class GridPointInput(Protocol):
+    """One projected grid cell, as the two grid-aware checks (WS 1H) read it.
+
+    The grid checks validate WS 1F's projected (tenor × delta-band) grid. They need only
+    three facts off each cell, so — like :class:`CollectorContinuityInput` — the QC plane
+    declares the minimum surface as a structural Protocol rather than importing 1F's
+    concrete ``ProjectedOptionAnalytics`` (which satisfies it with no adapter):
+
+    - ``underlying`` — which underlying the cell belongs to (named on a breach);
+    - ``tenor_label`` — the pinned tenor the cell projects onto (``10d``…``3y``), the key
+      the coverage floor and the band check group by;
+    - ``delta`` — the option's *actual* signed decimal delta at the solved strike, the
+      measure the Δ-band completeness check spans against the configured band edges.
+    """
+
+    @property
+    def underlying(self) -> str: ...
+
+    @property
+    def tenor_label(self) -> str: ...
+
+    @property
+    def delta(self) -> float: ...

@@ -9,8 +9,16 @@
 is **superseded** — retained as dead reference, reached only by direct import, not surfaced here.
 """
 
-from .cp_rest_session import CpRestSession
-from .cp_rest_transport import CpRestTransport, CpRestTransportError
+from .cp_rest_oauth import (
+    CpOAuthError,
+    OAuthCredentials,
+    authorization_header,
+    sign_hmac_sha256,
+    sign_request,
+    signature_base_string,
+)
+from .cp_rest_session import CpRestSession, SessionNotEstablishedError
+from .cp_rest_transport import CpRestTransport, CpRestTransportError, OAuthSigner
 from .ibkr_transport_choice import DEFAULT_IBKR_TRANSPORT, IbkrTransport, select_ibkr_transport
 from .nautilus_ibkr import IbkrExtraNotInstalled, build_data_client_config
 
@@ -21,7 +29,16 @@ __all__ = [
     # Client Portal REST path (ADR 0024)
     "CpRestTransport",
     "CpRestTransportError",
+    "OAuthSigner",
     "CpRestSession",
+    "SessionNotEstablishedError",
+    # OAuth 1.0a signing (ADR 0031)
+    "CpOAuthError",
+    "OAuthCredentials",
+    "authorization_header",
+    "sign_request",
+    "signature_base_string",
+    "sign_hmac_sha256",
     # Path selector (ADR 0024 §2)
     "IbkrTransport",
     "DEFAULT_IBKR_TRANSPORT",

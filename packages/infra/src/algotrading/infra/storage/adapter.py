@@ -38,6 +38,7 @@ from .errors import AppendOnlyViolation, DuplicateKeyInBatch, VersionedWriteNotA
 from .partitioning import (
     partition_dir,
     partition_file,
+    provider_of,
     table_dir,
     trade_date_of,
     underlying_of,
@@ -102,16 +103,19 @@ class ParquetStore:
                 raise DuplicateKeyInBatch(table, key)
             seen.add(key)
 
-        grouped: dict[tuple[date, str], list[object]] = defaultdict(list)
+        grouped: dict[tuple[str | None, date, str], list[object]] = defaultdict(list)
         for record in records:
-            grouped[(trade_date_of(record), underlying_of(record))].append(record)
+            provider = provider_of(record) if spec.provider_partitioned else None
+            grouped[(provider, trade_date_of(record), underlying_of(record))].append(record)
 
         schema = arrow_schema(spec.contract)
         prepared: list[tuple[Path, pa.Table]] = []
-        for (trade_date, underlying), partition_records in grouped.items():
-            path = partition_file(self.root, table, trade_date, underlying, version)
+        for (provider, trade_date, underlying), partition_records in grouped.items():
+            path = partition_file(
+                self.root, table, trade_date, underlying, version, provider
+            )
             new_table = self._prepare_partition(
-                table, spec, schema, trade_date, underlying, partition_records, version
+                table, spec, schema, trade_date, underlying, partition_records, version, provider
             )
             prepared.append((path, new_table))
         self._commit(prepared)
@@ -125,6 +129,7 @@ class ParquetStore:
         underlying: str,
         records: list[object],
         version: str | None = None,
+        provider: str | None = None,
     ) -> pa.Table:
         """Build the Arrow table to land for one partition, touching no files.
 
@@ -134,7 +139,7 @@ class ParquetStore:
         semantics). It mutates nothing, so a collision is surfaced in the prepare
         phase, before any partition in the batch is committed.
         """
-        path = partition_file(self.root, table, trade_date, underlying, version)
+        path = partition_file(self.root, table, trade_date, underlying, version, provider)
         new_rows = [to_row(spec.contract, record) for record in records]
         new_table = _rows_to_arrow(new_rows, schema)
 
@@ -196,6 +201,7 @@ class ParquetStore:
         trade_date: date | None,
         underlying: str | None,
         version: str | None = None,
+        provider: str | None = None,
     ) -> list[Path]:
         """The Parquet files a read covers — live rows and restatements never mix.
 
@@ -205,13 +211,22 @@ class ParquetStore:
         restatement's files. So the live partition and a restatement of it, which
         coexist on disk for the same ``(trade_date, underlying)``, are read back
         separately and a version-blind read can never double-count overlapping keys.
+
+        ``provider`` narrows a provider-partitioned read to one source's segment; left
+        ``None`` a table-wide read globs across every provider, which is correct for the
+        non-provider-partitioned tables (no provider segment exists) and a deliberate
+        cross-source scan for provider-partitioned ones.
         """
         if trade_date is not None and underlying is not None:
             # One partition: exactly the live file (version=None) or exactly the one
             # restatement file (version=<V>). partition_file places each precisely.
-            single = partition_file(self.root, table, trade_date, underlying, version)
+            single = partition_file(
+                self.root, table, trade_date, underlying, version, provider
+            )
             return [single] if single.exists() else []
         base = table_dir(self.root, table)
+        if provider is not None:
+            base = base / f"provider={provider}"
         if not base.exists():
             return []
         files = sorted(base.glob("**/*.parquet"))
@@ -229,6 +244,7 @@ class ParquetStore:
         trade_date: date | None = None,
         underlying: str | None = None,
         version: str | None = None,
+        provider: str | None = None,
     ) -> list[Any]:
         """Read records for a table (optionally one partition) back into contracts.
 
@@ -242,9 +258,13 @@ class ParquetStore:
         keeps a default read from returning both and double-counting overlapping
         primary keys. To inspect restatements, enumerate them with
         :meth:`list_versions` and read each by its explicit version.
+
+        ``provider`` narrows a provider-partitioned read to one source; left ``None`` it
+        reads across every provider (the only behaviour for non-provider-partitioned
+        tables, which have no provider segment).
         """
         spec = spec_for_table(table)
-        files = self._partition_files(table, trade_date, underlying, version)
+        files = self._partition_files(table, trade_date, underlying, version, provider)
         if not files:
             return []
         connection = duckdb.connect()
@@ -264,28 +284,45 @@ class ParquetStore:
 
     # -- partition management --------------------------------------------
     def list_partitions(self, table: str) -> list[tuple[date, str]]:
-        """List the (trade_date, underlying) partitions present for a table."""
+        """List the (trade_date, underlying) partitions present for a table.
+
+        For a provider-partitioned table the same ``(trade_date, underlying)`` may exist
+        under more than one provider; this returns the de-duplicated set across providers,
+        keeping the legacy two-tuple shape.
+        """
         base = table_dir(self.root, table)
         if not base.exists():
             return []
+        spec = spec_for_table(table)
+        date_roots = (
+            sorted(base.glob("provider=*")) if spec.provider_partitioned else [base]
+        )
         found: list[tuple[date, str]] = []
-        for date_dir in sorted(base.glob("trade_date=*")):
-            trade_date = date.fromisoformat(date_dir.name.split("=", 1)[1])
-            for underlying_dir in sorted(date_dir.glob("underlying=*")):
-                underlying = underlying_dir.name.split("=", 1)[1]
-                found.append((trade_date, underlying))
+        seen: set[tuple[date, str]] = set()
+        for date_root in date_roots:
+            for date_dir in sorted(date_root.glob("trade_date=*")):
+                trade_date = date.fromisoformat(date_dir.name.split("=", 1)[1])
+                for underlying_dir in sorted(date_dir.glob("underlying=*")):
+                    underlying = underlying_dir.name.split("=", 1)[1]
+                    key = (trade_date, underlying)
+                    if key not in seen:
+                        seen.add(key)
+                        found.append(key)
         return found
 
     def list_versions(
-        self, table: str, trade_date: date, underlying: str
+        self, table: str, trade_date: date, underlying: str, provider: str | None = None
     ) -> list[str]:
         """List the ``version=<V>`` sub-partitions present for one partition.
 
         Returns the version strings (sorted), empty when the partition is unversioned
         or absent. This is how a restatement test asserts that a newer-code run landed
-        a new version beside the older one rather than overwriting it.
+        a new version beside the older one rather than overwriting it. ``provider`` selects
+        the source segment for a provider-partitioned table.
         """
-        partition = partition_dir(self.root, table, trade_date, underlying)
+        partition = partition_dir(
+            self.root, table, trade_date, underlying, None, provider
+        )
         if not partition.exists():
             return []
         return sorted(
@@ -300,14 +337,18 @@ class ParquetStore:
         trade_date: date,
         underlying: str,
         version: str | None = None,
+        provider: str | None = None,
     ) -> None:
         """Delete one partition. Idempotent: deleting a missing partition is fine.
 
         With ``version=None`` the whole ``(trade_date, underlying)`` partition is
         removed, including any version sub-partitions; with a version only that one
-        ``version=<V>`` sub-partition is removed, leaving the others intact.
+        ``version=<V>`` sub-partition is removed, leaving the others intact. ``provider``
+        selects the source segment for a provider-partitioned table.
         """
-        target = partition_dir(self.root, table, trade_date, underlying, version)
+        target = partition_dir(
+            self.root, table, trade_date, underlying, version, provider
+        )
         if target.exists():
             shutil.rmtree(target)
 

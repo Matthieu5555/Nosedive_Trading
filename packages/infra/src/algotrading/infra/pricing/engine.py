@@ -8,12 +8,16 @@ and attaching a caller-supplied provenance stamp. The stamp is built by the call
 its inputs with no wall-clock read.
 
 Cash-Greek conventions, per unit of underlying (the risk engine multiplies by the
-contract multiplier and the held quantity):
+contract multiplier and the held quantity). The canonical definitions and the two
+convention forks live in :mod:`dollar_greeks` (ADR 0036); this adapter fills the
+``PricingResult`` dollar layer with the pinned-default units:
 
 * ``dollar_delta = delta * spot`` — dollar value change for a 1.0 move in spot.
 * ``dollar_gamma = gamma * spot**2`` — dollar gamma; P&L of a move dS is about
   ``0.5 * dollar_gamma * (dS / spot)**2``.
 * ``dollar_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
+* ``dollar_theta = theta / 365`` — per calendar day (the pinned default day-count).
+* ``dollar_rho = rho * 0.01`` — per 1% rate.
 """
 
 from __future__ import annotations
@@ -72,6 +76,8 @@ def pricing_result(
         dollar_delta=greeks.delta * state.spot,
         dollar_gamma=greeks.gamma * state.spot * state.spot,
         dollar_vega=greeks.vega * 0.01,
+        dollar_theta=greeks.theta / 365.0,
+        dollar_rho=greeks.rho * 0.01,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
     )

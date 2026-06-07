@@ -31,15 +31,30 @@ lines), so a session resolves to the jobs it fed.
 - **metrics** — five well-labeled prometheus metrics over an injected registry:
   `events_collected_total`, `stale_quote_ratio`, `forward_failures_total`,
   `solver_failures_total`, `scenario_run_seconds`.
-- **alerts** — four named conditions with documented detection intervals on an injected
+- **alerts** — named conditions with documented detection intervals on an injected
   clock: collector death, missing partition (named, never interpolated), elevated
-  failure rate, QC fail (reuses the QC plane's own escalation rule).
+  failure rate, QC fail (reuses the QC plane's own escalation rule), and grid coverage
+  breach (`coverage_breach_alerts`, WS 1H — one alert per pinned tenor whose grid coverage
+  fell below its floor, subject `underlying@tenor`; the orthogonal twin of missing
+  partition — *present but too thin* vs *absent* — read off the QC report, not recomputed).
 - **dashboard** — `build_dashboard`/`render_dashboard`: a pure status object answering
   is-data-flowing / are-surfaces-building / is-QC-passing / are-scenarios-current, with
   the last healthy run and current backlog first-class.
 - **run_state** — the durable JSON-lines stage ledger that makes restart idempotent and
   the dashboard answerable. Nothing reads a clock; timestamps are injected.
 - **pipeline** — `run_end_of_day`, the ordered/idempotent/logged EOD sequence.
+- **eod_runner** — the one-shot the systemd timer fires (WS 1G, ADR 0032), behind
+  `scripts/eod_run.py`. `main()` resolves the trade date (default = the injected clock's market
+  day; `--trade-date` for catch-up; a *future* date rejected — no look-ahead), scopes the fire
+  to a calendar group (`--calendar XEUR` / `--index SX5E`; default = all enabled), reads the 1J
+  registry's `enabled_indices()` (never a hardcoded list), skips a non-session cleanly via the
+  calendar resolver, captures each index at its own `session_close`, binds one `correlation_id`,
+  calls `run_end_of_day`, and freezes a per-run manifest (config snapshot + hashes + code
+  identity). Exits non-zero on any stage failure so `Restart=on-failure`/`OnFailure=` engage. The
+  collection stage is the 1C seam — until 1C lands, `default_stages_builder` raises a labeled
+  error and a caller injects a replay/fixture `stages_builder` to exercise the timer path. The
+  unit files (`eod-capture.service`, `eod-capture@{XEUR,XNYS}.timer`, `eod-capture-alert.service`)
+  live under `documentation/connectivity/`.
 - **reconstruction/** — historical replay/backfill over a date range; see its own README.
 
 ## Gotchas
@@ -59,7 +74,12 @@ lines), so a session resolves to the jobs it fed.
 ## Tests
 
 `packages/infra/tests/test_orchestration.py` (behavior, not coverage: kill/restart
-idempotency, the five metrics, the four alerts, dashboard, reconciliation, run-state)
-and `test_replay_reconstruction.py` for the reconstruction subpackage. The headline
+idempotency, the five metrics, the alerts — including the WS 1H coverage-breach alert and
+its distinctness from missing-partition — dashboard, reconciliation, run-state),
+`test_eod_run.py` (WS 1G: the runner builds+invokes `run_end_of_day` with a bound
+correlation id and injected clock, idempotent re-fire, missed-day catch-up, mid-run-kill
+restart convergence, non-zero failure exit, registry-driven enabled index set, holiday
+no-op, future-date rejection, per-run manifest freeze, and the systemd-unit ADR-0032
+obligations), and `test_replay_reconstruction.py` for the reconstruction subpackage. The headline
 acceptance tests (`test_replay_byte_identical.py`, `test_provenance_verification.py`,
 `test_handover_e2e.py`) drive this layer's actor + QC seam.

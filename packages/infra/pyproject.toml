@@ -11,6 +11,7 @@ dependencies = [
     # drive our pure analytics. It caps pandas at <3, hence the relaxed pandas pin below — no
     # source module imports pandas (the core is polars/pyarrow/duckdb/numpy), so the downgrade
     # from 3.x to 2.3.x is inert.
+    "exchange-calendars>=4.13.2",
     "nautilus-trader>=1.227",
     "numpy>=2.4.6",
     "pandas>=2.3",

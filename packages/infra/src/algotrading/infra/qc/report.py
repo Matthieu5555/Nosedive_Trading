@@ -75,6 +75,8 @@ _NAME_KEYS: tuple[str, ...] = (
     "missing_cells",
     "missing_contracts",
     "failing_solvers",
+    "breaching_tenors",
+    "band_gaps",
     "underlying",
     "metric",
     "target",

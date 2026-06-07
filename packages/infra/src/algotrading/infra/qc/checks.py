@@ -29,7 +29,7 @@ from algotrading.infra.snapshots import SnapshotBatch
 from algotrading.infra.surfaces import CalendarViolation, SliceFit
 
 from .errors import ContractKeyMismatchError, EmptyBaselineError
-from .inputs import CollectorContinuityInput
+from .inputs import CollectorContinuityInput, GridPointInput
 from .result import (
     SEVERITY_CRITICAL,
     SEVERITY_WARNING,
@@ -54,6 +54,8 @@ CHECK_SURFACE_FIT_ERROR = "surface_fit_error"
 CHECK_CALENDAR_SANITY = "calendar_sanity"
 CHECK_GREEK_SANITY = "greek_sanity"
 CHECK_SCENARIO_COMPLETENESS = "scenario_completeness"
+CHECK_TENOR_COVERAGE_FLOOR = "tenor_coverage_floor"
+CHECK_DELTA_BAND_COMPLETENESS = "delta_band_completeness"
 CHECK_ANOMALY = "anomaly_detection"
 
 CHECK_NAMES: tuple[str, ...] = (
@@ -67,6 +69,8 @@ CHECK_NAMES: tuple[str, ...] = (
     CHECK_CALENDAR_SANITY,
     CHECK_GREEK_SANITY,
     CHECK_SCENARIO_COMPLETENESS,
+    CHECK_TENOR_COVERAGE_FLOOR,
+    CHECK_DELTA_BAND_COMPLETENESS,
 )
 
 # The quote-QC status (snapshots.QUOTE_STATUSES) that means a quote passed and may
@@ -580,6 +584,195 @@ def check_scenario_completeness(
         run_id=run_id,
         run_ts=run_ts,
     )
+
+
+def check_tenor_coverage_floor(
+    points: Sequence[GridPointInput],
+    underlying: str,
+    tenor_grid: Sequence[str],
+    *,
+    thresholds: QcThresholds,
+    run_id: str,
+    run_ts: datetime,
+) -> QcResult:
+    """Does every pinned tenor clear its per-tenor coverage floor on the grid.
+
+    ``points`` are one underlying's projected grid cells (WS 1F's
+    ``ProjectedOptionAnalytics`` rows, which satisfy :class:`GridPointInput`).
+    ``tenor_grid`` is the P0.1 pinned tenor set (read from config, never from the data).
+    For each pinned tenor it counts the cells with that ``tenor_label`` and compares the
+    count to the tenor's configured floor (``>=`` passes — boundary-exact passes, the
+    thresholds convention). A pinned tenor *absent entirely* (zero cells) is a breach, not
+    a skip — the count is simply zero. A pinned tenor with **no** configured floor is a
+    config error: :meth:`QcThresholds.tenor_floor` raises rather than defaulting to zero,
+    so a mis-keyed grid fails loudly instead of passing a tenor for free.
+
+    Measured value is the worst margin across tenors (lowest ``count - floor``): negative
+    when any tenor is short, ``>= 0`` when all clear. The context names the *specific*
+    breaching tenors with measured-vs-floor counts (mirroring
+    :func:`check_option_chain_coverage`'s "name the missing contracts" style), so an
+    operator sees *which* tenor is thin, not merely that coverage is low; the passing
+    tenors are not named.
+    """
+    counts: dict[str, int] = {tenor: 0 for tenor in tenor_grid}
+    for point in points:
+        if point.tenor_label in counts:
+            counts[point.tenor_label] += 1
+    breaches: list[dict[str, object]] = []
+    worst_margin: float | None = None
+    for tenor in tenor_grid:
+        floor = thresholds.tenor_floor(tenor)
+        count = counts[tenor]
+        margin = float(count - floor)
+        if worst_margin is None or margin < worst_margin:
+            worst_margin = margin
+        if count < floor:
+            breaches.append({"tenor": tenor, "measured": count, "floor": floor})
+    status = STATUS_PASS if not breaches else STATUS_FAIL
+    # An empty pinned grid is a wiring bug, not a data fail; guard the margin default.
+    measured = worst_margin if worst_margin is not None else 0.0
+    context = {
+        "underlying": underlying,
+        "pinned_tenor_count": len(tenor_grid),
+        "breach_count": len(breaches),
+        "breaching_tenors": breaches,
+    }
+    if status == STATUS_FAIL:
+        _log.warning(
+            "qc tenor_coverage_floor fail: underlying=%s breaches=%d",
+            underlying,
+            len(breaches),
+            extra={"underlying": underlying, "breaching_tenors": breaches},
+        )
+    return build_result(
+        check_name=CHECK_TENOR_COVERAGE_FLOOR,
+        target_key=underlying,
+        status=status,
+        severity=SEVERITY_CRITICAL,
+        measured_value=measured,
+        threshold_version=thresholds.threshold_version,
+        context=context,
+        run_id=run_id,
+        run_ts=run_ts,
+    )
+
+
+def check_delta_band_completeness(
+    points: Sequence[GridPointInput],
+    underlying: str,
+    tenor_grid: Sequence[str],
+    *,
+    thresholds: QcThresholds,
+    run_id: str,
+    run_ts: datetime,
+) -> QcResult:
+    """Do each pinned tenor's selected strikes span the Δ-band with no interior hole.
+
+    For each pinned tenor it takes the selected cells' (signed) deltas and asserts they
+    span the configured band — from ``band_low_delta`` (the 30Δ-put edge) through ATM to
+    ``band_high_delta`` (the 30Δ-call edge) — with no interior gap wider than
+    ``max_delta_step``. The band edges and max-step come from **config**, never from the
+    points themselves, so a thin chain *fails* rather than silently defining its own
+    (narrower) band — the look-ahead-style trap the spec calls out.
+
+    Three degenerate shapes are explicit breaches, labelled, never a silent pass or a
+    crash: an **empty** tenor (no cells), a **single-strike** tenor (cannot span a band),
+    and an **all-one-side** chain (only puts or only calls — does not reach both edges).
+    The context names the offending tenor and the missing band region (which edge is
+    unreached, or the ``[lo, hi]`` interior gap), so an operator sees *where* the hole is.
+
+    Measured value is the count of tenors with a band gap (0 on a fully-complete grid).
+    """
+    by_tenor: dict[str, list[float]] = {tenor: [] for tenor in tenor_grid}
+    for point in points:
+        if point.tenor_label in by_tenor:
+            by_tenor[point.tenor_label].append(point.delta)
+    band_low = thresholds.band_low_delta
+    band_high = thresholds.band_high_delta
+    max_step = thresholds.max_delta_step
+    # A tiny tolerance so a delta landing exactly on the configured edge (the 30Δ point) is
+    # treated as reaching it, not as falling just short of it.
+    edge_tol = 1e-9
+    gaps: list[dict[str, object]] = []
+    for tenor in tenor_grid:
+        deltas = sorted(by_tenor[tenor])
+        reasons = _band_gap_reasons(
+            deltas,
+            band_low=band_low,
+            band_high=band_high,
+            max_step=max_step,
+            edge_tol=edge_tol,
+        )
+        if reasons:
+            gaps.append({"tenor": tenor, "point_count": len(deltas), "missing": reasons})
+    status = STATUS_PASS if not gaps else STATUS_FAIL
+    context = {
+        "underlying": underlying,
+        "band_low_delta": band_low,
+        "band_high_delta": band_high,
+        "max_delta_step": max_step,
+        "pinned_tenor_count": len(tenor_grid),
+        "gap_count": len(gaps),
+        "band_gaps": gaps,
+    }
+    if status == STATUS_FAIL:
+        _log.warning(
+            "qc delta_band_completeness fail: underlying=%s gaps=%d",
+            underlying,
+            len(gaps),
+            extra={"underlying": underlying, "band_gaps": gaps},
+        )
+    return build_result(
+        check_name=CHECK_DELTA_BAND_COMPLETENESS,
+        target_key=underlying,
+        status=status,
+        severity=SEVERITY_CRITICAL,
+        measured_value=float(len(gaps)),
+        threshold_version=thresholds.threshold_version,
+        context=context,
+        run_id=run_id,
+        run_ts=run_ts,
+    )
+
+
+def _band_gap_reasons(
+    deltas: Sequence[float],
+    *,
+    band_low: float,
+    band_high: float,
+    max_step: float,
+    edge_tol: float,
+) -> list[dict[str, object]]:
+    """Name every way ``deltas`` fail to cover ``[band_low, band_high]`` (empty if complete).
+
+    The sorted ``deltas`` must reach the low edge (some delta ``<= band_low``), reach the
+    high edge (some delta ``>= band_high``), and have no interior gap between consecutive
+    deltas wider than ``max_step``. Each shortfall is one labelled reason. An empty or
+    single-element input cannot span the band, so it surfaces the unreached edges (and is
+    flagged as too few points) rather than crashing.
+    """
+    reasons: list[dict[str, object]] = []
+    if len(deltas) < 2:
+        # Empty or single-strike: cannot span a two-sided band. Name it as such and report
+        # the edges it does not reach so the missing region is explicit, not just "thin".
+        reasons.append({"region": "too_few_points", "point_count": len(deltas)})
+        if not deltas or deltas[0] > band_low + edge_tol:
+            reasons.append({"region": "low_edge_unreached", "band_low": band_low})
+        if not deltas or deltas[-1] < band_high - edge_tol:
+            reasons.append({"region": "high_edge_unreached", "band_high": band_high})
+        return reasons
+    if deltas[0] > band_low + edge_tol:
+        reasons.append(
+            {"region": "low_edge_unreached", "band_low": band_low, "nearest": deltas[0]}
+        )
+    if deltas[-1] < band_high - edge_tol:
+        reasons.append(
+            {"region": "high_edge_unreached", "band_high": band_high, "nearest": deltas[-1]}
+        )
+    for lo, hi in zip(deltas, deltas[1:], strict=False):
+        if hi - lo > max_step + edge_tol:
+            reasons.append({"region": "interior_gap", "from_delta": lo, "to_delta": hi})
+    return reasons
 
 
 def _median(values: Sequence[float]) -> float:

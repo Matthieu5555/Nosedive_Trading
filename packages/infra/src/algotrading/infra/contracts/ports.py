@@ -63,12 +63,15 @@ class StorageRepository(Protocol):
         trade_date: date | None = None,
         underlying: str | None = None,
         version: str | None = None,
+        provider: str | None = None,
     ) -> list[Any]:
         """Read records for a table (optionally one partition) back into contracts.
 
         ``version=None`` reads only the live rows; an explicit ``version`` reads only
         that restatement. Live rows and restatements coexist on disk; this separation
-        keeps a default read from returning both.
+        keeps a default read from returning both. ``provider`` narrows a
+        provider-partitioned read to one source (ADR 0017 / 0034 §4); left ``None`` it
+        reads across providers.
         """
         ...
 
@@ -77,7 +80,9 @@ class StorageRepository(Protocol):
         """List the ``(trade_date, underlying)`` partitions present for a table."""
         ...
 
-    def list_versions(self, table: str, trade_date: date, underlying: str) -> list[str]:
+    def list_versions(
+        self, table: str, trade_date: date, underlying: str, provider: str | None = None
+    ) -> list[str]:
         """List the ``version=<V>`` restatements present for one partition (sorted)."""
         ...
 
@@ -87,6 +92,7 @@ class StorageRepository(Protocol):
         trade_date: date,
         underlying: str,
         version: str | None = None,
+        provider: str | None = None,
     ) -> None:
         """Delete one partition (idempotent). ``version=None`` removes the whole
         partition including restatements; a version removes only that sub-partition.

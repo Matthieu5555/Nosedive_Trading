@@ -1,6 +1,13 @@
 # 1D — Futures term structure (gated): listed-futures capture as secondary
 
-> **GATED — DO NOT START.** This workstream is **blocked at the contract line** until
+> **GATED — DO NOT START. P0.4 DEFERRED FUTURES (forward-only).**
+> [ADR 0037](../.agent/decisions/0037-futures-capture-deferred-forward-only.md) (accepted
+> 2026-06-07) ships **forward-only** for now: no futures product is introduced. This spec
+> therefore **stays parked** — a no-op until a later increment re-opens the decision with a
+> follow-up ADR that amends the blueprint and defines the futures contract. Original gate
+> text retained below.
+>
+> This workstream is **blocked at the contract line** until
 > **P0.4** (in `tasks/P0-contracts-and-unblockers.md`) produces an **accepted ADR + a blueprint
 > amendment** for the listed-futures product. **Futures are not in the blueprint today**
 > ([ADR 0011](../.agent/decisions/0011-blueprint-as-plan-of-record.md): the blueprint is the

@@ -1,0 +1,30 @@
+# eod-capture@XNYS.timer — daily NYSE close-capture trigger (WS 1G, ADR 0032).
+#
+# Fires the eod-capture@XNYS.service shortly after the NYSE regular close. The trigger time is a
+# FIXED local time stated in the EXCHANGE timezone (America/New_York), never server-local — NYSE
+# closes at 16:00 ET, so 16:45 America/New_York is a safe upper bound on the regular close.
+#
+# The fixed OnCalendar time is only the *trigger*: the runner resolves the EXACT close instant
+# from the 1J exchange-calendar (session_close), so a half-day early close (e.g. the 13:00 ET
+# early closes around US holidays) or a full holiday is handled by the resolver (a holiday is a
+# clean no-op), NOT by editing this timer. The timezone is explicit so the trigger tracks the
+# NYSE close across US DST, not the server's clock.
+#
+# Persistent=true: a fire missed while the box was down runs on next boot; the catch-up fire
+# reconstructs the gap day through the run-state ledger (idempotent by construction).
+#
+# Install: copy to ~/.config/systemd/user/ and `systemctl --user enable --now eod-capture@XNYS.timer`.
+
+[Unit]
+Description=Daily NYSE (XNYS) close-capture timer
+
+[Timer]
+# 16:45 America/New_York, Mon–Fri — a safe upper bound on the 16:00 NYSE close. The runner skips
+# any day the XNYS calendar marks a non-session, so weekends/holidays are no-ops, not misfires.
+OnCalendar=Mon..Fri 16:45 America/New_York
+Persistent=true
+RandomizedDelaySec=120
+Unit=eod-capture@XNYS.service
+
+[Install]
+WantedBy=timers.target

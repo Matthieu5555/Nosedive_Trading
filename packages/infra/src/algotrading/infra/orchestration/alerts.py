@@ -22,6 +22,10 @@ documented here and in the README. The four conditions the spec names:
   fills.
 * **QC fail** — the day's QC report escalated to ``page`` (a critical-severity QC
   failure). Detected the moment the QC job's report is evaluated.
+* **coverage breach** — a pinned tenor's projected grid coverage fell below its floor
+  (WS 1H). One alert per breaching tenor, ``underlying@tenor``. This is the orthogonal
+  twin of *missing partition*: that one fires when a partition is *absent*; this one fires
+  when the partition is *present but too thin*. Detected on the next evaluation.
 
 Evaluation returns the firing alerts, each naming its subject, so an operator reads
 *what* fired, not just *that* something did.
@@ -33,7 +37,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from algotrading.infra.qc import ESCALATION_PAGE, QcReport, escalation_level
+from algotrading.infra.qc import (
+    CHECK_TENOR_COVERAGE_FLOOR,
+    ESCALATION_PAGE,
+    STATUS_FAIL,
+    QcReport,
+    deserialize_context,
+    escalation_level,
+)
 
 from .run_state import OUTCOME_OK, StageRun
 
@@ -42,6 +53,7 @@ ALERT_COLLECTOR_DEATH = "collector_death"
 ALERT_MISSING_PARTITION = "missing_partition"
 ALERT_ELEVATED_FAILURE_RATE = "elevated_failure_rate"
 ALERT_QC_FAIL = "qc_fail"
+ALERT_COVERAGE_BREACH = "coverage_breach"
 
 # Documented detection intervals (seconds). These are the bounds the orchestration
 # layer promises to notice a condition within; they are the contract the timing tests
@@ -173,3 +185,43 @@ def qc_fail_alert(report: QcReport) -> Alert | None:
             detection_interval_seconds=0.0,
         )
     return None
+
+
+def coverage_breach_alerts(report: QcReport) -> list[Alert]:
+    """Fire one alert per pinned tenor whose grid coverage fell below its floor (WS 1H).
+
+    Reads the per-tenor coverage-floor check's results out of the QC ``report`` and emits
+    one :class:`Alert` per breaching tenor — subject ``underlying@tenor``, detail the
+    measured-vs-floor counts — so an operator sees *which* tenor is thin, not just that a
+    grid was incomplete. It reuses the report the QC job already produced (it does not
+    recompute coverage), so the alert cannot drift from the check's verdict.
+
+    This is the orthogonal twin of :func:`missing_partition_alerts`: that one fires when a
+    ``(trade_date, underlying)`` partition is *absent*; this one fires when the partition is
+    *present but too thin*. A clean grid (no failing coverage check) fires none. Detection
+    is immediate (the breach is already in the evaluated report), so this takes no clock.
+    """
+    alerts: list[Alert] = []
+    for result in report.results:
+        if result.check_name != CHECK_TENOR_COVERAGE_FLOOR or result.qc_status != STATUS_FAIL:
+            continue
+        context = deserialize_context(result.context)
+        underlying = context.get("underlying", result.target_key)
+        breaches = context.get("breaching_tenors", [])
+        if not isinstance(breaches, list):
+            continue
+        for breach in breaches:
+            if not isinstance(breach, dict):
+                continue
+            tenor = breach.get("tenor")
+            measured = breach.get("measured")
+            floor = breach.get("floor")
+            alerts.append(
+                Alert(
+                    kind=ALERT_COVERAGE_BREACH,
+                    subject=f"{underlying}@{tenor}",
+                    detail=f"coverage {measured} < floor {floor} — partition present but too thin",
+                    detection_interval_seconds=0.0,
+                )
+            )
+    return alerts

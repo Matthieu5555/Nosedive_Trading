@@ -11,16 +11,24 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@radix-ui/react-accordion": "^1.2.13",
+    "@tanstack/react-table": "^8.21.3",
+    "plotly.js-dist-min": "^3.6.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-plotly.js": "^2.6.0",
     "react-router-dom": "^7.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/plotly.js": "^3.0.10",
+    "@types/plotly.js-dist-min": "^2.3.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/react-plotly.js": "^2.6.4",
     "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^9.20.0",
     "eslint-plugin-react-hooks": "^5.1.0",

@@ -1,7 +1,23 @@
 // Hand-built API fixtures for component tests. Values are chosen independently (not copied
 // from the backend's output) so a test asserts the page renders the contract faithfully.
 
-import type { HealthResponse, RiskResponse, SurfaceResponse } from "../api";
+import type {
+  AnalyticsResponse,
+  ConstituentsResponse,
+  HealthResponse,
+  PriceHistoryResponse,
+  RecordedDatesResponse,
+  RiskResponse,
+  SurfaceResponse,
+} from "../api";
+
+const PROV = {
+  calc_ts: "2026-05-29T15:31:00+00:00",
+  code_version: "abc123",
+  config_hash: "cfg-9",
+  stamp_hash: "stamp-x",
+  n_sources: 4,
+};
 
 export const SURFACE_TWO_SLICES: SurfaceResponse = {
   underlying: "AAPL",
@@ -125,4 +141,117 @@ export const HEALTH_DEGRADED: HealthResponse = {
   last_healthy_trade_date: "2026-06-01",
   backlog: ["analytics", "qc"],
   is_healthy: false,
+};
+
+// --- WS 1I front-page fixtures (values chosen independently of the backend output) ---
+
+export const RECORDED_TWO_DATES: RecordedDatesResponse = {
+  index: "SPX",
+  count: 2,
+  dates: ["2026-05-29", "2026-05-28"],
+};
+
+export const RECORDED_EMPTY: RecordedDatesResponse = {
+  index: "SPX",
+  count: 0,
+  dates: [],
+};
+
+export const CONSTITUENTS_TWO: ConstituentsResponse = {
+  index: "SPX",
+  as_of: "2026-05-29",
+  n_constituents: 2,
+  // Already price-first: AAA (close 192) before BBB (close 45.5).
+  constituents: [
+    {
+      instrument_key: "AAA",
+      symbol: "AAA",
+      weight: 0.6,
+      effective_add_date: "2026-01-01",
+      effective_remove_date: null,
+      latest_close: 192.0,
+    },
+    {
+      instrument_key: "BBB",
+      symbol: "BBB",
+      weight: 0.4,
+      effective_add_date: "2026-01-01",
+      effective_remove_date: null,
+      latest_close: 45.5,
+    },
+  ],
+};
+
+export const PRICE_HISTORY_AAA: PriceHistoryResponse = {
+  underlying: "AAA",
+  start: null,
+  end: "2026-05-29",
+  n_bars: 2,
+  bars: [
+    {
+      provider: "IBKR",
+      underlying: "AAA",
+      trade_date: "2026-05-28",
+      open: 188.0,
+      high: 191.0,
+      low: 187.0,
+      close: 190.0,
+      volume: 1000000.0,
+      bar_type: "1d-TRADES",
+      source: "test",
+      provenance: PROV,
+    },
+    {
+      provider: "IBKR",
+      underlying: "AAA",
+      trade_date: "2026-05-29",
+      open: 190.0,
+      high: 193.5,
+      low: 189.5,
+      close: 192.0,
+      volume: 1200000.0,
+      bar_type: "1d-TRADES",
+      source: "test",
+      provenance: PROV,
+    },
+  ],
+};
+
+export const ANALYTICS_AAA: AnalyticsResponse = {
+  underlying: "AAA",
+  trade_date: "2026-05-29",
+  n_maturities: 1,
+  maturities: [
+    {
+      maturity_years: 0.25,
+      tenor_label: "3m",
+      label: "3m (0.250y)",
+      smile: {
+        deltas: [-0.3, 0.3],
+        implied_vols: [0.27, 0.23],
+        log_moneyness: [-0.15, 0.12],
+      },
+      surface_slice: null,
+      points: [
+        {
+          delta_band: "30dp",
+          target_delta: -0.3,
+          log_moneyness: -0.15,
+          strike: 165.75,
+          forward_price: 195.0,
+          implied_vol: 0.27,
+          total_variance: 0.0182,
+          price: 4.2,
+          metrics: {
+            delta: { raw: -0.3, dollar: -58.5, unit: "$ per $1 of underlying" },
+            gamma: { raw: 0.02, dollar: 7.6, unit: "$ per 1% move" },
+            vega: { raw: 0.31, dollar: 0.31, unit: "$ per 1 vol point" },
+            theta: { raw: -0.05, dollar: -0.000041, unit: "$ per calendar day" },
+            rho: { raw: 0.04, dollar: 0.0005, unit: "$ per 1% rate" },
+          },
+          provenance: PROV,
+        },
+      ],
+    },
+  ],
 };

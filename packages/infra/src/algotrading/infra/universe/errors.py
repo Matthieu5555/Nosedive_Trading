@@ -17,6 +17,90 @@ class UniverseError(Exception):
     """Base class for all universe-layer failures."""
 
 
+class IndexRegistryError(UniverseError):
+    """An `indices:` registry entry was malformed and is rejected, not coerced.
+
+    Carries the offending index ``symbol``, the ``field`` that failed, the ``value``
+    seen, and a plain-language ``reason``, so a bad registry entry names exactly what
+    was wrong (an unknown calendar code, an empty symbol, a non-bool ``enabled``)
+    instead of being silently defaulted — the load-bearing rule for the calendar code,
+    where a silent fallback would capture the wrong close instant (a look-ahead bug).
+    """
+
+    def __init__(self, symbol: str, field: str, value: object, reason: str) -> None:
+        self.symbol = symbol
+        self.field = field
+        self.value = value
+        self.reason = reason
+        super().__init__(
+            f"index registry entry {symbol!r}: {field} = {value!r} is invalid: {reason}"
+        )
+
+
+class StrikeSelectionError(UniverseError):
+    """A delta-band strike selection was asked to price with an unusable input (WS 1B).
+
+    Raised by :func:`~algotrading.infra.universe.chain_planning.select_strikes_delta_band`
+    when the per-tenor pricing inputs cannot yield a delta: a missing/zero/non-finite
+    forward, a non-finite or negative working volatility, a non-positive maturity, or a
+    discount factor outside ``(0, 1]``. Carries the offending ``field``, the ``value``
+    seen, and a plain-language ``reason``, so the caller gets a *labeled* failure rather
+    than a bare ``NaN`` strike silently entering the captured chain (the TESTING.md
+    negative-path floor and a look-ahead/quality risk if a poisoned strike were kept).
+    """
+
+    def __init__(self, field: str, value: object, reason: str) -> None:
+        self.field = field
+        self.value = value
+        self.reason = reason
+        super().__init__(f"delta-band strike selection: {field} = {value!r} is invalid: {reason}")
+
+
+class MembershipError(UniverseError):
+    """A dated index-membership change is malformed and is rejected, not coerced (WS 1A).
+
+    Raised by the membership ingester before any row is written: a negative weight, an
+    ``effective_remove_date`` earlier than its ``effective_add_date``, an empty index or
+    constituent symbol, or a basket whose source-complete weights do not sum near 1.0.
+    Carries the offending ``index``, the ``field`` that failed, the ``value`` seen, and a
+    plain-language ``reason``, so a bad change names exactly what was wrong instead of
+    being silently dropped or zeroed (a silent default would be an economic-correctness
+    bug and a TESTING.md negative-path failure).
+    """
+
+    def __init__(self, index: str, field: str, value: object, reason: str) -> None:
+        self.index = index
+        self.field = field
+        self.value = value
+        self.reason = reason
+        super().__init__(
+            f"index membership for {index!r}: {field} = {value!r} is invalid: {reason}"
+        )
+
+
+class CalendarResolutionError(UniverseError):
+    """A calendar resolve failed for a labeled reason rather than a silent wrong answer.
+
+    Raised when the resolver is asked about an index whose calendar code is not in the
+    registry, or for a date outside the calendar library's coverage window, or for the
+    session close of a date that is not a trading session. Carries the ``index``, the
+    ``calendar`` code, the offending ``date_`` (when relevant), and a ``reason`` — never
+    a bare library traceback and never a silently-defaulted instant.
+    """
+
+    def __init__(
+        self, index: str, calendar: str, date_: date | None, reason: str
+    ) -> None:
+        self.index = index
+        self.calendar = calendar
+        self.date_ = date_
+        self.reason = reason
+        on = f" on {date_.isoformat()}" if date_ is not None else ""
+        super().__init__(
+            f"calendar resolve for index {index!r} (calendar {calendar!r}){on}: {reason}"
+        )
+
+
 class UnresolvedContractError(UniverseError):
     """A raw broker contract row could not be turned into a valid instrument.
 

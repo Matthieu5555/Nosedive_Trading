@@ -74,13 +74,26 @@ def _coerce(hint: Any, value: Any, section: str, field: str) -> Any:
     raise ConfigFieldError(section, field, value, f"unsupported field type {hint!r}")
 
 
-def build_dataclass[T](cls: type[T], mapping: Mapping[str, Any], *, section: str) -> T:
+def build_dataclass[T](
+    cls: type[T],
+    mapping: Mapping[str, Any],
+    *,
+    section: str,
+    caller_supplied: frozenset[str] = frozenset(),
+) -> T:
     """Build a frozen config dataclass from ``mapping`` by reflecting over its fields.
 
     Every declared field must be present (no silent default for an economic field); every
     key in ``mapping`` must be a declared field (unknown keys are rejected, not ignored);
     each value is coerced to the field's declared type. Construction runs the dataclass's
     ``__post_init__`` validation, which raises :class:`ConfigFieldError` on a bad range.
+
+    ``caller_supplied`` names fields the caller fills in itself (e.g. a nested-map field the
+    reflective coercion cannot type, supplied post-build via ``dataclasses.replace``). Those
+    fields are neither required in ``mapping`` nor coerced here; their dataclass default is
+    used at construction. This is the one escape hatch for a field the flat reflective
+    coercion cannot express, kept narrow so the no-silent-default discipline still holds for
+    every scalar/tuple economic field.
     """
     if not dataclasses.is_dataclass(cls):
         raise TypeError(f"{cls!r} is not a dataclass")
@@ -95,6 +108,8 @@ def build_dataclass[T](cls: type[T], mapping: Mapping[str, Any], *, section: str
     hints = typing.get_type_hints(cls)
     kwargs: dict[str, Any] = {}
     for f in fields:
+        if f.name in caller_supplied:
+            continue
         if f.name not in mapping:
             raise ConfigFieldError(section, f.name, None, "missing required field")
         kwargs[f.name] = _coerce(hints[f.name], mapping[f.name], section, f.name)

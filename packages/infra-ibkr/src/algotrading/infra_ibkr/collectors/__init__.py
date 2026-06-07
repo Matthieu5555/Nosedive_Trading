@@ -12,6 +12,17 @@ are **superseded** — kept as files until C5, reached only by direct import, no
 
 from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
+from .cp_rest_history import (
+    BackfillResult,
+    CpRestHistoryCollector,
+    HistoryFetchError,
+    HistoryRequest,
+)
+from .cp_rest_history_normalize import (
+    HistoryNormalizeError,
+    history_to_daily_bars,
+    trade_date_of_bar,
+)
 from .cp_rest_normalize import snapshot_to_events
 from .nautilus_normalize import (
     quote_tick_to_events,
@@ -30,4 +41,12 @@ __all__ = [
     "CpRestDiscovery",
     "DiscoveryError",
     "snapshot_to_events",
+    # Historical OHLC backfill (ADR 0031)
+    "CpRestHistoryCollector",
+    "HistoryRequest",
+    "BackfillResult",
+    "HistoryFetchError",
+    "history_to_daily_bars",
+    "trade_date_of_bar",
+    "HistoryNormalizeError",
 ]

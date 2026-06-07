@@ -9,3 +9,29 @@ version: "2026.05.31"
 max_spread_pct: 0.05          # reject quotes wider than 5% of mid
 max_quote_age_seconds: 30.0   # an option quote older than this is stale
 min_chain_count: 6            # minimum eligible calls+puts per maturity
+
+# Grid-aware QC cut-offs (WS 1H). These validate the projected (tenor × delta-band) grid
+# as a grid, not as a flat chain. They are economic — they decide whether a day's grid is
+# judged complete — so they are hashed here in config, never as `.py` literals (ADR 0028).
+grid:
+  version: "2026.05.31"
+  # Per-tenor minimum usable-point count, keyed on the P0.1 pinned tenor grid (10d…3y).
+  # A pinned tenor with no entry here is a config error (the check raises, never defaults
+  # to zero). A tenor that falls below its floor — or is absent from the grid entirely —
+  # is a coverage breach.
+  tenor_floors:
+    "10d": 5
+    "1m": 5
+    "3m": 5
+    "6m": 5
+    "12m": 5
+    "18m": 5
+    "2y": 5
+    "3y": 5
+  # The signed delta band the selected strikes must span: the 30Δ put → ATM → 30Δ call
+  # window (WS 1B). Edges come from config, never from the data under test.
+  band_low_delta: -0.30
+  band_high_delta: 0.30
+  # The largest acceptable gap between consecutive selected deltas inside the band; a hole
+  # wider than this is a completeness breach.
+  max_delta_step: 0.25

@@ -88,6 +88,101 @@ export interface Job {
   summary: Record<string, unknown>;
 }
 
+// --- WS 1I front-page seams: price-history, constituents, analytics, recorded-dates ---
+// Each interface mirrors a serializer in
+// apps/frontend/src/algotrading/frontend/serializers.py / the matching router.
+
+export interface DailyBar {
+  provider: string;
+  underlying: string;
+  trade_date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  bar_type: string;
+  source: string;
+  provenance: Provenance;
+}
+
+export interface PriceHistoryResponse {
+  underlying: string;
+  start: string | null;
+  end: string | null;
+  n_bars: number;
+  bars: DailyBar[];
+}
+
+export interface Constituent {
+  instrument_key: string;
+  symbol: string;
+  weight: number | null;
+  effective_add_date: string | null;
+  effective_remove_date: string | null;
+  latest_close: number | null;
+}
+
+export interface ConstituentsResponse {
+  index: string;
+  as_of: string;
+  n_constituents: number;
+  constituents: Constituent[];
+}
+
+// One dollar metric: the raw per-unit Greek, the dollar value, and the unit string it is
+// quoted in (P0.2 / ADR 0036). dollar/unit are null on an older partition that predates them.
+export interface DollarMetric {
+  raw: number;
+  dollar: number | null;
+  unit: string | null;
+}
+
+export interface AnalyticsPoint {
+  delta_band: string;
+  target_delta: number;
+  log_moneyness: number;
+  strike: number;
+  forward_price: number;
+  implied_vol: number;
+  total_variance: number;
+  price: number;
+  metrics: {
+    delta: DollarMetric;
+    gamma: DollarMetric;
+    vega: DollarMetric;
+    theta: DollarMetric;
+    rho: DollarMetric;
+  };
+  provenance: Provenance;
+}
+
+export interface AnalyticsMaturity {
+  maturity_years: number;
+  tenor_label: string;
+  label: string;
+  smile: {
+    deltas: number[];
+    implied_vols: number[];
+    log_moneyness: number[];
+  };
+  surface_slice: SurfaceSlice | null;
+  points: AnalyticsPoint[];
+}
+
+export interface AnalyticsResponse {
+  underlying: string;
+  trade_date: string | null;
+  n_maturities: number;
+  maturities: AnalyticsMaturity[];
+}
+
+export interface RecordedDatesResponse {
+  index: string;
+  count: number;
+  dates: string[];
+}
+
 // One narrow fetch helper: every page goes through here so error handling is uniform.
 export async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path);

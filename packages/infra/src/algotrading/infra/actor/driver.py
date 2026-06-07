@@ -75,6 +75,7 @@ from algotrading.infra.pricing import PRICER_VERSION, from_spot, price, pricing_
 from algotrading.infra.risk import (
     RISK_ENGINE_VERSION,
     PositionRisk,
+    Scenario,
     aggregate_lines,
     effective_scenario_version,
     net_lots,
@@ -83,6 +84,14 @@ from algotrading.infra.risk import (
     scenario_grid,
     scenario_line_pnls,
     scenario_result,
+)
+
+# Imported from the submodule, not the risk package __init__ (the stress-surface symbols are
+# not re-exported there yet — a post-2A follow-up), so this stays off the concurrently-edited
+# __init__.
+from algotrading.infra.risk.stress_surface import (
+    effective_surface_version,
+    stress_surface_grid,
 )
 from algotrading.infra.snapshots import SnapshotBatch, build_snapshots
 from algotrading.infra.storage import ParquetStore
@@ -633,23 +642,33 @@ def _build_risk(
         )
     ]
 
-    grid = scenario_grid(config.scenario)
-    scenario_version = effective_scenario_version(config.scenario)
-    scenarios = [
-        scenario_result(
-            cell,
-            valuation_ts=as_of,
-            scenario_version=scenario_version,
-            source_snapshot_ts=as_of,
-            provenance=build_stamp(
-                calc_ts=calc_ts,
-                code_version=RISK_ENGINE_VERSION,
-                config_hashes=config_hashes,
-                sources=_risk_sources((cell.line,), as_of),
-            ),
-        )
-        for cell in scenario_line_pnls(netted, grid)
-    ]
+    def _scenarios_for(grid: tuple[Scenario, ...], version: str) -> list[ScenarioResult]:
+        return [
+            scenario_result(
+                cell,
+                valuation_ts=as_of,
+                scenario_version=version,
+                source_snapshot_ts=as_of,
+                provenance=build_stamp(
+                    calc_ts=calc_ts,
+                    code_version=RISK_ENGINE_VERSION,
+                    config_hashes=config_hashes,
+                    sources=_risk_sources((cell.line,), as_of),
+                ),
+            )
+            for cell in scenario_line_pnls(netted, grid)
+        ]
+
+    # The families grid (spot/vol/crash/time roll) and, additively, the WS 2B cartesian
+    # (spot × vol) stress surface — both full-reprice, both into scenario_results with distinct
+    # ids (families vs surf_), so the stress page reads its surface back read-only. The cron is
+    # the sole writer (ADR 0034); the BFF never computes.
+    scenarios = _scenarios_for(
+        scenario_grid(config.scenario), effective_scenario_version(config.scenario)
+    )
+    scenarios += _scenarios_for(
+        stress_surface_grid(config.scenario), effective_surface_version(config.scenario)
+    )
     return pricings, aggregates, scenarios
 
 

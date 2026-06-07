@@ -148,8 +148,12 @@ def _seed_raw(store: ParquetStore, chain: ChainFixture, trade_date: date) -> Non
 # Independently-derived expected record count for one populated synthetic_known_answer
 # day, read off the byte-identical test's asserted output and confirmed by probing the
 # actor: 11 snapshots, 1 forward, 10 IV points, 1 surface params, 5 grid cells, 3
-# pricings, 1 risk aggregate, 18 scenarios = 50 derived records.
-_RECORDS_PER_POPULATED_DAY = 50
+# pricings, 1 risk aggregate, and the scenario cells. Scenario cells = (families grid +
+# WS 2B stress surface) × 3 netted lines: 6 families scenarios (2 spot, 2 vol, 1 crash,
+# 1 roll) + 9 surface scenarios (the default 3×3 cartesian (spot × vol) grid, since
+# _config()'s ScenarioConfig takes the placeholder stress_surface) = 15 scenarios × 3 =
+# 45 scenario cells. 11+1+10+1+5+3+1+45 = 77 derived records.
+_RECORDS_PER_POPULATED_DAY = 77
 
 
 def test_a_missing_partition_is_flagged_explicitly_not_masked(tmp_path: Path) -> None:

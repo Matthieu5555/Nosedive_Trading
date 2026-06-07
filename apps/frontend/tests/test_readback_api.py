@@ -63,6 +63,21 @@ PR_DOLLAR_VEGA = 0.10
 PR_DOLLAR_THETA = -0.0000274
 PR_DOLLAR_RHO = 0.0003
 
+# A second pricing_results row under its own underlying ("GMMA") with round numbers, used to
+# pin the dollar_gamma value-vs-label seam by hand. Its stored dollar_gamma is the *per-$1*
+# (one_dollar) number the pricer writes — gamma*spot**2*mult*qty, no /100 — so the per-1%
+# (one_pct) value the BFF must serve under its "$ per 1% move" label is independently derivable:
+#   Γ·S²·mult·qty / 100 = 0.04 · 200² · 100 · 1 / 100 = 1600.0
+GAMMA_UNDERLYING = "GMMA"
+GMMA_RAW_GAMMA = 0.04
+GMMA_SPOT = 200.0
+GMMA_MULT = 100.0
+GMMA_QTY = 1.0
+# Per-$1 stored on the row (gamma*spot**2*mult*qty): 0.04*40000*100*1 = 160000.0
+GMMA_DOLLAR_GAMMA_ONE_DOLLAR = GMMA_RAW_GAMMA * GMMA_SPOT * GMMA_SPOT * GMMA_MULT * GMMA_QTY
+# Per-1% the BFF must serve under "$ per 1% move": 160000.0 / 100 = 1600.0 (hand-checked below).
+GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED = 1600.0
+
 # Hand-chosen daily OHLC bars for the index members. The price-history endpoint must echo
 # these exact values back; the constituent price-first ordering keys off the latest close.
 # AAA's latest close (192.0) > BBB's (45.5), so AAA must sort first.
@@ -119,6 +134,19 @@ CALL_100 = InstrumentKey(
     broker_contract_id="o-C-100",
     expiry=EXPIRY,
     strike=100.0,
+    option_right="C",
+)
+# A GMMA-underlying option whose pricing row carries the round-number per-$1 dollar_gamma above,
+# so /api/risk/metrics?underlying=GMMA isolates exactly that row for the hand-computed seam test.
+GMMA_CALL = InstrumentKey(
+    underlying_symbol=GAMMA_UNDERLYING,
+    security_type="OPT",
+    exchange="SMART",
+    currency="USD",
+    multiplier=GMMA_MULT,
+    broker_contract_id="o-GMMA-C-200",
+    expiry=EXPIRY,
+    strike=200.0,
     option_right="C",
 )
 
@@ -358,7 +386,25 @@ def _seed_legacy_store(store: ParquetStore) -> None:
                 dollar_rho=PR_DOLLAR_RHO,
                 source_snapshot_ts=AS_OF,
                 provenance=_prov("px:AAPL"),
-            )
+            ),
+            tables.PricingResult(
+                snapshot_ts=AS_OF,
+                contract_key=GMMA_CALL.canonical(),
+                pricer_version="px-readback",
+                price=12.5,
+                delta=0.50,
+                gamma=GMMA_RAW_GAMMA,
+                vega=0.20,
+                theta=-0.02,
+                rho=0.05,
+                dollar_delta=GMMA_RAW_GAMMA * 0.0,  # unused by the seam test; kept finite
+                dollar_gamma=GMMA_DOLLAR_GAMMA_ONE_DOLLAR,  # per-$1 (one_dollar), as the pricer writes
+                dollar_vega=0.002,
+                dollar_theta=-0.00005,
+                dollar_rho=0.0005,
+                source_snapshot_ts=AS_OF,
+                provenance=_prov("px:GMMA"),
+            ),
         ],
     )
     store.write(
@@ -462,10 +508,13 @@ def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
     # Gamma quoted per 1% move; theta per calendar day (the pinned defaults).
     assert metrics["gamma"]["unit"] == "$ per 1% move"
     assert metrics["theta"]["unit"] == "$ per calendar day"
+    # The stored dollar_gamma is per-$1 move (one_dollar); the BFF serves the canonical
+    # one_pct convention (ADR 0036), so the value crossing the boundary is /100 the stored one.
+    PR_DOLLAR_GAMMA_ONE_PCT = PR_DOLLAR_GAMMA / 100.0
     # Every dollar metric has a non-empty unit string and the raw per-unit value beside it.
     for name, raw, dollar in [
         ("delta", 0.55, PR_DOLLAR_DELTA),
-        ("gamma", 0.02, PR_DOLLAR_GAMMA),
+        ("gamma", 0.02, PR_DOLLAR_GAMMA_ONE_PCT),
         ("vega", 0.10, PR_DOLLAR_VEGA),
         ("theta", -0.01, PR_DOLLAR_THETA),
         ("rho", 0.03, PR_DOLLAR_RHO),
@@ -474,6 +523,37 @@ def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
         assert metric["unit"], f"{name} must carry a non-empty unit string"
         assert metric["raw"] == pytest.approx(raw)
         assert metric["dollar"] == pytest.approx(dollar)
+
+
+def test_metrics_dollar_gamma_value_matches_its_one_pct_label(seeded_client: TestClient) -> None:
+    # The adversarial value-vs-label seam (audit M5). The pricer stores dollar_gamma in the
+    # per-$1 (one_dollar) convention — gamma*spot**2*mult*qty, no /100 — but /api/risk/metrics
+    # labels it "$ per 1% move" (one_pct, ADR 0036's canonical default, the same convention the
+    # projected-analytics path serves). So the *number* served must be the per-1% value, which we
+    # hand-compute here from round inputs rather than read off the stored row:
+    #
+    #   gamma = 0.04, spot = 200, mult = 100, qty = 1
+    #   per-$1  dollar_gamma (stored) = 0.04 * 200**2 * 100 * 1 = 160000.0
+    #   per-1%  dollar_gamma (served) = 160000.0 / 100           =   1600.0
+    #
+    # A serializer that labels one_pct but serves the per-$1 number returns 160000.0 here and
+    # fails — this is the test the 100x-off behavior cannot pass.
+    expected = GMMA_RAW_GAMMA * GMMA_SPOT * GMMA_SPOT * GMMA_MULT * GMMA_QTY / 100.0
+    assert expected == pytest.approx(GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED)  # 1600.0, paper-derived
+
+    payload = seeded_client.get(
+        "/api/risk/metrics", params={"underlying": GAMMA_UNDERLYING}
+    ).json()
+    assert payload["n_results"] == 1
+    gamma = payload["results"][0]["metrics"]["gamma"]
+    # Value and label agree on the one_pct convention: the served number is the per-1% value...
+    assert gamma["dollar"] == pytest.approx(GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED)
+    # ...and its label truthfully describes that convention.
+    assert gamma["unit"] == "$ per 1% move"
+    # The raw per-unit Greek is untouched (only the dollar layer is rescaled).
+    assert gamma["raw"] == pytest.approx(GMMA_RAW_GAMMA)
+    # Guard against a self-consistent-but-wrong serializer that serves the per-$1 number:
+    assert gamma["dollar"] != pytest.approx(GMMA_DOLLAR_GAMMA_ONE_DOLLAR)
 
 
 def test_health_reflects_surfaces_and_scenarios_after_persist(seeded_client: TestClient) -> None:

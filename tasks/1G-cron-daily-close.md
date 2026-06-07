@@ -8,7 +8,10 @@
   and roadmap **1G** in `documentation/roadmap-index-analytics.md`.
 - **Depends on:** **1C** (the live close-capture mode the timer triggers — `collect_live` is the
   `collection` stage `run_end_of_day` runs; until 1C closes the broker→raw-event seam the runner
-  wires a replay/fixture collection stage so the timer path is exercisable). ADR 0032 (accepted).
+  wires a replay/fixture collection stage so the timer path is exercisable). **[1J](1J-index-registry.md)**
+  (the **index registry** + **calendar resolver** — the timer schedule is derived *per exchange
+  calendar* from it, and the runner reads `enabled_indices()` rather than a hardcoded list;
+  [ADR 0035](../.agent/decisions/0035-index-registry-and-per-index-capture-schedule.md)). ADR 0032 (accepted).
   The IBKR OAuth 1.0a session/tickler ([ADR 0031](../.agent/decisions/0031-ibkr-historical-data-cp-rest-oauth1a.md))
   keeps the REST session alive under the timer — no competing standing scheduler.
 - **Blocks:** nothing structurally. It is the unattended-operation gate for Phase 1 — history only
@@ -26,10 +29,11 @@
 
 ## Objective
 
-A daily, unattended trigger fires `run_end_of_day()` once per market day on a single headless
-server, with retry, missed-run catch-up while the box was down, and queryable failure history —
-implemented as a **systemd timer + `oneshot` service**, not APScheduler and not an orchestration
-platform. Idempotency and gap-tracking stay entirely in the existing run-state ledger: a re-fire,
+A daily, unattended trigger fires `run_end_of_day()` once per market day **per exchange calendar** on
+a single headless server, with retry, missed-run catch-up while the box was down, and queryable
+failure history — implemented as a **systemd timer + `oneshot` service** (one timer per distinct
+exchange calendar in the 1J registry — e.g. one after the Eurex close for SX5E, one after the NYSE
+close for SPX), not APScheduler and not an orchestration platform. Idempotency and gap-tracking stay entirely in the existing run-state ledger: a re-fire,
 a catch-up fire, and a mid-run-kill restart all converge to the same ledger and the same store
 state. The ledger shows idempotent, gap-free runs across market days.
 
@@ -37,7 +41,12 @@ state. The ledger shows idempotent, gap-free runs across market days.
 
 1. **Build the runner entrypoint `scripts/eod_run.py`.** A thin, dependency-light `main()` that:
    resolves the trade date (default = the clock's current market day; accept `--trade-date` for a
-   catch-up/backfill fire), builds a `ParquetStore` at the configured root, binds **one**
+   catch-up/backfill fire); **scopes the fire to a calendar group** (accept `--calendar XEUR` /
+   `--index SX5E`; default = all), reads **`enabled_indices()`** from the 1J registry and filters to
+   that group — **never a hardcoded index list**; **skips a non-session** via the 1J resolver
+   (`is_session(index, trade_date)` False on an exchange holiday → clean no-op, not a failed run), and
+   uses each index's **`session_close(index, trade_date)`** as the injected `as_of` 1C captures at;
+   builds a `ParquetStore` at the configured root, binds **one**
    `correlation_id` for the run (e.g. a UUID; record it in the log line so journald and the ledger
    share it), constructs the default `EodStages` wiring (close over store/config/clock/`correlation_id`;
    the `collection` stage is `collect_live` once 1C lands, a replay stage until then), and calls
@@ -51,10 +60,17 @@ state. The ledger shows idempotent, gap-free runs across market days.
    `eod-capture.service`): `Type=oneshot`, `ExecStart=` invoking `uv run python scripts/eod_run.py`
    in the repo, `Restart=on-failure` + `RestartSec=` for retry, `OnFailure=eod-capture-alert.service`,
    journald for stdout/stderr. Do **not** put the schedule in the service.
-3. **Author the daily timer** (`eod-capture.timer`): `OnCalendar=` at the EOD time (state the
-   timezone explicitly — exchange close, not server local-by-accident), **`Persistent=true`** so a
-   run missed while the box was down fires on next boot, and the catch-up fire reconstructs the
-   gap day through the ledger.
+3. **Author one daily timer per exchange calendar** (e.g. `eod-capture@XEUR.timer`,
+   `eod-capture@XNYS.timer` — a templated unit keyed by calendar, or one timer per group): each
+   `OnCalendar=` fires shortly **after that exchange's regular close**, with the **timezone stated
+   explicitly** (`OnCalendar=…  Europe/Berlin` for Eurex, `America/New_York` for NYSE — the exchange
+   close, never server-local-by-accident), and `ExecStart` passing the matching `--calendar`. The
+   timer's fixed local time is a safe upper bound on the regular close; the runner uses 1J's
+   `is_session`/`session_close` to skip holidays and pin the exact close instant (so a half-day or a
+   holiday is handled by the resolver, not by editing the timer). **`Persistent=true`** so a run
+   missed while the box was down fires on next boot, and the catch-up fire reconstructs the gap day
+   through the ledger. Adding an index on an already-covered calendar needs **no new timer** — the
+   runner picks it up from `enabled_indices()`; a brand-new exchange calendar adds one timer unit.
 4. **Author the alert unit** (`eod-capture-alert.service`): a small `oneshot` the `OnFailure=`
    routes to — a single notification of the failed run + its `correlation_id` so the operator can
    `journalctl` the trace. Keep it minimal; no new dependency.
@@ -88,9 +104,18 @@ artifact lint):
   the ledger is gap-free for the date (restart-convergence, TESTING.md determinism).
 - **`test_eod_run_failure_exit_code`** — a raising stage yields a non-zero process exit (subprocess
   or `SystemExit` assertion) so `Restart=on-failure`/`OnFailure=` actually trigger.
+- **`test_eod_run_registry_driven_index_set`** — the runner captures exactly the **enabled** indices
+  from the 1J registry filtered to the fired `--calendar` (a disabled index is never captured; an
+  index on another calendar is not captured by this fire); the per-index `as_of` equals the 1J
+  `session_close` for that index (asserted against an injected resolver, not a wall clock). No index
+  list is hardcoded in the runner.
+- **`test_eod_run_skips_exchange_holiday`** — for a `--trade-date` the calendar marks a non-session
+  (1J `is_session` False), the fire is a **clean no-op** (no empty/garbage set written, ledger not
+  marked failed), distinct from a real capture on a session day.
 - **Edge cases** (TESTING.md floor): empty ledger / first-ever run; a future `--trade-date`
   rejected with a labeled error (no look-ahead — never capture a day that has not closed); a
-  trade date whose stages are all already clean is a clean no-op, not a re-run.
+  trade date whose stages are all already clean is a clean no-op, not a re-run; an **empty enabled
+  set** for the fired calendar (clean no-op, not a crash).
 - **Artifact sanity** — a test asserting the committed unit files carry `Persistent=true`,
   `Restart=on-failure`, `OnFailure=`, `Type=oneshot`, and an explicit-timezone `OnCalendar=`
   (the ADR 0032 obligations), so an edit that drops one goes red.
@@ -115,9 +140,13 @@ idempotent and **gap-free**; the graduation trigger is recorded; root gate green
   store writes. The runner must not add its own dedupe; it just binds the id and calls through, so a
   re-fire and a catch-up are safe by construction.
 - **No look-ahead / no future capture.** The trade date must be a day that has *closed*; reject a
-  future `--trade-date`. The timer's `OnCalendar` fires *after* the exchange close — state the
-  timezone explicitly so it is the exchange close, not server-local by accident, and never captures
-  a still-open session.
+  future `--trade-date`. Each calendar's `OnCalendar` fires *after* **that** exchange's close — state
+  the timezone explicitly per calendar (Eurex ≠ NYSE) so it is the exchange close, not server-local by
+  accident, and never captures a still-open session. The exact close instant is the 1J resolver's
+  `session_close`, not the timer's fixed local time (which is only a safe upper bound for the trigger).
+- **Do not hardcode the index list or the close times in the runner or the units.** Which indices,
+  which calendars, and the close instants all come from the 1J registry + resolver. A timer carries a
+  fixed `OnCalendar` *trigger* time only; the authoritative close is resolved at run time (ADR 0035).
 - **One `correlation_id` per fire**, flowed into the log so journald and the ledger resolve the same
   trace end to end (pipeline already binds it through every stage).
 - **Coordinate file ownership** with the in-flight `tasks/server-deploy-plumbing.md`: it owns

@@ -138,6 +138,7 @@ re-derive it.
 
 | WS | Goal | Exists today | To build | Acceptance |
 |----|------|--------------|----------|------------|
+| **1J Index registry** | tell the scheduler **which indices** to fetch + each one's IBKR contract ref + exchange calendar | `universe.yaml` is a flat demo stub (`underlyings: [AAPL,MSFT,SPY]`); no index list, no per-index schedule (OQ-8/9 — [ADR 0035](../.agent/decisions/0035-index-registry-and-per-index-capture-schedule.md)) | an `indices:` block in `universe.yaml` (SX5E + SPX seeded), a typed `IndexRegistry`, and a calendar resolver over `exchange_calendars` (per-index session close) | adding an index is a one-entry edit the cron picks up; unknown calendar code rejected; per-index close resolves with correct tz/holidays |
 | **1A Universe & membership** | index → point-in-time constituents → per-name chain | `infra/universe` discovery, `ChainSelection`, `(instrument_key, as_of_date)` key | index→constituent **membership** reference data with add/remove dates (OQ-3 source); ingest + as-of resolver | as-of join returns the correct historical basket; `check-lookahead-bias` passes |
 | **1B Delta-band selection** | strikes = 30Δ put → ATM → 30Δ call per tenor | `ChainSelection` is **%-of-spot only** (`strike_window_pct=0.35`, `chain_planning.py`) | a **delta-band `ChainSelection` variant** beside the %-of-spot one | per tenor, selected strikes span the listed 30Δ put→call window; count varies with listing density |
 | **1C Capture (daily close + history)** | one immutable close snapshot/day, index + all names; **plus underlying daily price-history** | the Nautilus actor (ADR 0023/0025), live/recent capture; **no underlying-bar capture** (`store_serving.py` ships `stock_snapshots=[]`); **no historical fetch in the IBKR adapter** (`cp_rest_adapter.py` = live snapshot + WS only) | a **daily close-snapshot capture mode** on the actor **and** an **IBKR historical-bar fetch** for underlying daily OHLC (index + constituents) | a day's run writes one provenance-stamped snapshot set; a backfill run populates years of daily bars per ticker |
@@ -148,8 +149,9 @@ re-derive it.
 | **1H QC plane** | every stage validated + stamped | `infra/validation`, `infra/actor/stamping.py`, `orchestration/qc_job.py`, `alerts.py`, `dashboard.py` | extend QC checks to the new grid (coverage floor per tenor, Δ-band completeness) | QC gates pass; alerts fire on missing partition / coverage breach |
 | **1I Front page 1** | pick index → scrollable constituent list → pick ticker → **chart + max analytics** | `apps/frontend` BFF mock; `/api/market` returns the option dashboard only — **no price-history field, no component list** | a **per-ticker OHLC price-history endpoint** feeding the **candlestick chart** (line is an acceptable fallback); the **scrollable constituent list** from membership (1A); **3D vol surface**; **dollar Greeks**; accordion + smile per maturity; **price-first** ordering; wire to the real pipeline | operator picks the index, scrolls constituents, selects a ticker and sees its real daily chart beside the analytics; every panel self-labels |
 
-**Phase-1 dependency order:** P0 → 1A+1B (universe/selection) → 1C (capture) → 1F (projection)
-→ 1G+1H (cron+QC) → 1I (front). 1D is parallel and gated on P0.4. 1E is a no-op.
+**Phase-1 dependency order:** P0 → **1J (index registry)** → 1A+1B (universe/selection) → 1C (capture)
+→ 1F (projection) → 1G+1H (cron+QC) → 1I (front). 1J is foundational (feeds 1A/1C/1G/1I); 1D is
+parallel and gated on P0.4. 1E is a no-op.
 
 ### Phase 2 — Tab 2: risk & strategy
 
@@ -170,9 +172,9 @@ re-derive it.
 ## 4. Sequencing & critical path
 
 ```text
-P0 (contracts) ──► 1A membership ─┐
-                   1B Δ-band ──────┼─► 1C capture ─► 1F projection ─► 1G cron ─► 1H QC ─► 1I front
-                   (1D futures, gated, parallel)                                              │
+P0 (contracts) ──► 1J registry ──► 1A membership ─┐
+                                   1B Δ-band ──────┼─► 1C capture ─► 1F projection ─► 1G cron ─► 1H QC ─► 1I front
+                   (1D futures, gated, parallel)                                                              │
                                                                                               ▼
                                                                  Phase 2: 2A basket ─► 2B stress ─► 2C attribution ─► 2D book
                                                                                               │
@@ -188,10 +190,11 @@ the history is silently dishonest). Settle both in Phase 0.
 
 ## 5. What is genuinely new vs reused
 
-- **New build:** index→constituent **point-in-time membership** (1A), the **delta-band**
-  selection variant (1B), the **daily close-snapshot** capture mode (1C), the **(tenor×Δ-band)
-  projection** (1F), the **daily cron wiring** (1G), the **front history-pull + 3D surface**
-  (1I), all of **Tab 2** (2A–2D), and — only if greenlit — **futures capture** (1D).
+- **New build:** the **index registry** + exchange-calendar resolver (1J — which indices to fetch,
+  their IBKR ref, per-index close), index→constituent **point-in-time membership** (1A), the
+  **delta-band** selection variant (1B), the **daily close-snapshot** capture mode (1C), the
+  **(tenor×Δ-band) projection** (1F), the **daily cron wiring** (1G), the **front history-pull + 3D
+  surface** (1I), all of **Tab 2** (2A–2D), and — only if greenlit — **futures capture** (1D).
 - **Reused as-is:** the pure analytics core (`forwards`, `iv`, `surfaces`, `pricing`, `risk`),
   `ParquetStore`, the QC/validation plane, provenance stamping, the orchestration job
   scaffolding, and the broker seam.

@@ -1,7 +1,8 @@
 # Server deployment plan — continuous paper-mode data collection
 
-> **Status: DRAFT / plan-only.** No deployment code is written yet. Three decisions are still
-> open (see § Open decisions). This doc freezes the agreed approach and the to-do list — notably
+> **Status: DRAFT / plan-only.** No deployment code is written yet. Two decisions are still
+> open (the third — the run window — is now resolved, see § Open decisions). This doc freezes the
+> agreed approach and the to-do list — notably
 > the **server-admin tasks** — so the actual work is mechanical once the project is further along
 > and the decisions are made.
 
@@ -101,9 +102,12 @@ Layers **1 + 3 + 4** are sufficient for this case; **2** makes it airtight; **5*
 1. **OS** — assumed Linux (the `/srv/project` + per-user SSH setup implies it). Confirm.
 2. **Which paper account** — a paper username owned by the deployer, **or** the server owner creates
    his own paper account and we use that (cleaner: the deployer's own IBKR login is never exposed).
-3. **Run window** — collect only during **US market hours** (`America/New_York` 09:30–16:00) vs
-   literally 24/7. Market-hours-only is the sensible default (no quotes overnight). The session
-   window is enforced in the connectivity layer rather than a flat `broker.yaml`.
+3. ~~**Run window**~~ — **RESOLVED 2026-06-07 ([ADR 0035](../../.agent/decisions/0035-index-registry-and-per-index-capture-schedule.md), OQ-9).**
+   Not a single "US market hours" window: capture is **per-index, per exchange calendar**. Each index
+   in the `universe.yaml` registry carries an `exchange_calendars` code (`XEUR`, `XNYS`…); the EOD
+   runner (1G) fires one timer per exchange calendar and derives each index's session close from the
+   calendar (tz/DST/holidays/half-days handled by the library). The market-hours scheduling lives in
+   the EOD runner + per-calendar systemd timers, not a flat `broker.yaml`.
 
 ## 5. To-do list
 

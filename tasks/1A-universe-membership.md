@@ -12,7 +12,10 @@
 - **Depends on:** P0 — the membership contract pin (the blueprint amendment for the OQ-3 ruling,
   tracked in `tasks/P0-contracts-and-unblockers.md`); D1 (`tasks/D1-storage-foundation.md`) for the
   storage layout this contract writes under. D1 names `IndexConstituent` explicitly as a 1A contract
-  ("`IndexConstituent` (1A, bitemporal Parquet + `ASOF`)").
+  ("`IndexConstituent` (1A, bitemporal Parquet + `ASOF`)"). **[1J](1J-index-registry.md)** supplies the
+  *set of indices* membership resolves for — the registry's `index` keys (`SX5E`, `SP500`/`SPX`) are
+  the keys `members(index, as_of_date)` takes; this WS resolves what is *inside* each, 1J says *which*
+  indices exist ([ADR 0035](../.agent/decisions/0035-index-registry-and-per-index-capture-schedule.md)).
 - **Blocks:** 1C equity capture (capture needs the as-of basket to know which names to record on a
   given day) and 1I front page 1 (the scrollable constituent list is the resolved membership).
 - **State going in (audited 2026-06-07):** `infra/universe/contracts.py` + `service.py` provide the

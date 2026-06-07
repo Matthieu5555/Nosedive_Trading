@@ -19,6 +19,9 @@
   **[ADR 0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)**;
   partition layout per **[ADR 0034](../.agent/decisions/0034-data-retention-compaction-and-backend-disposition.md) §4**.
 - **Depends on:** **P0** (the `DailyBar` contract + the option `MarketStateSnapshot` shape, OQ-2);
+  **[1J](1J-index-registry.md)** (the **index registry** — which indices to capture, their IBKR
+  contract ref, and the per-index exchange calendar that gives the close instant;
+  [ADR 0035](../.agent/decisions/0035-index-registry-and-per-index-capture-schedule.md));
   **1A** (the point-in-time basket to capture); **1B** (the delta-band selection of which contracts
   enter the close set); **[D1](D1-storage-foundation.md)** — **the `provider` partition segment MUST
   land before equity (SX5E / SP500) capture at scale.** Crypto-only writes (DERIBIT, where
@@ -72,7 +75,11 @@ historical client.
    `reference_spot.py` line 74 spells out the contract). The mode is "session closed, reference =
    close", an injected `as_of` = the close instant; it must **not** read a wall clock (replay
    byte-identical depends on injected `as_of`/`calc_ts` — see the driver module docstring).
-4. The close set covers the **1A basket** at the **1B-selected** contracts (index + every constituent).
+4. The close set covers the **1A basket** at the **1B-selected** contracts (index + every constituent),
+   for each **enabled index in the 1J registry** (`enabled_indices()` — do not hardcode the index list).
+   The injected `as_of` for an index's close is **that index's `session_close(index, trade_date)`** from
+   the 1J calendar resolver (Eurex close for SX5E, NYSE close for SPX — never a generic wall clock or a
+   single global close), so a multi-exchange run captures each index at its own close.
    Emit exactly one immutable set per `(provider, trade_date)`; re-running the same day replaces those
    derived partitions and never touches the append-only raw layer (driver `persist_outputs` is already
    replace-/append-idempotent). Wire it as a callable the EOD `collection`/`analytics` stage can invoke

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import structlog
@@ -34,24 +34,14 @@ from algotrading.infra.orchestration.eod_runner import FiredIndex
 from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
-from .connectivity.cp_rest_credentials import (
-    credentials_present,
-    load_lst_consumer,
-    make_lst_http_post,
-)
-from .connectivity.cp_rest_lst import build_signed_cp_rest_transport
-from .connectivity.cp_rest_session import CpRestSession
+from .session_factory import build_credentialed_session
 
 _LOGGER = structlog.get_logger("ibkr.live_capture")
 
-# The hosted CP Web API base the OAuth path targets (api.ibkr.com, not localhost:5000). A single
-# internal default; the operator overrides it via IBKR_CP_BASE_URL when pointing at a test host.
-_DEFAULT_BASE_URL = "https://api.ibkr.com/v1/api"
-ENV_BASE_URL = "IBKR_CP_BASE_URL"
 
-# The established-session wait budget for the live brokerage session (ssodh/init → established).
-_ESTABLISH_MAX_POLLS = 30
-_ESTABLISH_POLL_SECONDS = 1.0
+def _utc_today() -> date:
+    """The current UTC calendar day — the default 'now' the no-look-ahead guard compares to."""
+    return datetime.now(UTC).date()
 
 
 def _supports_get(obj: object) -> bool:
@@ -64,6 +54,7 @@ def live_basket_source(
     transport: Any | None = None,
     config: PlatformConfig | None = None,
     selection: ChainSelection | None = None,
+    now: Callable[[], date] | None = None,
 ) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     """Build the credentialed live ``BasketSource``, or ``None`` when not configured.
 
@@ -75,6 +66,15 @@ def live_basket_source(
     credentialed it returns ``None`` — the caller falls back to the runner's empty no-capture
     source, so the gate and any non-secret runner stay green.
 
+    **No look-ahead.** The CP REST path is a *snapshot of current quotes*; it cannot reconstruct a
+    past session's chain (CP REST has no historical option-quote endpoint). So the bound source
+    captures only when ``trade_date`` is the current session day (``now()``): a past ``trade_date``
+    (a catch-up/backfill fire, or a fire that slipped past UTC midnight) returns ``None`` rather
+    than stamping today's quotes at a past close — the staleness that would violate the as-of
+    invariant. Past-date underlying history is served by the ``/iserver/marketdata/history`` OHLC
+    backfill (``CpRestHistoryCollector``), not this source. ``now`` defaults to the UTC clock and is
+    injectable so a fixed-date fire can be tested without the wall clock.
+
     ``transport`` is injectable so the gate drives an already-authenticated fake CP REST gateway
     (the live LST/socket path is bypassed): when a transport is supplied the credential gate is
     skipped and the source is bound directly over it. ``config`` defaults to the loaded platform
@@ -83,20 +83,29 @@ def live_basket_source(
     resolved_env = os.environ if env is None else env
 
     if transport is None:
-        if not credentials_present(resolved_env):
-            _LOGGER.info(
-                "ibkr.live_capture.not_credentialed",
-                reason="no IBKR CP OAuth artifacts in environment; empty no-capture path",
-            )
+        built = build_credentialed_session(resolved_env)
+        if built is None:  # not credentialed (logged by the factory) — the empty no-capture path
             return None
-        transport = _build_live_transport(resolved_env)
+        transport, _session = built
 
     if not _supports_get(transport):
         raise TypeError(f"live capture transport must support .get(...), got {transport!r}")
 
     resolved_config = config if config is not None else _load_config()
+    today = now or _utc_today
 
     def source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+        current_day = today()
+        if trade_date < current_day:
+            _LOGGER.info(
+                "ibkr.live_capture.skip_backfill_past_date",
+                index=fired.entry.symbol,
+                trade_date=trade_date.isoformat(),
+                today=current_day.isoformat(),
+                reason="live snapshot is current quotes; a past trade_date would be stale "
+                "(no look-ahead) — option capture skipped, use the /history OHLC backfill",
+            )
+            return None
         return collect_live_basket(
             transport,
             index=fired.entry,
@@ -107,27 +116,6 @@ def live_basket_source(
 
     _LOGGER.info("ibkr.live_capture.credentialed", reason="collect_live basket source bound")
     return source
-
-
-def _build_live_transport(env: Mapping[str, str]) -> Any:
-    """Acquire the LST, build the signed transport, and open the brokerage session (live path).
-
-    Reached only when the environment is credentialed and no transport was injected — i.e. a real
-    fire against the hosted gateway. Never exercised under the gate (every test injects a
-    transport). Reads only the base-URL override from ``env``; the credential artifacts are read
-    by :func:`load_lst_consumer`.
-    """
-    consumer = load_lst_consumer(env)
-    if consumer is None:  # pragma: no cover — guarded by credentials_present at the call site
-        raise RuntimeError("credentials_present was true but no LstConsumer could be loaded")
-    base_url = env.get(ENV_BASE_URL, "").strip() or _DEFAULT_BASE_URL
-    post = make_lst_http_post(base_url)
-    transport = build_signed_cp_rest_transport(consumer, base_url=base_url, post=post)
-    session = CpRestSession(transport)
-    session.wait_until_established(
-        max_polls=_ESTABLISH_MAX_POLLS, poll_seconds=_ESTABLISH_POLL_SECONDS
-    )
-    return transport
 
 
 def _load_config() -> PlatformConfig:

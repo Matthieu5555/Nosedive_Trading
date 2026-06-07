@@ -40,7 +40,7 @@ from algotrading.core.config import (
 )
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.orchestration import RunnerDeps, run_fire
-from algotrading.infra.orchestration.eod_runner import default_stages_builder
+from algotrading.infra.orchestration.eod_runner import FiredIndex, default_stages_builder
 from algotrading.infra.storage import ParquetStore, RunRegistry
 from algotrading.infra.universe import (
     CalendarResolver,
@@ -309,9 +309,13 @@ def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
     # Bind the live source over the fake MARKET gateway (an already-authenticated transport): the
     # capture/plan/snapshot/basket code runs end to end; the LST socket path is bypassed via the
     # injected transport, with the auth path itself covered by the C2 production-transport test.
+    # ``now`` fixed to the trade date: this fire happens on its own session day, so the live
+    # snapshot is valid (the no-look-ahead guard admits it). Without pinning ``now`` the source
+    # would compare the fixed past TRADE_DATE against the wall clock and skip the capture.
     source = live_basket_source(
         env=env, transport=_FakeMarketGateway(), config=_config(),
         selection=ChainSelection(max_expiries=3, min_strikes_per_side=10, option_exchange="CBOE"),
+        now=lambda: TRADE_DATE,
     )
     assert source is not None
 
@@ -327,6 +331,37 @@ def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
     assert {row.provider for row in grid} == {PROVIDER}
     assert {row.underlying for row in grid} == {"SPX"}
     assert {row.snapshot_ts for row in grid} == {SPX_CLOSE}  # the index's own close, the as-of
+
+
+def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> None:
+    """A trade_date before 'today' returns None — the live snapshot must not back-date stale quotes.
+
+    Same credentialed source, same fake gateway, same fired index — only ``now`` differs. When
+    ``now`` is the day AFTER the trade date (a catch-up/backfill fire), the source declines (no
+    look-ahead); when ``now`` IS the trade date, the very same source captures a real basket. So
+    the difference is the date guard, not a broken transport.
+    """
+    from datetime import timedelta
+
+    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE)
+    selection = ChainSelection(max_expiries=3, min_strikes_per_side=10, option_exchange="CBOE")
+
+    def _source(today: date) -> Any:
+        return live_basket_source(
+            env=_env(tmp_path), transport=_FakeMarketGateway(), config=_config(),
+            selection=selection, now=lambda: today,
+        )
+
+    # 'today' is the day after the trade date → a past-dated fire → skipped, no basket.
+    past_fire = _source(TRADE_DATE + timedelta(days=1))
+    assert past_fire is not None
+    assert past_fire(fired, TRADE_DATE) is None
+
+    # 'today' IS the trade date → the same source captures a real, populated basket.
+    same_day = _source(TRADE_DATE)
+    assert same_day is not None
+    basket = same_day(fired, TRADE_DATE)
+    assert basket is not None and basket.events, "the same-day fire must capture a real basket"
 
 
 def test_non_credentialed_environment_falls_back_to_empty_no_capture(tmp_path: Path) -> None:

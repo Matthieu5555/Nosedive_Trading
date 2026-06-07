@@ -125,6 +125,31 @@ strike returns *Error 200, no security definition*), and **pick the strike neare
 range is huge). *Error 10091* ("requires additional subscription") is the **real-time** wall, not a
 bug — delayed still flows. Details in `packages/infra-ibkr/README.md`.
 
+### Client Portal REST OAuth 1.0a — the path the EOD capture actually uses
+
+The TWS socket above is for interactive probing. The **daily EOD close-capture** (`scripts/eod_run.py`
+→ `packages/infra-ibkr` `live_basket_source` / `collect_live_basket`, ADR 0024/0031) runs over the
+**hosted Client Portal Web API with OAuth 1.0a**, not the socket — it needs no desktop app and runs
+unattended via a ~24h Live Session Token. The runner keys live-vs-empty on the credentials: with every
+required `IBKR_CP_*` var present it captures a real chain; with any missing it logs an empty basket and
+exits 0 (the clean no-capture day). **This is why a bare `eod_run.py` captures nothing until the env is
+provisioned.**
+
+One-time setup: register a consumer key, access token/secret, and two RSA keys (signing + encryption)
+in the IBKR Self-Service OAuth portal, then set in `.env` (see `.env.example` for the full list and the
+PEM-path convention):
+
+| Var | What |
+|---|---|
+| `IBKR_CP_CONSUMER_KEY` / `IBKR_CP_ACCESS_TOKEN` / `IBKR_CP_ACCESS_TOKEN_SECRET` | OAuth registration triple |
+| `IBKR_CP_SIGNING_KEY_PEM` / `IBKR_CP_ENCRYPTION_KEY_PEM` | **file paths** to the registered RSA keys |
+| `IBKR_CP_DH_PRIME` (+ optional `IBKR_CP_DH_GENERATOR` / `IBKR_CP_REALM` / `IBKR_CP_BASE_URL`) | the access-token → LST Diffie-Hellman exchange |
+
+**Look-ahead note:** the live path is a *snapshot* of current quotes, valid only for the current
+session day. A `--trade-date` in the past does **not** reconstruct a past option chain (CP REST has no
+historical option-quote endpoint); past dates are served by the underlying-OHLC `/iserver/marketdata/
+history` backfill (`CpRestHistoryCollector`), not the live basket source.
+
 ---
 
 ## Troubleshooting (verified meanings)

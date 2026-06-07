@@ -5,6 +5,7 @@ const NAV = [
   { to: "/health", label: "Health", end: false },
   { to: "/surfaces", label: "Surfaces", end: false },
   { to: "/risk", label: "Risk", end: false },
+  { to: "/stress", label: "Stress", end: false },
   { to: "/run", label: "Run", end: false },
   { to: "/config", label: "Config", end: false },
 ];

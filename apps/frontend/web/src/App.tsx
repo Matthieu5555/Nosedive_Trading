@@ -8,6 +8,7 @@ import { HomePage } from "./pages/Home";
 import { NotFoundPage } from "./pages/NotFound";
 import { RiskPage } from "./pages/Risk";
 import { RunPage } from "./pages/Run";
+import { StressPage } from "./pages/Stress";
 import { SurfacesPage } from "./pages/Surfaces";
 
 export function App() {
@@ -19,6 +20,7 @@ export function App() {
         <Route path="surfaces" element={<SurfacesPage />} />
         <Route path="risk" element={<RiskPage />} />
         <Route path="basket" element={<BasketPage />} />
+        <Route path="stress" element={<StressPage />} />
         <Route path="run" element={<RunPage />} />
         <Route path="config" element={<ConfigPage />} />
         <Route path="*" element={<NotFoundPage />} />

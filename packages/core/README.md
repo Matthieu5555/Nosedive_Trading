@@ -11,10 +11,10 @@ import-linter enforces that this is the bottom of the stack.
   `PlatformConfig`; `ConfigError`), `platform_config.py` (the typed `PlatformConfig` and
   its domain sub-configs: `QcThresholdConfig`, `ScenarioConfig`, `SolverConfig`,
   `UniverseConfig`, …), and the hashes (`config_hash`, `composite_config_hash`). The
-  config standard this is converging toward is
+  config standard this implements is
   [ADR 0028](../../.agent/decisions/0028-configuration-and-reproducibility-standard.md) /
-  `documentation/configuration-and-reproducibility.md`; the remaining application work is
-  task [C7](../../tasks/C7-config-hardening.md).
+  `documentation/configuration-and-reproducibility.md`; the application work
+  ([C7](../../tasks/archive/C7-config-hardening.md)) landed in full.
 - **`provenance.py`** — the `ProvenanceStamp` every derived record carries (which inputs,
   which code version, which config hash) and the stamp helpers. This is the mechanism
   behind the platform's determinism and reproducibility guarantees.

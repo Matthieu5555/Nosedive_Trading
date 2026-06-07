@@ -41,9 +41,9 @@ below. The fan-out decisions live in `.agent/decisions/` and the results in the 
 
 The **convergence series (C1–C8)** that closed the merge is complete and merged to `main`;
 its specs are archived here as the record of what was built. The linear runbook that
-sequenced them is [CONVERGENCE-PLAN.md](CONVERGENCE-PLAN.md). The one convergence task still
-*live* is **C7** (config hardening) — only Task 1 of 5 landed — so its spec stays on the
-active board at [`tasks/C7-config-hardening.md`](../C7-config-hardening.md), not here.
+sequenced them is [CONVERGENCE-PLAN.md](CONVERGENCE-PLAN.md). The last convergence task, **C7**
+(config hardening), **landed in full** (tasks 1–5 + carry-forwards, 2026-06-07) and its spec now
+lives here: [`C7-config-hardening.md`](C7-config-hardening.md).
 
 - [C1-actor-and-market-data-plane.md](C1-actor-and-market-data-plane.md) — market-data plane + actor spine relocated to `packages`; Nautilus runtime spine (ADR 0023/0025); IBKR on Nautilus + the custom Client-Portal REST transport (ADR 0024). Done.
 - [C2-qc-validation.md](C2-qc-validation.md) — QC + validation/triage ported to `packages/infra`, one `triage_records` table (ADR 0010). Done.

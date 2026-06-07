@@ -57,6 +57,8 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
+| Matthieu (Claude) | `.agent/decisions/0030-0033` (library-leverage ADRs, doc-only) | 2026-06-06 | buy-vs-build audit outcomes: front viz/UI, IBKR REST+OAuth 1.0a, systemd scheduler, DuckDB+Polars. Feed the Phase 0/1 specs; no code touched |
+| Matthieu (Claude) | data-architecture consolidation (doc-only): `.agent/decisions/0034`, `tasks/D1-storage-foundation.md`, TASKBOARD | 2026-06-07 | Fixes the data stack: retention/cold-compaction + Postgres-optional + `provider` partition-key clarification (ADR 0034); specs the one foundational impl gap (`provider` partition segment, D1). **No code** — complements the 0033 data-query ADR, no overlap with storage code. |
 
 ## What's next — the index-analytics build
 
@@ -67,6 +69,7 @@ sequence and the one task already specced:
 | When | Work | Spec |
 |------|------|------|
 | **✅ Done (100% — gate open)** | **C7 — config hardening.** Tasks 1–5 **and both carry-forwards** landed: six Part VII YAMLs + bundle loader; every hashed economic param in validated typed config (no `.py` literals at the audited sites); per-bundle `config_hashes` on every stamp; injected code identity + per-run config freeze + `validate_manifest`; broker.yaml bands/backoff wired; and the **effective-dated profile store** on SQLite (`ProfileRepository`/`resolve_as_of`). Both halves locked: replay-a-run **and** replay-a-past-day-fresh. The owner prerequisite — *no new compute until params are in YAML and reproducibility is locked* — is fully met. Ready to archive the spec. | [C7-config-hardening.md](C7-config-hardening.md) |
+| **Data foundation (pre-equity-scale)** | **Data architecture fixed** — Parquet record + DuckDB/Polars query + SQLite metadata, no Postgres in core (ADRs [0015](../.agent/decisions/0015-storage-repository-port-tiered-backends.md)/[0017](../.agent/decisions/0017-provider-dimension.md)/[0019](../.agent/decisions/0019-one-immutable-raw-model.md)/[0028](../.agent/decisions/0028-configuration-and-reproducibility-standard.md)/[0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)/[0034](../.agent/decisions/0034-data-retention-compaction-and-backend-disposition.md)). One foundational impl task: **D1 — `provider` partition segment** (0017 gap, must land before equity capture 1C). | [D1-storage-foundation.md](D1-storage-foundation.md) |
 | **Phase 0** | Pin the tenor grid + $-Greek units/flags; build the IBKR historical-bar fetch (underlying daily OHLC); decide futures capture (ADR + blueprint amendment, or defer). | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 0 |
 | **Phase 1 (Tab 1)** | 1A membership → 1B delta-band selection → 1C capture (daily close + history) → 1F (tenor×Δ-band) projection → 1G cron → 1H QC → 1I front page. (1D futures gated, parallel; 1E raw store is a no-op.) | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 1 |
 | **Phase 2 (Tab 2)** | Basket builder → stress/scenario (±50% spot/vol) → PnL attribution by Greek → strategy composition. | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 2 |
@@ -77,6 +80,12 @@ converged seam → contract-test map. Code without the named tests is not done.
 
 ## Known carried-forward items
 
+- **Data retention + cold-compaction (build-when-measured).** Per [ADR 0034](../.agent/decisions/0034-data-retention-compaction-and-backend-disposition.md):
+  the blueprint Part XV 4-tier retention is **policy**, not yet enforced (nothing deletes data, and at
+  current scale nothing should). The scale lever for the small-files problem is **cold-compaction by
+  ticker** (merge old `(date, underlying)` files into `(underlying, month|year)`) — built **only when a
+  measured threshold is crossed** (adding SP500, or file-count/query-latency past a bound), never
+  speculatively. Non-blocking; lives behind the `StorageRepository` port over cold data only.
 - **[H1 — repo-hygiene audit](H1-repo-hygiene-audit.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
   Read-only classification done; report at [H1-repo-hygiene-report.md](H1-repo-hygiene-report.md).
   Outcome: **no tracked dead paths** (nothing to `git rm`). Applied safe patch — added the five

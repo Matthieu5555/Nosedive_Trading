@@ -243,15 +243,12 @@ three pillars (−30Δ put / ATM / +30Δ call). Decided with web-research expert
 - **Risk reversal** = long +30Δ call, short −30Δ put. Maps cleanly.
 - **Straddle** = a call **and** a put at the **same ATM strike** (defining property: ~delta-neutral,
   max gamma/vega; an ATM option is ~50Δ, so the ±30Δ wings are *not* a straddle — that pair *is* the
-  strangle). **The analytics grid stores a single ATM cell, priced as a call; there is no ATM-put
-  cell**, so a genuine two-leg ATM straddle cannot be composed by summing grid cells today.
-  - **Interim (shipped):** the straddle button composes the **single ATM leg** (~50Δ, the correct
-    strike) — labelled "½", honest about being half the structure. Deliberately **not** aliased to
-    the ±30Δ pair (that would make straddle and strangle compose identical legs — a product bug).
-  - **Correct fix (follow-up, upstream in WS 1F):** emit an explicit **ATM-put cell**
-    (target-delta-0 → `option_right="P"`) at the ATM strike, so the straddle becomes
-    `long ATM call + long ATM put`. When that lands, change the one `straddle` branch in
-    `basketTemplates.ts` to the two ATM legs; nothing else in 2A changes.
+  strangle). **Resolved (1F-followup landed):** the analytics grid now emits **both** ATM pillars at
+  the one ATM-forward strike — the call `atm` and the put `atmp` (`tasks/1F-atm-put-cell.md`;
+  `projection.py` `_option_right_for_band` takes the right from the label suffix). So the straddle
+  template composes the genuine **two ATM legs** `[long atm, long atmp]` — delta-neutral, 2× gamma/
+  vega. It is deliberately **not** the ±30Δ pair (that is the strangle; a straddle and a strangle
+  must not compose identical legs).
 
 This is a UI-only convenience layer over the frozen `Basket`/`BasketLeg` contract; changing a
 template is a one-file edit and does not touch the contract, the summation math, or the BFF seam.

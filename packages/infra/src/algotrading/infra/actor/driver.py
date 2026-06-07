@@ -128,7 +128,7 @@ _AGGREGATE_DIMENSION = "underlying"
 # caller does not pass an explicit ProjectionConfig. A label only (the axes themselves are the
 # pinned P0.1 tenor set + 30Δ band defaults); it enters config_hashes["projection"] so the grid
 # is reproducible. Bump only on a deliberate change to the default axes.
-PROJECTION_AXES_VERSION = "projection-axes-1.0.0"
+PROJECTION_AXES_VERSION = "projection-axes-1.1.0"  # 1.1.0: + ATM-put pillar (atmp) for the straddle
 
 # Maturity matching tolerance, kept in lockstep with the valuation join so the
 # forward/slice indexed by a derived maturity resolves the contract built from the

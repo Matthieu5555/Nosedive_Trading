@@ -16,8 +16,8 @@ import {
 
 import type { BasketLegInput, InstrumentKind, LegSide } from "../api";
 
-// The delta bands the WS-1F grid offers (projection.py), put → ATM → call.
-const DELTA_BANDS = ["30dp", "20dp", "10dp", "atm", "10dc", "20dc", "30dc"];
+// The delta bands the WS-1F grid offers (projection.py), put → ATM (call `atm` + put `atmp`) → call.
+const DELTA_BANDS = ["30dp", "20dp", "10dp", "atm", "atmp", "10dc", "20dc", "30dc"];
 
 function validateLeg(leg: BasketLegInput): string | null {
   if (!Number.isFinite(leg.quantity) || leg.quantity === 0) {

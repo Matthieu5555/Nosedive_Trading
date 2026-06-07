@@ -189,6 +189,42 @@ def test_atm_delta_is_near_half() -> None:
     assert 0.45 <= atm.delta <= 0.55
 
 
+def test_atm_put_pillar_shares_the_atm_call_strike() -> None:
+    # The two legs of an ATM straddle: ``atm`` (call) and ``atmp`` (put) at the SAME ATM-forward
+    # strike. Independent oracle: a straddle is two same-strike legs, so the strikes must be equal
+    # (and the IV at one strike is one number, so the two cells share it).
+    result = _project(build_synthetic_term_surface())
+    atm = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atm")
+    atmp = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atmp")
+    assert atmp.target_delta == 0.0
+    assert atmp.strike == pytest.approx(atm.strike)
+    assert atmp.log_moneyness == pytest.approx(atm.log_moneyness)
+    assert atmp.implied_vol == pytest.approx(atm.implied_vol)
+
+
+def test_atm_put_pillar_is_a_put_with_matching_gamma_vega() -> None:
+    # The ATM put has a negative spot delta near -0.5; being the same strike as the ATM call it
+    # carries the same gamma and vega (those do not depend on call-vs-put). Oracle: option theory.
+    result = _project(build_synthetic_term_surface())
+    atm = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atm")
+    atmp = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atmp")
+    assert -0.55 <= atmp.delta <= -0.45
+    assert atmp.gamma == pytest.approx(atm.gamma)
+    assert atmp.vega == pytest.approx(atm.vega)
+
+
+def test_atm_straddle_is_approximately_delta_neutral_and_double_gamma() -> None:
+    # A long ATM straddle = long atm call + long atm put. Net dollar-delta is small relative to
+    # either leg (the straddle's defining ~delta-neutrality), and gamma is ~2x a single leg.
+    # Oracle: straddle delta = Δcall + Δput, which nearly cancels at the ATM-forward strike.
+    result = _project(build_synthetic_term_surface())
+    atm = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atm")
+    atmp = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "atmp")
+    net_dollar_delta = atm.dollar_delta + atmp.dollar_delta
+    assert abs(net_dollar_delta) < 0.30 * abs(atm.dollar_delta)
+    assert (atm.dollar_gamma + atmp.dollar_gamma) == pytest.approx(2 * atm.dollar_gamma, rel=1e-6)
+
+
 def test_out_of_band_target_is_a_labeled_gap_not_a_nan() -> None:
     # A 5Δ call at the short 10d tenor lands beyond the fitted strike span on this surface —
     # the projection must label it a gap, never emit a NaN-bearing cell.

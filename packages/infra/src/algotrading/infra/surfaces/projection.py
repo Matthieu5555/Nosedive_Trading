@@ -4,7 +4,9 @@ This is the cross-maturity regrid the rest of the surface engine did not do. ``f
 fits one SVI smile per listed maturity and projects a single slice onto a log-moneyness
 bucket grid; this module takes the *whole* set of per-maturity fits and produces, for one
 underlying at one snapshot, a deterministic grid over the **pinned tenor set** crossed
-with a **delta band** — the 30Δ-put → ATM → 30Δ-call window. Every cell carries the
+with a **delta band** — the 30Δ-put → ATM → 30Δ-call window, with the ATM pillar emitted as
+both a call (``atm``) and a put (``atmp``) at the one ATM-forward strike so an ATM straddle's
+two legs are both in the grid. Every cell carries the
 fitted IV, the model price, and the full Greeks in **both** representations side by side:
 the raw decimal per-unit Greeks (the source of truth) and the derived dollar Greeks, each
 dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).
@@ -80,11 +82,17 @@ _TENOR_YEARS: dict[str, float] = {
 # the 30Δ call (blueprint OQ-4 default window). A put target is negative, a call positive,
 # ATM is the 0.50 call-delta pillar (signed 0.0 here as the band centre label). The labels
 # are the band names the front renders; the magnitude is the |delta| solved for.
+#
+# ``atm`` and ``atmp`` are the call and the put at the SAME ATM-forward strike (both solve from
+# target 0.0): the call (``atm``) and the put (``atmp``) that compose an ATM straddle. The option
+# right is taken from the label suffix (``…p`` → put, ``…c`` → call), so the two ATM pillars are
+# a call and a put at one strike — see :func:`_option_right_for_band`. A straddle is the two of
+# them summed (delta-neutral, 2× gamma/vega); without ``atmp`` the grid could not express it.
 _DEFAULT_BAND_LABELS: tuple[str, ...] = (
-    "30dp", "20dp", "10dp", "atm", "10dc", "20dc", "30dc",
+    "30dp", "20dp", "10dp", "atm", "atmp", "10dc", "20dc", "30dc",
 )
 _DEFAULT_BAND_TARGETS: tuple[float, ...] = (
-    -0.30, -0.20, -0.10, 0.0, 0.10, 0.20, 0.30,
+    -0.30, -0.20, -0.10, 0.0, 0.0, 0.10, 0.20, 0.30,
 )
 
 # Newton/bisection budget and tolerance for the delta -> strike inversion. Numerical
@@ -364,6 +372,22 @@ def _solve_strike_for_delta(
     return 0.5 * (a + b)
 
 
+def _option_right_for_band(delta_band: str, target_delta: float) -> str:
+    """The option right for a band cell: the label **suffix** governs, the sign is the fallback.
+
+    A ``…p`` label is a put, a ``…c`` label a call; a label with no side suffix (``atm``) falls
+    back to the signed target (negative → put, otherwise call). This is what lets the ATM put
+    (``atmp``, target 0.0) be a **put** while the ATM call (``atm``, target 0.0) stays a **call**
+    — they share the ATM-forward strike, so the two summed are a straddle. For every other band
+    the suffix and the sign agree, so this is behaviour-preserving for the existing grid.
+    """
+    if delta_band.endswith("p"):
+        return "P"
+    if delta_band.endswith("c"):
+        return "C"
+    return "P" if target_delta < 0.0 else "C"
+
+
 def _projection_stamp(
     slices: Sequence[SliceFit],
     *,
@@ -524,17 +548,19 @@ def _build_cell(
 ) -> ProjectedOptionAnalytics:
     """Price one solved (tenor, delta-band) cell and emit its stamped contract.
 
-    The cell's option right follows the band side (a put for a negative target, a call for
-    a positive one, a call at ATM), priced at the IV read off the surface at the solved
-    strike — so the IV used to price equals the IV the strike was solved against (no
-    mismatch). The decimal Greeks are the engine's per-unit Greeks (source of truth); the
+    The cell's option right follows the band label's side suffix
+    (:func:`_option_right_for_band`): a ``…p`` band is a put, a ``…c`` band a call, and the two
+    ATM pillars are the call (``atm``) and the put (``atmp``) at the one ATM-forward strike. It is
+    priced at the IV read off the surface at the solved strike — so the IV used to price equals
+    the IV the strike was solved against (no mismatch). The decimal Greeks are the engine's
+    per-unit Greeks (source of truth); the
     dollar layer is derived once via :func:`pricing.dollar_greeks` with the configured
     flags and unit strings (one dollar-Greek home, no second code path).
     """
     strike = forward * math.exp(k)
     vol = _iv_at(slices, k, maturity)
     total_variance = vol * vol * maturity
-    option_right = "P" if target_delta < 0.0 else "C"
+    option_right = _option_right_for_band(delta_band, target_delta)
     state = from_forward(
         forward=forward, strike=strike, maturity_years=maturity, volatility=vol,
         discount_factor=discount_factor, option_right=option_right, spot=market.spot,

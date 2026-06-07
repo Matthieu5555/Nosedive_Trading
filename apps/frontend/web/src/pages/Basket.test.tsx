@@ -23,12 +23,13 @@ test("the strangle template pre-fills the ±30Δ wing legs in the grid", async (
   expect(within(legs).getByText("30dp")).toBeInTheDocument();
 });
 
-test("the straddle template pre-fills the single ATM leg (interim realization)", async () => {
+test("the straddle template pre-fills the two ATM legs (atm call + atmp put)", async () => {
   const user = userEvent.setup();
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   const legs = screen.getByRole("table", { name: /composed legs/i });
   expect(within(legs).getByText("atm")).toBeInTheDocument();
+  expect(within(legs).getByText("atmp")).toBeInTheDocument();
   // Not the ±30Δ wings — that would be the strangle.
   expect(within(legs).queryByText("30dc")).not.toBeInTheDocument();
 });

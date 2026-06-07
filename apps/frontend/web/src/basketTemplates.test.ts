@@ -5,10 +5,11 @@ import { buildTemplate } from "./basketTemplates";
 // Expected legs are hand-listed here (not read from the template code). The simple scenario is the
 // three pillars −30Δ put / ATM / +30Δ call. See basketTemplates.ts for the straddle limitation.
 
-test("straddle is the single ATM leg (interim — full two-leg straddle needs an ATM-put cell)", () => {
-  // NOT the ±30Δ pair (that is the strangle) and NOT two ATM calls (delta +1, not a straddle).
+test("straddle composes the two ATM legs (long atm call + long atmp put, same strike)", () => {
+  // NOT the ±30Δ pair (that is the strangle) and NOT two atm calls (delta +1, not a straddle).
   expect(buildTemplate("straddle", "AAA", "1m")).toEqual([
     { instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA", tenor_label: "1m", delta_band: "atm" },
+    { instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA", tenor_label: "1m", delta_band: "atmp" },
   ]);
 });
 

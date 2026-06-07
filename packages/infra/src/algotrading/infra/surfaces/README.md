@@ -61,7 +61,10 @@ slice flat outside the fitted range — the standard calendar-consistent rule.
 slice onto a log-moneyness bucket grid, `project_grid` takes the *whole* set of per-maturity
 fits and produces, for one underlying at one snapshot, a deterministic grid over the
 **pinned tenor set** (`10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y`) crossed with a **delta band**
-(the 30Δ-put → ATM → 30Δ-call window). Each cell is a stamped `ProjectedOptionAnalytics`
+(the 30Δ-put → ATM → 30Δ-call window: `30dp,20dp,10dp,atm,atmp,10dc,20dc,30dc`). The ATM
+pillar is **two** cells at the one ATM-forward strike — the call `atm` and the put `atmp` — so
+the two legs of an ATM straddle are both in the grid (the option right comes from the label's
+side suffix, `…p`/`…c`; see `_option_right_for_band`). Each cell is a stamped `ProjectedOptionAnalytics`
 contract carrying the fitted IV, the model price, and the Greeks in **both** representations
 side by side — the decimal per-unit Greeks (source of truth) and the dollar Greeks, each
 dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).

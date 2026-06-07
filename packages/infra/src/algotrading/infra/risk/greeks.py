@@ -11,13 +11,11 @@ should still exist even when analytic Greeks are used"; ``tasks/TESTING.md``). B
 this and the scenario engine's local approximation draw their bump from one versioned
 source, so they cannot diverge.
 
-Monetization conventions (consistent with the pricer's per-unit cash Greeks; risk
-scales them by contract multiplier and signed held quantity):
-
-* ``dollar_delta = delta * spot * multiplier * quantity``
-* ``dollar_gamma = gamma * spot**2 * multiplier * quantity`` (dollar gamma, Eq 17)
-* ``dollar_vega  = vega * 0.01 * multiplier * quantity`` (dollar vega, Eq 18; one vol pt)
-* ``dollar_theta = theta * multiplier * quantity``
+Dollar (monetized) Greeks are **not** computed here. The single canonical home is
+``pricing/dollar_greeks.py`` (per-1% gamma ``Γ·S²/100`` / per-365 theta, config-flagged),
+which the projection and every Phase-2 aggregation consume — so there is one $-convention
+and it cannot drift. This module emits only the per-unit Greeks and the contract-level
+position sensitivities below.
 
 Contract-level (un-dollarized) position sensitivities are ``per_unit * multiplier *
 quantity`` — share/contract-equivalent, so contracts with different multipliers
@@ -84,22 +82,6 @@ class PositionRisk:
 
     @property
     def position_theta(self) -> float:
-        return self.greeks.theta * self.scale
-
-    @property
-    def dollar_delta(self) -> float:
-        return self.greeks.delta * self.valuation.spot * self.scale
-
-    @property
-    def dollar_gamma(self) -> float:
-        return self.greeks.gamma * self.valuation.spot * self.valuation.spot * self.scale
-
-    @property
-    def dollar_vega(self) -> float:
-        return self.greeks.vega * 0.01 * self.scale
-
-    @property
-    def dollar_theta(self) -> float:
         return self.greeks.theta * self.scale
 
 

@@ -114,16 +114,14 @@ property, so it cannot drift from the per-unit Greeks it scales. The scale facto
 
 Position-level (`position_delta`/`gamma`/`vega`/`theta`) are `per_unit * M * Q` —
 share/contract-equivalent. These are what aggregate, because a per-unit sum across
-contracts with different multipliers would be meaningless. Dollar-monetized figures are
-currency-tagged cash and live only on the line; they are *not* summed into the aggregate
-(adding USD and EUR dollar gamma is a category error):
+contracts with different multipliers would be meaningless.
 
-| Property       | Formula                  | Per what move                      |
-| -------------- | ------------------------ | ---------------------------------- |
-| `dollar_delta` | `delta * spot * M * Q`   | cash PnL per 1.00 spot move        |
-| `dollar_gamma` | `gamma * spot² * M * Q`  | dollar gamma (Eq 17)               |
-| `dollar_vega`  | `vega * 0.01 * M * Q`    | cash PnL per one vol point (Eq 18) |
-| `dollar_theta` | `theta * M * Q`          | cash PnL per year of decay         |
+Dollar-monetized Greeks are **not** computed here — the single canonical home is
+[`pricing/dollar_greeks.py`](../pricing/dollar_greeks.py) (per-1% gamma `Γ·S²/100`,
+per-365 theta, config-flagged), consumed by the projection and every Phase-2 aggregation.
+Keeping one $-home is deliberate: it is the convention that must not drift (a per-$1 vs
+per-1% gamma mix is a 100× error). Dollar figures are currency-tagged cash that is *not*
+summed into the per-unit aggregate (adding USD and EUR dollar gamma is a category error).
 
 `central_difference_greeks` is the independent cross-check, not the production path: it
 central-differences the *pricer's own price* using the shared bumps. The test that

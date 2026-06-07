@@ -21,15 +21,20 @@
   **[ADR 0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)** (Plotly.js
   for the combined PnL surface; shadcn/ui + TanStack Table for the compose shell), and
   **[ADR 0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)** (storage).
-- **Depends on:** **2A** (positions — the basket/position set a book layers; not yet specced/built),
-  **2B** (the stress grid the combined PnL surface reprices over — the spot×vol scenario family;
-  built on `risk/scenarios.py`), and **2C** (attribution — the per-layer decomposition the combined
-  view drills into). All three are Phase-2 siblings that do not exist yet; 2D is their leaf and starts
-  only once they land. Reuses the **built** additive aggregation (`risk/aggregation.py` — sum of lines
-  equals the aggregate, order-free), the basket variance primitive (`risk/basket.py`, Eq 23), the
-  scenario/full-reprice engine (`risk/scenarios.py`), the position model (`risk/positions.py`), and
-  the dollar-Greek formulas (`risk/greeks.py`). Inherits the book-additive $-Greeks 1F was told to
-  keep (`tasks/1F-analytics-projection.md` Gotchas: "keep the dollar Greeks book-additive").
+- **Depends on:** **2A** ([2A-basket-builder.md](2A-basket-builder.md) — the frozen `Basket`/`BasketLeg`
+  contract + `risk/multileg.py` book-additive risk a book layers; **landed** `b2b6a06`), **2B**
+  ([2B-stress-scenario.md](2B-stress-scenario.md) — the ±50%/±50% spot×vol `StressSurfaceConfig` grid
+  + the `GET /api/risk/scenarios` `surface` seam the combined PnL surface reprices over; **landed,
+  full-stack**), and **2C** ([2C-pnl-attribution.md](2C-pnl-attribution.md) — the per-Greek
+  `ScenarioAttribution` shape the combined view drills into; **landed** `4e3f50f`). All three are
+  specced **and landed**; 2D is their leaf — it **consumes their frozen contracts**, it does not
+  re-derive them. Reuses the additive aggregation (`risk/aggregation.py` — sum of lines equals the
+  aggregate, order-free, over per-unit `position_*`), the basket variance primitive (`risk/basket.py`,
+  Eq 23), the scenario/full-reprice engine (`risk/scenarios.py`), the position model
+  (`risk/positions.py`), and the **canonical dollar-Greek home** `pricing/dollar_greeks.py` (per-1%
+  gamma / per-365 theta — *not* `risk/greeks.py`, which emits per-unit Greeks only). Inherits the
+  book-additive $-Greeks 1F kept (`tasks/archive/1F-analytics-projection.md` Gotchas: "keep the
+  dollar Greeks book-additive").
 - **Blocks:** nothing — it is the leaf of Tab 2 and of Phase 2.
 - **State going in (verified 2026-06-07):** infra risk aggregation **is** additive across positions
   and order-free (`risk/aggregation.py`: "the sum of the lines equals the aggregate and ... the
@@ -38,8 +43,10 @@
   scenario engine builds an explicit-state grid and full-reprices every position against base
   (`risk/scenarios.py`). The basket variance identity exists (`risk/basket.py`). **No book /
   strategy-composition layer exists** — nothing aggregates *across sub-strategies* into a named,
-  layered book, and there is no combined PnL surface. 2A/2B/2C have **no task files yet**
-  (`tasks/` holds `2D` only for Tab 2); cross-ref them by intent, do not cite code from them.
+  layered book, and there is no combined PnL surface. 2A/2B/2C are **specced and landed** — cite
+  their concrete frozen seams (do **not** re-derive): 2A's `Basket`/`BasketLeg` contract +
+  `risk/multileg.py`, 2B's `StressSurfaceConfig` grid + the `/api/risk/scenarios` surface view,
+  2C's `ScenarioAttribution`.
 
 ## Objective
 
@@ -201,9 +208,10 @@ decorrelation optimiser is present; root gate green (uv) and web gate green (npm
   shocks and is not the book's PnL surface.
 - **Don't sum dollars across currencies.** Monetization stays line-level and currency-tagged (the rule
   `risk/aggregation.py` already enforces); the additive aggregate carries raw net sensitivities.
-- **Siblings first.** 2A/2B/2C have no task files yet; do not cite code from them or assume their
-  shapes. 2D starts once they land — build against their *intent* (positions, stress grid,
-  attribution) and the **built** infra primitives, and pin the seams once 2A/2B/2C freeze them.
+- **Siblings landed — cite their frozen seams.** 2A/2B/2C are specced and on `main`; build 2D
+  against their **actual** contracts (`Basket`/`BasketLeg` + `risk/multileg.py`; `StressSurfaceConfig`
+  + `/api/risk/scenarios` surface; `ScenarioAttribution`), not against intent. Do not re-invent a
+  seam they already froze.
 - **Front-first gate.** Phase 2 is parallel-OK but 1I (front page) is the priority; Tab 2 reuses 1I's
   chart/surface/table components and BFF client seams — keep them clean, build 2D on top, don't fork.
 - **uv only** for every backend command; **npm** for the web build/test. No bare `python`/`pip`.

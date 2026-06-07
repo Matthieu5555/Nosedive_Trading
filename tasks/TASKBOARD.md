@@ -64,7 +64,11 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 
 The detailed per-workstream `tasks/` specs (C-series style) are written **per phase as Phase 0
 closes**, per [`roadmap-index-analytics.md`](../documentation/roadmap-index-analytics.md) §6. The
-sequence; **Phase 0 and Phase 1 are now fully specced** (per-workstream files, linked below), behind the library ADRs [0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)–[0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md). Critical path: P0 → 1A+1B → 1C → 1F → 1G+1H → 1I (1D gated on P0.4, parallel; 1E folded into P0/1C):
+sequence; **Phase 0 and Phase 1 are now fully specced** (per-workstream files, linked below), behind the library ADRs [0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)–[0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md). Critical path: P0 → 1A+1B → 1C → 1F → 1G+1H → 1I (1D gated on P0.4, parallel; 1E folded into P0/1C).
+
+> **▶ Front-first gate (owner directive, 2026-06-07): nothing past 1I until the front is functional on the real foundation.** Phase 2 (Tab 2), Phase 3 (execution) and any "rest" (research/ML, CI, multi-user) stay **parked** until 1I delivers a working operator front over the full pipeline. Anticipate Phase-2 needs cheaply in P0/1F — do not build them.
+
+Spec rows:
 
 | When | Work | Spec |
 |------|------|------|
@@ -72,7 +76,7 @@ sequence; **Phase 0 and Phase 1 are now fully specced** (per-workstream files, l
 | **Data foundation (pre-equity-scale)** | **Data architecture fixed** — Parquet record + DuckDB/Polars query + SQLite metadata, no Postgres in core (ADRs [0015](../.agent/decisions/0015-storage-repository-port-tiered-backends.md)/[0017](../.agent/decisions/0017-provider-dimension.md)/[0019](../.agent/decisions/0019-one-immutable-raw-model.md)/[0028](../.agent/decisions/0028-configuration-and-reproducibility-standard.md)/[0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)/[0034](../.agent/decisions/0034-data-retention-compaction-and-backend-disposition.md)). One foundational impl task: **D1 — `provider` partition segment** (0017 gap, must land before equity capture 1C). | [D1-storage-foundation.md](D1-storage-foundation.md) |
 | **Phase 0** | Pin the tenor grid + $-Greek units/flags; build the IBKR historical-bar fetch (underlying daily OHLC); decide futures capture (ADR + blueprint amendment, or defer). | [P0-contracts-and-unblockers.md](P0-contracts-and-unblockers.md) |
 | **Phase 1 (Tab 1)** | Per-WS specs written: [1A membership](1A-universe-membership.md) → [1B Δ-band](1B-delta-band-selection.md) → [1C capture](1C-capture-daily-close-and-history.md) → [1F projection](1F-analytics-projection.md) → [1G cron](1G-cron-daily-close.md) → [1H QC](1H-qc-index-grid.md) → [1I front+API](1I-front-page.md). Futures gated/parallel: [1D](1D-futures-term-structure.md). 1E folded into P0/1C. | per-WS (this dir) |
-| **Phase 2 (Tab 2)** | Basket builder → stress/scenario (±50% spot/vol) → PnL attribution by Greek → strategy composition. | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 2 |
+| **Phase 2 (Tab 2)** — *parked, see front-first gate* | Basket builder → stress/scenario (±50% spot/vol) → PnL attribution by Greek → strategy composition. **Engine already built** (infra/risk scenario + ADR 0006; BFF `/api/risk[/scenarios]`) — mostly wiring + UI. Readiness anticipated in P0.2/1F (book-additive $-Greeks, reusable 1F contract, config-driven grid). | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 2 |
 | **Phase 3 (sketch)** | Execution: ticket → sign (email) → send. Read-only/paper until an explicit owner gate. | [roadmap §3](../documentation/roadmap-index-analytics.md) Phase 3 |
 
 Before writing any test, read [TESTING.md](TESTING.md) — the shared test-surface contract and the

@@ -182,4 +182,8 @@ under the ADR-0034 §4 provider-partitioned layout; no look-ahead; root gate gre
   be byte-identical across two processes without `PYTHONHASHSEED`.
 - **D1 first at scale:** do not write this table at equity scale before D1's `provider` segment lands;
   crypto-only (DERIBIT) works meanwhile.
+- **Phase-2 readiness:** keep `ProjectedOptionAnalytics` rich enough that a multi-leg **basket prices/
+  risks off these Tab-1 outputs without recompute** (roadmap 2A), keep the dollar Greeks book-additive,
+  and keep the stress grid 2B will drive **config-driven** (ADR 0028) — so Phase 2 is wiring, not
+  rework. (Phase 2 itself stays parked behind the front-first gate.)
 - **uv only** for every command in tests, fixtures regeneration, and the gate. No bare `python`/`pip`.

@@ -2,8 +2,9 @@
 
 - **Owns:** the operator front page and the BFF endpoints behind it. On the Python side
   (`apps/frontend/src/algotrading/frontend/`): a new per-ticker **DailyBar OHLC price-history**
-  router, a new **constituent-list** router over 1A membership, and a new **projected-analytics**
-  router (surface grid + dollar Greeks) over 1F — plus their serializers and registration in
+  router, a new **constituent-list** router over 1A membership, a new **projected-analytics**
+  router (surface grid + dollar Greeks) over 1F, and a **recorded-dates** router (capture-coverage
+  counter + date list) over the 1G run ledger — plus their serializers and registration in
   `app.py`. On the web side (`apps/frontend/web/src/`): the real Home/front page (`pages/Home.tsx`
   is static nav today), the chart + surface + smile + accordion + dollar-Greek components, the
   `api.ts` typed clients, and the front-stack dependencies. Conforms to
@@ -65,7 +66,8 @@ API task.
    P0.2 unit string** (Delta\$ per \$1, Gamma\$ per 1% move, Vega\$ per vol point, Theta\$ per
    calendar day, Rho\$ per 1% rate). Field names follow ADR 0029 (`forward_price`, `implied_vol`,
    `log_moneyness`, `dollar_*`) — the unit strings come from 1F/P0.2, not invented here.
-4. **Register the three routers** in `app.py` alongside the existing six (CORS already covers GET).
+4. **Register the new routers** in `app.py` alongside the existing six (CORS already covers GET) —
+   `price-history`, `constituents`, `analytics`, plus the `recorded-dates` router (step 8).
 5. **Front-stack dependencies (web).** Per ADR 0030 add `plotly.js` (the single charting dep:
    `candlestick`/`ohlc`, `scatter`/`line`, `surface`/`mesh3d`), shadcn/ui (+ Radix + Tailwind) for
    the shell, and `@tanstack/react-table` for the dense grid. Do **not** add TradingView Lightweight
@@ -82,6 +84,13 @@ API task.
    **accordion per maturity** (shadcn) each holding the **2D smile** (Plotly `scatter`, vol vs
    delta) and that maturity's **dollar Greeks with their unit strings**. Every panel carries a
    self-describing label. A line chart is an acceptable candlestick fallback only if OHLC is absent.
+8. **Recorded-dates counter + date picker.** BFF: add `routers/recorded_dates.py`
+   (`GET /api/recorded-dates?index=`) returning, for the chosen index, the list of `trade_date`s with a
+   **completed, gap-free** capture run **plus the count** — sourced from the **1G run-state ledger**
+   (which distinguishes complete from partial), not a raw partition listing. Front: a **"N days
+   recorded"** counter and a **date dropdown** that drives the page's `as_of`; selecting a past date
+   **re-resolves** the constituent list and analytics as-of that date (1A) — never default `as_of` to
+   today. Empty / not-yet-captured → a labeled empty state with count 0, never a 500.
 
 ## Test surface
 
@@ -102,6 +111,10 @@ Read `tasks/TESTING.md`. The BFF is covered by the root Python gate; the web app
   member added after `as_of` is absent and one removed before it is absent
   (`test_constituents_as_of_excludes_future_members`). Run the `check-lookahead-bias` skill over the
   constituent + price-first-ordering join.
+- **Recorded-dates reflects only complete runs:** seed two gap-free completed runs + one partial/failed
+  run in the ledger; `/api/recorded-dates` returns exactly the two dates with `count == 2`
+  (`test_recorded_dates_excludes_incomplete_runs`); picking a returned past date drives the as-of
+  re-resolution (`test_recorded_date_pick_reresolves_membership_as_of`).
 - **Missing-partition / empty / boundary:** an unknown ticker → empty `bars`/empty analytics with
   labels and HTTP 200, never a 500 (`test_price_history_unknown_ticker_is_empty_not_500`); a
   malformed `trade_date`/`as_of` → a labeled 400 (mirror the `surfaces` router's `bad_trade_date`).
@@ -114,7 +127,7 @@ Read `tasks/TESTING.md`. The BFF is covered by the root Python gate; the web app
 
 ## Done criteria
 
-The three new store-backed BFF routers (`price-history`, `constituents`, `analytics`) are registered
+The four new store-backed BFF routers (`price-history`, `constituents`, `analytics`, `recorded-dates`) are registered
 and read the real `DailyBar`/`IndexConstituent`/projected-analytics tables back through `ParquetStore`
 — no fixtures, no `store_serving.py`, no `/api/market`. The front page lets an operator pick the
 index, scroll the point-in-time constituent list, select a ticker, and see its real daily candlestick
@@ -147,5 +160,9 @@ lint-imports && pytest`) covering the BFF.
 - **Price-first ordering needs the DailyBar close**, which lives in a different table from membership
   — join carefully and put names without a bar last; do not let the join leak a future close into a
   past `as_of` view (look-ahead).
+- **Recorded-dates source of truth is the 1G run ledger, not partition listing.** Partitions can exist
+  for a partially-captured or failed day; the counter/dropdown must show only complete, gap-free runs
+  (it is the operator-facing face of 1H coverage). A picked date re-resolves membership/analytics
+  as-of — never today-defaulted.
 - **uv** for the Python BFF; **npm** for the web app. Plotly only — no second charting dependency;
   TradingView stays a documented fallback, not a dependency.

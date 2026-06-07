@@ -264,6 +264,9 @@ uv run pytest`).
 - **No look-ahead in the daily-bar read.** A restated bar (`version=<V>`) must never leak backward onto
   an earlier `trade_date`; the default read is latest-version-per-date. Run `check-lookahead-bias` over
   any historical-join code 1A/1C add against this contract.
+- **Phase-2 readiness ($-Greeks):** keep the dollar layer **per-position (×qty) and additive across a
+  book** (P0.2) so the Phase-2 basket builder (2A) sums positions without reworking the metric contract
+  — do not pin a per-contract-only representation. (Phase 2 stays parked behind the front-first gate.)
 - **uv only** for every command (`uv run pytest`, etc.); do not invoke a bare `python`/`pip`.
 - **ADR numbering:** 0034 is the current head, so OQ-1 → 0035 and the futures decision → 0036. Confirm
   no one else has claimed those numbers before writing (append-only directory).

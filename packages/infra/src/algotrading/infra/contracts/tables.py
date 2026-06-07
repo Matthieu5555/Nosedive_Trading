@@ -14,12 +14,14 @@ beside it so the year-fraction can always be re-derived.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 
 from algotrading.core.provenance import ProvenanceStamp
 
 from .bundles import ForwardDiagnostics, IvDiagnostics, SurfaceFitDiagnostics
+from .errors import ContractValidationError
 from .instrument_key import InstrumentKey
 
 
@@ -446,3 +448,116 @@ class TriageRecord:
     reason_code: str
     detail: str
     threshold_version: str
+
+
+# A leg names exactly one tradable thing: an option grid cell, or the underlying itself.
+INSTRUMENT_KINDS = ("option", "stock")
+# Side is explicit and must agree with the quantity sign — a "long" leg is a positive
+# quantity, a "short" leg a negative one. The pair is carried (not just the sign) so the
+# composition reads the way an operator thinks, and a contradiction is a rejected contract.
+LEG_SIDES = ("long", "short")
+
+
+@dataclass(frozen=True, slots=True)
+class BasketLeg:
+    """One leg of a multi-leg basket: a signed, side-labelled reference to one instrument.
+
+    An **option** leg references one cell of the WS-1F analytics grid by its coordinates —
+    ``(underlying, tenor_label, delta_band)`` — because :class:`ProjectedOptionAnalytics`
+    is addressed by that grid coordinate, not by a canonical ``instrument_key`` (the grid
+    has no per-contract expiry/strike; it has a tenor and a delta band). A **stock** leg
+    references the underlying itself (its spot exposure) and carries no tenor/band.
+
+    ``side``/``quantity`` consistency is enforced at construction: a ``"long"`` leg with a
+    negative quantity (or vice versa), a zero quantity, or a non-finite quantity is a
+    malformed contract, rejected with a structured :class:`ContractValidationError` that
+    carries the offending value — never silently normalised. ``quantity`` is already signed
+    by the side, so downstream code multiplies by it directly and never re-applies the side.
+    """
+
+    instrument_kind: str
+    side: str
+    quantity: float
+    underlying: str
+    tenor_label: str | None = None
+    delta_band: str | None = None
+
+    def __post_init__(self) -> None:
+        table = "baskets"
+        if self.instrument_kind not in INSTRUMENT_KINDS:
+            raise ContractValidationError(
+                table, "instrument_kind", self.instrument_kind,
+                f"must be one of {INSTRUMENT_KINDS}",
+            )
+        if self.side not in LEG_SIDES:
+            raise ContractValidationError(
+                table, "side", self.side, f"must be one of {LEG_SIDES}",
+            )
+        if not self.underlying.strip():
+            raise ContractValidationError(
+                table, "underlying", self.underlying, "must be non-empty",
+            )
+        if not math.isfinite(self.quantity):
+            raise ContractValidationError(
+                table, "quantity", self.quantity, "must be a finite number",
+            )
+        if self.quantity == 0:
+            raise ContractValidationError(
+                table, "quantity", self.quantity, "must be non-zero",
+            )
+        if self.side == "long" and self.quantity < 0:
+            raise ContractValidationError(
+                table, "quantity", self.quantity, "a long leg must have a positive quantity",
+            )
+        if self.side == "short" and self.quantity > 0:
+            raise ContractValidationError(
+                table, "quantity", self.quantity, "a short leg must have a negative quantity",
+            )
+        if self.instrument_kind == "option" and (
+            self.tenor_label is None or self.delta_band is None
+        ):
+            raise ContractValidationError(
+                table, "tenor_label", (self.tenor_label, self.delta_band),
+                "an option leg must name its grid cell (tenor_label and delta_band)",
+            )
+        if self.instrument_kind == "stock" and (
+            self.tenor_label is not None or self.delta_band is not None
+        ):
+            raise ContractValidationError(
+                table, "tenor_label", (self.tenor_label, self.delta_band),
+                "a stock leg has no tenor/band (both must be None)",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class Basket:
+    """An ordered, named, side-aware set of legs priced against one analytics snapshot.
+
+    A basket is the composed envelope over a set of signed :class:`BasketLeg` references —
+    not a second position type. Its price and Greeks are defined as the **book-additive
+    sum** over its legs of the dollar Greeks the WS-1F grid already produced (option legs)
+    plus the linear spot delta (stock legs); see :mod:`algotrading.infra.risk.multileg`.
+
+    The look-ahead anchor is ``trade_date`` (a date, matching the analytics read API): the
+    basket prices off *that day's* grid and a later snapshot does not change it. ``underlying``
+    scopes which grid is read; ``provider`` optionally narrows the provider-partitioned read
+    (``None`` reads across providers). An **empty** ``legs`` is a valid, labelled-empty
+    basket — not rejected here.
+    """
+
+    basket_id: str
+    trade_date: date
+    underlying: str
+    legs: tuple[BasketLeg, ...]
+    provider: str | None = None
+
+    def __post_init__(self) -> None:
+        table = "baskets"
+        if not self.basket_id.strip():
+            raise ContractValidationError(
+                table, "basket_id", self.basket_id, "must be non-empty",
+            )
+        if not self.underlying.strip():
+            raise ContractValidationError(
+                table, "underlying", self.underlying, "must be non-empty",
+            )

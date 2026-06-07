@@ -254,6 +254,19 @@ weights and vols plus either a full pairwise correlation matrix or a single
 average-correlation assumption, it returns the implied basket variance and a
 diversification diagnostic. A reusable risk primitive, not strategy logic.
 
+`multileg.py` is a **different thing** — do not conflate it with `basket.py`. It prices and
+risks a **multi-leg position basket** (WS 2A): given a `contracts.Basket` (its `BasketLeg`s),
+the matching `ProjectedOptionAnalytics` rows, and the spot for stock legs, `basket_risk` returns
+a `BasketRisk` whose dollar Greeks are the **book-additive sum** over legs of
+`signed_quantity · row.dollar_<greek>` (option legs) plus the linear spot delta (stock legs). It
+is **summation, never a recompute** — it reads the dollar Greeks WS-1F already produced and sums
+them, in the analytics **per-1% / per-365** convention carried on the rows; it never imports the
+legacy per-`$1` `PositionRisk` dollar Greeks (mixing the two normalisations is silently wrong by
+100×). A leg that resolves to no row (or an ambiguous provider, or a missing spot) is a labelled
+`BasketGap`, never a silent zero; an additive-nullable theta/rho missing on a contributing leg
+makes that basket Greek `None` + a gap, never a partial sum. The per-leg `LegRisk` contributions
+are preserved beside the aggregate (the proof the total is the sum, and what 2C attributes off).
+
 ## Failure modes
 
 The core is pure, so failures are input-validation and corrupt-join errors, not transient

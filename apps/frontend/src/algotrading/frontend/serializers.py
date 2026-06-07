@@ -22,6 +22,7 @@ from algotrading.infra.contracts import (
     SurfaceParameters,
 )
 from algotrading.infra.pricing import UNIT_STRINGS
+from algotrading.infra.risk import BasketRisk, LegRisk
 from algotrading.infra.surfaces import SlicePlotSeries
 
 if TYPE_CHECKING:
@@ -298,6 +299,87 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
         "pricer_version": row.pricer_version,
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
+    }
+
+
+def _basket_metric(dollar: float | None, unit: str | None) -> dict[str, object]:
+    """One aggregate basket dollar Greek: the summed dollar value and the unit it is quoted in.
+
+    Unlike a per-contract metric there is no single ``raw`` per-unit Greek for a multi-leg sum,
+    so the basket aggregate carries just ``dollar`` + ``unit``. A ``None`` dollar is a labelled
+    unavailable Greek (an additive-nullable theta/rho missing on a contributing leg), not zero.
+    """
+    return {"dollar": dollar, "unit": unit}
+
+
+def _basket_leg_to_dict(line: LegRisk) -> dict[str, object]:
+    """One leg's signed contribution to each basket Greek, beside its cell context.
+
+    This is the per-leg breakdown that proves the basket number is the sum of the Tab-1
+    per-position dollar Greeks. ADR-0029 names (``dollar_*``, ``forward_price``, ``implied_vol``,
+    ``log_moneyness``); the matched cell's context is echoed for resolved option legs (``None``
+    for a stock or unresolved leg). An unresolved leg carries its ``gap_reason``.
+    """
+    leg = line.leg
+    return {
+        "instrument_kind": leg.instrument_kind,
+        "side": leg.side,
+        "quantity": leg.quantity,
+        "underlying": leg.underlying,
+        "tenor_label": leg.tenor_label,
+        "delta_band": leg.delta_band,
+        "resolved": line.resolved,
+        "gap_reason": line.gap_reason,
+        "forward_price": line.forward_price,
+        "implied_vol": line.implied_vol,
+        "log_moneyness": line.log_moneyness,
+        "strike": line.strike,
+        "price": line.price,
+        "metrics": {
+            "delta": _basket_metric(line.dollar_delta, line.dollar_delta_unit),
+            "gamma": _basket_metric(line.dollar_gamma, line.dollar_gamma_unit),
+            "vega": _basket_metric(line.dollar_vega, line.dollar_vega_unit),
+            "theta": _basket_metric(line.dollar_theta, line.dollar_theta_unit),
+            "rho": _basket_metric(line.dollar_rho, line.dollar_rho_unit),
+        },
+    }
+
+
+def basket_risk_to_dict(result: BasketRisk) -> dict[str, object]:
+    """Serialize a priced/risked multi-leg basket for the front (WS 2A).
+
+    The basket's dollar Greeks are the **book-additive sum** of the per-position dollar Greeks
+    WS-1F produced (``infra.risk.multileg.basket_risk`` — summation, never a recompute), each
+    carried with its unit string (Delta\\$ per \\$1, Gamma\\$ per 1% move, Vega\\$ per vol point,
+    Theta\\$ per calendar day, Rho\\$ per 1% rate) from the analytics rows. The per-leg
+    ``legs`` breakdown carries each leg's signed contribution; ``gaps`` names every leg that
+    could not be fully priced (unpriced cell, ambiguous provider, missing spot, unavailable
+    theta/rho) — a labelled gap, never a silent zero, and HTTP 200 at the router, never a 500.
+    """
+    return {
+        "basket_id": result.basket_id,
+        "trade_date": result.trade_date.isoformat(),
+        "underlying": result.underlying,
+        "price": result.price,
+        "metrics": {
+            "delta": _basket_metric(result.dollar_delta, result.dollar_delta_unit),
+            "gamma": _basket_metric(result.dollar_gamma, result.dollar_gamma_unit),
+            "vega": _basket_metric(result.dollar_vega, result.dollar_vega_unit),
+            "theta": _basket_metric(result.dollar_theta, result.dollar_theta_unit),
+            "rho": _basket_metric(result.dollar_rho, result.dollar_rho_unit),
+        },
+        "legs": [_basket_leg_to_dict(line) for line in result.legs],
+        "gaps": [
+            {
+                "underlying": gap.underlying,
+                "tenor_label": gap.tenor_label,
+                "delta_band": gap.delta_band,
+                "reason": gap.reason,
+            }
+            for gap in result.gaps
+        ],
+        "n_legs": len(result.legs),
+        "n_gaps": len(result.gaps),
     }
 
 

@@ -21,6 +21,7 @@ from typing import Union, get_args, get_origin, get_type_hints
 
 from .errors import UnknownTableError
 from .tables import (
+    Basket,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -221,6 +222,22 @@ REGISTRY: dict[str, TableSpec] = {
         contract=Position,
         primary_key=("valuation_ts", "portfolio_id", "contract_key"),
         layer="portfolio",
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "baskets": TableSpec(
+        name="baskets",
+        contract=Basket,
+        # A basket's identity is its name on a given day for a given underlying. ``legs``
+        # round-trips as a single JSON column (the codec already handles a tuple-of-dataclass).
+        primary_key=("basket_id", "trade_date", "underlying"),
+        layer="portfolio",
+        # An operator-authored INPUT, like ``positions`` — not a derived analytic, so it
+        # carries no provenance stamp (the priced RESULT a downstream task may persist is the
+        # derived, stamped row). ``provider`` is an optional field, not a partition segment.
         append_only=False,
         requires_provenance=False,
         requires_source_snapshot_ts=False,

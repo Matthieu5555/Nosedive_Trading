@@ -46,6 +46,13 @@ from .greeks import (
     net_lots,
     position_risk,
 )
+from .multileg import (
+    BasketGap,
+    BasketRisk,
+    LegRisk,
+    analytics_cell_key,
+    basket_risk,
+)
 from .positions import Position, PositionSet, hypothetical_positions
 from .reconciliation import (
     DEFAULT_RECON_TOLERANCE,
@@ -175,9 +182,15 @@ __all__ = [
     "Position",
     "PositionSet",
     "hypothetical_positions",
-    # basket
+    # basket (index variance, Eq 23 — NOT the multi-leg basket below)
     "BasketVarianceResult",
     "basket_variance",
+    # multi-leg basket (2A) — book-additive summation of analytics dollar Greeks
+    "BasketRisk",
+    "BasketGap",
+    "LegRisk",
+    "basket_risk",
+    "analytics_cell_key",
     # config
     "RiskParams",
     "DEFAULT_GROUPING_KEYS",

@@ -7,9 +7,10 @@ inside the factory so the module stays importable even while individual routers 
 The BFF reads only ``packages/infra`` seams (down-layer): ``ParquetStore`` for the
 persisted contract tables, the pure ``surfaces``/``risk`` engines, and
 ``orchestration.build_dashboard``. It never reaches into ``backend``. The routers —
-``health``, ``surfaces``, ``risk``, ``run``, ``config``, ``oauth``, plus the Tab-1 front-page
-seams ``price-history``, ``constituents``, ``analytics``, and ``recorded-dates`` (WS 1I) — each
-call infra and serialize; no business logic lives in them. The 1I routers read the real
+``health``, ``surfaces``, ``risk``, ``run``, ``config``, ``oauth``, the Tab-1 front-page
+seams ``price-history``, ``constituents``, ``analytics``, and ``recorded-dates`` (WS 1I), and the
+Tab-2 ``basket`` composer (WS 2A) — each call infra and serialize; no business logic lives
+in them. The 1I routers read the real
 ``daily_bar`` / ``index_constituents`` / ``projected_option_analytics`` tables and the 1G run
 ledger back through the read-only store (ADR 0034 §1).
 
@@ -53,6 +54,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     )
 
     from .routers import analytics as analytics_router  # noqa: PLC0415
+    from .routers import basket as basket_router  # noqa: PLC0415
     from .routers import config as config_router  # noqa: PLC0415
     from .routers import constituents as constituents_router  # noqa: PLC0415
     from .routers import health as health_router  # noqa: PLC0415
@@ -73,6 +75,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(constituents_router.router)
     app.include_router(analytics_router.router)
     app.include_router(recorded_dates_router.router)
+    app.include_router(basket_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

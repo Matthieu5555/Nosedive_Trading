@@ -3,6 +3,7 @@
 
 import type {
   AnalyticsResponse,
+  BasketRiskResponse,
   ConstituentsResponse,
   HealthResponse,
   PriceHistoryResponse,
@@ -254,4 +255,49 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
       ],
     },
   ],
+};
+
+// A priced long strangle on AAA (WS 2A): long 30Δ call + long 30Δ put. The aggregate dollar
+// Greeks are the hand sum of the two legs' contributions (delta cancels, gamma/vega/theta/rho add).
+export const BASKET_RISK_AAA: BasketRiskResponse = {
+  basket_id: "strangle-AAA",
+  trade_date: "2026-05-29",
+  underlying: "AAA",
+  price: 8.4,
+  metrics: {
+    delta: { dollar: 0.0, unit: "$ per $1 of underlying" },
+    gamma: { dollar: 15.2, unit: "$ per 1% move" },
+    vega: { dollar: 0.62, unit: "$ per 1 vol point" },
+    theta: { dollar: -0.000082, unit: "$ per calendar day" },
+    rho: { dollar: 0.001, unit: "$ per 1% rate" },
+  },
+  legs: [
+    {
+      instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA",
+      tenor_label: "3m", delta_band: "30dc", resolved: true, gap_reason: null,
+      forward_price: 195.0, implied_vol: 0.23, log_moneyness: 0.12, strike: 200.0, price: 4.2,
+      metrics: {
+        delta: { dollar: 58.5, unit: "$ per $1 of underlying" },
+        gamma: { dollar: 7.6, unit: "$ per 1% move" },
+        vega: { dollar: 0.31, unit: "$ per 1 vol point" },
+        theta: { dollar: -0.000041, unit: "$ per calendar day" },
+        rho: { dollar: 0.0005, unit: "$ per 1% rate" },
+      },
+    },
+    {
+      instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA",
+      tenor_label: "3m", delta_band: "30dp", resolved: true, gap_reason: null,
+      forward_price: 195.0, implied_vol: 0.27, log_moneyness: -0.15, strike: 190.0, price: 4.2,
+      metrics: {
+        delta: { dollar: -58.5, unit: "$ per $1 of underlying" },
+        gamma: { dollar: 7.6, unit: "$ per 1% move" },
+        vega: { dollar: 0.31, unit: "$ per 1 vol point" },
+        theta: { dollar: -0.000041, unit: "$ per calendar day" },
+        rho: { dollar: 0.0005, unit: "$ per 1% rate" },
+      },
+    },
+  ],
+  gaps: [],
+  n_legs: 2,
+  n_gaps: 0,
 };

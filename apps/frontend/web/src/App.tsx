@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 
 import { AppLayout } from "./components/AppLayout";
+import { BasketPage } from "./pages/Basket";
 import { ConfigPage } from "./pages/Config";
 import { HealthPage } from "./pages/Health";
 import { HomePage } from "./pages/Home";
@@ -17,6 +18,7 @@ export function App() {
         <Route path="health" element={<HealthPage />} />
         <Route path="surfaces" element={<SurfacesPage />} />
         <Route path="risk" element={<RiskPage />} />
+        <Route path="basket" element={<BasketPage />} />
         <Route path="run" element={<RunPage />} />
         <Route path="config" element={<ConfigPage />} />
         <Route path="*" element={<NotFoundPage />} />

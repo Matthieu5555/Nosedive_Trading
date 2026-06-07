@@ -233,3 +233,25 @@ gates green. The contract is rich enough that 2B/2C/2D are wiring, not rework.
   1I (`tasks/1I-front-page.md`), and downstream 2B/2C/2D (specified when they open).
 - **uv** for the Python contract/risk/BFF work; **npm** for the web app. No bare `python`/`pip`; one
   charting dependency (Plotly), no second.
+
+## Implementation note — template realization on the delta-band grid (2026-06-07)
+
+The one-click templates (`apps/frontend/web/src/basketTemplates.ts`) are realized on the course's
+three pillars (−30Δ put / ATM / +30Δ call). Decided with web-research expert review:
+
+- **Strangle** = long +30Δ call + long −30Δ put (the two OTM wing cells). Maps cleanly.
+- **Risk reversal** = long +30Δ call, short −30Δ put. Maps cleanly.
+- **Straddle** = a call **and** a put at the **same ATM strike** (defining property: ~delta-neutral,
+  max gamma/vega; an ATM option is ~50Δ, so the ±30Δ wings are *not* a straddle — that pair *is* the
+  strangle). **The analytics grid stores a single ATM cell, priced as a call; there is no ATM-put
+  cell**, so a genuine two-leg ATM straddle cannot be composed by summing grid cells today.
+  - **Interim (shipped):** the straddle button composes the **single ATM leg** (~50Δ, the correct
+    strike) — labelled "½", honest about being half the structure. Deliberately **not** aliased to
+    the ±30Δ pair (that would make straddle and strangle compose identical legs — a product bug).
+  - **Correct fix (follow-up, upstream in WS 1F):** emit an explicit **ATM-put cell**
+    (target-delta-0 → `option_right="P"`) at the ATM strike, so the straddle becomes
+    `long ATM call + long ATM put`. When that lands, change the one `straddle` branch in
+    `basketTemplates.ts` to the two ATM legs; nothing else in 2A changes.
+
+This is a UI-only convenience layer over the frozen `Basket`/`BasketLeg` contract; changing a
+template is a one-file edit and does not touch the contract, the summation math, or the BFF seam.

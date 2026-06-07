@@ -183,6 +183,84 @@ export interface RecordedDatesResponse {
   dates: string[];
 }
 
+// --- WS 2A: multi-leg basket builder -------------------------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/serializers.py::basket_risk_to_dict and the
+// /api/basket/risk router body. The HTTP shape is the seam — keep both sides in lockstep.
+
+export type InstrumentKind = "option" | "stock";
+export type LegSide = "long" | "short";
+
+// One leg the operator composes (the request shape). For an option leg, tenor_label + delta_band
+// name the WS-1F grid cell; a stock leg omits them. quantity is signed by side (long > 0, short < 0).
+export interface BasketLegInput {
+  instrument_kind: InstrumentKind;
+  side: LegSide;
+  quantity: number;
+  underlying: string;
+  tenor_label?: string | null;
+  delta_band?: string | null;
+}
+
+export interface BasketRequest {
+  basket_id: string;
+  trade_date: string;
+  underlying: string;
+  provider?: string | null;
+  legs: BasketLegInput[];
+}
+
+// One aggregate basket dollar Greek: the summed dollar value and the unit it is quoted in.
+// dollar is null when the Greek is unavailable (an additive-nullable theta/rho missing on a leg).
+export interface BasketMetric {
+  dollar: number | null;
+  unit: string | null;
+}
+
+interface BasketGreekMetrics {
+  delta: BasketMetric;
+  gamma: BasketMetric;
+  vega: BasketMetric;
+  theta: BasketMetric;
+  rho: BasketMetric;
+}
+
+// One leg's signed contribution to each basket Greek, beside its matched-cell context.
+export interface BasketLegResult {
+  instrument_kind: InstrumentKind;
+  side: LegSide;
+  quantity: number;
+  underlying: string;
+  tenor_label: string | null;
+  delta_band: string | null;
+  resolved: boolean;
+  gap_reason: string | null;
+  forward_price: number | null;
+  implied_vol: number | null;
+  log_moneyness: number | null;
+  strike: number | null;
+  price: number | null;
+  metrics: BasketGreekMetrics;
+}
+
+export interface BasketGap {
+  underlying: string;
+  tenor_label: string | null;
+  delta_band: string | null;
+  reason: string;
+}
+
+export interface BasketRiskResponse {
+  basket_id: string;
+  trade_date: string;
+  underlying: string;
+  price: number | null;
+  metrics: BasketGreekMetrics;
+  legs: BasketLegResult[];
+  gaps: BasketGap[];
+  n_legs: number;
+  n_gaps: number;
+}
+
 // One narrow fetch helper: every page goes through here so error handling is uniform.
 export async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path);
@@ -208,4 +286,23 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
     throw new Error(`${response.status} ${response.statusText}`);
   }
   return (await response.json()) as T;
+}
+
+// Price a composed basket. A labelled gap comes back inside a 200 payload (gaps[]); a malformed
+// basket is a 400 whose labelled detail we surface, not a bare status line.
+export async function priceBasket(body: BasketRequest): Promise<BasketRiskResponse> {
+  const response = await fetch("/api/basket/risk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : response.statusText;
+    throw new Error(`${response.status} ${detail}`);
+  }
+  return payload as BasketRiskResponse;
 }

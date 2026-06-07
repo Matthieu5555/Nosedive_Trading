@@ -13,8 +13,8 @@ request routed through M0, because every field ripples to the other workstreams.
   blueprint data model (Part IV.C / Part IX data dictionary): `InstrumentMaster`,
   `RawMarketEvent`, `DailyBar`, `MarketStateSnapshot`, `ForwardCurvePoint`, `IvPoint`,
   `SurfaceParameters`, `SurfaceGrid`, `PricingResult`, `ProjectedOptionAnalytics`,
-  `Position`, `RiskAggregate`, `ScenarioResult`, `ScenarioAttribution`, `QcResult`,
-  `TriageRecord`. Each derived
+  `Position`, `Basket`/`BasketLeg`, `RiskAggregate`, `ScenarioResult`, `ScenarioAttribution`,
+  `QcResult`, `TriageRecord`. Each derived
   record carries a `ProvenanceStamp` (from `algotrading.core`) and a `source_snapshot_ts`.
   `DailyBar` is the underlying daily-OHLC price-history product (index + constituents, for
   the candlestick charts) — a **distinct** product from the option `MarketStateSnapshot`,
@@ -27,7 +27,16 @@ request routed through M0, because every field ripples to the other workstreams.
   scenario's stress PnL — the named dollar contributions (`delta_pnl`/`gamma_pnl`/`vega_pnl`/
   `theta_pnl`), their lumped `approx_pnl`, the `full_reprice_pnl` oracle, and the `residual`
   between them, at `level` `position` or `book` (the book record carries the `__book__`
-  sentinel in `contract_key`); produced by `risk.attribution`.
+  sentinel in `contract_key`); produced by `risk.attribution`. `Basket`/`BasketLeg` is the WS 2A
+  multi-leg position model (an operator INPUT, like `Position` — no provenance stamp): a `Basket`
+  is an ordered, named, side-aware set of `BasketLeg`s priced against one `(trade_date,
+  underlying[, provider])` analytics snapshot (its `legs` round-trip as one JSON column). A
+  `BasketLeg` references one WS-1F grid cell by its coordinate (`underlying`, `tenor_label`,
+  `delta_band`) for an option, or the underlying alone for a stock — **not** a canonical
+  `contract_key`, because `ProjectedOptionAnalytics` is addressed by that grid coordinate and
+  carries no per-contract key; `side`↔`quantity`-sign consistency is enforced at construction.
+  The basket is priced by **book-additive summation** of the per-leg dollar Greeks WS-1F already
+  produced (`risk.multileg.basket_risk`), never a recompute — see the risk README.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).

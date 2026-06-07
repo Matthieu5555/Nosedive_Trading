@@ -36,6 +36,8 @@ from .registry import (
     table_for_contract,
 )
 from .tables import (
+    Basket,
+    BasketLeg,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -59,6 +61,8 @@ from .validation import validate, validate_record
 __all__ = [
     "EVENT_TIMESTAMP_FIELDS",
     "OPTION_RIGHTS",
+    "Basket",
+    "BasketLeg",
     "ContractError",
     "ContractValidationError",
     "DailyBar",

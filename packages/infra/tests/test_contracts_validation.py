@@ -14,6 +14,8 @@ from datetime import UTC, date, datetime
 import pytest
 from algotrading.core import source_ref, stamp
 from algotrading.infra.contracts import (
+    Basket,
+    BasketLeg,
     ContractValidationError,
     InstrumentKey,
     MarketStateSnapshot,
@@ -23,6 +25,8 @@ from algotrading.infra.contracts import (
     table_for_contract,
     validate,
 )
+from algotrading.infra.storage.errors import SchemaCompatibilityError
+from algotrading.infra.storage.serialization import from_row, to_row
 
 _TS = datetime(2026, 6, 5, 14, 30, tzinfo=UTC)
 
@@ -123,3 +127,48 @@ def test_invalid_provenance_surfaces_as_contract_error() -> None:
     with pytest.raises(ContractValidationError) as exc:
         validate(bad)
     assert exc.value.field == "provenance"
+
+
+def _basket() -> Basket:
+    # An option leg (references a grid cell) + a stock leg (spot exposure). The nested
+    # ``legs`` tuple is what exercises the JSON-column round-trip.
+    return Basket(
+        basket_id="rr-aaa-1m",
+        trade_date=date(2026, 6, 5),
+        underlying="AAA",
+        legs=(
+            BasketLeg("option", "long", 1.0, "AAA", tenor_label="1m", delta_band="30dc"),
+            BasketLeg("option", "short", -1.0, "AAA", tenor_label="1m", delta_band="30dp"),
+            BasketLeg("stock", "long", 10.0, "AAA"),
+        ),
+        provider="ibkr",
+    )
+
+
+def test_basket_contract_round_trips() -> None:
+    # C→A seam: a Basket with nested legs serializes to a flat row (legs become one JSON
+    # column) and reads back equal, and the live instance validates against the registry.
+    basket = _basket()
+    validate(basket)  # no raise == passes the registry schema
+    assert table_for_contract(Basket) == "baskets"
+    row = to_row(Basket, basket)
+    assert isinstance(row["legs"], str)  # nested tuple stored as a single JSON column
+    assert from_row(Basket, row) == basket
+
+
+def test_basket_leg_side_sign_contradiction_is_rejected_with_explicit_error() -> None:
+    # Malformed at construction (not a silent normalisation): a "long" leg with a negative
+    # quantity is a structured ContractValidationError carrying the offending value.
+    with pytest.raises(ContractValidationError) as exc:
+        BasketLeg("option", "long", -1.0, "AAA", tenor_label="1m", delta_band="atm")
+    assert exc.value.field == "quantity"
+    assert exc.value.value == -1.0
+
+
+def test_basket_row_missing_required_column_is_rejected_not_coerced() -> None:
+    # Write-ahead read rejection: a stored row missing a required column raises rather than
+    # constructing an invalid instance (the additive-nullable rule only forgives Optionals).
+    row = to_row(Basket, _basket())
+    del row["underlying"]
+    with pytest.raises(SchemaCompatibilityError):
+        from_row(Basket, row)

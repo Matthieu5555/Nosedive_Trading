@@ -989,3 +989,178 @@ def test_recorded_date_pick_reresolves_membership_as_of(ledger_client: TestClien
     ).json()
     assert basket["as_of"] == picked
     assert {c["symbol"] for c in basket["constituents"]} == {MEMBER_AAA, MEMBER_BBB}
+
+
+# --- WS 2A: basket router (compose -> price/risk off the seeded analytics) -----------------
+#
+# The seeded store holds two AAA analytics cells on TRADE_DATE (provider "IBKR", tenor "3m"):
+# the 30Δ put and the 30Δ call, each with the hand-chosen dollar Greeks in ``_analytics_cell``.
+# A long strangle (long the call + long the put) sums them; the oracle is the hand sum of those
+# stored numbers, derived here independently of the BFF output.
+
+# Stored per-cell dollar Greeks (the ``_analytics_cell`` defaults), restated as the oracle.
+_AN_DOLLAR_GAMMA = 7.6
+_AN_DOLLAR_VEGA = 0.31
+_AN_DOLLAR_THETA = -0.000041
+_AN_DOLLAR_RHO = 0.0005
+_AN_PRICE = 4.2
+
+
+def _strangle_body() -> dict:
+    """A long strangle on AAA: long 1 of the 30Δ call cell + long 1 of the 30Δ put cell."""
+    return {
+        "basket_id": "strangle-aaa-3m",
+        "trade_date": TRADE_DATE.isoformat(),
+        "underlying": MEMBER_AAA,
+        "provider": "IBKR",
+        "legs": [
+            {"instrument_kind": "option", "side": "long", "quantity": 1.0,
+             "underlying": MEMBER_AAA, "tenor_label": "3m", "delta_band": "30dc"},
+            {"instrument_kind": "option", "side": "long", "quantity": 1.0,
+             "underlying": MEMBER_AAA, "tenor_label": "3m", "delta_band": "30dp"},
+        ],
+    }
+
+
+def test_basket_router_reads_back_and_sums(seeded_client: TestClient) -> None:
+    response = seeded_client.post("/api/basket/risk", json=_strangle_body())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["n_gaps"] == 0
+    metrics = payload["metrics"]
+    # Hand sums over the two seeded cells (both long, q=+1):
+    #   delta = 58.5 + (-58.5) = 0.0
+    #   gamma = 7.6 + 7.6      = 15.2
+    #   vega  = 0.31 + 0.31    = 0.62
+    #   theta = 2 * (-0.000041) = -0.000082
+    #   rho   = 2 * 0.0005      = 0.001
+    #   price = 2 * 4.2         = 8.4
+    assert metrics["delta"]["dollar"] == pytest.approx(AN_CALL_DOLLAR_DELTA + AN_PUT_DOLLAR_DELTA)
+    assert metrics["gamma"]["dollar"] == pytest.approx(2 * _AN_DOLLAR_GAMMA)
+    assert metrics["vega"]["dollar"] == pytest.approx(2 * _AN_DOLLAR_VEGA)
+    assert metrics["theta"]["dollar"] == pytest.approx(2 * _AN_DOLLAR_THETA)
+    assert metrics["rho"]["dollar"] == pytest.approx(2 * _AN_DOLLAR_RHO)
+    assert payload["price"] == pytest.approx(2 * _AN_PRICE)
+    # The per-leg breakdown proves the aggregate is the sum of the per-leg analytics numbers.
+    assert payload["n_legs"] == 2
+    contributions = sorted(leg["metrics"]["delta"]["dollar"] for leg in payload["legs"])
+    assert contributions == pytest.approx(sorted([AN_CALL_DOLLAR_DELTA, AN_PUT_DOLLAR_DELTA]))
+
+
+def test_basket_payload_uses_blueprint_field_names(seeded_client: TestClient) -> None:
+    # ADR-0029 names cross the seam: a resolved option leg echoes the matched cell's
+    # forward_price / implied_vol / log_moneyness (a renamed contract field turns this red).
+    payload = seeded_client.post("/api/basket/risk", json=_strangle_body()).json()
+    call_leg = next(leg for leg in payload["legs"] if leg["delta_band"] == "30dc")
+    assert call_leg["forward_price"] == pytest.approx(AN_FORWARD)
+    assert call_leg["implied_vol"] == pytest.approx(AN_CALL_IV)
+    assert call_leg["log_moneyness"] == pytest.approx(AN_CALL_LOGM)
+    assert set(payload["metrics"]) == {"delta", "gamma", "vega", "theta", "rho"}
+
+
+def test_basket_dollar_greeks_carry_unit_strings(seeded_client: TestClient) -> None:
+    payload = seeded_client.post("/api/basket/risk", json=_strangle_body()).json()
+    metrics = payload["metrics"]
+    assert metrics["delta"]["unit"] == AN_DOLLAR_DELTA_UNIT
+    assert metrics["gamma"]["unit"] == AN_DOLLAR_GAMMA_UNIT
+    assert metrics["vega"]["unit"] == AN_DOLLAR_VEGA_UNIT
+    assert metrics["theta"]["unit"] == AN_DOLLAR_THETA_UNIT
+    assert metrics["rho"]["unit"] == AN_DOLLAR_RHO_UNIT
+    for greek in ("delta", "gamma", "vega", "theta", "rho"):
+        assert metrics[greek]["unit"]  # non-empty
+
+
+def test_basket_stock_leg_prices_off_daily_bar_close(seeded_client: TestClient) -> None:
+    # A stock leg's dollar delta = signed_qty * spot, where spot is AAA's close on TRADE_DATE
+    # read from daily_bar (192.0). No option legs, so the other Greeks are zero.
+    body = {
+        "basket_id": "stk-aaa",
+        "trade_date": TRADE_DATE.isoformat(),
+        "underlying": MEMBER_AAA,
+        "provider": "IBKR",
+        "legs": [
+            {"instrument_kind": "stock", "side": "long", "quantity": 10.0,
+             "underlying": MEMBER_AAA},
+        ],
+    }
+    payload = seeded_client.post("/api/basket/risk", json=body).json()
+    assert payload["metrics"]["delta"]["dollar"] == pytest.approx(10.0 * AAA_29_CLOSE)
+    assert payload["metrics"]["gamma"]["dollar"] == pytest.approx(0.0)
+    assert payload["n_gaps"] == 0
+
+
+def test_unpriced_leg_is_200_not_500(seeded_client: TestClient) -> None:
+    # A leg on a cell that was never seeded ("10dp") is a labelled gap with HTTP 200, never a 500.
+    body = _strangle_body()
+    body["basket_id"] = "has-a-gap"
+    body["legs"].append(
+        {"instrument_kind": "option", "side": "long", "quantity": 1.0,
+         "underlying": MEMBER_AAA, "tenor_label": "3m", "delta_band": "10dp"}
+    )
+    response = seeded_client.post("/api/basket/risk", json=body)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["n_gaps"] == 1
+    gap = payload["gaps"][0]
+    assert gap["delta_band"] == "10dp"
+    assert gap["reason"] == "no_analytics_row"
+    # The two priced legs still sum; the gap is reported, not absorbed as a zero.
+    assert payload["metrics"]["gamma"]["dollar"] == pytest.approx(2 * _AN_DOLLAR_GAMMA)
+
+
+def test_malformed_basket_side_sign_is_400(seeded_client: TestClient) -> None:
+    body = _strangle_body()
+    body["legs"][0]["quantity"] = -1.0  # a "long" leg with a negative quantity: malformed
+    response = seeded_client.post("/api/basket/risk", json=body)
+    assert response.status_code == 400
+    assert response.json()["error"] == "bad_basket"
+
+
+def test_malformed_basket_bad_trade_date_is_400(seeded_client: TestClient) -> None:
+    body = _strangle_body()
+    body["trade_date"] = "not-a-date"
+    response = seeded_client.post("/api/basket/risk", json=body)
+    assert response.status_code == 400
+    assert response.json()["error"] == "bad_basket"
+
+
+def _analytics_cell_on(snapshot_ts: datetime, *, delta_band: str, dollar_delta: float) -> tables.ProjectedOptionAnalytics:
+    """An AAA 3M analytics cell on a chosen snapshot date (for the no-look-ahead test)."""
+    return tables.ProjectedOptionAnalytics(
+        snapshot_ts=snapshot_ts, provider="IBKR", underlying=MEMBER_AAA, tenor_label="3m",
+        maturity_years=0.25, delta_band=delta_band, target_delta=0.30, log_moneyness=0.0,
+        strike=AN_FORWARD, forward_price=AN_FORWARD, implied_vol=0.25, total_variance=0.015625,
+        price=_AN_PRICE, delta=0.3, gamma=0.02, vega=0.31, theta=-0.05, rho=0.04,
+        dollar_delta=dollar_delta, dollar_gamma=_AN_DOLLAR_GAMMA, dollar_vega=_AN_DOLLAR_VEGA,
+        dollar_delta_unit=AN_DOLLAR_DELTA_UNIT, dollar_gamma_unit=AN_DOLLAR_GAMMA_UNIT,
+        dollar_vega_unit=AN_DOLLAR_VEGA_UNIT, model_version="svi", pricer_version="px",
+        source_snapshot_ts=snapshot_ts, provenance=_prov("lookahead"),
+        dollar_theta=_AN_DOLLAR_THETA, dollar_rho=_AN_DOLLAR_RHO,
+        dollar_theta_unit=AN_DOLLAR_THETA_UNIT, dollar_rho_unit=AN_DOLLAR_RHO_UNIT,
+    )
+
+
+def test_basket_prices_off_its_own_trade_date_no_look_ahead(tmp_path: Path) -> None:
+    # No look-ahead: the basket prices off the analytics for its OWN trade_date; a later
+    # snapshot with different numbers does not change the priced basket. Self-contained store.
+    early = date(2026, 5, 29)
+    store_root = tmp_path / "data"
+    store = ParquetStore(store_root)
+    store.write("projected_option_analytics", [
+        _analytics_cell_on(datetime(2026, 5, 29, 15, 30, tzinfo=UTC), delta_band="30dc", dollar_delta=58.5),
+        _analytics_cell_on(datetime(2026, 5, 30, 15, 30, tzinfo=UTC), delta_band="30dc", dollar_delta=999.0),
+    ])
+    ctx = AppContext(
+        store_root=store_root, configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root), default_underlying=MEMBER_AAA,
+    )
+    with TestClient(create_app(ctx)) as client:
+        body = {
+            "basket_id": "no-la", "trade_date": early.isoformat(), "underlying": MEMBER_AAA,
+            "provider": "IBKR",
+            "legs": [{"instrument_kind": "option", "side": "long", "quantity": 1.0,
+                      "underlying": MEMBER_AAA, "tenor_label": "3m", "delta_band": "30dc"}],
+        }
+        payload = client.post("/api/basket/risk", json=body).json()
+    # Priced at the early date: the early number (58.5), never the later snapshot's 999.0.
+    assert payload["metrics"]["delta"]["dollar"] == pytest.approx(58.5)

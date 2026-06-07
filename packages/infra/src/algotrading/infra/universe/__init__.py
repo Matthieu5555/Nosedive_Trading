@@ -65,6 +65,12 @@ from .membership import (
     ingest_membership_changes,
     members,
 )
+from .membership_source import (
+    MembershipSource,
+    SP500DatasetsSource,
+    YfiuaSnapshotSource,
+    parse_constituents_csv,
+)
 from .normalization import normalize_expiry, normalize_right, resolve_contract_row
 from .registry_loader import (
     enabled_indices,
@@ -97,10 +103,12 @@ __all__ = [
     "InstrumentMasterConflictError",
     "MembershipChange",
     "MembershipError",
+    "MembershipSource",
     "OptionContract",
     "OptionParams",
     "ResolvedContract",
     "Right",
+    "SP500DatasetsSource",
     "StrikeSelectionError",
     "TenorMarket",
     "Underlying",
@@ -109,6 +117,7 @@ __all__ = [
     "UnknownContractError",
     "UnknownInstrumentError",
     "UnresolvedContractError",
+    "YfiuaSnapshotSource",
     "basket_weight_sum",
     "build_instrument_masters",
     "canonical_payload",
@@ -122,6 +131,7 @@ __all__ = [
     "normalize_expiry",
     "normalize_option_params",
     "normalize_right",
+    "parse_constituents_csv",
     "parse_index_registry",
     "parse_instrument_key",
     "plan_chain",

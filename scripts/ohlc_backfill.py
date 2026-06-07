@@ -31,6 +31,7 @@ from pathlib import Path
 
 import structlog
 from algotrading.core.config.loader import load_platform_config
+from algotrading.infra.connectivity import load_env_file
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import index_registry_from_config
 from algotrading.infra_ibkr.config import load_ibkr_history_config
@@ -81,6 +82,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     A non-credentialed environment returns 0 without touching the network (nothing to backfill).
     """
     args = _parse_args(argv)
+    # Load the repo-root .env (the IBKR_CP_* credentials) before the credentialed session is built;
+    # neither `uv run` nor the caller's shell does it. The real environment still wins over the file.
+    load_env_file(_REPO_ROOT / ".env")
     as_of = date.fromisoformat(args.as_of) if args.as_of else datetime.now(UTC).date()
     calc_ts = datetime.now(UTC)
 

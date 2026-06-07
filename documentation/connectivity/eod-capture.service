@@ -42,6 +42,10 @@ Type=oneshot
 # Run in the repo so `uv run` resolves the workspace and configs/. Adjust WorkingDirectory to
 # wherever the checkout lives on the server.
 WorkingDirectory=%h/AlgoTrading
+# Belt-and-suspenders for the IBKR_CP_* credentials: the entrypoint already loads the repo-root
+# .env itself (uv run does not), but loading it here too means a credentialed fire works even if
+# the ExecStart is ever changed. The leading `-` makes a missing file a no-op, not a unit failure.
+EnvironmentFile=-%h/AlgoTrading/.env
 # The runner is a one-shot; --calendar %i scopes the fire to this timer's exchange group.
 ExecStart=/usr/bin/env uv run python scripts/eod_run.py --calendar %i
 # Retry on a transient failure (a flaky broker session, a momentary disk hiccup). The run is

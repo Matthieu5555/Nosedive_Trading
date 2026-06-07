@@ -98,3 +98,44 @@ the IBKR-centric sketch above: market data now comes from **three** brokers — 
 Nautilus's own adapter**, and **Saxo + Deribit via our own adapters** (Nautilus ships neither),
 all three normalizing into the one catalog the engine replays. An interim decision to drop the
 Nautilus dependency (ADRs 0007/0020) was reversed by 0023.
+
+## Library leverage — forward view (2026-06-07)
+
+A library-by-library audit (see [`tasks/AUDIT-library-leverage-2026-06-07.md`](tasks/AUDIT-library-leverage-2026-06-07.md),
+which carries the actionable REP0–REP8 backlog) confirmed the principle above is real in the
+tree, and mapped where each proven library should *grow* as the roadmap advances. The guiding
+rule holds: lean on libraries for plumbing; keep the deterministic analytics math our own.
+
+- **Nautilus** is the spine but still under-used. The big future adoptions: a live `TradingNode`
+  (today only its backtest engine drives the system); its typed `Bar`/`BarType` model + the IBKR
+  adapter's historical-bar path for the daily-OHLC capture (roadmap 1C/1E); and, when execution
+  lands (3A/3B), `OrderFactory`/`Order`/`Strategy`/`ExecutionEngine` rather than a hand-rolled
+  order model. The open design question is whether Nautilus's `ParquetDataCatalog` *becomes* the
+  raw store — deferred until the provenance/immutability invariants are proven to survive it.
+- **QuantLib** is already at its right footprint (the American lattice). It earns more only when a
+  **real term structure** arrives — non-flat discount/dividend curves and proper day-counters for
+  the gated futures/carry work (1D). Not before; flat-rate one-liners do not need a `YieldTermStructure`.
+- **py-vollib** stays the IV oracle. `py_vollib_vectorized` becomes worth adopting as the batch
+  IV/Greek kernel only if full-chain throughput (S&P 500 × multi-year history, 1F) is measured as a
+  real bottleneck — keeping the scalar diagnostic solver as the per-contract path.
+- **scipy** is the numerics workhorse going forward: `scipy.interpolate` (PCHIP/RBF) for the 1F
+  surface regrid, and `scipy.stats`/`scipy.linalg` if parametric VaR or book decorrelation (2D)
+  is ever built on top of today's full-reprice scenario engine.
+- **duckdb / polars / pyarrow** — duckdb's `ASOF JOIN` is the pattern for *every* point-in-time
+  alignment to come (1A constituents, 1C/1E option-vs-OHLC, 1H coverage QC). polars is mandated but
+  currently idle; its first homes are the snapshot as-of (REP2) and the 1F projection + BFF
+  serialization. `pyarrow.dataset` is the partition-management upgrade once the store reaches
+  years × hundreds of constituents.
+- **exchange-calendars** grows naturally as indices/venues are added (one registry entry each); it
+  will own session/settlement/roll math for 1D futures via `sessions_window`/`next_open`. Permanent
+  coverage gap: crypto (Deribit) has no meaningful calendar and stays on calendar-day logic.
+- **pydantic** is the highest-leverage *future* play, twice over: as the typed BFF response contract
+  (so the unit-carrying `{raw,dollar,unit}` shape and OpenAPI come free as Phase 2 multiplies
+  endpoints) and as the config validation layer (retiring the hand-rolled reflective coercer). Both
+  must respect the byte-stable-for-SHA-256 determinism constraint.
+- **plotly** stays the single charting dependency — correct precisely *because* of the 3D surface
+  requirement (the 2B PnL stress surface is another `go.Surface`). The web shell should pick up
+  TanStack **Query** (never installed despite the ADR) and lean harder on TanStack **Table** as the
+  dense Tab-2 grids arrive; the shadcn-vs-plain-CSS drift needs a ruling.
+- **pycryptodome** has one genuine future job: the IBKR Live-Session-Token exchange (RSA/DH), which
+  is still unwritten — the only place hand-rolling crypto is forbidden and the library is mandatory.

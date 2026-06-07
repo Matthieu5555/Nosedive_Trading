@@ -22,6 +22,7 @@ from typing import Union, get_args, get_origin, get_type_hints
 from .errors import UnknownTableError
 from .tables import (
     Basket,
+    BookGreeks,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -278,6 +279,20 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         # residual and every contribution may be signed; tolerances are echoed config and
         # validated >= 0 at the AttributionConfig boundary — the registry only guards finite.
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "book_greeks": TableSpec(
+        name="book_greeks",
+        contract=BookGreeks,
+        # One row per layer + one combined ("book") row; the level + layer_label sentinel keep
+        # the combined row from colliding with a per-layer row in this key (2D — composition).
+        primary_key=("valuation_ts", "book_id", "level", "layer_label"),
+        layer="derived",
+        append_only=False,
+        requires_provenance=True,
+        requires_source_snapshot_ts=True,
+        # Net and dollar Greeks are all signed; the registry only guards finiteness.
         positive_fields=(),
         non_negative_fields=(),
     ),

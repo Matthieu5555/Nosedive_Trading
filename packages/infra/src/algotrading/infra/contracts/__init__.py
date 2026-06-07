@@ -38,6 +38,7 @@ from .registry import (
 from .tables import (
     Basket,
     BasketLeg,
+    BookGreeks,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -62,6 +63,7 @@ __all__ = [
     "EVENT_TIMESTAMP_FIELDS",
     "OPTION_RIGHTS",
     "Basket",
+    "BookGreeks",
     "BasketLeg",
     "ContractError",
     "ContractValidationError",

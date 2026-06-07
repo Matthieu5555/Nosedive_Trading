@@ -37,6 +37,12 @@ from .attribution import (
     line_attribution_result,
 )
 from .basket import BasketVarianceResult, basket_variance
+from .book import (
+    COMPOSITION_VERSION,
+    BookLayerInput,
+    book_stress_surface,
+    build_book_greeks,
+)
 from .bumps import BUMP_VERSION, DEFAULT_BUMPS, BumpSpec
 from .config import DEFAULT_GROUPING_KEYS, AttributionConfig, RiskParams
 from .greeks import (
@@ -108,6 +114,11 @@ RISK_ENGINE_VERSION = "risk-1.0.0"
 
 __all__ = [
     "RISK_ENGINE_VERSION",
+    # book composition (2D)
+    "BookLayerInput",
+    "COMPOSITION_VERSION",
+    "book_stress_surface",
+    "build_book_greeks",
     # valuation
     "ContractValuationInput",
     "ValuationError",

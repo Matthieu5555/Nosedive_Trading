@@ -403,6 +403,52 @@ class ScenarioAttribution:
 
 
 @dataclass(frozen=True, slots=True)
+class BookGreeks:
+    """One row of a composed book's net Greeks — a single layer, or the combined book (WS 2D).
+
+    A *book* is an operator's named, ordered set of sub-strategies (each a 2A position set)
+    layered into one. This flat record carries the net Greeks for **one** of those rows,
+    discriminated by ``level``: ``"layer"`` for a single sub-strategy's net, ``"book"`` for the
+    combined aggregate over the union of all layers. The combined row is the **additive sum** of
+    the layer rows (ADR 0006), provably equal to the flat aggregate over the union — so a book is
+    a *view* that layers and sums, never a re-solve. ``layer_label`` is the operator's label for a
+    layer row and the ``"__book__"`` sentinel for the combined row (so the two never collide in the
+    primary key, mirroring 2C's level/sentinel pattern); ``layer_index`` is the display order
+    (``-1`` for the combined row).
+
+    Net Greeks are carried in **both** representations side by side: decimal per-unit
+    (``net_delta``/``gamma``/``vega``/``theta`` — contract-level ``per_unit·multiplier·quantity``,
+    the additive quantities) and dollar (``dollar_*``, the per-line monetization of WS-1F's
+    ``pricing/dollar_greeks.py`` summed across positions — book-additive), each dollar number
+    paired with its unit string. Dollars are currency-tagged cash and are not summed across
+    currencies (ADR 0006).
+    """
+
+    valuation_ts: datetime
+    book_id: str
+    level: str
+    layer_label: str
+    layer_index: int
+    net_delta: float
+    net_gamma: float
+    net_vega: float
+    net_theta: float
+    dollar_delta: float
+    dollar_gamma: float
+    dollar_vega: float
+    dollar_theta: float
+    dollar_rho: float
+    dollar_delta_unit: str
+    dollar_gamma_unit: str
+    dollar_vega_unit: str
+    dollar_theta_unit: str
+    dollar_rho_unit: str
+    composition_version: str
+    source_snapshot_ts: datetime
+    provenance: ProvenanceStamp
+
+
+@dataclass(frozen=True, slots=True)
 class QcResult:
     """The outcome of one named quality check against one target.
 

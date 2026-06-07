@@ -46,8 +46,14 @@ from algotrading.infra.contracts import ScenarioResult
 from algotrading.infra.pricing import PriceGreeks, price
 
 from .bumps import DEFAULT_BUMPS, BumpSpec
+from .config import AttributionConfig
 from .greeks import PositionRisk, central_difference_greeks, net_lots
 from .valuation import ContractValuationInput, pricing_state_for
+
+# The blueprint-faithful (Eq-19) decomposition conventions: the default attribution
+# config, used by the lumped Taylor path so the split and the lump share one home and one
+# arithmetic. Bound once here rather than minted per call so it is a single shared object.
+_EQ19_ATTRIBUTION = AttributionConfig.defaults()
 
 # Day-count for the time roll-down (years↔days). A fixed calendar convention, not a
 # tunable economic input; the configurable roll-down *set* lives in ScenarioConfig.
@@ -194,16 +200,69 @@ def full_reprice_pnl(line: PositionRisk, scenario: Scenario, *, steps: int | Non
     return (shocked_price - line.greeks.price) * line.scale
 
 
-def _taylor_pnl(greeks: PriceGreeks, *, spot: float, scale: float, scenario: Scenario) -> float:
-    """The local Greeks (Taylor, Eq 19) PnL for one line, given its Greeks."""
+@dataclass(frozen=True, slots=True)
+class TaylorTerms:
+    """The blueprint Eq-19 Taylor PnL split into its named, dollar, book-additive terms.
+
+    Each field is the monetized (``scale = multiplier * quantity``) contribution of one
+    Greek to the local PnL — ``delta_pnl = Δ·dS·scale``, ``gamma_pnl = ½·Γ·dS²·scale``,
+    ``vega_pnl = Vega·dσ·scale``, ``theta_pnl = Θ·dt·scale`` — so a book's terms are the
+    term-wise sum of its lines'. :attr:`total` is the lumped Taylor number: the split can
+    never drift from the lump because the lump *is* this sum (one home for the arithmetic).
+    """
+
+    delta_pnl: float
+    gamma_pnl: float
+    vega_pnl: float
+    theta_pnl: float
+
+    @property
+    def total(self) -> float:
+        """The lumped local Taylor PnL — the sum of the four named contributions."""
+        return self.delta_pnl + self.gamma_pnl + self.vega_pnl + self.theta_pnl
+
+
+def taylor_terms(
+    greeks: PriceGreeks,
+    *,
+    spot: float,
+    scale: float,
+    scenario: Scenario,
+    config: AttributionConfig = _EQ19_ATTRIBUTION,
+) -> TaylorTerms:
+    """Factor the local Taylor PnL (Eq 19) into its named per-Greek dollar contributions.
+
+    The single home of the term arithmetic: :func:`_taylor_pnl` (the lumped path) is
+    ``taylor_terms(...).total``, so the split and the lump cannot diverge. With the
+    blueprint-faithful default config (:data:`_EQ19_ATTRIBUTION` — ``one_dollar`` gamma,
+    365-day theta) the terms reproduce the classic ``Δ·dS + ½Γ·dS² + Vega·dσ + Θ·dt`` to
+    the dollar. The two convention flags are *reporting normalisations on the
+    decomposition only* (see :class:`AttributionConfig` / ADR 0038): ``one_pct`` divides
+    the gamma term by 100; a 252 day-count rescales the theta term by 365/252. They move
+    that one term (and the residual reported against the full reprice), never the full
+    reprice itself, which stays the oracle.
+    """
     d_spot = spot * scenario.spot_shock
-    per_unit = (
-        greeks.delta * d_spot
-        + 0.5 * greeks.gamma * d_spot * d_spot
-        + greeks.vega * scenario.vol_shock
-        + greeks.theta * scenario.time_shock
+    gamma_curvature = 0.5 * greeks.gamma * d_spot * d_spot
+    if config.gamma_normalisation == "one_pct":
+        gamma_curvature = gamma_curvature / 100.0
+    theta_contribution = greeks.theta * scenario.time_shock * (365.0 / config.theta_day_count)
+    return TaylorTerms(
+        delta_pnl=greeks.delta * d_spot * scale,
+        gamma_pnl=gamma_curvature * scale,
+        vega_pnl=greeks.vega * scenario.vol_shock * scale,
+        theta_pnl=theta_contribution * scale,
     )
-    return per_unit * scale
+
+
+def _taylor_pnl(greeks: PriceGreeks, *, spot: float, scale: float, scenario: Scenario) -> float:
+    """The local Greeks (Taylor, Eq 19) PnL for one line, given its Greeks.
+
+    Delegates to :func:`taylor_terms` with the blueprint-faithful default config so the
+    lumped path and the by-Greek split share one arithmetic home (the refactor-equivalence
+    invariant the 2C attribution rests on).
+    """
+    return taylor_terms(greeks, spot=spot, scale=scale, scenario=scenario).total
 
 
 def local_approx_pnl(line: PositionRisk, scenario: Scenario) -> float:

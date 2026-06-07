@@ -357,6 +357,50 @@ class ScenarioResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ScenarioAttribution:
+    """By-Greek decomposition of one line's (or one book's) stress PnL under one scenario.
+
+    The cross-Greek axis (2C): the ADR-0006 full reprice is the truth, the Taylor split is
+    its explanation, and ``residual = full_reprice_pnl - approx_pnl`` is the honest accuracy
+    of that explanation — always carried, never silently dropped. The four named
+    contributions (``delta_pnl``/``gamma_pnl``/``vega_pnl``/``theta_pnl``) are dollar PnL,
+    book-additive, so a book record's terms are the term-wise sum of its lines'.
+    ``approx_pnl`` is their lumped sum (the local Taylor number).
+
+    ``level`` is ``"position"`` for a per-line record or ``"book"`` for the aggregated
+    record; a book record carries the book sentinel in ``contract_key`` so the two never
+    collide in the primary key. ``within_tolerance`` is the residual verdict against the
+    carried ``residual_abs_tol``/``residual_rel_tol`` (accepted when
+    ``|residual| <= max(abs_tol, rel_tol*|full_reprice_pnl|)``); it is ``False`` whenever a
+    contribution or the full reprice is non-finite (a labeled diagnostic, not silent
+    agreement). ``attribution_version`` brands the decomposition conventions used.
+    """
+
+    valuation_ts: datetime
+    portfolio_id: str
+    scenario_id: str
+    contract_key: str
+    level: str
+    spot_shock: float
+    vol_shock: float
+    time_shock: float
+    delta_pnl: float
+    gamma_pnl: float
+    vega_pnl: float
+    theta_pnl: float
+    approx_pnl: float
+    full_reprice_pnl: float
+    residual: float
+    within_tolerance: bool
+    residual_abs_tol: float
+    residual_rel_tol: float
+    scenario_version: str
+    attribution_version: str
+    source_snapshot_ts: datetime
+    provenance: ProvenanceStamp
+
+
+@dataclass(frozen=True, slots=True)
 class QcResult:
     """The outcome of one named quality check against one target.
 

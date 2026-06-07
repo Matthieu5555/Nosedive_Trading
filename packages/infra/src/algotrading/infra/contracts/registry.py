@@ -33,6 +33,7 @@ from .tables import (
     QcResult,
     RawMarketEvent,
     RiskAggregate,
+    ScenarioAttribution,
     ScenarioResult,
     SurfaceGrid,
     SurfaceParameters,
@@ -245,6 +246,21 @@ REGISTRY: dict[str, TableSpec] = {
         append_only=False,
         requires_provenance=True,
         requires_source_snapshot_ts=True,
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "scenario_attributions": TableSpec(
+        name="scenario_attributions",
+        contract=ScenarioAttribution,
+        # The book-level record carries the book sentinel in ``contract_key``, so it never
+        # collides with a per-line record in this key (2C — the by-Greek attribution axis).
+        primary_key=("valuation_ts", "portfolio_id", "scenario_id", "contract_key"),
+        layer="derived",
+        append_only=False,
+        requires_provenance=True,
+        requires_source_snapshot_ts=True,
+        # residual and every contribution may be signed; tolerances are echoed config and
+        # validated >= 0 at the AttributionConfig boundary — the registry only guards finite.
         positive_fields=(),
         non_negative_fields=(),
     ),

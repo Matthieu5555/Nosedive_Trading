@@ -24,7 +24,12 @@ from typing import Any
 import algotrading.infra.pricing as pricing
 import pytest
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
-from algotrading.infra.contracts import ContractValidationError, RiskAggregate, ScenarioResult
+from algotrading.infra.contracts import (
+    ContractValidationError,
+    RiskAggregate,
+    ScenarioAttribution,
+    ScenarioResult,
+)
 from algotrading.infra.pricing import (
     PriceGreeks,
     PricingState,
@@ -35,9 +40,12 @@ from algotrading.infra.pricing import (
 )
 from algotrading.infra.risk import (
     RISK_ENGINE_VERSION,
+    AttributionConfig,
     PositionRisk,
     Scenario,
     aggregate_lines,
+    attribute_book,
+    book_attribution_result,
     position_risk,
     risk_aggregate,
     scenario_line_pnls,
@@ -82,6 +90,15 @@ def make_scenario_result() -> ScenarioResult:
     )
 
 
+def make_scenario_attribution() -> ScenarioAttribution:
+    book = attribute_book(
+        _lines(), Scenario("spot_down_5", "spot", -0.05, 0.0, 0.0), AttributionConfig.defaults()
+    )
+    return book_attribution_result(
+        book, valuation_ts=TS, scenario_version="scn-1", source_snapshot_ts=TS, provenance=_stamp()
+    )
+
+
 # --- risk -> contracts round-trips -------------------------------------------
 def test_position_round_trips_through_storage(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
@@ -92,7 +109,11 @@ def test_position_round_trips_through_storage(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "table, factory",
-    [("risk_aggregates", make_risk_aggregate), ("scenario_results", make_scenario_result)],
+    [
+        ("risk_aggregates", make_risk_aggregate),
+        ("scenario_results", make_scenario_result),
+        ("scenario_attributions", make_scenario_attribution),
+    ],
 )
 def test_derived_contract_round_trips_and_keeps_its_stamp(
     table: str, factory: Callable[[], Any], tmp_path: Path
@@ -112,6 +133,7 @@ def test_derived_contract_round_trips_and_keeps_its_stamp(
         ("positions", lambda: risk_positions()[0], "quantity"),
         ("risk_aggregates", make_risk_aggregate, "net_delta"),
         ("scenario_results", make_scenario_result, "scenario_pnl"),
+        ("scenario_attributions", make_scenario_attribution, "residual"),
     ],
 )
 def test_malformed_contract_is_rejected_by_validation(

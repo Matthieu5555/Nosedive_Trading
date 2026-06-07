@@ -13,7 +13,8 @@ request routed through M0, because every field ripples to the other workstreams.
   blueprint data model (Part IV.C / Part IX data dictionary): `InstrumentMaster`,
   `RawMarketEvent`, `DailyBar`, `MarketStateSnapshot`, `ForwardCurvePoint`, `IvPoint`,
   `SurfaceParameters`, `SurfaceGrid`, `PricingResult`, `ProjectedOptionAnalytics`,
-  `Position`, `RiskAggregate`, `ScenarioResult`, `QcResult`, `TriageRecord`. Each derived
+  `Position`, `RiskAggregate`, `ScenarioResult`, `ScenarioAttribution`, `QcResult`,
+  `TriageRecord`. Each derived
   record carries a `ProvenanceStamp` (from `algotrading.core`) and a `source_snapshot_ts`.
   `DailyBar` is the underlying daily-OHLC price-history product (index + constituents, for
   the candlestick charts) — a **distinct** product from the option `MarketStateSnapshot`,
@@ -22,7 +23,11 @@ request routed through M0, because every field ripples to the other workstreams.
   `dollar_theta`/`dollar_rho` additive-nullable. `ProjectedOptionAnalytics` is the WS 1F
   tenor × delta-band grid cell (decimal **and** dollar Greeks side by side, each dollar
   number unit-tagged) — provider-partitioned, stored under the `analytics` layer; produced
-  by `surfaces.project_grid`.
+  by `surfaces.project_grid`. `ScenarioAttribution` is the WS 2C by-Greek decomposition of a
+  scenario's stress PnL — the named dollar contributions (`delta_pnl`/`gamma_pnl`/`vega_pnl`/
+  `theta_pnl`), their lumped `approx_pnl`, the `full_reprice_pnl` oracle, and the `residual`
+  between them, at `level` `position` or `book` (the book record carries the `__book__`
+  sentinel in `contract_key`); produced by `risk.attribution`.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).

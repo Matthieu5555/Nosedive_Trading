@@ -25,9 +25,20 @@ from .aggregation import (
     resolve_grouping_key,
     risk_aggregate,
 )
+from .attribution import (
+    BOOK_CONTRACT_KEY,
+    LEVEL_BOOK,
+    LEVEL_POSITION,
+    BookAttribution,
+    LineAttribution,
+    attribute_book,
+    attribute_line,
+    book_attribution_result,
+    line_attribution_result,
+)
 from .basket import BasketVarianceResult, basket_variance
 from .bumps import BUMP_VERSION, DEFAULT_BUMPS, BumpSpec
-from .config import DEFAULT_GROUPING_KEYS, RiskParams
+from .config import DEFAULT_GROUPING_KEYS, AttributionConfig, RiskParams
 from .greeks import (
     LotConsistencyError,
     PositionRisk,
@@ -53,6 +64,7 @@ from .scenarios import (
     ScenarioGridError,
     ScenarioLinePnl,
     ScenarioReport,
+    TaylorTerms,
     UnderlyingAttribution,
     WorstCase,
     build_scenario_report,
@@ -65,6 +77,7 @@ from .scenarios import (
     scenario_result,
     scenario_totals,
     shock_valuation,
+    taylor_terms,
     worst_case,
 )
 from .snapshot import (
@@ -136,6 +149,19 @@ __all__ = [
     "scenario_result",
     "ScenarioGridError",
     "GRID_CONSTRUCTION_VERSION",
+    "TaylorTerms",
+    "taylor_terms",
+    # attribution (by-Greek axis, 2C)
+    "AttributionConfig",
+    "LineAttribution",
+    "BookAttribution",
+    "attribute_line",
+    "attribute_book",
+    "line_attribution_result",
+    "book_attribution_result",
+    "BOOK_CONTRACT_KEY",
+    "LEVEL_POSITION",
+    "LEVEL_BOOK",
     # reconciliation
     "BrokerGreeks",
     "GreekDiscrepancy",

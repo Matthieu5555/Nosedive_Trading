@@ -197,6 +197,37 @@ full reprice for small shocks and to *diverge* for a large adverse shock.
 `local_approx_pnl_fd` is the same expansion with finite-difference Greeks from the shared
 bump source. The approximation never lands in storage.
 
+## By-Greek PnL attribution (2C)
+
+`attribution.py` is the *across-Greeks* axis: it splits the local Taylor PnL into its named
+dollar contributions — `delta_pnl = Δ·dS·scale`, `gamma_pnl = ½·Γ·dS²·scale`,
+`vega_pnl = Vega·dσ·scale`, `theta_pnl = Θ·dt·scale` (blueprint Eq 19) — and reports the
+**residual** of their sum against the **full reprice** (the ADR-0006 oracle). The full
+reprice is the truth, the split is the explanation, and the residual is the honest accuracy
+of that explanation: bounded-and-reported within tolerance for a small shock, material-and-
+labeled for a large one, never silently dropped. A non-finite contribution or reprice is a
+labeled diagnostic (mirroring `reconciliation.py`'s NaN guard), not silent agreement.
+
+The term arithmetic has **one home**: `taylor_terms` in `scenarios.py`, which `_taylor_pnl`
+(the lumped path) now delegates to — so the split can never drift from the lump (the
+`test_terms_sum_to_lumped_taylor` refactor-equivalence invariant). `attribute_line` builds
+the per-position record, `attribute_book` the term-wise sum over the netted lines (via
+`math.fsum`, so it is invariant under input reordering — the D-owned invariant). This axis
+is **orthogonal** to the across-positions `UnderlyingAttribution`/`FamilyAttribution` (a book
+is sliced both ways independently); do not conflate them.
+
+Contributions are dollar PnL and book-additive (ADR-0029 `dollar_*`/`*_pnl` names, never
+`cash_*`). Two convention flags ride on `AttributionConfig` (the new attribution section of
+`RiskParams`, C7-DI): `gamma_normalisation` (`one_dollar` default = Eq-19 ½Γ(dS)²; `one_pct`
+÷100) and `theta_day_count` (365 default = calendar, matching the grid; 252 = trading,
+×365/252). Both are *reporting normalisations on the decomposition only* — they move that one
+term and the residual, never the full reprice. They flow from validated config into the pure
+builder and enter the stamp `config_hashes`; defaults reproduce the blueprint Eq-19 lump.
+`line_attribution_result`/`book_attribution_result` project into the frozen
+`ScenarioAttribution` contract the BFF/1I read (1I renders the Δ→Γ→Vega→Θ→residual→full
+waterfall). A book record carries the `__book__` sentinel in `contract_key` so it never
+collides with a per-line record. See ADR 0038.
+
 ## One bump source, determinism, and versioning
 
 Every finite-difference perturbation lives in one versioned `BumpSpec`, `DEFAULT_BUMPS`

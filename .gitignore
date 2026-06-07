@@ -44,6 +44,10 @@ ThomasOssen/
 # source of inspiration for the M-series tasks. Not part of the canonical workspace.
 Vincent's Code/
 
+# Lenny's standalone test console — not canonical, imported by nothing. Removed from the repo
+# (git rm --cached) but kept on disk for the admin to delete. Not part of the workspace.
+Test Lenny/
+
 # Claude Code local (per-user) settings
 .claude/settings.local.json
 

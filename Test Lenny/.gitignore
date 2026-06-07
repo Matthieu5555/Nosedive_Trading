@@ -1,4 +1,0 @@
-# Generated artifacts — not source
-.ruff_cache/
-runtime/*.sqlite
-*.pyc

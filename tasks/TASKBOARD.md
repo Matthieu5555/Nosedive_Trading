@@ -115,8 +115,9 @@ converged seam → contract-test map. Code without the named tests is not done.
   docs; data starts fresh so no migration. See
   [ADR 0029](../.agent/decisions/0029-contract-field-names-conform-to-blueprint.md). Gate green
   incl. the new check.
-- **`Test Lenny/`** is a throwaway standalone experiment (tracked in git, but not canonical and
-  imported by nothing). Its README now flags it as ignore-me. Remove in the hygiene pass / by the admin.
+- **`Test Lenny/`** is a throwaway standalone experiment, not canonical and imported by nothing. Now
+  **untracked** — removed from the repo (`git rm --cached`) and gitignored, **kept on disk** for the
+  admin to delete. Its README flags it as ignore-me. So it is excluded from any GitHub push.
 - **`Vincent's Code/` removal** was blocked during C5 (the dir is owned by `matthieu`; the C5 process
   ran as `vincent`, so `rm` was permission-denied — the clone is intact). It is gitignored and not
   canonical, so it does not affect the gate; its README should be flagged as reference-only (see the

@@ -1,9 +1,0 @@
-[project]
-name = "test-lenny"
-version = "0.1.0"
-description = "Standalone IBKR paper-trading volatility console"
-requires-python = ">=3.11"
-dependencies = []
-
-[tool.ruff]
-line-length = 100

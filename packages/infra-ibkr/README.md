@@ -76,6 +76,39 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   timeouts, the cap, established-wait, retry/backoff). Secrets (consumer key/secret, the Live
   Session Token) stay in `.env`, never here (C7 discipline).
 
+### Live EOD close capture — `collect_live` (WS 1C, ADR 0024/0031)
+
+The source that closes the broker→raw-event seam: the EOD runner (`algotrading.infra`, a layer
+*below* this one) exposes a transport-agnostic `BasketSource` and a `basket_source` parameter on
+`build_default_deps`/`default_stages_builder`; this leaf provides the live source and the
+credential-driven selection. The runner never imports the broker leaf — the cross-layer wiring
+lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
+
+- `connectivity/cp_rest_credentials.py` — the `.env` → `LstConsumer` loader the OAuth work
+  flagged as missing. Reads the `IBKR_CP_*` artifacts (consumer key, access token + encrypted
+  secret, the two RSA PEM **file paths**, DH prime, optional generator/realm) into the
+  `LstConsumer` the LST flow needs, plus a real `httpx`-backed `post` for the two exchange
+  endpoints. Absent creds → `None` (clean no-capture); partial creds → a labeled `CpOAuthError`
+  (`test_cp_rest_credentials.py`).
+- `collectors/cp_rest_index.py` — `resolve_index` / `resolve_index_conid`: resolve an index's
+  conid (and its listed option months) from its symbol via `GET /iserver/secdef/search`
+  (`secType=IND`, matched to the routing exchange CBOE/EUREX). The live path resolves the conid
+  itself, so the registry's `conid: 0` placeholder is **unused** on the live path
+  (`test_cp_rest_index.py`).
+- `collectors/cp_rest_close_capture.py` — `collect_live_basket`: the real capture. Resolve conid
+  → snapshot the index spot → discover + `plan_chain` the option chain → cap with
+  `select_capture_keys` → snapshot the selected contracts at the close → assemble the
+  `IndexBasket` `run_analytics` consumes. Every event is stamped at the index's own
+  `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
+  (`test_cp_rest_close_capture.py`). The economic 30Δ delta-band selection runs downstream in the
+  analytics over the captured set.
+- `live_capture.py` — `live_basket_source`: the explicit, logged live-vs-empty selection. A
+  credentialed environment acquires an LST, builds the OAuth-signed transport, opens the
+  brokerage session, and returns a `collect_live`-backed `BasketSource`; a non-credentialed one
+  returns `None` so the runner falls back to its empty no-capture source (clean exit 0). The
+  full path (auth-from-env → conid → capture → persisted grid) and the fallback are pinned in
+  `test_live_capture_spine.py`.
+
 ### Nautilus TWS (fallback, ADR 0025)
 
 - `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: the Nautilus
@@ -92,8 +125,11 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
   clock/transport), the adapter's **REST snapshot** + **WS frame** handling, the **OAuth 1.0a
   signer** (known-answer vector), the **LST acquisition** (real RSA→DH→LST on pycryptodome
   against a fake endpoint whose DH side is computed independently) and the **production
-  transport-signing** seam, the **history fetch/normalize/backfill-resume** path, and the
-  **REST↔TWS equivalence** test all run in CI against fakes — the verifiable core.
+  transport-signing** seam, the **history fetch/normalize/backfill-resume** path, the
+  **REST↔TWS equivalence** test, and the **live EOD close capture** (`collect_live` against a
+  fake gateway: credential load → conid resolve → chain plan → close snapshot → basket →
+  persisted grid, plus the no-look-ahead drop and the no-credentials fallback) all run in CI
+  against fakes — the verifiable core.
 - The Nautilus config builder's guard runs; its construction test skips without the `ibkr` extra.
 - Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the
   Nautilus-TWS path with `uv sync --extra ibkr`; the REST path needs the CP Gateway running locally.

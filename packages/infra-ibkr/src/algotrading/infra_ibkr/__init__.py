@@ -16,6 +16,7 @@ from algotrading.infra_ibkr.connectivity import (
     IbkrExtraNotInstalled,
     build_data_client_config,
 )
+from algotrading.infra_ibkr.live_capture import live_basket_source
 
 __all__ = [
     "IbkrExtraNotInstalled",
@@ -23,4 +24,6 @@ __all__ = [
     "quote_tick_to_events",
     "quote_ticks_to_events",
     "trade_tick_to_events",
+    # The live EOD close-capture BasketSource wiring (WS 1C)
+    "live_basket_source",
 ]

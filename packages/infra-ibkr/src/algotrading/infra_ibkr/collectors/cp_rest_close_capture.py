@@ -1,0 +1,408 @@
+"""``collect_live`` — the real EOD close basket source over CP REST (ADR 0024/0031, WS 1C).
+
+The EOD spine exposes one transport-agnostic injection point — the ``BasketSource`` the runner
+threads into ``default_stages_builder`` — and its production default returns ``None`` (the clean
+no-capture day) until a live source lands. This module is that source. Given an authenticated,
+OAuth-signed :class:`CpRestTransport` and a fired index, it captures the index's EOD close basket
+and returns the populated :class:`IndexBasket` the downstream analytics / ``project_grid`` /
+persist stages already consume.
+
+The capture is the two-stage chain-selection policy the platform fixes once
+(:mod:`algotrading.infra.universe.chain_planning`), driven over CP REST:
+
+1. **Resolve the index conid** from the symbol (:func:`resolve_index_conid`) — the live path does
+   not trust the registry's ``conid: 0`` placeholder.
+2. **Snapshot the index spot** so the chain is centred on the true level (the request-shaping
+   spot the discovery window keys off).
+3. **Discover the option chain** (:class:`CpRestDiscovery`: search → strikes → info), build the
+   broker-neutral :class:`AvailableChain`, and **plan** it with :func:`plan_chain` (the nearest
+   maturities and the strike window — the broker-pacing-safe discovery bound).
+4. **Cap to the capture budget** with :func:`select_capture_keys` (the per-session strike budget,
+   nearest-the-money) so a full chain is not blindly streamed.
+5. **Snapshot the selected contracts** at the close and normalize them to ``RawMarketEvent`` rows
+   through the same :func:`snapshot_to_events` the live adapter uses.
+6. **Assemble the :class:`IndexBasket`** (instruments + close events + masters) — exactly the
+   shape :func:`run_analytics` consumes; the economic 30Δ delta-band selection and the grid
+   projection then run *inside* the analytics over this captured set.
+
+No look-ahead: the capture *is* the session close. Every emitted event is stamped at the index's
+own ``FiredIndex.as_of`` (the resolver's ``session_close``), and a snapshot row carrying an
+update time *after* that close is dropped (never folded into the close basket) — the capture
+reads the close, never a post-close print. Pure given the transport's responses; the only clock
+read is the injected ``as_of``.
+
+Transport stays on CP REST (the settled decision, ADR 0024/0031): no Nautilus ``TradingNode`` is
+introduced for capture. The HTTP layer is the injected transport, so the gate drives the whole
+capture against a fake gateway with no network and no secrets.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime
+from typing import Any, Protocol
+
+import structlog
+from algotrading.core.config import PlatformConfig
+from algotrading.infra.actor import IndexBasket
+from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, RawMarketEvent
+from algotrading.infra.universe import (
+    AvailableChain,
+    ChainSelection,
+    IndexEntry,
+    plan_chain,
+    select_capture_keys,
+)
+
+from .cp_rest_discovery import CpRestDiscovery
+from .cp_rest_index import resolve_index
+from .cp_rest_normalize import REQUEST_FIELD_TAGS, snapshot_to_events
+
+_LOGGER = structlog.get_logger("ibkr.close_capture")
+
+# The index itself is a non-option underlying; its security type in our key space. The option
+# multiplier IBKR lists is a string ("100"); the index leg carries a multiplier of 1.0 (it is
+# not a contract with a lot size in our key space, only the options are).
+_INDEX_SECURITY_TYPE = "IND"
+_INDEX_MULTIPLIER = 1.0
+_OPTION_SECURITY_TYPE = "OPT"
+
+
+class _SupportsGet(Protocol):
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
+def _index_key(index: IndexEntry, conid: int) -> InstrumentKey:
+    """The index underlying's canonical :class:`InstrumentKey` (the chain's centre)."""
+    return InstrumentKey(
+        underlying_symbol=index.symbol,
+        security_type=_INDEX_SECURITY_TYPE,
+        exchange=index.ibkr.exchange,
+        currency=index.currency,
+        multiplier=_INDEX_MULTIPLIER,
+        broker_contract_id=str(conid),
+    )
+
+
+def _option_key(
+    index: IndexEntry, *, expiry: date, strike: float, right: str, multiplier: float, conid: str
+) -> InstrumentKey:
+    """One option contract's canonical :class:`InstrumentKey`, carrying its IBKR conid."""
+    return InstrumentKey(
+        underlying_symbol=index.symbol,
+        security_type=_OPTION_SECURITY_TYPE,
+        exchange=index.ibkr.exchange,
+        currency=index.currency,
+        multiplier=multiplier,
+        broker_contract_id=conid,
+        expiry=expiry,
+        strike=strike,
+        option_right=right,
+    )
+
+
+def _master(instrument: InstrumentKey, as_of: datetime) -> InstrumentMaster:
+    """The point-in-time master row for one instrument as known at the close."""
+    return InstrumentMaster(
+        instrument_key=instrument.canonical(),
+        as_of_date=as_of.date(),
+        instrument=instrument,
+        raw_broker_payload="{}",
+    )
+
+
+def _spot_from_snapshot(
+    rows: object, *, conid: int
+) -> float | None:
+    """Pull the index level (last, else bid/ask mid) from a snapshot response for one conid.
+
+    Used only to centre the discovery strike window — a request-shaping number, not an
+    observation persisted anywhere. ``None`` when the row is absent or unparseable, in which
+    case :func:`plan_chain` falls back to its spot-less (median-strike) window.
+    """
+    if not isinstance(rows, Sequence):
+        return None
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        row_conid = row.get("conid")
+        if row_conid is None or int(row_conid) != conid:
+            continue
+        for tag in ("31", "84", "86"):  # last, bid, ask
+            value = row.get(tag)
+            if value is None:
+                continue
+            try:
+                parsed = float(str(value).lstrip("CHch").strip())
+            except ValueError:
+                continue
+            if parsed > 0.0:
+                return parsed
+    return None
+
+
+def _snapshot_index_spot(transport: _SupportsGet, conid: int) -> float | None:
+    """REST snapshot the index level to centre the chain window (request-shaping only)."""
+    rows = transport.get(
+        "/iserver/marketdata/snapshot",
+        params={"conids": str(conid), "fields": ",".join(REQUEST_FIELD_TAGS)},
+    )
+    return _spot_from_snapshot(rows, conid=conid)
+
+
+def _discover_chain(
+    discovery: CpRestDiscovery,
+    *,
+    index: IndexEntry,
+    conid: int,
+    months: Sequence[str],
+    selection: ChainSelection,
+) -> tuple[AvailableChain, dict[str, str]]:
+    """Discover the listed chain for the index and build the broker-neutral ``AvailableChain``.
+
+    Drives the CP three-step ``strikes`` → ``info`` sequence (the ``search`` already resolved
+    the conid and the listed ``months``). Returns the assembled chain menu *and* a
+    ``(expiry,strike,right) -> conid`` map so the capture stage can snapshot exactly the
+    selected contracts by their resolved conid.
+    """
+    expirations: list[str] = []
+    strikes: set[float] = set()
+    conid_by_contract: dict[str, str] = {}
+    multiplier = "100"
+    for month in months[: selection.max_expiries]:
+        calls, puts = discovery.strikes(conid, month=month)
+        for strike in sorted(set(calls) | set(puts)):
+            for right in ("C", "P"):
+                for contract in discovery.contracts(
+                    conid, symbol=index.symbol, month=month, strike=strike, right=right
+                ):
+                    if contract.broker_contract_id is None:
+                        continue
+                    multiplier = str(contract.multiplier)
+                    expiry_token = contract.expiry.strftime("%Y%m%d")
+                    if expiry_token not in expirations:
+                        expirations.append(expiry_token)
+                    strikes.add(float(contract.strike))
+                    conid_by_contract[
+                        _contract_token(contract.expiry, float(contract.strike), right)
+                    ] = contract.broker_contract_id
+    chain = AvailableChain(
+        exchange=index.ibkr.exchange,
+        trading_class=index.symbol,
+        multiplier=multiplier,
+        expirations=tuple(sorted(set(expirations))),
+        strikes=tuple(sorted(strikes)),
+    )
+    return chain, conid_by_contract
+
+
+def _contract_token(expiry: date, strike: float, right: str) -> str:
+    """A stable key into the conid map for one (expiry, strike, right)."""
+    return f"{expiry.isoformat()}|{strike:.10g}|{right}"
+
+
+def _planned_option_keys(
+    index: IndexEntry,
+    *,
+    plan_expiries: Sequence[str],
+    plan_strikes: Sequence[float],
+    plan_rights: Sequence[str],
+    multiplier: float,
+    conid_by_contract: Mapping[str, str],
+) -> list[InstrumentKey]:
+    """Expand the plan's expiries × strikes × rights into the resolved option keys.
+
+    Only contracts that actually qualified (have a conid in the discovery map) become keys —
+    the cartesian a plan asks for is a superset; the ones that did not list are dropped, exactly
+    as a broker adapter drops contracts that fail to qualify.
+    """
+    keys: list[InstrumentKey] = []
+    for expiry_token in plan_expiries:
+        expiry = date(int(expiry_token[0:4]), int(expiry_token[4:6]), int(expiry_token[6:8]))
+        for strike in plan_strikes:
+            for right in plan_rights:
+                conid = conid_by_contract.get(_contract_token(expiry, strike, right))
+                if conid is None:
+                    continue
+                keys.append(
+                    _option_key(
+                        index,
+                        expiry=expiry,
+                        strike=strike,
+                        right=right,
+                        multiplier=multiplier,
+                        conid=conid,
+                    )
+                )
+    return keys
+
+
+def _snapshot_events(
+    transport: _SupportsGet,
+    *,
+    keys_by_conid: Mapping[int, InstrumentKey],
+    underlying: str,
+    session_id: str,
+    as_of: datetime,
+) -> list[RawMarketEvent]:
+    """Snapshot the selected contracts at the close and normalize to ``RawMarketEvent`` rows.
+
+    Every event is stamped at ``as_of`` (the session close) — both the exchange and receipt time
+    — so the basket is the close set, byte-identical on replay. A snapshot row whose own update
+    time (``_updated``) is *after* the close is dropped: the close capture never folds a
+    post-close print (the look-ahead guard). A row for an unrequested conid is ignored.
+    """
+    if not keys_by_conid:
+        return []
+    conids = ",".join(str(conid) for conid in sorted(keys_by_conid))
+    rows = transport.get(
+        "/iserver/marketdata/snapshot",
+        params={"conids": conids, "fields": ",".join(REQUEST_FIELD_TAGS)},
+    )
+    close_ms = int(as_of.timestamp() * 1000)
+    events: list[RawMarketEvent] = []
+    sequence = 0
+    if not isinstance(rows, Sequence):
+        return []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        row_conid = row.get("conid")
+        if row_conid is None:
+            continue
+        instrument = keys_by_conid.get(int(row_conid))
+        if instrument is None:
+            continue
+        updated = row.get("_updated")
+        if isinstance(updated, (int, float)) and int(updated) > close_ms:
+            # A print stamped after the session close is post-close data — never in the basket.
+            _LOGGER.info(
+                "ibkr.close_capture.drop_post_close",
+                conid=int(row_conid),
+                updated_ms=int(updated),
+                close_ms=close_ms,
+            )
+            continue
+        events.extend(
+            snapshot_to_events(
+                row,
+                instrument_key=instrument.canonical(),
+                underlying=underlying,
+                session_id=session_id,
+                sequence=sequence,
+                exchange_ts=as_of,
+                receipt_ts=as_of,
+            )
+        )
+        sequence += 1
+    return events
+
+
+def collect_live_basket(
+    transport: _SupportsGet,
+    *,
+    index: IndexEntry,
+    as_of: datetime,
+    config: PlatformConfig,
+    selection: ChainSelection | None = None,
+) -> IndexBasket | None:
+    """Capture one fired index's EOD close basket over CP REST (the live ``BasketSource`` body).
+
+    Resolves the index conid from its symbol, snapshots its spot to centre the chain, discovers
+    and plans the option chain, caps it to the capture budget, snapshots the selected contracts
+    at the close, and returns the populated :class:`IndexBasket`. Returns ``None`` (a clean,
+    labeled empty capture — never a raise) only when the index lists no option chain at all, so
+    a name with no listed options degrades to a no-capture day rather than failing the fire.
+
+    ``selection`` defaults to a :class:`ChainSelection` built from the universe config's strike-
+    selection knobs (nearest maturities, the per-session strike budget); the economic 30Δ band
+    runs downstream in :func:`run_analytics`. ``as_of`` is the index's own session close — every
+    captured event is stamped there and no post-close print is admitted.
+    """
+    log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
+    resolved = resolve_index(transport, symbol=index.symbol, exchange=index.ibkr.exchange)
+    conid = resolved.conid
+    selection = selection or _selection_from_config(config)
+    discovery = CpRestDiscovery(
+        transport, exchange=index.ibkr.exchange, currency=index.currency
+    )
+    spot = _snapshot_index_spot(transport, conid)
+    chain, conid_by_contract = _discover_chain(
+        discovery,
+        index=index,
+        conid=conid,
+        months=resolved.option_months,
+        selection=selection,
+    )
+    if not conid_by_contract:
+        log.info("ibkr.close_capture.no_options", reason="index lists no qualifiable options")
+        return None
+
+    plan = plan_chain(index.symbol, [chain], spot=spot, selection=selection)
+    if plan is None:
+        log.info("ibkr.close_capture.no_plan", reason="no listing selected for the index")
+        return None
+
+    multiplier = float(plan.multiplier) if plan.multiplier else 100.0
+    index_key = _index_key(index, conid)
+    option_keys = _planned_option_keys(
+        index,
+        plan_expiries=plan.expiries,
+        plan_strikes=plan.strikes,
+        plan_rights=plan.rights,
+        multiplier=multiplier,
+        conid_by_contract=conid_by_contract,
+    )
+
+    # Cap to the per-session capture budget (nearest-the-money), then snapshot exactly those.
+    spots = {index.symbol: spot} if spot is not None else {}
+    captured = set(
+        select_capture_keys(
+            [index_key, *option_keys],
+            spots=spots,
+            selection=selection,
+            exchange=index.ibkr.exchange,
+        )
+    )
+    kept_options = [key for key in option_keys if key.canonical() in captured]
+    keys_by_conid: dict[int, InstrumentKey] = {conid: index_key}
+    for key in kept_options:
+        keys_by_conid[int(key.broker_contract_id)] = key
+
+    session_id = f"{index.symbol}:{as_of.date().isoformat()}"
+    events = _snapshot_events(
+        transport,
+        keys_by_conid=keys_by_conid,
+        underlying=index.symbol,
+        session_id=session_id,
+        as_of=as_of,
+    )
+
+    instruments = (index_key, *kept_options)
+    masters = tuple(_master(key, as_of) for key in instruments)
+    log.info(
+        "ibkr.close_capture.captured",
+        conid=conid,
+        option_count=len(kept_options),
+        event_count=len(events),
+        spot=spot,
+    )
+    return IndexBasket(
+        instruments=instruments, events=tuple(events), masters=masters
+    )
+
+
+def _selection_from_config(config: PlatformConfig) -> ChainSelection:
+    """Build the capture :class:`ChainSelection` from the universe strike-selection config.
+
+    The maturity budget and per-side floor are economic and come from the typed
+    ``universe.yaml`` (never a ``.py`` literal): the nearest-maturity count and the per-side
+    minimum mirror the strike-selection block. The %-of-spot window and option exchange keep
+    their request-shaping defaults (a discovery heuristic, not an economic parameter).
+    """
+    strike_selection = config.universe.strike_selection
+    return ChainSelection(
+        max_expiries=len(config.universe.tenor_grid),
+        min_strikes_per_side=strike_selection.min_strikes_per_side,
+        option_exchange=config.universe.exchange,
+    )

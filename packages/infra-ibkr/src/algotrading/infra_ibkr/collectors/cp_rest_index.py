@@ -1,0 +1,176 @@
+"""Runtime index conid resolution from a symbol over CP REST (ADR 0024/0035).
+
+The index registry (``configs/universe.yaml``, ADR 0035) carries an ``ibkr.conid`` per index,
+but it is an *unverified placeholder* (``0``) for an index whose contract has not been hand-
+verified — and a wrong conid silently qualifies the wrong contract. The live capture path does
+not depend on that placeholder: it resolves each enabled index's conid at fire time from its
+symbol via the CP REST secdef search, the same ``GET /iserver/secdef/search`` the option-chain
+discovery (:mod:`.cp_rest_discovery`) drives, filtered to an **index** (``secType == "IND"``)
+on the index's IBKR routing exchange (CBOE for SPX, EUREX for SX5E — the values the registry's
+``ibkr.exchange`` already holds).
+
+This is the seam that eliminates the ``conid: 0`` problem for the live path: the yaml conids
+become unused, the symbol is resolved to the real contract id each run. Pure ``parse_*`` over
+the wire shape so the selection logic is unit-tested against a fake search response — no live
+Gateway, no network.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Protocol
+
+
+class IndexConidError(Exception):
+    """An index conid could not be resolved from a secdef-search response — labeled, never None.
+
+    Carries the symbol and the routing exchange so an unresolvable index (a wrong symbol, an
+    exchange mismatch, an empty response) reads as a named capture failure rather than a silent
+    fallback to a placeholder conid that would qualify the wrong contract.
+    """
+
+
+class _SupportsGet(Protocol):
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
+# IBKR's security type for an index (vs ``STK`` for a stock, ``OPT`` for an option). The search
+# response lists, per matched symbol, the section types the symbol trades under; we keep the
+# entry whose index section routes through the requested exchange.
+_INDEX_SEC_TYPE = "IND"
+
+
+def _sections(item: Mapping[str, object]) -> Sequence[Mapping[str, object]]:
+    """The ``sections`` list of one secdef-search row (each names a secType + its exchanges)."""
+    sections = item.get("sections")
+    if not isinstance(sections, Sequence):
+        return ()
+    return tuple(section for section in sections if isinstance(section, Mapping))
+
+
+def _routes_index_on_exchange(item: Mapping[str, object], exchange: str) -> bool:
+    """Whether a search row offers an ``IND`` section routed through ``exchange``.
+
+    A CP secdef-search row carries a ``sections`` list, each section a ``{secType, exchange}``
+    pair where ``exchange`` is a semicolon/comma-joined list of routing venues. The row matches
+    when it has an ``IND`` section whose exchange list contains the requested routing exchange
+    (CBOE/EUREX) — so a symbol that also lists as a stock or on another venue is not mistaken
+    for the index we want.
+    """
+    wanted = exchange.strip().upper()
+    for section in _sections(item):
+        if str(section.get("secType", "")).upper() != _INDEX_SEC_TYPE:
+            continue
+        venues = str(section.get("exchange", "")).upper()
+        listed = {v.strip() for chunk in venues.split(";") for v in chunk.split(",")}
+        if wanted in listed:
+            return True
+    return False
+
+
+def parse_index_conid(results: object, *, symbol: str, exchange: str) -> int:
+    """Pick the index conid for ``symbol`` on ``exchange`` from a ``/secdef/search`` response.
+
+    Keeps the row whose ``symbol`` matches (case-insensitively) and which offers an ``IND``
+    section routed through ``exchange`` (so the index contract is selected, never a same-symbol
+    stock or a same-symbol index on a different venue). When exactly one symbol-matching row is
+    returned and it carries no usable ``sections`` block, that row's conid is accepted (the
+    response shape some endpoints return), so a thin-but-unambiguous response still resolves.
+    A response that matches nothing raises a labeled :class:`IndexConidError`.
+    """
+    if not isinstance(results, Sequence):
+        raise IndexConidError(f"secdef search for index {symbol!r} returned no list: {results!r}")
+    symbol_matches = [
+        item
+        for item in results
+        if isinstance(item, Mapping)
+        and str(item.get("symbol", "")).upper() == symbol.upper()
+    ]
+    # Prefer a row that explicitly routes the index on the requested exchange.
+    for item in symbol_matches:
+        if _routes_index_on_exchange(item, exchange):
+            conid = item.get("conid")
+            if conid is not None:
+                return int(conid)
+    # Fall back to a single unambiguous symbol match with no sections block to filter on.
+    if len(symbol_matches) == 1 and not _sections(symbol_matches[0]):
+        conid = symbol_matches[0].get("conid")
+        if conid is not None:
+            return int(conid)
+    raise IndexConidError(
+        f"secdef search for index {symbol!r} resolved no IND conid on exchange {exchange!r}"
+    )
+
+
+def resolve_index_conid(transport: _SupportsGet, *, symbol: str, exchange: str) -> int:
+    """Resolve an index's IBKR conid from its symbol via ``GET /iserver/secdef/search``.
+
+    The ``name`` field is deliberately omitted (the documented CP gotcha — including it
+    suppresses parts of the response, see :mod:`.cp_rest_discovery`). The response is filtered
+    to the ``IND`` section on the requested routing exchange and the matching conid returned.
+    This is the runtime replacement for the registry's ``ibkr.conid`` placeholder on the live
+    path. Raises a labeled :class:`IndexConidError` rather than guessing on an empty/ambiguous
+    response.
+    """
+    results = transport.get(
+        "/iserver/secdef/search", params={"symbol": symbol, "secType": _INDEX_SEC_TYPE}
+    )
+    return parse_index_conid(results, symbol=symbol, exchange=exchange)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedIndex:
+    """One index resolved from a secdef search: its conid and its listed option months.
+
+    ``conid`` is the verified runtime contract id (the live-path replacement for the registry
+    placeholder); ``option_months`` are the ``YYYYMM``-style month tokens the option chain lists
+    under (e.g. ``("JUN26", "JUL26")``), read from the same search response's ``OPT`` section so
+    the chain discovery does not fire a second search.
+    """
+
+    conid: int
+    option_months: tuple[str, ...]
+
+
+def parse_option_months(results: object, *, symbol: str) -> tuple[str, ...]:
+    """The option-chain months listed for ``symbol`` in a ``/secdef/search`` response.
+
+    The search row carries, under its ``OPT`` section, a ``months`` string of semicolon-joined
+    month tokens (``"JUN26;JUL26;SEP26"``). Returns them in listed order, de-duplicated; an
+    empty tuple when the symbol lists no option section (a name with no options — the caller
+    degrades to a no-capture day, never a crash).
+    """
+    if not isinstance(results, Sequence):
+        return ()
+    for item in results:
+        if not isinstance(item, Mapping):
+            continue
+        if str(item.get("symbol", "")).upper() != symbol.upper():
+            continue
+        for section in _sections(item):
+            if str(section.get("secType", "")).upper() != "OPT":
+                continue
+            months_raw = str(section.get("months", ""))
+            seen: list[str] = []
+            for token in months_raw.replace(",", ";").split(";"):
+                month = token.strip()
+                if month and month not in seen:
+                    seen.append(month)
+            return tuple(seen)
+    return ()
+
+
+def resolve_index(transport: _SupportsGet, *, symbol: str, exchange: str) -> ResolvedIndex:
+    """Resolve an index's conid AND its listed option months from one ``/secdef/search`` call.
+
+    A single search resolves both the index conid (filtered to the ``IND`` section on the
+    routing exchange) and the option months (from the ``OPT`` section), so the close-capture
+    chain discovery reuses one response rather than firing a second search. Raises a labeled
+    :class:`IndexConidError` on a response that resolves no index conid.
+    """
+    results = transport.get(
+        "/iserver/secdef/search", params={"symbol": symbol, "secType": _INDEX_SEC_TYPE}
+    )
+    conid = parse_index_conid(results, symbol=symbol, exchange=exchange)
+    return ResolvedIndex(conid=conid, option_months=parse_option_months(results, symbol=symbol))

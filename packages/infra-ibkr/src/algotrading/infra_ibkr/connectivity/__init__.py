@@ -9,6 +9,11 @@
 is **superseded** — retained as dead reference, reached only by direct import, not surfaced here.
 """
 
+from .cp_rest_credentials import (
+    credentials_present,
+    load_lst_consumer,
+    make_lst_http_post,
+)
 from .cp_rest_lst import (
     DiffieHellmanParams,
     LstConsumer,
@@ -56,6 +61,10 @@ __all__ = [
     "derive_live_session_token",
     "validate_live_session_token",
     "build_signed_cp_rest_transport",
+    # Credential/env loader (ADR 0031 — the .env → LstConsumer seam)
+    "credentials_present",
+    "load_lst_consumer",
+    "make_lst_http_post",
     # Path selector (ADR 0024 §2)
     "IbkrTransport",
     "DEFAULT_IBKR_TRANSPORT",

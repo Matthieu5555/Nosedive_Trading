@@ -11,6 +11,7 @@ are **superseded** — kept as files until C5, reached only by direct import, no
 """
 
 from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter
+from .cp_rest_close_capture import collect_live_basket
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
 from .cp_rest_history import (
     BackfillResult,
@@ -22,6 +23,14 @@ from .cp_rest_history_normalize import (
     HistoryNormalizeError,
     history_to_daily_bars,
     trade_date_of_bar,
+)
+from .cp_rest_index import (
+    IndexConidError,
+    ResolvedIndex,
+    parse_index_conid,
+    parse_option_months,
+    resolve_index,
+    resolve_index_conid,
 )
 from .cp_rest_normalize import snapshot_to_events
 from .nautilus_normalize import (
@@ -41,6 +50,14 @@ __all__ = [
     "CpRestDiscovery",
     "DiscoveryError",
     "snapshot_to_events",
+    # Runtime index conid resolution + the live EOD close basket source (WS 1C)
+    "resolve_index",
+    "resolve_index_conid",
+    "parse_index_conid",
+    "parse_option_months",
+    "ResolvedIndex",
+    "IndexConidError",
+    "collect_live_basket",
     # Historical OHLC backfill (ADR 0031)
     "CpRestHistoryCollector",
     "HistoryRequest",

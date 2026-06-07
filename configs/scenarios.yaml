@@ -7,10 +7,16 @@
 # 0036).
 
 scenario:                                          # the stress grid (ScenarioConfig)
-  version: "2026.05.31"
-  spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]     # fractional spot moves
-  vol_shocks: [-0.05, 0.0, 0.05]                   # absolute vol moves
+  version: "2026.06.07"
+  spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]     # fractional spot moves (families grid)
+  vol_shocks: [-0.05, 0.0, 0.05]                   # absolute vol moves (families grid)
   roll_down_days: [1]                              # time-roll scenarios (days), one per entry
+  stress_surface:                                  # the 2B ±range (spot × vol) PnL surface grid
+    version: "2026.06.07"
+    spot_shock_abs: 0.50                           # symmetric ± relative spot range (±50%)
+    vol_shock_abs: 0.50                            # symmetric ± additive vol range (±50 vol pts)
+    spot_steps: 9                                  # grid points per axis (odd → samples 0)
+    vol_steps: 9
 
 monetization:                                      # $-Greek convention forks (MonetizationConfig)
   version: "2026.05.31"

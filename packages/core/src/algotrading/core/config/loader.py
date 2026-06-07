@@ -26,6 +26,7 @@ from .platform_config import (
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
+    StressSurfaceConfig,
     StrikeSelectionConfig,
     SurfaceConfig,
     UniverseConfig,
@@ -73,9 +74,40 @@ def config_from_mapping(data: Mapping[str, Any]) -> PlatformConfig:
             built[name] = _build_universe(section_data)
         elif name == "qc_threshold":
             built[name] = _build_qc_threshold(section_data)
+        elif name == "scenario":
+            built[name] = _build_scenario(section_data)
         else:
             built[name] = build_dataclass(cls, section_data, section=name)
     return PlatformConfig(**built)
+
+
+def _build_scenario(section_data: Mapping[str, Any]) -> ScenarioConfig:
+    """Build :class:`ScenarioConfig`, handling the nested ``stress_surface:`` block (WS 2B).
+
+    The flat scalar/tuple shock fields are coerced by the reflective :func:`build_dataclass`
+    seam. The ``stress_surface:`` block (the 2B ±range cartesian surface grid) is itself a
+    flat scalar dataclass, so it is built through the *same* seam and reattached — it
+    canonicalizes into ``config_hashes["scenarios"]`` like any other field. The block is
+    **required** on the load path (no silent default for the economic stress grid): an absent
+    ``stress_surface:`` raises rather than falling back to the dataclass placeholder default
+    that older in-memory constructions use, the same discipline ``qc_threshold.grid`` follows.
+    """
+    if not isinstance(section_data, Mapping):
+        raise ConfigError("config section 'scenario' must be a mapping")
+    scalar_fields = {k: v for k, v in section_data.items() if k != "stress_surface"}
+    base = build_dataclass(
+        ScenarioConfig,
+        scalar_fields,
+        section="scenario",
+        caller_supplied=frozenset({"stress_surface"}),
+    )
+    if "stress_surface" not in section_data:
+        raise ConfigError("config section 'scenario' is missing the 'stress_surface:' block")
+    ss_data = section_data["stress_surface"]
+    if not isinstance(ss_data, Mapping):
+        raise ConfigError("config 'scenario.stress_surface' must be a mapping")
+    surface = build_dataclass(StressSurfaceConfig, ss_data, section="stress_surface")
+    return dataclasses.replace(base, stress_surface=surface)
 
 
 def _build_qc_threshold(section_data: Mapping[str, Any]) -> QcThresholdConfig:

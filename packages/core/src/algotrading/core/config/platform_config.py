@@ -422,6 +422,65 @@ class ForwardConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class StressSurfaceConfig:
+    """The ±range stress *surface* grid — the 2B (spot × vol) PnL surface (ADR 0006/0028).
+
+    Distinct from the ``scenario`` families (a spot family, a vol family, one crash, a
+    time roll): this is the **full cartesian** grid the stress page reprices. Each axis is
+    a *symmetric* shock range, sampled on an *odd* number of points so the centre (0 shock)
+    — the cell the page pins to ≈0 PnL — is always present:
+
+    * ``spot_shock_abs`` is the symmetric magnitude of the **relative** spot axis
+      (``spot_shock ∈ [-abs, +abs]``, the engine's ``new_spot = spot*(1+s)`` convention).
+    * ``vol_shock_abs`` is the symmetric magnitude of the **additive** vol axis
+      (``new_vol = vol + v``).
+    * ``spot_steps`` / ``vol_steps`` are the number of grid points per axis — odd, so 0 is
+      sampled; ``1`` is the degenerate centre-only column.
+
+    Every value is config (ADR 0028): it folds into ``config_hashes["scenarios"]`` and into
+    :func:`effective_scenario_version`, so the production ±50%/±50% grid is a YAML edit, never
+    a ``.py`` literal. The dataclass defaults are non-production placeholders for in-memory /
+    test construction only — the load path requires the block (see ``loader._build_scenario``).
+    """
+
+    version: str
+    spot_shock_abs: float = 0.10
+    vol_shock_abs: float = 0.10
+    spot_steps: int = 3
+    vol_steps: int = 3
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ConfigFieldError(
+                "stress_surface", "version", self.version, "must be non-empty"
+            )
+        for name, magnitude in (
+            ("spot_shock_abs", self.spot_shock_abs),
+            ("vol_shock_abs", self.vol_shock_abs),
+        ):
+            _finite("stress_surface", name, magnitude)
+            if magnitude < 0.0:
+                raise ConfigFieldError(
+                    "stress_surface",
+                    name,
+                    magnitude,
+                    "magnitude must be non-negative (the axis is symmetric ±abs)",
+                )
+        for name, steps in (("spot_steps", self.spot_steps), ("vol_steps", self.vol_steps)):
+            if steps < 1:
+                raise ConfigFieldError(
+                    "stress_surface", name, steps, "must be a positive step count"
+                )
+            if steps % 2 == 0:
+                raise ConfigFieldError(
+                    "stress_surface",
+                    name,
+                    steps,
+                    "must be odd so the centre (0 shock) cell is sampled",
+                )
+
+
+@dataclass(frozen=True, slots=True)
 class ScenarioConfig:
     """The stress grid applied by the risk engine.
 
@@ -430,12 +489,21 @@ class ScenarioConfig:
     construction only: the YAML loader (:func:`build_dataclass`) still requires the
     field to be present in ``scenarios.yaml``, so an economic field is never silently
     defaulted on the load path.
+
+    ``stress_surface`` is the 2B cartesian (spot × vol) surface grid (see
+    :class:`StressSurfaceConfig`). Like ``roll_down_days`` its dataclass default is a
+    placeholder for in-memory construction; the load path (``loader._build_scenario``)
+    requires the ``stress_surface:`` block, so the production ±50% grid is never silently
+    defaulted. It canonicalizes into ``config_hashes["scenarios"]`` like every other field.
     """
 
     version: str
     spot_shocks: tuple[float, ...]
     vol_shocks: tuple[float, ...]
     roll_down_days: tuple[int, ...] = (1,)
+    stress_surface: StressSurfaceConfig = field(
+        default_factory=lambda: StressSurfaceConfig(version="stress-surface-default")
+    )
 
     def __post_init__(self) -> None:
         # Empty shock tuples are valid — a grid with no spot/vol shocks is just the

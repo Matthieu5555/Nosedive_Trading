@@ -22,6 +22,7 @@ from algotrading.core import (
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
+    StressSurfaceConfig,
     SurfaceConfig,
     UniverseConfig,
     composite_config_hash,
@@ -224,6 +225,12 @@ scenario:
   spot_shocks: [-0.1, 0.0, 0.1]
   vol_shocks: [-0.02, 0.02]
   roll_down_days: [1]
+  stress_surface:
+    version: ss-base
+    spot_shock_abs: 0.5
+    vol_shock_abs: 0.5
+    spot_steps: 9
+    vol_steps: 9
 monetization:
   version: mon-base
   gamma_normalisation: one_pct
@@ -319,6 +326,8 @@ _BUNDLES = {
     "scenarios.yaml": (
         "scenario:\n  version: sc-1\n  spot_shocks: [-0.1, 0.0, 0.1]\n"
         "  vol_shocks: [-0.02, 0.02]\n  roll_down_days: [1]\n"
+        "  stress_surface:\n    version: ss-1\n    spot_shock_abs: 0.5\n"
+        "    vol_shock_abs: 0.5\n    spot_steps: 9\n    vol_steps: 9\n"
         "monetization:\n  version: mon-1\n  gamma_normalisation: one_pct\n"
         "  theta_day_count: 365\n"
     ),
@@ -356,7 +365,16 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
             surface=_surface("surf-1"),
             forward=_forward("fwd-1"),
             scenario=ScenarioConfig(
-                version="sc-1", spot_shocks=(-0.1, 0.0, 0.1), vol_shocks=(-0.02, 0.02)
+                version="sc-1",
+                spot_shocks=(-0.1, 0.0, 0.1),
+                vol_shocks=(-0.02, 0.02),
+                stress_surface=StressSurfaceConfig(
+                    version="ss-1",
+                    spot_shock_abs=0.5,
+                    vol_shock_abs=0.5,
+                    spot_steps=9,
+                    vol_steps=9,
+                ),
             ),
             monetization=MonetizationConfig(
                 version="mon-1", gamma_normalisation="one_pct", theta_day_count=365
@@ -445,10 +463,13 @@ def test_build_dataclass_coerces_by_declared_type() -> None:
     )
     assert qc.max_spread_pct == 0.05 and isinstance(qc.min_chain_count, int)
     # tuple[float, ...] coercion: a YAML list of numbers becomes a tuple of floats.
+    # ``stress_surface`` is a nested dataclass field the loader builds via ``_build_scenario``,
+    # so it is caller-supplied here (taking its default) like ``grid`` above.
     sc = build_dataclass(
         ScenarioConfig,
         {"version": "sc", "spot_shocks": [-0.1, 0, 0.1], "vol_shocks": [0.0], "roll_down_days": [1, 7]},
         section="scenario",
+        caller_supplied=frozenset({"stress_surface"}),
     )
     assert sc.spot_shocks == (-0.1, 0.0, 0.1)
     assert all(isinstance(x, float) for x in sc.spot_shocks)

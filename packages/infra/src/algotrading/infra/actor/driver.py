@@ -56,6 +56,7 @@ from algotrading.infra.contracts import (
     MarketStateSnapshot,
     Position,
     PricingResult,
+    ProjectedOptionAnalytics,
     RawMarketEvent,
     RiskAggregate,
     ScenarioResult,
@@ -86,6 +87,11 @@ from algotrading.infra.risk import (
 from algotrading.infra.snapshots import SnapshotBatch, build_snapshots
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.surfaces import SliceFit, fit_slice, project_surface_fit
+from algotrading.infra.surfaces.projection import (
+    ProjectionConfig,
+    SnapshotMarketState,
+    project_grid,
+)
 
 from .outputs import ActorOutputs
 from .stamping import StampSource, build_stamp
@@ -108,6 +114,12 @@ _DAYS_PER_YEAR = 365.0
 # Risk aggregation dimension for the persisted RiskAggregate rows. "underlying" is the
 # portfolio-level net per underlying — the coarsest coherent net (ADR 0006 §2).
 _AGGREGATE_DIMENSION = "underlying"
+
+# The default projection-axes version stamped onto the grid's `projection` config hash when the
+# caller does not pass an explicit ProjectionConfig. A label only (the axes themselves are the
+# pinned P0.1 tenor set + 30Δ band defaults); it enters config_hashes["projection"] so the grid
+# is reproducible. Bump only on a deliberate change to the default axes.
+PROJECTION_AXES_VERSION = "projection-axes-1.0.0"
 
 # Maturity matching tolerance, kept in lockstep with the valuation join so the
 # forward/slice indexed by a derived maturity resolves the contract built from the
@@ -139,6 +151,8 @@ def run_analytics(
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
     moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
     session_open: bool = True,
+    provider: str | None = None,
+    projection: ProjectionConfig | None = None,
 ) -> ActorOutputs:
     """Compute every derived output for one as-of instant — pure, no I/O, no clock.
 
@@ -151,6 +165,15 @@ def run_analytics(
     absence, not an observation. Returns an empty-tuple-filled :class:`ActorOutputs`
     when there is nothing to compute (no events, or no positions for the risk tuples),
     never a partial object.
+
+    When ``provider`` is given, the per-maturity surface fits are additionally regridded onto
+    the pinned tenor × delta-band analytics grid (WS 1F :func:`surfaces.project_grid`) and the
+    resulting provider-stamped :class:`contracts.ProjectedOptionAnalytics` cells are returned in
+    :attr:`ActorOutputs.projected_analytics` (and persisted by :func:`persist_outputs`). It is
+    optional because the grid is provider-partitioned: a provider-less replay-equality caller
+    leaves the grid empty, while the close-capture EOD path supplies the index's provider so a
+    real daily fire produces and persists the grid. ``projection`` defaults to the pinned
+    P0.1 axes; the $-Greek conventions come from ``config.monetization``.
     """
     masters_by_key = {master.instrument_key: master.instrument for master in masters}
 
@@ -211,6 +234,21 @@ def run_analytics(
         exercise_style_for=exercise_style_for,
     )
 
+    # 6. Pinned tenor × delta-band grid — only when a provider is supplied to stamp the
+    #    provider-partitioned cells (the close-capture EOD path supplies it; replay-equality
+    #    callers leave it off and the grid is empty).
+    projected = _build_projected_analytics(
+        slice_fits,
+        batch=batch,
+        forwards=forward_estimates,
+        provider=provider,
+        config=config,
+        config_hashes=config_hashes,
+        as_of=as_of,
+        calc_ts=calc_ts,
+        projection=projection,
+    )
+
     return ActorOutputs(
         snapshots=batch.snapshots,
         forwards=tuple(forward_points),
@@ -220,6 +258,7 @@ def run_analytics(
         pricings=tuple(pricings),
         risk_aggregates=tuple(risk_aggregates),
         scenarios=tuple(scenarios),
+        projected_analytics=projected,
     )
 
 
@@ -464,6 +503,73 @@ def _build_surfaces(
     return slice_fits, params, cells
 
 
+def _build_projected_analytics(
+    slice_fits: Sequence[SliceFit],
+    *,
+    batch: SnapshotBatch,
+    forwards: Sequence[ForwardEstimate],
+    provider: str | None,
+    config: PlatformConfig,
+    config_hashes: Mapping[str, str],
+    as_of: datetime,
+    calc_ts: datetime,
+    projection: ProjectionConfig | None,
+) -> tuple[ProjectedOptionAnalytics, ...]:
+    """Regrid each underlying's fitted surface onto the pinned tenor × delta-band grid.
+
+    Returns an empty tuple when no ``provider`` is supplied (the grid is provider-partitioned,
+    so a provider-less replay-equality run produces none) — so the change is inert for those
+    callers and the byte-identical handle is unchanged. With a provider, groups the rich
+    :class:`SliceFit` set by underlying, builds the per-underlying :class:`SnapshotMarketState`
+    from the batch's usable spot and the usable forward estimates' discount factors (carry == 0,
+    forward == spot per the projection convention), and calls :func:`surfaces.project_grid` once
+    per underlying. The cell order is a pure function of the config axes, so the persisted grid
+    is deterministic. Cells across underlyings are concatenated in sorted-underlying order.
+    """
+    if provider is None or not slice_fits:
+        return ()
+
+    axes = projection or ProjectionConfig(version=PROJECTION_AXES_VERSION)
+    spot_by_underlying = _usable_spot_by_underlying(batch)
+    discounts_by_underlying: dict[str, dict[float, float]] = {}
+    for estimate in forwards:
+        if not estimate.is_usable or estimate.discount_factor is None:
+            continue
+        discounts_by_underlying.setdefault(estimate.underlying, {})[
+            round(estimate.maturity_years, _MATURITY_MATCH_DECIMALS)
+        ] = estimate.discount_factor
+
+    slices_by_underlying: dict[str, list[SliceFit]] = {}
+    for fit in slice_fits:
+        slices_by_underlying.setdefault(fit.underlying, []).append(fit)
+
+    cells: list[ProjectedOptionAnalytics] = []
+    for underlying in sorted(slices_by_underlying):
+        spot = spot_by_underlying.get(underlying)
+        if spot is None:
+            # No usable underlying spot — the grid has nothing to price against; skip rather
+            # than guess a spot. The surface fits still persist via surface_parameters/grid.
+            continue
+        market = SnapshotMarketState(
+            underlying=underlying,
+            provider=provider,
+            spot=spot,
+            discount_factors=discounts_by_underlying.get(underlying, {}),
+        )
+        result = project_grid(
+            slices_by_underlying[underlying],
+            market,
+            snapshot_ts=as_of,
+            source_snapshot_ts=as_of,
+            calc_ts=calc_ts,
+            projection=axes,
+            monetization=config.monetization,
+            config_hashes=config_hashes,
+        )
+        cells.extend(result.cells)
+    return tuple(cells)
+
+
 def _build_risk(
     positions: Sequence[Position],
     *,
@@ -635,6 +741,7 @@ def persist_outputs(store: ParquetStore, outputs: ActorOutputs) -> None:
         (PricingResult, outputs.pricings),
         (RiskAggregate, outputs.risk_aggregates),
         (ScenarioResult, outputs.scenarios),
+        (ProjectedOptionAnalytics, outputs.projected_analytics),
     )
     for contract_type, records in tables:
         if not records:
@@ -657,6 +764,8 @@ def run_day(
     moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
     correlation_id: str = "",
     persist: bool = True,
+    provider: str | None = None,
+    projection: ProjectionConfig | None = None,
 ) -> ActorOutputs:
     """Replay a stored day's raw events through the actor and persist the outputs.
 
@@ -689,6 +798,8 @@ def run_day(
         calc_ts=calc_ts,
         exercise_style_for=exercise_style_for,
         moneyness_buckets=moneyness_buckets,
+        provider=provider,
+        projection=projection,
     )
 
     if persist:

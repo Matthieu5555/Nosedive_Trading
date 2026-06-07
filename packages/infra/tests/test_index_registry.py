@@ -204,8 +204,12 @@ def test_loads_from_real_universe_yaml() -> None:
     registry = load_index_registry(CONFIGS_DIR)
     symbols = {e.symbol for e in registry.entries}
     assert {"SX5E", "SPX"} <= symbols
-    # Both seeded disabled (unverified conids / capture gated on D1); enabled set is empty.
-    assert enabled_indices(registry) == ()
+    # Both seed indices are now enabled (the live EOD spine surfaces them); the calendar/
+    # projection path uses only the symbol/calendar, so the still-placeholder conids do not
+    # block enabling. The enabled set is exactly the two seeds, in canonical (sorted) order.
+    assert [e.symbol for e in enabled_indices(registry)] == ["SPX", "SX5E"]
+    # The canonical symbol is SPX (never SP500) per the spec audit.
+    assert "SP500" not in symbols
 
 
 def test_index_block_is_in_the_universe_hash_with_no_separate_hash() -> None:
@@ -220,8 +224,9 @@ def test_changing_an_index_moves_only_the_universe_hash() -> None:
     config = load_platform_config(CONFIGS_DIR)
     before = config_hashes(config)
     # Flip an enabled flag in the raw block: an economic change (changes which records exist).
+    # Both seeds now ship enabled, so flip SPX OFF to register a genuine change.
     new_indices = {
-        symbol: ({**dict(entry), "enabled": True} if symbol == "SPX" else dict(entry))
+        symbol: ({**dict(entry), "enabled": False} if symbol == "SPX" else dict(entry))
         for symbol, entry in config.universe.indices.items()
     }
     moved_universe = dataclasses.replace(config.universe, indices=new_indices)

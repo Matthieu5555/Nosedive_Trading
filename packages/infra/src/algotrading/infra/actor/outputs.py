@@ -24,6 +24,7 @@ from algotrading.infra.contracts import (
     IvPoint,
     MarketStateSnapshot,
     PricingResult,
+    ProjectedOptionAnalytics,
     RiskAggregate,
     ScenarioResult,
     SurfaceGrid,
@@ -50,6 +51,11 @@ class ActorOutputs:
     pricings: tuple[PricingResult, ...] = field(default_factory=tuple)
     risk_aggregates: tuple[RiskAggregate, ...] = field(default_factory=tuple)
     scenarios: tuple[ScenarioResult, ...] = field(default_factory=tuple)
+    # The pinned tenor × delta-band grid (WS 1F): empty unless the run was given a ``provider``
+    # to stamp the provider-partitioned cells with. The close-capture EOD path supplies one, so
+    # a real daily fire produces and persists this grid; the provider-less replay-equality runs
+    # leave it empty (the byte-identical handle is unchanged for those callers).
+    projected_analytics: tuple[ProjectedOptionAnalytics, ...] = field(default_factory=tuple)
 
     def is_empty(self) -> bool:
         """True when the run produced no derived records at all."""
@@ -63,5 +69,6 @@ class ActorOutputs:
                 self.pricings,
                 self.risk_aggregates,
                 self.scenarios,
+                self.projected_analytics,
             )
         )

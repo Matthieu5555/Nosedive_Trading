@@ -51,20 +51,33 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 #     provider-agnostic; a future saxo:/deribit: sibling joins under the same key (ADR 0023).
 #   - enabled: the scheduler's on/off switch.
 #
-# Both seed entries are `enabled: false`: their IBKR conids are unverified placeholders (0)
-# and equity/index capture at scale is gated on D1's `provider` partition segment
-# (ADR 0034 §4). Listing them disabled parks them safely until a verified conid and the
-# capture path land — the spec's safe default rather than guessing a conid.
+# Both seed entries are now `enabled: true` so the scheduler's enabled_indices() surfaces them
+# and the live EOD spine (1G fire → 1J calendar close → close-capture → project_grid → persist)
+# exercises them end to end. The exchange-calendar / projection / persistence path uses ONLY the
+# calendar code, currency, and symbol — never the IBKR conid — so enabling them with a
+# placeholder conid fully exercises that path today.
+#
+# CONID STATUS — UNVERIFIED PLACEHOLDER (conid: 0). The IBKR numeric contract id is consumed
+# only by the 1C broker→raw-event qualification seam, which is NOT yet closed in production, so a
+# placeholder conid cannot mis-resolve a live contract here (no IBKR qualification runs against
+# it yet). It is deliberately left at 0 rather than guessed: a wrong conid would silently qualify
+# the wrong contract (a look-alike-but-wrong index), which is worse than a loud failure.
+# TODO(1C): before the IBKR collection bridge qualifies these, replace conid: 0 with the real,
+# verified IBKR contract ids — look them up via the IBKR Client-Portal contract search
+# (`/iserver/secdef/search?symbol=SPX|SX5E`, filter secType=IND, exchange=CBOE|EUREX) or TWS
+# contract details, and confirm against a live qualify before flipping the conid in. Until then
+# any attempt to qualify these indices through IBKR must fail loudly on the placeholder conid,
+# never silently capture a wrong contract.
 indices:
   SX5E:
     name: "EURO STOXX 50"
     calendar: XEUR
     currency: EUR
-    ibkr: { conid: 0, secType: IND, exchange: EUREX }
-    enabled: false
+    ibkr: { conid: 0, secType: IND, exchange: EUREX }  # conid UNVERIFIED — see TODO(1C) above
+    enabled: true
   SPX:
     name: "S&P 500"
     calendar: XNYS
     currency: USD
-    ibkr: { conid: 0, secType: IND, exchange: CBOE }
-    enabled: false
+    ibkr: { conid: 0, secType: IND, exchange: CBOE }  # conid UNVERIFIED — see TODO(1C) above
+    enabled: true

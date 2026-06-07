@@ -79,6 +79,12 @@ class CloseCaptureResult:
     outputs: ActorOutputs
 
 
+# The default source label the close grid's provider-partitioned cells are stamped with. The
+# index registry's only provider sub-block today is `ibkr:` (ADR 0035), so the daily close set
+# is captured off IBKR; a future Saxo/Deribit sibling passes its own label through `provider`.
+DEFAULT_PROVIDER = "IBKR"
+
+
 def capture_index_close(
     *,
     index: IndexEntry,
@@ -89,6 +95,7 @@ def capture_index_close(
     config_hashes: Mapping[str, str],
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
     store: ParquetStore | None = None,
+    provider: str = DEFAULT_PROVIDER,
 ) -> CloseCaptureResult:
     """Capture one index's close-snapshot set at its own session close.
 
@@ -96,8 +103,11 @@ def capture_index_close(
     timezone-correct close instant (a non-session date raises a labeled
     ``CalendarResolutionError`` from the resolver, never a guessed instant) — and runs
     ``run_analytics`` over the basket with ``session_open=False`` and ``calc_ts`` equal to that
-    close instant. When ``store`` is given the outputs are replace-persisted (idempotent for
-    the day). Pure given a fixed ``trade_date``/basket/config: no wall clock is read, so the
+    close instant. ``provider`` stamps the provider-partitioned grid, so the close run also
+    produces and persists the pinned tenor × delta-band :class:`ProjectedOptionAnalytics` grid
+    (WS 1F) — this is the live path that reaches :func:`surfaces.project_grid`. When ``store``
+    is given the outputs (snapshots, surfaces, *and* the grid) are replace-persisted (idempotent
+    for the day). Pure given a fixed ``trade_date``/basket/config: no wall clock is read, so the
     set is byte-identical on a re-run.
     """
     as_of = resolver.session_close(index.symbol, trade_date)
@@ -112,15 +122,18 @@ def capture_index_close(
         calc_ts=as_of,
         exercise_style_for=exercise_style_for,
         session_open=False,
+        provider=provider,
     )
     if store is not None:
         persist_outputs(store, outputs)
     _LOGGER.info(
         "actor.close.captured",
         index=index.symbol,
+        provider=provider,
         trade_date=trade_date.isoformat(),
         session_close=as_of.isoformat(),
         snapshot_count=len(outputs.snapshots),
+        projected_cell_count=len(outputs.projected_analytics),
     )
     return CloseCaptureResult(index=index.symbol, session_close=as_of, outputs=outputs)
 
@@ -135,6 +148,7 @@ def capture_daily_close(
     config_hashes: Mapping[str, str],
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
     store: ParquetStore | None = None,
+    provider: str = DEFAULT_PROVIDER,
 ) -> tuple[CloseCaptureResult, ...]:
     """Capture the close-snapshot set for every enabled index, each at its own close.
 
@@ -160,6 +174,7 @@ def capture_daily_close(
                 config_hashes=config_hashes,
                 exercise_style_for=exercise_style_for,
                 store=store,
+                provider=provider,
             )
         )
     return tuple(results)
@@ -173,6 +188,7 @@ def make_close_capture(
     config_hashes: Mapping[str, str],
     store: ParquetStore,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
+    provider: str = DEFAULT_PROVIDER,
 ) -> Callable[[date, Mapping[str, IndexBasket]], tuple[CloseCaptureResult, ...]]:
     """Bind the close-capture dependencies into a ``(trade_date, baskets) -> results`` callable.
 
@@ -193,6 +209,7 @@ def make_close_capture(
             config_hashes=config_hashes,
             exercise_style_for=exercise_style_for,
             store=store,
+            provider=provider,
         )
 
     return _capture

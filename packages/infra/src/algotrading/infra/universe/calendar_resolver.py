@@ -10,10 +10,20 @@ library, never by hand.
 
 Two disciplines are load-bearing here:
 
-* **No wall clock.** Every method takes the date as an argument. The resolver never reads
-  ``date.today()`` / ``datetime.now()``. 1C's byte-identical replay and 1G's idempotent
-  ledger both break if the close instant depends on *when* the code ran, so "today" is
-  always injected by the caller (the same discipline the EOD-run tests pin).
+* **No wall clock — not even inside the library.** Every method takes the date as an
+  argument, and the resolver never reads ``date.today()`` / ``datetime.now()`` itself. But
+  ``exchange_calendars`` *does*: ``get_calendar(code)`` with no explicit bounds builds its
+  session index out to roughly *wall-clock today + one year*, so the calendar's coverage
+  window — and therefore which dates :meth:`is_session` accepts versus rejects as
+  out-of-window — silently moves with the day the process runs. That is a wall-clock
+  dependence at the calendar layer, and it makes the coverage check non-replayable. The
+  resolver closes it by building every calendar bounded to an explicit **as-of date**
+  (:meth:`CalendarResolver.__init__`'s ``as_of``): the window is then a pure function of the
+  registry + the injected as-of, identical across processes and across days. 1C's
+  byte-identical replay and 1G's idempotent ledger both break if the window depends on
+  *when* the code ran, so the as-of is always injected by the caller (the same discipline
+  the EOD-run tests pin); the resolver matches the :class:`Clock` abstraction the EOD runner
+  threads by accepting either a plain ``date`` or that clock's current day.
 * **Labeled failures, never a silent wrong answer.** An unknown index, a date outside the
   calendar's coverage window, or the close of a non-session date all raise a labeled
   :class:`CalendarResolutionError`, never a bare library traceback and never a defaulted
@@ -27,6 +37,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from functools import cache
+from typing import Protocol, runtime_checkable
 
 import exchange_calendars as xcals
 from exchange_calendars.exchange_calendar import ExchangeCalendar
@@ -34,35 +45,91 @@ from exchange_calendars.exchange_calendar import ExchangeCalendar
 from .errors import CalendarResolutionError
 from .index_registry import IndexRegistry
 
+# How far back the deterministic calendar window starts, in years before the as-of date. The
+# library otherwise picks an implicit ~20-year lookback that also drifts with the wall clock;
+# pinning the start to a fixed span before the injected as-of makes the *whole* window — both
+# ends — a pure function of the as-of, so the same as-of yields byte-identical session bounds
+# on any day, in any process. A numerical invariant (a fixed span), not an economic tunable,
+# so it stays a code constant per the config standard's invariant carve-out. 30 years comfortably
+# covers any history the platform replays while keeping the index small.
+_CALENDAR_LOOKBACK_YEARS = 30
+
+
+@runtime_checkable
+class _DayClock(Protocol):
+    """The one method the resolver needs off the EOD runner's :class:`Clock` — its ``now()``.
+
+    Typed as a Protocol so the resolver depends on the *signature*, not on the concrete
+    ``connectivity.Clock`` (which lives a layer away); any injected clock with a ``now()``
+    returning a ``datetime`` supplies the as-of day.
+    """
+
+    def now(self) -> datetime: ...
+
 
 @cache
-def _calendar(code: str) -> ExchangeCalendar:
-    """Return (and cache) the library calendar for a code.
+def _calendar(code: str, as_of: date) -> ExchangeCalendar:
+    """Return (and cache) the library calendar for a code, bounded to an explicit as-of date.
 
-    Cached because constructing an ``exchange_calendars`` calendar is non-trivial and the
-    same handful of codes are resolved repeatedly across a run. The result is immutable
-    for our read-only use, so sharing one instance is safe.
+    Bounded — ``end=as_of`` and ``start`` a fixed span before it — so the calendar's coverage
+    window is a deterministic function of ``(code, as_of)`` and never of wall-clock today (the
+    library defaults ``end`` to *today + ~1y*, which silently moves the window day to day). The
+    same handful of ``(code, as_of)`` pairs are resolved repeatedly across one fire, so the
+    bounded calendar is cached; the result is immutable for our read-only use, so sharing one
+    instance is safe. Keyed by the as-of too, so a backfill fire at a different as-of gets its
+    own correctly-bounded calendar rather than a stale cached one.
     """
-    return xcals.get_calendar(code)
+    start = as_of.replace(year=as_of.year - _CALENDAR_LOOKBACK_YEARS)
+    return xcals.get_calendar(code, start=start, end=as_of)
+
+
+def _resolve_as_of(as_of: date | _DayClock | None) -> date | None:
+    """Normalise the injected as-of into a plain date (or None for the escape hatch).
+
+    Accepts a plain ``date`` verbatim, or a clock with ``now()`` (the EOD runner's
+    :class:`Clock`) whose current day is taken — never a wall clock read here. ``None`` stays
+    ``None`` (the deliberate no-as-of escape hatch). A ``datetime`` is narrowed to its date.
+    """
+    if as_of is None:
+        return None
+    if isinstance(as_of, datetime):
+        return as_of.date()
+    if isinstance(as_of, date):
+        return as_of
+    return as_of.now().date()
 
 
 class CalendarResolver:
     """Answer ``is_session`` / ``session_close`` per registry index, off the calendar lib.
 
-    Built over an :class:`IndexRegistry`: it resolves an index symbol to its ``calendar``
-    code and asks the library. Because each index carries its own code, two indices resolve
-    to genuinely different session sets and close instants (it is per-index, not one global
-    calendar).
+    Built over an :class:`IndexRegistry` and an explicit **as-of date**: it resolves an index
+    symbol to its ``calendar`` code and asks the library for a calendar bounded to that as-of,
+    so the session set and coverage window are deterministic and replayable (never a function
+    of wall-clock today — see the module docstring). Because each index carries its own code,
+    two indices resolve to genuinely different session sets and close instants (it is
+    per-index, not one global calendar).
+
+    ``as_of`` accepts either a plain :class:`datetime.date` or a clock with a ``now()`` (the
+    EOD runner's injected :class:`Clock`), so the same instance the runner already threads
+    supplies the as-of day — matching that abstraction rather than introducing a second one.
+    It defaults to ``None`` only as a deliberate, labeled escape hatch for a caller that has no
+    as-of (a one-off lookup), in which case the library's own implicit (wall-clock-dependent)
+    window is used and a determinism guarantee is *not* made; the EOD path always injects one.
     """
 
-    def __init__(self, registry: IndexRegistry) -> None:
+    def __init__(
+        self, registry: IndexRegistry, *, as_of: date | _DayClock | None = None
+    ) -> None:
         self._registry = registry
+        self._as_of = _resolve_as_of(as_of)
 
     def _entry_calendar(self, index: str) -> tuple[str, ExchangeCalendar]:
         # `registry.get` raises a labeled IndexRegistryError for an unknown index; the
         # calendar code is already validated at parse time, so `_calendar` will not miss.
         entry = self._registry.get(index)
-        return entry.calendar, _calendar(entry.calendar)
+        if self._as_of is None:
+            return entry.calendar, xcals.get_calendar(entry.calendar)
+        return entry.calendar, _calendar(entry.calendar, self._as_of)
 
     def _check_coverage(self, index: str, code: str, cal: ExchangeCalendar, on: date) -> None:
         first = cal.first_session.date()

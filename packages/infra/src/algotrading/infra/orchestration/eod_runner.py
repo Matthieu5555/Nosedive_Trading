@@ -45,7 +45,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import structlog
 from algotrading.core.config import PlatformConfig, config_hashes, config_snapshot
@@ -54,6 +54,7 @@ from algotrading.core.manifest import Manifest
 from algotrading.core.provenance import code_identity as _git_code_identity
 from algotrading.core.provenance import code_version
 from algotrading.infra.connectivity import Clock, SystemClock
+from algotrading.infra.contracts import ProjectedOptionAnalytics
 from algotrading.infra.storage import ParquetStore, RunRecord, RunRegistry, RunStatus
 from algotrading.infra.universe import (
     CalendarResolver,
@@ -63,7 +64,19 @@ from algotrading.infra.universe import (
     index_registry_from_config,
 )
 
+from .jobs import (
+    AnalyticsResult,
+    CollectionResult,
+    ReconciliationResult,
+    UniverseRefreshResult,
+    reconcile_end_of_day,
+    refresh_universe,
+)
 from .pipeline import EodResult, EodStages, run_end_of_day
+from .qc_job import QcJobResult, run_qc
+
+if TYPE_CHECKING:
+    from algotrading.infra.actor import IndexBasket
 
 _LOGGER = structlog.get_logger("orchestration.eod_run")
 
@@ -433,6 +446,35 @@ def _default_env() -> _DefaultEnv:
     )
 
 
+# The 1C basket source: resolve the close-session basket (instruments + close events + masters)
+# to capture for one fired index on its trade date. This is the *one* seam still gated on 1C's
+# broker->raw-event bridge: until that lands there is no live source of close events, so the
+# default source (:func:`_empty_basket_source`) returns ``None`` (a clearly-labeled, narrow gap
+# — "no basket captured for this index yet"), NOT a raise. Everything downstream of a basket —
+# the close-capture actor, the project_grid regrid, the persist — is fully wired and runs the
+# moment a real basket source is injected here. Injected so 1C swaps in `collect_live`-backed
+# baskets without touching the runner, the manifest freeze, or the timer.
+BasketSource = Callable[[FiredIndex, date], "IndexBasket | None"]
+
+
+def _empty_basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+    """The default 1C-gap basket source: no live broker bridge yet, so no basket is captured.
+
+    Returns ``None`` for every index — the narrow, labeled gap that replaces the old
+    blanket raise. A fire then runs every stage cleanly over an empty captured set (a clean
+    no-capture day, exit 0) rather than dying with exit 1 before any stage runs. The instant
+    1C lands a real basket source, the wired close-capture/project_grid/persist path produces
+    and stores the grid with no other change here.
+    """
+    _LOGGER.info(
+        "orchestration.eod_run.no_basket_source",
+        index=fired.entry.symbol,
+        trade_date=trade_date.isoformat(),
+        reason="1C broker->raw-event collection seam not yet closed; capturing no basket",
+    )
+    return None
+
+
 def default_stages_builder(
     store: ParquetStore,
     config: PlatformConfig,
@@ -440,20 +482,134 @@ def default_stages_builder(
     clock: Clock,
     correlation_id: str,
     fired: Sequence[FiredIndex],
+    *,
+    basket_source: BasketSource = _empty_basket_source,
 ) -> EodStages:
-    """The live default wiring — the 1C collection seam plus the existing EOD jobs.
+    """The live default wiring — the close-capture/project_grid/persist path plus the EOD jobs.
 
-    Today this is a thin stub: the collection stage is the 1C broker→raw-event seam, which is
-    not yet closed in production, so the live runner is wired in tests (which inject their own
-    builder over fixtures/replay) and this builder raises a clear, labeled error if reached
-    before 1C lands. Swapping the collection stage to ``collect_live`` (and the analytics/
-    reconciliation/QC stages to their job functions over the fired baskets) is the one edit 1C
-    makes here — the runner, the manifest freeze, and the timer are all already correct.
+    Builds the five real :class:`EodStages` over the live collaborators already assembled in
+    :func:`build_default_deps` (the :class:`ParquetStore`, the resolved config + hashes, the
+    injected clock, the fired index baskets), so a real systemd fire flows
+    capture → analytics(project_grid) → persist → reconciliation → QC instead of raising.
+
+    The one seam still gated on 1C is the *source of captured baskets*: ``basket_source``
+    resolves each fired index's close-session basket, and its default
+    (:func:`_empty_basket_source`) returns ``None`` until the broker->raw-event bridge lands —
+    a narrow, clearly-labeled gap, not a blanket raise. With no basket the analytics stage
+    persists nothing (a clean no-capture day, exit 0); with a basket injected it runs the full
+    close-capture actor, regrids onto the pinned tenor × delta-band grid via
+    :func:`surfaces.project_grid`, and persists the :class:`ProjectedOptionAnalytics` rows.
+
+    Each fired index is captured at *its own* ``FiredIndex.as_of`` (the resolver's session
+    close), so a multi-exchange fire prices each index at its own close instant. The grid's
+    provider-partitioned cells are stamped with :data:`DEFAULT_PROVIDER`.
     """
-    raise EodRunError(
-        "default EOD stage wiring is not yet live: the 1C broker->raw-event collection seam is "
-        "not closed in production. Inject a RunnerDeps with a stages_builder (replay/fixture) "
-        "to exercise the timer path, or land 1C to wire collect_live here."
+    from algotrading.infra.actor import (
+        ActorOutputs,
+        persist_outputs,
+        run_analytics,
+    )
+    from algotrading.infra.actor.close_capture import DEFAULT_PROVIDER
+    from algotrading.infra.collectors import summarize_session
+    from algotrading.infra.qc import thresholds_from_config
+
+    log = _LOGGER.bind(correlation_id=correlation_id, job=EOD_JOB_NAME)
+    trade_date = fired[0].as_of.date() if fired else clock.now().date()
+
+    # Resolve each fired index's basket once (the 1C seam), shared across the stages.
+    baskets: dict[str, tuple[FiredIndex, IndexBasket]] = {}
+    for fired_index in fired:
+        basket = basket_source(fired_index, trade_date)
+        if basket is not None:
+            baskets[fired_index.entry.symbol] = (fired_index, basket)
+
+    def _universe_refresh() -> UniverseRefreshResult:
+        masters = [
+            master
+            for _fired, basket in baskets.values()
+            for master in basket.masters
+        ]
+        return refresh_universe(
+            store=store,
+            config=config,
+            masters=masters,
+            trade_date=trade_date,
+            correlation_id=correlation_id,
+        )
+
+    def _collection() -> CollectionResult:
+        # The 1C gap surfaced as a clean, labeled empty session summary (no broker bridge yet),
+        # never a raise: the pipeline records a clean collection stage and continues.
+        summary = summarize_session(
+            [],
+            session_id=correlation_id,
+            trade_date=trade_date,
+            subscribed_keys=[],
+            reconnect_count=0,
+        )
+        log.info(
+            "orchestration.eod_run.collection_gap",
+            captured_indices=sorted(baskets),
+            reason="no live broker collection (1C); analytics runs over injected baskets only",
+        )
+        return CollectionResult(
+            correlation_id=correlation_id, session_id=correlation_id, summary=summary
+        )
+
+    grid_cells: dict[str, list[ProjectedOptionAnalytics]] = {}
+
+    def _analytics() -> AnalyticsResult:
+        started = clock.now()
+        outputs = ActorOutputs()
+        for _symbol, (fired_index, basket) in sorted(baskets.items()):
+            outputs = run_analytics(
+                basket.events,
+                basket.positions,
+                instruments=basket.instruments,
+                masters=basket.masters,
+                config=config,
+                config_hashes=dict(hashes),
+                as_of=fired_index.as_of,
+                calc_ts=fired_index.as_of,
+                session_open=False,
+                provider=DEFAULT_PROVIDER,
+            )
+            persist_outputs(store, outputs)
+            for cell in outputs.projected_analytics:
+                grid_cells.setdefault(cell.underlying, []).append(cell)
+        return AnalyticsResult(
+            correlation_id=correlation_id,
+            trade_date=trade_date,
+            outputs=outputs,
+            run_seconds=(clock.now() - started).total_seconds(),
+        )
+
+    def _reconciliation() -> ReconciliationResult:
+        # No broker Greek feed in the no-1C path → nothing to reconcile against (clean). The
+        # join is over the captured baskets' positions when a broker feed is injected later.
+        return reconcile_end_of_day(
+            lines=[], broker_greeks=[], trade_date=trade_date, correlation_id=correlation_id
+        )
+
+    def _qc() -> QcJobResult:
+        return run_qc(
+            store=store,
+            thresholds=thresholds_from_config(config.qc_threshold),
+            collector_summary=None,
+            trade_date=trade_date,
+            run_id=correlation_id,
+            run_ts=clock.now(),
+            correlation_id=correlation_id,
+            grid_points=dict(grid_cells) or None,
+            tenor_grid=config.universe.tenor_grid,
+        )
+
+    return EodStages(
+        universe_refresh=_universe_refresh,
+        collection=_collection,
+        analytics=_analytics,
+        reconciliation=_reconciliation,
+        qc=_qc,
     )
 
 
@@ -468,14 +624,18 @@ def build_default_deps() -> RunnerDeps:
     env = _default_env()
     config = load_platform_config(env.configs_dir)
     registry = index_registry_from_config(config)
+    clock = SystemClock()
     return RunnerDeps(
         store=ParquetStore(env.data_root),
         config=config,
         registry=registry,
-        resolver=CalendarResolver(registry),
+        # Bound the resolver's calendars to the fire's as-of (the injected clock's day) so the
+        # session/coverage window is deterministic and replayable, never wall-clock-dependent
+        # inside exchange_calendars (M6/1J).
+        resolver=CalendarResolver(registry, as_of=clock),
         run_repository=RunRegistry(env.runs_db.parent),
         stages_builder=default_stages_builder,
-        clock=SystemClock(),
+        clock=clock,
         code_identity=_git_code_identity(),
         environment=env.environment,
     )

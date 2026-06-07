@@ -45,8 +45,11 @@ _IBKR_FIELDS = frozenset({"conid", "secType", "exchange"})
 class IbkrRef:
     """The IBKR contract resolution for one index — the provider-specific sub-block.
 
-    ``conid`` is IBKR's numeric contract id (``0`` is the unverified placeholder; an entry
-    whose conid cannot be confirmed is listed ``enabled: false`` rather than guessing one).
+    ``conid`` is IBKR's numeric contract id (``0`` is the unverified placeholder). An entry may
+    be ``enabled: true`` while its conid is still ``0``: the conid is consumed only by the 1C
+    broker→raw-event qualification seam, so the calendar/close-capture/projection path runs
+    without it. A placeholder is left at ``0`` rather than guessed — a wrong conid silently
+    qualifies the wrong contract — and is replaced with the verified id before 1C qualifies it.
     ``sec_type``/``exchange`` are the IBKR security type and routing exchange.
     """
 

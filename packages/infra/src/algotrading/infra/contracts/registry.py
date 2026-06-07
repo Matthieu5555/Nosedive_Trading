@@ -195,8 +195,13 @@ REGISTRY: dict[str, TableSpec] = {
     "projected_option_analytics": TableSpec(
         name="projected_option_analytics",
         contract=ProjectedOptionAnalytics,
-        # One cell per (snapshot, underlying, tenor, delta-band) — the grid's identity.
-        primary_key=("snapshot_ts", "underlying", "tenor_label", "delta_band"),
+        # One cell per (provider, snapshot, underlying, tenor, delta-band) — the grid's
+        # identity. ``provider`` is part of the key because this table is provider-partitioned
+        # (below): two sources of the same (snapshot, underlying, tenor, band) are genuinely
+        # distinct rows that land in disjoint provider segments. Without provider in the key the
+        # batch-global duplicate-key guard (adapter.write) false-rejects a single-batch write
+        # carrying both providers' grids, even though they never share a partition (M4).
+        primary_key=("provider", "snapshot_ts", "underlying", "tenor_label", "delta_band"),
         layer="analytics",
         # Recompute-friendly derived analytic: a restatement lands as a version=<V>
         # sub-partition beside the live grid, never overwriting it (ADR 0019 at version

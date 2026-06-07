@@ -86,10 +86,15 @@ for entry in enabled_indices(registry):           # only the enabled set reaches
         close = resolver.session_close(entry.symbol, date(2026, 6, 8))  # tz-aware UTC
 ```
 
-> The two seed entries (SX5E on `XEUR`/EUREX, SPX on `XNYS`/CBOE) ship **`enabled: false`**:
-> their IBKR conids are unverified placeholders and equity/index capture at scale is gated on
-> D1's `provider` partition segment (ADR 0034 §4). Verify a conid and land the capture path
-> before flipping one to `enabled: true`.
+> The two seed entries (SX5E on `XEUR`/EUREX, SPX on `XNYS`/CBOE) now ship **`enabled: true`**
+> so the live EOD spine surfaces them through `enabled_indices()` and exercises the
+> calendar → close-capture → `project_grid` → persist path (which uses only the calendar code,
+> currency, and symbol, never the conid). Their IBKR conids remain **unverified placeholders
+> (`0`)**: the conid is consumed only by the 1C broker→raw-event qualification seam, which is not
+> yet closed, so a placeholder cannot mis-resolve a live contract here. Before that seam qualifies
+> these indices, replace `conid: 0` with the real verified IBKR contract id (see the `TODO(1C)`
+> in `configs/universe.yaml`) — a wrong conid would silently qualify the wrong contract, which is
+> why it is left at 0 rather than guessed.
 
 ## Chain selection
 

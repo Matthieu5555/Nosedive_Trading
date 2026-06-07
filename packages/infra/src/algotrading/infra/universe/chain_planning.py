@@ -120,6 +120,41 @@ class AvailableChain:
 
 
 @dataclass(frozen=True, slots=True)
+class TenorMarket:
+    """The per-expiry market inputs the delta-band strike selection needs for one maturity.
+
+    The delta band is a *per-tenor* policy: the same dollar strike is a different delta at
+    each maturity, so a single representative selection is the silent wrong answer (the 1B
+    spec calls this out). Discovery therefore supplies, per expiry it kept, the forward, the
+    working ATM vol, and the discount factor as-of the date being planned for — every input
+    point-in-time honest, no look-ahead.
+    """
+
+    forward: float
+    maturity_years: float
+    volatility: float
+    discount_factor: float
+
+
+@dataclass(frozen=True, slots=True)
+class DeltaBandMarket:
+    """The economic inputs that switch :func:`plan_chain` onto the delta-band strike policy.
+
+    Carries the hashed :class:`~algotrading.core.config.StrikeSelectionConfig` (the 30Δ bound
+    + convention, never a ``.py`` literal) and the per-expiry market state (:class:`TenorMarket`,
+    keyed by the ``YYYYMMDD`` expiry string the menu lists). When this is supplied to
+    :func:`plan_chain`, each kept expiry's strike block is selected by
+    :func:`select_strikes_delta_band` against *that expiry's* forward/vol/discount; an expiry
+    with no market entry, or no usable forward, falls back to the %-of-spot window so discovery
+    still yields a plan (the discovery fallback the spec preserves). With ``markets`` empty the
+    whole plan falls back to %-of-spot.
+    """
+
+    selection: StrikeSelectionConfig
+    markets: Mapping[str, TenorMarket]
+
+
+@dataclass(frozen=True, slots=True)
 class ChainPlan:
     """The bounded request the planner chose: which contracts to qualify, and why.
 
@@ -355,32 +390,81 @@ def select_strikes_delta_band(
     return tuple(sorted(set(kept_below) | set(kept_above)))
 
 
+def _plan_strikes(
+    *,
+    chosen: AvailableChain,
+    expiries: Sequence[str],
+    spot: float | None,
+    selection: ChainSelection,
+    band: DeltaBandMarket | None,
+) -> tuple[float, ...]:
+    """The strike block for a plan — delta-band per expiry when configured, else %-of-spot.
+
+    With no :class:`DeltaBandMarket` (``band is None`` or it carries no market for any kept
+    expiry) this is exactly the historical %-of-spot window (:func:`select_strikes`), so the
+    discovery fallback is preserved verbatim. With a band, the kept strike set is the *union*
+    over the kept expiries of each expiry's :func:`select_strikes_delta_band` block — the
+    economic 30Δ selection on the production policy path, one block per tenor (the per-tenor
+    discipline the spec requires), collapsed to the single strike axis ``ChainPlan`` qualifies
+    (a broker qualifies the cartesian expiries × strikes, so the union is the right superset).
+    An expiry the band has no market for falls back to the %-of-spot window for that expiry, so
+    a partially-covered menu still yields a plan rather than dropping strikes silently.
+    """
+    if band is None or not band.markets:
+        return select_strikes(chosen.strikes, spot, selection)
+
+    kept: set[float] = set()
+    for expiry in expiries:
+        market = band.markets.get(expiry)
+        if market is None or not (math.isfinite(market.forward) and market.forward > 0.0):
+            kept.update(select_strikes(chosen.strikes, spot, selection))
+            continue
+        kept.update(
+            select_strikes_delta_band(
+                chosen.strikes,
+                forward=market.forward,
+                maturity_years=market.maturity_years,
+                discount_factor=market.discount_factor,
+                volatility=market.volatility,
+                selection=band.selection,
+            )
+        )
+    return tuple(sorted(kept))
+
+
 def plan_chain(
     underlying: str,
     available: Sequence[AvailableChain],
     *,
     spot: float | None,
     selection: ChainSelection,
+    band: DeltaBandMarket | None = None,
 ) -> ChainPlan | None:
     """Compose a bounded :class:`ChainPlan` from the listings a broker offered.
 
     Picks the listing (:func:`select_chain`), the nearest expiries (:func:`select_expiries`),
-    and the strike window (:func:`select_strikes`), then records the offered counts and the
-    centering spot as diagnostics. ``None`` when no listing was offered — the caller builds
-    a stock-only universe rather than raising. The chosen listing's exchange falls back to
-    the requested ``option_exchange`` when the broker left it blank, so the plan always
-    names a concrete exchange to qualify against.
+    and the strike block, then records the offered counts and the centering spot as
+    diagnostics. The strike block is the **delta band** (:func:`select_strikes_delta_band`,
+    per kept expiry) when a :class:`DeltaBandMarket` is supplied — the economic 30Δ policy the
+    production EOD path drives — and falls back to the **%-of-spot** window
+    (:func:`select_strikes`) when no band market is available (the discovery fallback). ``None``
+    when no listing was offered — the caller builds a stock-only universe rather than raising.
+    The chosen listing's exchange falls back to the requested ``option_exchange`` when the
+    broker left it blank, so the plan always names a concrete exchange to qualify against.
     """
     chosen = select_chain(available, underlying, selection.option_exchange)
     if chosen is None:
         return None
+    expiries = select_expiries(chosen.expirations, selection.max_expiries)
     return ChainPlan(
         underlying=underlying,
         exchange=chosen.exchange or selection.option_exchange,
         trading_class=chosen.trading_class,
         multiplier=chosen.multiplier,
-        expiries=select_expiries(chosen.expirations, selection.max_expiries),
-        strikes=select_strikes(chosen.strikes, spot, selection),
+        expiries=expiries,
+        strikes=_plan_strikes(
+            chosen=chosen, expiries=expiries, spot=spot, selection=selection, band=band
+        ),
         rights=_BOTH_RIGHTS,
         available_expiry_count=len(chosen.expirations),
         available_strike_count=len(chosen.strikes),

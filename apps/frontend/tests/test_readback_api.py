@@ -496,6 +496,162 @@ def test_risk_portfolio_filter_selects_the_seeded_portfolio(seeded_client: TestC
     assert miss["n_aggregates"] == 0
 
 
+def test_families_only_store_has_a_labelled_empty_surface(seeded_client: TestClient) -> None:
+    # The default seed holds only a families cell ("spot-down-10"), no surf_ cells: the cells
+    # list is unchanged (2C) and the additive surface is empty-but-labelled (not absent, not 500).
+    surface = seeded_client.get("/api/risk/scenarios").json()["surface"]
+    assert surface["n_cells"] == 0
+    assert surface["spot_shock"] == [] and surface["scenario_pnl"] == []
+    assert surface["unit"]  # still carries its PnL unit label
+
+
+# --- WS 2B: the (spot × vol) stress surface reshaped over scenario_results ----
+# A 3×3 cartesian surface persisted as per-contract scenario_results cells, plus one families
+# cell, all under one portfolio. The independent oracle is "what we wrote in": the portfolio
+# total per (spot, vol) cell, summed across contracts. The centre (0,0) is two contracts that
+# net to 0, so the reshape must sum contracts per cell — not pick one.
+SURFACE_PORTFOLIO = "pf-surface"
+SURFACE_SPOT_AXIS = [-0.5, 0.0, 0.5]
+SURFACE_VOL_AXIS = [-0.5, 0.0, 0.5]
+SURFACE_VERSION = "scn-2026.06.07+grid+surf"
+SURFACE_TOTALS = {
+    (-0.5, -0.5): -5000.0, (-0.5, 0.0): -4000.0, (-0.5, 0.5): -3000.0,
+    (0.0, -0.5): -100.0, (0.0, 0.0): 0.0, (0.0, 0.5): 150.0,
+    (0.5, -0.5): 3000.0, (0.5, 0.0): 4000.0, (0.5, 0.5): 5000.0,
+}
+# The centre cell is two contracts (+250, -250) → the reshape sums them to SURFACE_TOTALS[0,0].
+SURFACE_CENTRE_LEGS = (250.0, -250.0)
+
+
+def _surface_id(spot_shock: float, vol_shock: float) -> str:
+    return f"surf_s{spot_shock:+.4f}_v{vol_shock:+.4f}"
+
+
+def _surface_cell(
+    spot_shock: float, vol_shock: float, pnl: float, contract_key: str
+) -> tables.ScenarioResult:
+    return tables.ScenarioResult(
+        valuation_ts=AS_OF,
+        portfolio_id=SURFACE_PORTFOLIO,
+        scenario_id=_surface_id(spot_shock, vol_shock),
+        contract_key=contract_key,
+        spot_shock=spot_shock,
+        vol_shock=vol_shock,
+        time_shock=0.0,
+        scenario_pnl=pnl,
+        scenario_version=SURFACE_VERSION,
+        source_snapshot_ts=AS_OF,
+        provenance=_prov(f"surf:{spot_shock}:{vol_shock}"),
+    )
+
+
+def _seed_surface_store(root: Path) -> None:
+    store = ParquetStore(root)
+    rows = []
+    for spot_shock in SURFACE_SPOT_AXIS:
+        for vol_shock in SURFACE_VOL_AXIS:
+            if (spot_shock, vol_shock) == (0.0, 0.0):
+                rows.append(_surface_cell(0.0, 0.0, SURFACE_CENTRE_LEGS[0], CALL_100.canonical()))
+                rows.append(_surface_cell(0.0, 0.0, SURFACE_CENTRE_LEGS[1], GMMA_CALL.canonical()))
+            else:
+                rows.append(
+                    _surface_cell(
+                        spot_shock,
+                        vol_shock,
+                        SURFACE_TOTALS[(spot_shock, vol_shock)],
+                        CALL_100.canonical(),
+                    )
+                )
+    # A families cell coexists in the same partition; 2C reads it via `cells`, and the surface
+    # reshape (surf_-prefixed only) must ignore it.
+    rows.append(
+        tables.ScenarioResult(
+            valuation_ts=AS_OF,
+            portfolio_id=SURFACE_PORTFOLIO,
+            scenario_id="spot_-0.0500",
+            contract_key=CALL_100.canonical(),
+            spot_shock=-0.05,
+            vol_shock=0.0,
+            time_shock=0.0,
+            scenario_pnl=-42.0,
+            scenario_version=SURFACE_VERSION,
+            source_snapshot_ts=AS_OF,
+            provenance=_prov("fam:spot"),
+        )
+    )
+    store.write("scenario_results", rows)
+
+
+@pytest.fixture
+def surface_client(tmp_path: Path) -> Iterator[TestClient]:
+    """A TestClient over a store seeded with a 3×3 surface (+ one families cell)."""
+    store_root = tmp_path / "data"
+    _seed_surface_store(store_root)
+    ctx = AppContext(
+        store_root=store_root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root),
+        default_underlying=UNDERLYING,
+    )
+    runner.JOB_STORE.clear()
+    with TestClient(create_app(ctx)) as client:
+        yield client
+
+
+def test_stress_surface_reads_back_basket_cells(surface_client: TestClient) -> None:
+    surface = surface_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": SURFACE_PORTFOLIO}
+    ).json()["surface"]
+    assert surface["spot_shock"] == pytest.approx(SURFACE_SPOT_AXIS)
+    assert surface["vol_shock"] == pytest.approx(SURFACE_VOL_AXIS)
+    # The z-grid is spot-major, summed per cell, and equals the independent oracle.
+    for i, spot_shock in enumerate(SURFACE_SPOT_AXIS):
+        for j, vol_shock in enumerate(SURFACE_VOL_AXIS):
+            assert surface["scenario_pnl"][i][j] == pytest.approx(
+                SURFACE_TOTALS[(spot_shock, vol_shock)]
+            )
+    assert surface["scenario_version"] == SURFACE_VERSION
+    # 8 single-contract cells + 2 contracts on the centre cell = 10 surface cells.
+    assert surface["n_cells"] == 10
+
+
+def test_surface_centre_cell_sums_contracts_to_zero(surface_client: TestClient) -> None:
+    surface = surface_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": SURFACE_PORTFOLIO}
+    ).json()["surface"]
+    ci = SURFACE_SPOT_AXIS.index(0.0)
+    cj = SURFACE_VOL_AXIS.index(0.0)
+    assert surface["scenario_pnl"][ci][cj] == pytest.approx(0.0)
+
+
+def test_surface_payload_uses_blueprint_field_names(surface_client: TestClient) -> None:
+    surface = surface_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": SURFACE_PORTFOLIO}
+    ).json()["surface"]
+    # ADR 0029 names — the axes are spot_shock/vol_shock, the z-grid is scenario_pnl.
+    assert {"spot_shock", "vol_shock", "scenario_pnl"}.issubset(surface)
+    assert "pnl" not in surface and "z" not in surface  # never the invented names
+
+
+def test_cells_list_is_intact_for_2c_alongside_the_surface(surface_client: TestClient) -> None:
+    payload = surface_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": SURFACE_PORTFOLIO}
+    ).json()
+    scenario_ids = {cell["scenario_id"] for cell in payload["cells"]}
+    assert "spot_-0.0500" in scenario_ids  # the families cell (2C's read) survives
+    assert any(sid.startswith("surf_") for sid in scenario_ids)  # surface cells are cells too
+    assert payload["n_cells"] == 11  # 10 surface + 1 families, per-contract
+
+
+def test_empty_basket_is_a_labelled_empty_surface_not_500(surface_client: TestClient) -> None:
+    response = surface_client.get("/api/risk/scenarios", params={"portfolio_id": "nope"})
+    assert response.status_code == 200
+    surface = response.json()["surface"]
+    assert surface["spot_shock"] == [] and surface["vol_shock"] == []
+    assert surface["scenario_pnl"] == [] and surface["n_cells"] == 0
+    assert surface["unit"]  # still labelled
+
+
 def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
     seeded_client: TestClient,
 ) -> None:

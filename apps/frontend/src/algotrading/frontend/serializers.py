@@ -147,6 +147,57 @@ def scenario_result_to_dict(row: ScenarioResult) -> dict[str, object]:
     }
 
 
+# The surface cells (WS 2B) are the cartesian (spot × vol) stress grid, persisted into the
+# same ``scenario_results`` contract as the families cells and distinguished by this id
+# prefix (see ``infra.risk.stress_surface._surface_scenario_id``). Selecting on it lets the
+# surface reshape coexist with the families cell list — 2C reads the cells, 2B the surface.
+_SURFACE_ID_PREFIX = "surf_"
+# The full-reprice scenario PnL is a monetized account-currency amount, not a per-unit Greek,
+# so it carries its own label rather than a ``UNIT_STRINGS`` Greek unit.
+SCENARIO_PNL_UNIT = "$ (full-reprice PnL)"
+
+
+def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
+    """Reshape the cartesian (spot × vol) surface cells into a Plotly-ready surface payload.
+
+    Selects the ``surf_``-prefixed cells from ``rows`` (the cartesian grid 2B persists),
+    sums ``scenario_pnl`` over contracts per ``(spot_shock, vol_shock)`` to the portfolio
+    total, and arranges it as a z-grid aligned to the sorted shock axes — spot-major, so
+    ``scenario_pnl[i][j]`` is the total under ``spot_shock[i]`` / ``vol_shock[j]``. Field names
+    follow ADR 0029 (``spot_shock`` / ``vol_shock`` axes, ``scenario_pnl`` z-grid); the dollar
+    PnL carries its ``unit`` string. An absent surface (no ``surf_`` cells, e.g. an unknown or
+    empty basket) is a labelled empty surface — empty axes, HTTP 200 at the caller, never a 500.
+    """
+    surface_rows = [row for row in rows if row.scenario_id.startswith(_SURFACE_ID_PREFIX)]
+    if not surface_rows:
+        return {
+            "spot_shock": [],
+            "vol_shock": [],
+            "scenario_pnl": [],
+            "scenario_version": None,
+            "unit": SCENARIO_PNL_UNIT,
+            "n_cells": 0,
+        }
+    spot_axis = sorted({row.spot_shock for row in surface_rows})
+    vol_axis = sorted({row.vol_shock for row in surface_rows})
+    totals: dict[tuple[float, float], float] = {}
+    for row in surface_rows:
+        key = (row.spot_shock, row.vol_shock)
+        totals[key] = totals.get(key, 0.0) + row.scenario_pnl
+    pnl_grid = [[totals.get((s, v), 0.0) for v in vol_axis] for s in spot_axis]
+    # One surface is one scenario version; if a stale mix is present, surface the smallest
+    # deterministically rather than guessing (the cron rewrites a partition wholesale).
+    versions = sorted({row.scenario_version for row in surface_rows})
+    return {
+        "spot_shock": spot_axis,
+        "vol_shock": vol_axis,
+        "scenario_pnl": pnl_grid,
+        "scenario_version": versions[0],
+        "unit": SCENARIO_PNL_UNIT,
+        "n_cells": len(surface_rows),
+    }
+
+
 def _metric(raw: float, value: float | None, unit: str) -> dict[str, object]:
     """One dollar metric for the front: the dollar value, its unit, and the raw per-unit Greek.
 

@@ -15,6 +15,7 @@ from ..serializers import (
     pricing_result_to_dict,
     risk_aggregate_to_dict,
     scenario_result_to_dict,
+    scenario_surface_to_dict,
 )
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
@@ -63,12 +64,25 @@ def get_metrics(request: Request, underlying: str | None = None) -> JSONResponse
 
 @router.get("/scenarios")
 def get_scenarios(request: Request, portfolio_id: str | None = None) -> JSONResponse:
-    """Return stress-scenario PnL cells, optionally filtered to one portfolio."""
+    """Return stress-scenario PnL cells plus the reshaped (spot × vol) surface (WS 2B).
+
+    Two additive views over the same persisted ``scenario_results`` rows: ``cells`` (the
+    per-contract list, unchanged — 2C attributes over it) and ``surface`` (the cartesian
+    ``surf_`` grid reshaped into axes + a ``scenario_pnl`` z-grid for the 2B Plotly page). A
+    missing partition / unknown portfolio yields an empty list and a labelled empty surface,
+    never a 500. Serving is read-only — the cron is the sole writer (ADR 0034).
+    """
     ctx = _context(request)
     rows = ctx.store.read("scenario_results")
     if portfolio_id is not None:
         rows = [row for row in rows if row.portfolio_id == portfolio_id]
     cells = [scenario_result_to_dict(row) for row in rows]
+    surface = scenario_surface_to_dict(rows)
     return JSONResponse(
-        {"portfolio_id": portfolio_id, "n_cells": len(cells), "cells": cells}
+        {
+            "portfolio_id": portfolio_id,
+            "n_cells": len(cells),
+            "cells": cells,
+            "surface": surface,
+        }
     )

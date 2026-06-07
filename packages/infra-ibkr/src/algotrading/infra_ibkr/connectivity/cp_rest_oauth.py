@@ -18,7 +18,8 @@ hand-computable independent oracle (RFC 5849):
   signed protocol parameters, percent-encoded and quoted per RFC 5849 §3.5.1.
 
 What it deliberately does **not** do: fetch the Live Session Token from IBKR (the RSA
-request-token / DH key-exchange dance) or read any secret. Secrets — consumer key/secret,
+request-token / DH key-exchange dance lives in :mod:`.cp_rest_lst`, which keys off this
+module's primitives) or read any secret. Secrets — consumer key/secret,
 the LST, the encryption/signing key paths — are caller-supplied (from ``.env`` / a
 validated config object), never literals here (the C7 no-hardcode discipline). A request
 signed with a missing or empty token raises a **labeled** :class:`CpOAuthError`, not a
@@ -33,7 +34,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from collections.abc import Mapping
+import secrets
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -193,16 +196,59 @@ def sign_request(
     return protocol
 
 
-def authorization_header(signed_params: Mapping[str, str]) -> str:
+def authorization_header(signed_params: Mapping[str, str], *, realm: str = "") -> str:
     """Assemble the ``Authorization: OAuth …`` header value (RFC 5849 §3.5.1).
 
     Every ``oauth_*`` parameter is percent-encoded and quoted, sorted for a stable header,
     and joined with ``, ``. Only the protocol parameters belong here — request query
-    parameters stay in the URL/body, never in this header.
+    parameters stay in the URL/body, never in this header. IBKR's hosted endpoint also wants
+    a ``realm`` token (``limited_poa`` for an individual account); when supplied it is emitted
+    first, ahead of the sorted ``oauth_*`` block, per RFC 5849 §3.5.1's optional realm field.
     """
     parts = sorted(
         f'{percent_encode(key)}="{percent_encode(value)}"'
         for key, value in signed_params.items()
         if key.startswith("oauth_")
     )
+    if realm:
+        parts = [f'realm="{percent_encode(realm)}"', *parts]
     return "OAuth " + ", ".join(parts)
+
+
+def make_oauth_signer(
+    credentials: OAuthCredentials,
+    *,
+    realm: str = "",
+    nonce_factory: Callable[[], str] = lambda: secrets.token_hex(16),
+    clock: Callable[[], int] = lambda: int(time.time()),
+) -> Callable[[str, str, Mapping[str, object] | None], dict[str, str]]:
+    """Build the production :data:`OAuthSigner` callable the transport injects (ADR 0031).
+
+    The transport is handed ``(method, full_url, query_params)`` and expects back the request
+    headers to add. This closure is exactly that bridge: it draws a fresh nonce and timestamp
+    (the real :mod:`secrets` / :func:`time.time` sources in production, injectable to fixed
+    values in a known-answer test), calls :func:`sign_request` to produce the LST-signed OAuth
+    protocol parameters, and folds them into a single ``Authorization: OAuth …`` header via
+    :func:`authorization_header`.
+
+    This is the seam that was missing: without it the LST-keyed HMAC signing existed only as a
+    pure function no production path called. With it, ``CpRestTransport(oauth_signer=
+    make_oauth_signer(creds, realm=...))`` signs every real request. ``credentials`` is
+    validated at construction (empty consumer key / LST already rejected), so a half-configured
+    signer fails loudly here, not mid-request.
+    """
+
+    def signer(
+        method: str, url: str, query_params: Mapping[str, object] | None
+    ) -> dict[str, str]:
+        signed = sign_request(
+            credentials,
+            method=method,
+            url=url,
+            query_params=query_params,
+            nonce=nonce_factory(),
+            timestamp=clock(),
+        )
+        return {"Authorization": authorization_header(signed, realm=realm)}
+
+    return signer

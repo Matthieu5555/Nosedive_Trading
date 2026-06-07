@@ -37,11 +37,23 @@ The history path the live snapshot path lacks: years of underlying daily OHLC in
 provider-partitioned `DailyBar` table (WS 1C, Part C). Runs unattended over the hosted CP Web API
 with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
 
-- `connectivity/cp_rest_oauth.py` — the OAuth 1.0a signer (pycryptodome, referencing `ibind`, not
+- `connectivity/cp_rest_oauth.py` — the OAuth 1.0a per-request signer (referencing `ibind`, not
   depending on it): `signature_base_string` (RFC 5849 §3.4.1), `sign_hmac_sha256` (LST-keyed
-  per-request signature), `sign_request`, `authorization_header`. Pure, no clock/nonce read
-  (both injected) → a hand-computed known-answer vector pins it (`test_cp_rest_oauth.py`). A
-  missing/expired token raises a labeled `CpOAuthError`, never a bare exception.
+  per-request signature), `sign_request`, `authorization_header` (with the IBKR `realm`), and
+  `make_oauth_signer` — the factory that turns `OAuthCredentials` into the
+  `(method, url, query) → headers` `OAuthSigner` the transport injects. Pure crypto, no
+  clock/nonce read (both injected) → a hand-computed known-answer vector pins it
+  (`test_cp_rest_oauth.py`). A missing/expired token raises a labeled `CpOAuthError`.
+- `connectivity/cp_rest_lst.py` — **Live Session Token acquisition** on **pycryptodome** (the half
+  the signer leaves out, ADR 0031 §2): the RSA-SHA256-signed `oauth/request_token`, the
+  Diffie–Hellman exchange (`oauth/live_session_token`), and the LST derivation
+  (`K = B^a mod p`; LST = base64(HMAC-SHA1(K, prepend))), validated against IBKR's returned
+  signature. `build_signed_cp_rest_transport` is the **production entry point**: it runs the
+  exchange, builds `make_oauth_signer` from the derived LST, and returns a `CpRestTransport` with
+  that signer injected — so the production path (not just tests) signs every request. The two
+  exchange POSTs are RSA-signed (the LST does not exist yet); the HTTP POST is injected so the
+  gate drives a fake IBKR endpoint whose DH side is computed independently
+  (`test_cp_rest_lst_production.py`). The network is never opened in pytest.
 - `connectivity/cp_rest_transport.py` — extended with an optional `oauth_signer`: when set, every
   request carries the `Authorization: OAuth …` header (the hosted-endpoint path); left `None` it is
   the unchanged ADR 0024 local-Gateway cookie path.
@@ -78,7 +90,9 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
 
 - The **normalizers**, **discovery**, **session keepalive** + **established-wait** (fake
   clock/transport), the adapter's **REST snapshot** + **WS frame** handling, the **OAuth 1.0a
-  signer** (known-answer vector), the **history fetch/normalize/backfill-resume** path, and the
+  signer** (known-answer vector), the **LST acquisition** (real RSA→DH→LST on pycryptodome
+  against a fake endpoint whose DH side is computed independently) and the **production
+  transport-signing** seam, the **history fetch/normalize/backfill-resume** path, and the
   **REST↔TWS equivalence** test all run in CI against fakes — the verifiable core.
 - The Nautilus config builder's guard runs; its construction test skips without the `ibkr` extra.
 - Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the

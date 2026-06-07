@@ -9,10 +9,19 @@
 is **superseded** — retained as dead reference, reached only by direct import, not surfaced here.
 """
 
+from .cp_rest_lst import (
+    DiffieHellmanParams,
+    LstConsumer,
+    acquire_live_session_token,
+    build_signed_cp_rest_transport,
+    derive_live_session_token,
+    validate_live_session_token,
+)
 from .cp_rest_oauth import (
     CpOAuthError,
     OAuthCredentials,
     authorization_header,
+    make_oauth_signer,
     sign_hmac_sha256,
     sign_request,
     signature_base_string,
@@ -36,9 +45,17 @@ __all__ = [
     "CpOAuthError",
     "OAuthCredentials",
     "authorization_header",
+    "make_oauth_signer",
     "sign_request",
     "signature_base_string",
     "sign_hmac_sha256",
+    # OAuth 1.0a Live Session Token acquisition (ADR 0031 §2)
+    "DiffieHellmanParams",
+    "LstConsumer",
+    "acquire_live_session_token",
+    "derive_live_session_token",
+    "validate_live_session_token",
+    "build_signed_cp_rest_transport",
     # Path selector (ADR 0024 §2)
     "IbkrTransport",
     "DEFAULT_IBKR_TRANSPORT",

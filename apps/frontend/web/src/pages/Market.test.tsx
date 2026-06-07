@@ -6,7 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 // exposes the self-label and trace types as text (see src/test/plotMock.tsx).
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import { HomePage } from "./Home";
+import { MarketPage } from "./Market";
 import {
   ANALYTICS_AAA,
   CONSTITUENTS_TWO,
@@ -19,7 +19,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Route the stubbed fetch by URL path so each of the four endpoints returns its own fixture.
+// Route the stubbed fetch by URL path so each endpoint returns its own fixture. (price-history
+// is hit for both the index and the ticker; the mock returns the same fixture for both.)
 function mockEndpoints(overrides: Partial<Record<string, unknown>> = {}): void {
   const table: Record<string, unknown> = {
     "/api/recorded-dates": RECORDED_TWO_DATES,
@@ -44,45 +45,44 @@ function mockEndpoints(overrides: Partial<Record<string, unknown>> = {}): void {
   );
 }
 
-test("renders the recorded-days counter and a date dropdown", async () => {
+test("leads with the index daily-history panel and an as-of date dropdown", async () => {
   mockEndpoints();
-  render(<HomePage />);
-  expect(await screen.findByLabelText("recorded-count")).toHaveTextContent("2 days recorded");
-  const dropdown = await screen.findByLabelText("as-of date");
+  render(<MarketPage />);
+  // The index's own daily candlestick leads the page (price-first).
+  expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
+  expect(await screen.findByText("2 days recorded")).toBeInTheDocument();
+  const dropdown = await screen.findByLabelText("As-of date");
   expect(within(dropdown).getByText("2026-05-29")).toBeInTheDocument();
 });
 
-test("renders the constituent list and it is scrollable", async () => {
+test("renders the point-in-time constituent list, scrollable, price-first", async () => {
   mockEndpoints();
-  render(<HomePage />);
+  render(<MarketPage />);
   const region = await screen.findByRole("region", { name: /constituents/i });
-  // Both seeded names render, price-first (AAA before BBB).
   expect(within(region).getByText("AAA")).toBeInTheDocument();
   expect(within(region).getByText("BBB")).toBeInTheDocument();
-  // Bounded, scrollable container so a large basket stays usable.
   expect(region).toHaveStyle({ overflowY: "auto" });
 });
 
 test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and dollar Greeks", async () => {
   mockEndpoints();
   const user = userEvent.setup();
-  render(<HomePage />);
+  render(<MarketPage />);
 
   await user.click(await screen.findByRole("button", { name: "AAA" }));
 
-  // The price-first detail layout: candlestick first.
-  const candle = await screen.findByLabelText(/daily price \(OHLC candlestick\)/i);
-  expect(within(candle).getByTestId("plot-types")).toHaveTextContent("candlestick");
+  // Candlesticks are present (the index history + the ticker detail both render one).
+  const candles = await screen.findAllByLabelText(/daily price \(OHLC candlestick\)/i);
+  expect(candles.length).toBeGreaterThanOrEqual(1);
+  expect(within(candles[0]).getByTestId("plot-types")).toHaveTextContent("candlestick");
 
-  // The 3D IV surface (mesh3d trace).
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("mesh3d");
 
-  // The per-maturity smile (scatter trace) inside the accordion.
   const smile = await screen.findByLabelText(/Smile — 3m/i);
   expect(within(smile).getByTestId("plot-types")).toHaveTextContent("scatter");
 
-  // The dollar Greeks with their unit strings visible (P0.2 / ADR 0036).
+  // Dollar Greeks carry decimal (raw) AND currency, with the unit strings visible (P0.2/OQ-1).
   const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
   expect(within(greeks).getByText("$ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("$ per calendar day")).toBeInTheDocument();
@@ -91,15 +91,14 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
 
 test("renders a labeled empty state when no dates are recorded", async () => {
   mockEndpoints({ "/api/recorded-dates": RECORDED_EMPTY });
-  render(<HomePage />);
-  expect(await screen.findByLabelText("recorded-count")).toHaveTextContent("0 days recorded");
+  render(<MarketPage />);
   expect(await screen.findByText(/No completed capture runs/i)).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {
   mockEndpoints({ "/api/recorded-dates": undefined });
-  render(<HomePage />);
+  render(<MarketPage />);
   await waitFor(() => {
-    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load");
+    expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);
   });
 });

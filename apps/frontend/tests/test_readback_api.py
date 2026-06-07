@@ -825,6 +825,20 @@ def test_constituents_as_of_excludes_future_members(seeded_client: TestClient) -
     assert "CCC" not in symbols
 
 
+def test_constituents_effective_add_date_is_per_name(seeded_client: TestClient) -> None:
+    # Regression: _interval_for must select the interval of *that* name, not the latest-known row
+    # across all names. As of 2026-06-15 both AAA (added 2026-01-01) and FUT (added 2026-06-01) are
+    # members with DIFFERENT add dates; each must report its own (the bug reported one date for all).
+    by_symbol = {
+        c["symbol"]: c
+        for c in seeded_client.get(
+            "/api/constituents", params={"index": INDEX, "as_of": "2026-06-15"}
+        ).json()["constituents"]
+    }
+    assert by_symbol[MEMBER_AAA]["effective_add_date"] == "2026-01-01"
+    assert by_symbol["FUT"]["effective_add_date"] == "2026-06-01"
+
+
 def test_constituents_bad_as_of_is_labeled_400(seeded_client: TestClient) -> None:
     response = seeded_client.get(
         "/api/constituents", params={"index": INDEX, "as_of": "nope"}

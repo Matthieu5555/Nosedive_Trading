@@ -1,27 +1,29 @@
+// Render the three async states uniformly (Antho's demo signature): a loading note, a typed
+// error panel, or the children. Pages pass already-rendered children for the loaded case and
+// guard their data access, keeping the happy path declarative.
+
 import type { ReactNode } from "react";
 
-import type { FetchState } from "../hooks/useFetch";
-
-interface AsyncBlockProps<T> {
-  state: FetchState<T>;
-  children: (data: T) => ReactNode;
+interface AsyncBlockProps {
+  loading: boolean;
+  error: string | null;
+  children: ReactNode;
 }
 
-// Render the three async states uniformly: a loading note, a typed error, or the data.
-// Pages pass a render function for the loaded case so the happy path stays declarative.
-export function AsyncBlock<T>({ state, children }: AsyncBlockProps<T>) {
-  if (state.loading) {
-    return <p role="status">Loading…</p>;
-  }
-  if (state.error !== null) {
+export function AsyncBlock({ loading, error, children }: AsyncBlockProps) {
+  if (loading) {
     return (
-      <p role="alert" className="error">
-        Failed to load: {state.error}
-      </p>
+      <div className="state-panel" role="status">
+        Loading…
+      </div>
     );
   }
-  if (state.data === null) {
-    return <p role="status">No data.</p>;
+  if (error) {
+    return (
+      <div className="state-panel state-panel-error" role="alert">
+        {error}
+      </div>
+    );
   }
-  return <>{children(state.data)}</>;
+  return <>{children}</>;
 }

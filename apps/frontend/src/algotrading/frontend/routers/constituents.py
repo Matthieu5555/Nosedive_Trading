@@ -62,7 +62,8 @@ def _interval_for(
     candidates = [
         row
         for row in rows
-        if row.effective_add_date <= as_of
+        if row.constituent == constituent
+        and row.effective_add_date <= as_of
         and (row.effective_remove_date is None or as_of < row.effective_remove_date)
     ]
     if not candidates:

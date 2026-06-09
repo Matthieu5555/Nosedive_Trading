@@ -52,22 +52,25 @@ def get_price_history(
         return JSONResponse(
             {"error": "bad_date", "start": start, "end": end}, status_code=400
         )
-    # A version-blind read narrowed to a single partition needs both trade_date and underlying;
-    # with only an underlying the store returns every partition, so filter by underlying here.
-    rows = [
-        row
-        for row in ctx.store.read("daily_bar")
-        if row.underlying == resolved_underlying
-        and (start_date is None or row.trade_date >= start_date)
-        and (end_date is None or row.trade_date <= end_date)
-    ]
+
+    # Default window: 2 years lookback to keep rendering and query times low
+    from datetime import timedelta
+    resolved_end = end_date or date.today()
+    resolved_start = start_date or (resolved_end - timedelta(days=730))
+
+    rows = ctx.store.read(
+        "daily_bar",
+        underlying=resolved_underlying,
+        start_date=resolved_start,
+        end_date=resolved_end,
+    )
     rows.sort(key=lambda row: row.trade_date)
     bars = [daily_bar_to_dict(row) for row in rows]
     return JSONResponse(
         {
             "underlying": resolved_underlying,
-            "start": start_date.isoformat() if start_date else None,
-            "end": end_date.isoformat() if end_date else None,
+            "start": resolved_start.isoformat(),
+            "end": resolved_end.isoformat(),
             "n_bars": len(bars),
             "bars": bars,
         }

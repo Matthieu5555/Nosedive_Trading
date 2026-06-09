@@ -19,7 +19,10 @@ from pathlib import Path
 import pytest
 from algotrading.core import source_ref, stamp
 from algotrading.infra.contracts import (
+    DailyBar,
     ForwardCurvePoint,
+    InstrumentKey,
+    InstrumentMaster,
     MarketStateSnapshot,
     RawMarketEvent,
     StorageRepository,
@@ -139,6 +142,95 @@ def test_duplicate_primary_key_within_one_write_is_rejected(tmp_path: Path) -> N
         store.write("raw_market_events", [_event("evt-a"), _event("evt-a", value=2.0)])
 
 
+# -- append-only dedup: REP2 step 4 -----------------------------------------
+# The collision check that rejects an already-present key on append was a zip +
+# Python-set membership; REP2 replaced it with a DuckDB SEMI JOIN on the full
+# composite key. These tests pin the new engine check to the old set behaviour and
+# exercise the date-typed composite key (instrument_master), where the full-key
+# match — not a single field — is the load-bearing property.
+def _instrument(symbol: str = "SPX") -> InstrumentKey:
+    return InstrumentKey(
+        underlying_symbol=symbol,
+        security_type="IND",
+        exchange="CBOE",
+        currency="USD",
+        multiplier=1.0,
+        broker_contract_id="con-1",
+    )
+
+
+def _instrument_master(symbol: str, as_of: date, payload: str = "{}") -> InstrumentMaster:
+    instrument = _instrument(symbol)
+    return InstrumentMaster(
+        instrument_key=instrument.canonical(),
+        as_of_date=as_of,
+        instrument=instrument,
+        raw_broker_payload=payload,
+    )
+
+
+def _reference_collisions(
+    primary_key: tuple[str, ...], records: list[object], existing
+) -> set[tuple[object, ...]]:
+    """The pre-REP2 zip + Python-set collision check, kept as the equivalence oracle.
+
+    A record collides iff its full composite key is already present in ``existing``.
+    This is exactly the set the engine SEMI JOIN must reproduce.
+    """
+    existing_keys = set(
+        zip(*(existing.column(name).to_pylist() for name in primary_key), strict=True)
+    )
+    return {
+        tuple(getattr(record, name) for name in primary_key)
+        for record in records
+        if tuple(getattr(record, name) for name in primary_key) in existing_keys
+    }
+
+
+def test_dedup_collision_set_matches_the_reference_zip_set_oracle(tmp_path: Path) -> None:
+    # Build an existing partition, then probe a mixed batch (some colliding, some new)
+    # and assert the engine collision set equals the old zip+set oracle exactly.
+    import pyarrow.parquet as pq
+    from algotrading.infra.contracts.registry import spec_for_table
+    from algotrading.infra.storage.partitioning import partition_file
+
+    store = _store(tmp_path)
+    store.write("raw_market_events", [_event("evt-a"), _event("evt-b")])
+    path = partition_file(tmp_path, "raw_market_events", _TD, "SPX")
+    existing = pq.read_table(path, partitioning=None)
+
+    spec = spec_for_table("raw_market_events")
+    probe = [_event("evt-a"), _event("evt-c"), _event("evt-b")]  # a, b collide; c is new
+    engine = store._existing_key_collisions(spec, probe, existing)
+    reference = _reference_collisions(spec.primary_key, probe, existing)
+    assert engine == reference
+    assert engine == {("sess-1", "evt-a"), ("sess-1", "evt-b")}
+
+
+def test_dedup_full_composite_key_allows_same_instrument_on_a_new_date(tmp_path: Path) -> None:
+    # instrument_master keys on (instrument_key, as_of_date). The same instrument on a
+    # different date is a distinct row and must be accepted: the dedup matches the FULL
+    # composite key, never the instrument_key alone.
+    store = _store(tmp_path)
+    store.write("instrument_master", [_instrument_master("SPX", date(2026, 6, 5))])
+    store.write("instrument_master", [_instrument_master("SPX", date(2026, 6, 6))])
+    read_back = {m.as_of_date for m in store.read("instrument_master")}
+    assert read_back == {date(2026, 6, 5), date(2026, 6, 6)}
+
+
+def test_dedup_rejects_an_exact_date_typed_composite_key_collision(tmp_path: Path) -> None:
+    # Re-writing the SAME (instrument_key, as_of_date) — the date component compared on
+    # its parsed value, not a string — must be rejected as an append-only violation.
+    from algotrading.infra.storage import AppendOnlyViolation
+
+    store = _store(tmp_path)
+    store.write("instrument_master", [_instrument_master("SPX", date(2026, 6, 5), "{}")])
+    with pytest.raises(AppendOnlyViolation):
+        store.write(
+            "instrument_master", [_instrument_master("SPX", date(2026, 6, 5), '{"changed": 1}')]
+        )
+
+
 # -- versioned restatement -------------------------------------------------
 def test_recompute_of_a_derived_partition_leaves_raw_bytes_unchanged(tmp_path: Path) -> None:
     store = _store(tmp_path)
@@ -255,6 +347,72 @@ def test_lineage_does_not_conflate_event_id_across_sessions(tmp_path: Path) -> N
     assert resolved == [mine]  # not the sess-2 row that shares the event id
 
 
+# -- provider-partitioned reads --------------------------------------------
+# daily_bar is provider-partitioned: on disk it carries a provider=<P> segment ahead
+# of trade_date (ADR 0017 / 0034 §4). A read that pins (trade_date, underlying) but
+# omits provider must NOT build a provider-less path that can never exist (silently
+# returning [] — an under-specified read masquerading as "no data for that day").
+# It must union across every provider segment for that one (trade_date, underlying).
+def _daily_bar(provider: str, close: float) -> DailyBar:
+    return DailyBar(
+        provider=provider,
+        underlying="SPX",
+        trade_date=_TD,
+        open=4990.0,
+        high=5010.0,
+        low=4980.0,
+        close=close,
+        volume=1000.0,
+        bar_type="1d-TRADES",
+        source="test",
+        provenance=_stamp(),
+    )
+
+
+def test_provider_partitioned_read_without_provider_is_not_silently_empty(
+    tmp_path: Path,
+) -> None:
+    # Write a daily_bar under exactly one provider, then read pinning (trade_date,
+    # underlying) but NOT provider. The bar exists on disk, so the read must surface it
+    # rather than returning [] from a provider-less path that never exists.
+    store = _store(tmp_path)
+    bar = _daily_bar("IBKR", close=5005.0)
+    store.write("daily_bar", [bar])
+
+    read_back = store.read("daily_bar", trade_date=_TD, underlying="SPX")
+    assert read_back == [bar]
+
+
+def test_provider_partitioned_read_without_provider_unions_across_providers(
+    tmp_path: Path,
+) -> None:
+    # Two sources of the same (underlying, trade_date) land in disjoint provider segments.
+    # A provider-blind read of that one partition must union BOTH, the documented
+    # cross-provider scan — not just one, and not the whole table.
+    store = _store(tmp_path)
+    ibkr = _daily_bar("IBKR", close=5005.0)
+    saxo = _daily_bar("SAXO", close=5006.0)
+    store.write("daily_bar", [ibkr, saxo])
+
+    read_back = store.read("daily_bar", trade_date=_TD, underlying="SPX")
+    assert {bar.provider for bar in read_back} == {"IBKR", "SAXO"}
+    assert {bar.close for bar in read_back} == {5005.0, 5006.0}
+
+
+def test_provider_partitioned_read_without_provider_stays_scoped_to_the_partition(
+    tmp_path: Path,
+) -> None:
+    # The cross-provider fall-through must stay scoped to the requested (trade_date,
+    # underlying): a bar for a DIFFERENT day under the same provider must not leak in.
+    store = _store(tmp_path)
+    wanted = _daily_bar("IBKR", close=5005.0)  # trade_date=_TD
+    other_day = dataclasses.replace(wanted, trade_date=date(2026, 6, 6), close=4995.0)
+    store.write("daily_bar", [wanted, other_day])
+
+    read_back = store.read("daily_bar", trade_date=_TD, underlying="SPX")
+    assert read_back == [wanted]  # only _TD, not the 2026-06-06 bar
+
+
 # -- snapshot round-trip (a derived contract with a provenance stamp) -------
 def test_snapshot_round_trips_with_its_stamp(tmp_path: Path) -> None:
     store = _store(tmp_path)
@@ -275,3 +433,21 @@ def test_snapshot_round_trips_with_its_stamp(tmp_path: Path) -> None:
     )
     store.write("market_state_snapshots", [snap])
     assert store.read("market_state_snapshots") == [snap]
+
+
+def test_read_with_date_range(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    bar1 = dataclasses.replace(_daily_bar("IBKR", close=5001.0), trade_date=date(2026, 6, 1))
+    bar2 = dataclasses.replace(_daily_bar("IBKR", close=5002.0), trade_date=date(2026, 6, 2))
+    bar3 = dataclasses.replace(_daily_bar("IBKR", close=5003.0), trade_date=date(2026, 6, 3))
+    store.write("daily_bar", [bar1, bar2, bar3])
+
+    res = store.read(
+        "daily_bar",
+        underlying="SPX",
+        start_date=date(2026, 6, 2),
+        end_date=date(2026, 6, 3),
+    )
+    assert {b.trade_date for b in res} == {date(2026, 6, 2), date(2026, 6, 3)}
+    assert {b.close for b in res} == {5002.0, 5003.0}
+

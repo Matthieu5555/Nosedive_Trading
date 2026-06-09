@@ -30,7 +30,6 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 import pyarrow.parquet as pq
-from algotrading.core import canonical_primary_key
 from algotrading.infra.contracts.registry import TableSpec, spec_for_table
 from algotrading.infra.contracts.validation import validate_record
 
@@ -150,19 +149,52 @@ class ParquetStore:
             # <string> columns that collide with the file's date32/string ones and
             # breaks the concat below. partitioning=None disables that inference.
             existing = pq.read_table(path, partitioning=None)
-            existing_keys = set(
-                zip(
-                    *(existing.column(name).to_pylist() for name in spec.primary_key),
-                    strict=True,
-                )
-            )
-            for record in records:
-                key = primary_key_of(table, record)
-                if key in existing_keys:
-                    raise AppendOnlyViolation(table, key)
+            colliding = self._existing_key_collisions(spec, records, existing)
+            if colliding:
+                # Report the first incoming record (in batch order) whose full
+                # composite key already exists, so the rejection is deterministic
+                # and names exactly the offending key, as the prior loop did.
+                for record in records:
+                    key = primary_key_of(table, record)
+                    if key in colliding:
+                        raise AppendOnlyViolation(table, key)
             new_table = pa.concat_tables([existing, new_table])
 
         return new_table
+
+    @staticmethod
+    def _existing_key_collisions(
+        spec: TableSpec, records: list[object], existing: pa.Table
+    ) -> set[tuple[object, ...]]:
+        """The full composite primary keys of ``records`` already present in ``existing``.
+
+        The collision test is a DuckDB ``SEMI JOIN`` of the incoming keys against the
+        existing partition on the *whole* primary key (every key column at once, on the
+        engine's native typed values), so a row collides only when its full composite key
+        already exists — never because it merely shares one key field. This is the
+        engine-native form of the append-only immutability check; the previous
+        ``zip`` + Python-set membership it replaces decided the same set. Returns the
+        colliding keys as native value tuples (the form :func:`primary_key_of` yields),
+        empty when nothing collides.
+        """
+        key_columns = list(spec.primary_key)
+        incoming = pa.table(
+            {name: [getattr(record, name) for record in records] for name in key_columns},
+            schema=pa.schema([existing.schema.field(name) for name in key_columns]),
+        )
+        connection = duckdb.connect()
+        try:
+            connection.execute("SET TimeZone='UTC'")
+            connection.register("existing_keys", existing.select(key_columns))
+            connection.register("incoming_keys", incoming)
+            using = ", ".join(key_columns)
+            rows = connection.execute(
+                f"SELECT {using} FROM incoming_keys "
+                f"SEMI JOIN existing_keys USING ({using})"
+            ).fetchall()
+        finally:
+            connection.close()
+        return {tuple(row) for row in rows}
 
     def _commit(self, prepared: list[tuple[Path, pa.Table]]) -> None:
         """Write every prepared partition by staging to temp files, then renaming.
@@ -202,6 +234,8 @@ class ParquetStore:
         underlying: str | None,
         version: str | None = None,
         provider: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> list[Path]:
         """The Parquet files a read covers — live rows and restatements never mix.
 
@@ -217,19 +251,88 @@ class ParquetStore:
         non-provider-partitioned tables (no provider segment exists) and a deliberate
         cross-source scan for provider-partitioned ones.
         """
-        if trade_date is not None and underlying is not None:
+        spec = spec_for_table(table)
+        if (
+            trade_date is not None
+            and underlying is not None
+            and not (spec.provider_partitioned and provider is None)
+        ):
             # One partition: exactly the live file (version=None) or exactly the one
             # restatement file (version=<V>). partition_file places each precisely.
+            # Skipped when the table is provider-partitioned and no provider was given:
+            # partition_file would then build a path WITHOUT the provider=<P> segment,
+            # which never exists on disk, so the read would silently return [] — an
+            # under-specified read masquerading as "no data". Such a read falls through
+            # to the cross-provider glob below, matching the documented behaviour used
+            # when trade_date/underlying are absent: union every provider's segment for
+            # this (trade_date, underlying).
             single = partition_file(
                 self.root, table, trade_date, underlying, version, provider
             )
             return [single] if single.exists() else []
+
+        # Check if we can do a direct date-range scan instead of globbing
+        if start_date is not None and end_date is not None and underlying is not None:
+            delta = end_date - start_date
+            if 0 <= delta.days <= 1826:
+                providers: list[str | None] = [provider]
+                if spec.provider_partitioned and provider is None:
+                    base = table_dir(self.root, table)
+                    if base.exists():
+                        providers = [
+                            p.name.split("=", 1)[1]
+                            for p in base.iterdir()
+                            if p.is_dir() and p.name.startswith("provider=")
+                        ]
+                    else:
+                        providers = []
+                
+                files = []
+                from datetime import timedelta
+                for p_val in providers:
+                    curr = start_date
+                    while curr <= end_date:
+                        path = partition_file(
+                            self.root, table, curr, underlying, version, p_val
+                        )
+                        if path.exists():
+                            files.append(path)
+                        curr += timedelta(days=1)
+                return sorted(files)
+
         base = table_dir(self.root, table)
         if provider is not None:
             base = base / f"provider={provider}"
         if not base.exists():
             return []
-        files = sorted(base.glob("**/*.parquet"))
+        if underlying is not None:
+            files = sorted(base.glob(f"**/underlying={underlying}/**/*.parquet"))
+        else:
+            files = sorted(base.glob("**/*.parquet"))
+        # A cross-provider read of one partition (provider=None on a provider-partitioned
+        # table) still names a single (trade_date, underlying): keep only files under that
+        # partition, so the union stays scoped to the requested day/symbol across providers
+        # rather than scanning the whole table.
+        if trade_date is not None:
+            segment = f"trade_date={trade_date.isoformat()}"
+            files = [path for path in files if segment in path.parts]
+        if start_date is not None or end_date is not None:
+            import contextlib
+            filtered: list[Path] = []
+            for path in files:
+                dt_val: date | None = None
+                for part in path.parts:
+                    if part.startswith("trade_date="):
+                        with contextlib.suppress(ValueError):
+                            dt_val = date.fromisoformat(part.split("=", 1)[1])
+                        break
+                if dt_val is not None:
+                    if start_date is not None and dt_val < start_date:
+                        continue
+                    if end_date is not None and dt_val > end_date:
+                        continue
+                filtered.append(path)
+            files = filtered
         if version is None:
             # Live rows only: the file directly under underlying=<SYM>. A restatement
             # file lives one level deeper under version=<V>, so its parent dir name
@@ -245,6 +348,8 @@ class ParquetStore:
         underlying: str | None = None,
         version: str | None = None,
         provider: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
     ) -> list[Any]:
         """Read records for a table (optionally one partition) back into contracts.
 
@@ -264,7 +369,9 @@ class ParquetStore:
         tables, which have no provider segment).
         """
         spec = spec_for_table(table)
-        files = self._partition_files(table, trade_date, underlying, version, provider)
+        files = self._partition_files(
+            table, trade_date, underlying, version, provider, start_date, end_date
+        )
         if not files:
             return []
         connection = duckdb.connect()
@@ -372,14 +479,67 @@ class ParquetStore:
             wanted[ref.table].add(tuple(ref.primary_key))
         resolved: dict[str, list[Any]] = {}
         for source_table, keys in wanted.items():
-            matches = [
-                candidate
-                for candidate in self.read(source_table)
-                if canonical_primary_key(primary_key_of(source_table, candidate)) in keys
-            ]
+            matches = self._read_by_keys(source_table, keys)
             if matches:
                 resolved[source_table] = matches
         return resolved
+
+    def _read_by_keys(
+        self, table: str, keys: set[tuple[str, ...]]
+    ) -> list[Any]:
+        """Read exactly the records of ``table`` whose full primary key is in ``keys``.
+
+        ``keys`` are canonical primary-key tuples (the string form
+        :func:`canonical_primary_key` produces). The match is pushed into DuckDB as a
+        ``WHERE (pk…) IN (…)`` row predicate so a year-scale source table is never
+        materialized in full just to keep a handful of rows — but it stays the *full*
+        composite-key match, so a reference to one raw event never pulls back another
+        that merely shares a single key field. Each canonical-string key component is
+        cast to its parquet column's own type inside the row list, so DATE/TIMESTAMPTZ
+        keys compare on parsed values (exact across the microsecond boundary), not on a
+        re-derived string form. An empty key set, or no matching rows, yields an empty
+        list.
+        """
+        spec = spec_for_table(table)
+        files = self._partition_files(table, None, None, None, None)
+        if not keys or not files:
+            return []
+        file_list = [str(path) for path in files]
+        key_columns = spec.primary_key
+        connection = duckdb.connect()
+        try:
+            connection.execute("SET TimeZone='UTC'")
+            source = "read_parquet(?, union_by_name=true, hive_partitioning=false)"
+            column_types = {
+                row[0]: row[1]
+                for row in connection.execute(
+                    f"DESCRIBE SELECT * FROM {source}", [file_list]
+                ).fetchall()
+            }
+            # One row of casts per wanted key. Each canonical-string component is cast to
+            # its own parquet column type, so DATE/TIMESTAMPTZ keys compare on parsed
+            # values rather than on a re-derived string (exact across the microsecond
+            # boundary); VARCHAR casts are identity.
+            row_casts = "(" + ", ".join(
+                f"CAST(? AS {column_types[name]})" for name in key_columns
+            ) + ")"
+            in_list = ", ".join(row_casts for _ in keys)
+            key_tuple = ", ".join(key_columns)
+            params: list[object] = [file_list]
+            for key in keys:
+                params.extend(key)
+            relation = connection.execute(
+                f"SELECT * FROM {source} WHERE ({key_tuple}) IN ({in_list})",
+                params,
+            )
+            column_names = [description[0] for description in relation.description]
+            rows = [
+                dict(zip(column_names, values, strict=True))
+                for values in relation.fetchall()
+            ]
+        finally:
+            connection.close()
+        return [from_row(spec.contract, row) for row in rows]
 
     def raw_events_for(self, derived_record: object) -> list[Any]:
         """Return the raw events that produced a derived record.

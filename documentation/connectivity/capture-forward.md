@@ -61,7 +61,7 @@ stays a one-shot. Committed units live next to this guide:
 
 | Unit | Role |
 |---|---|
-| `eod-capture.service` (install as `eod-capture@.service`) | the `Type=oneshot` that runs `uv run python scripts/eod_run.py --calendar %i`; `Restart=on-failure` + `RestartSec=` retry; `OnFailure=eod-capture-alert.service` |
+| `eod-capture@.service` | the `Type=oneshot` template that runs `uv run python scripts/eod_run.py --calendar %i`; `Restart=on-failure` + `RestartSec=` retry; `OnFailure=eod-capture-alert.service` |
 | `eod-capture@XEUR.timer` / `eod-capture@XNYS.timer` | one per **exchange calendar** — `OnCalendar=` shortly after that exchange's close, **timezone stated explicitly** (`Europe/Berlin` for Eurex, `America/New_York` for NYSE); `Persistent=true` for missed-run catch-up |
 | `eod-capture-alert.service` | the minimal `OnFailure=` target — one journald notification per failed run |
 
@@ -70,7 +70,7 @@ Install (per-user, no root):
 ```bash
 loginctl enable-linger "$USER"                         # user timers fire while logged out
 mkdir -p ~/.config/systemd/user
-cp documentation/connectivity/eod-capture.service        ~/.config/systemd/user/eod-capture@.service
+cp documentation/connectivity/eod-capture@.service       ~/.config/systemd/user/
 cp documentation/connectivity/eod-capture-alert.service  ~/.config/systemd/user/
 cp documentation/connectivity/eod-capture@*.timer        ~/.config/systemd/user/
 systemctl --user daemon-reload

@@ -38,6 +38,7 @@ capture against a fake gateway with no network and no secrets.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol
@@ -67,9 +68,43 @@ _INDEX_SECURITY_TYPE = "IND"
 _INDEX_MULTIPLIER = 1.0
 _OPTION_SECURITY_TYPE = "OPT"
 
+# Discovery request-shaping bound (broker-side, not economic): how many near-the-money strikes
+# per side to *qualify* per expiry. Conid resolution costs one `/iserver/secdef/info` call per
+# (strike, right) — IBKR rejects a batch `info` with no strike ("strike is required") — so a dense
+# index ladder (ESTX50 lists ~300 strikes/expiry in 25-pt steps) would otherwise mean thousands of
+# serial paced calls. We qualify only the nearest-the-money block, a superset of the 30Δ band the
+# analytics stage selects downstream; the far wings it would drop anyway are never qualified. This
+# is the same category as `ChainSelection.strike_window_pct` (a request-shaping heuristic that
+# "lives in code"), tightened to a strike *count* because a %-of-spot window does not bound a
+# dense ladder. Keep it a clear superset of the downstream band — see chain_planning.select_strikes.
+_DISCOVERY_STRIKES_PER_SIDE = 16
+
 
 class _SupportsGet(Protocol):
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
+def _as_int_or_none(value: object) -> int | None:
+    """Coerce a broker-supplied scalar to ``int``, or ``None`` when it is not coercible.
+
+    The broker's conid / ``_updated`` fields are nominally integers but ride an untyped JSON
+    payload, so an unexpected shape (``None``, a non-numeric string, a dict) must degrade to a
+    structured skip at the call site rather than raise a bare ``ValueError`` and abort the whole
+    capture — mirroring the guarded ``float()`` parsing of the mark fields. ``bool`` is rejected
+    because a JSON ``true``/``false`` is never a valid conid or millisecond timestamp.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if math.isfinite(value) else None
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def _index_key(index: IndexEntry, conid: int) -> InstrumentKey:
@@ -125,8 +160,8 @@ def _spot_from_snapshot(
     for row in rows:
         if not isinstance(row, Mapping):
             continue
-        row_conid = row.get("conid")
-        if row_conid is None or int(row_conid) != conid:
+        row_conid = _as_int_or_none(row.get("conid"))
+        if row_conid is None or row_conid != conid:
             continue
         for tag in ("31", "84", "86"):  # last, bid, ask
             value = row.get(tag)
@@ -150,6 +185,29 @@ def _snapshot_index_spot(transport: _SupportsGet, conid: int) -> float | None:
     return _spot_from_snapshot(rows, conid=conid)
 
 
+def _nearest_strikes(
+    strikes: set[float], spot: float | None, per_side: int
+) -> list[float]:
+    """The nearest-the-money block to qualify: up to ``per_side`` strikes either side of spot.
+
+    Bounds the per-(strike, right) ``/secdef/info`` qualification cost on a dense ladder (see
+    ``_DISCOVERY_STRIKES_PER_SIDE``). Strikes are ranked by absolute distance to the centre and the
+    nearest ``2 * per_side`` are kept, then returned ascending. The centre is the snapshot ``spot``
+    when usable; with no spot it falls back to the median listed strike — bounded and deterministic,
+    just not centred on the true forward — mirroring ``chain_planning._strikes_by_moneyness``. A
+    sparse name with fewer than ``2 * per_side`` listed strikes simply qualifies all of them.
+    """
+    positive = sorted({float(strike) for strike in strikes if float(strike) > 0.0})
+    if not positive:
+        return []
+    if spot is not None and math.isfinite(spot) and spot > 0.0:
+        centre = spot
+    else:
+        centre = positive[len(positive) // 2]
+    nearest = sorted(positive, key=lambda strike: (abs(strike - centre), strike))[: 2 * per_side]
+    return sorted(nearest)
+
+
 def _discover_chain(
     discovery: CpRestDiscovery,
     *,
@@ -157,6 +215,7 @@ def _discover_chain(
     conid: int,
     months: Sequence[str],
     selection: ChainSelection,
+    spot: float | None,
 ) -> tuple[AvailableChain, dict[str, str]]:
     """Discover the listed chain for the index and build the broker-neutral ``AvailableChain``.
 
@@ -164,6 +223,12 @@ def _discover_chain(
     the conid and the listed ``months``). Returns the assembled chain menu *and* a
     ``(expiry,strike,right) -> conid`` map so the capture stage can snapshot exactly the
     selected contracts by their resolved conid.
+
+    Per expiry, only the nearest-the-money block (:func:`_nearest_strikes`, ±
+    ``_DISCOVERY_STRIKES_PER_SIDE``) is qualified: ``info`` costs one paced call per
+    (strike, right), so qualifying a dense ladder's full width is thousands of serial calls.
+    The kept block is a superset of the downstream 30Δ band; the far wings it would drop are
+    never qualified.
     """
     expirations: list[str] = []
     strikes: set[float] = set()
@@ -171,10 +236,11 @@ def _discover_chain(
     multiplier = "100"
     for month in months[: selection.max_expiries]:
         calls, puts = discovery.strikes(conid, month=month)
-        for strike in sorted(set(calls) | set(puts)):
+        listed = set(calls) | set(puts)
+        for strike in _nearest_strikes(listed, spot, _DISCOVERY_STRIKES_PER_SIDE):
             for right in ("C", "P"):
                 for contract in discovery.contracts(
-                    conid, symbol=index.symbol, month=month, strike=strike, right=right
+                    conid, symbol=index.ibkr_search_symbol, month=month, strike=strike, right=right
                 ):
                     if contract.broker_contract_id is None:
                         continue
@@ -251,6 +317,13 @@ def _snapshot_events(
     — so the basket is the close set, byte-identical on replay. A snapshot row whose own update
     time (``_updated``) is *after* the close is dropped: the close capture never folds a
     post-close print (the look-ahead guard). A row for an unrequested conid is ignored.
+
+    ``sequence`` is assigned from the kept contracts' *stable identity* (their canonical instrument
+    key), NOT from the broker's response row order: a re-fire / retry that returns the same
+    contracts in a different order must yield identical content-addressed event ids, so the
+    append-only store dedupes the re-capture instead of keeping a second copy. Broker-supplied
+    ``conid`` / ``_updated`` scalars are coerced through :func:`_as_int_or_none`, so an unexpected
+    payload shape skips the row with a structured log rather than raising a bare ``ValueError``.
     """
     if not keys_by_conid:
         return []
@@ -260,29 +333,36 @@ def _snapshot_events(
         params={"conids": conids, "fields": ",".join(REQUEST_FIELD_TAGS)},
     )
     close_ms = int(as_of.timestamp() * 1000)
-    events: list[RawMarketEvent] = []
-    sequence = 0
     if not isinstance(rows, Sequence):
         return []
+    # First pass: keep the admitted (instrument, row) pairs, dropping unrequested conids, malformed
+    # payloads, and post-close prints. Sequence is NOT assigned here — row order is not trusted.
+    kept: list[tuple[InstrumentKey, Mapping[str, object]]] = []
     for row in rows:
         if not isinstance(row, Mapping):
             continue
-        row_conid = row.get("conid")
+        row_conid = _as_int_or_none(row.get("conid"))
         if row_conid is None:
             continue
-        instrument = keys_by_conid.get(int(row_conid))
+        instrument = keys_by_conid.get(row_conid)
         if instrument is None:
             continue
-        updated = row.get("_updated")
-        if isinstance(updated, (int, float)) and int(updated) > close_ms:
+        updated = _as_int_or_none(row.get("_updated"))
+        if updated is not None and updated > close_ms:
             # A print stamped after the session close is post-close data — never in the basket.
             _LOGGER.info(
                 "ibkr.close_capture.drop_post_close",
-                conid=int(row_conid),
-                updated_ms=int(updated),
+                conid=row_conid,
+                updated_ms=updated,
                 close_ms=close_ms,
             )
             continue
+        kept.append((instrument, row))
+    # Second pass: assign sequence by the contract's stable canonical key (not arrival order), so a
+    # shuffled re-fire reproduces the same event ids.
+    kept.sort(key=lambda pair: pair[0].canonical())
+    events: list[RawMarketEvent] = []
+    for sequence, (instrument, row) in enumerate(kept):
         events.extend(
             snapshot_to_events(
                 row,
@@ -294,7 +374,6 @@ def _snapshot_events(
                 receipt_ts=as_of,
             )
         )
-        sequence += 1
     return events
 
 
@@ -320,7 +399,9 @@ def collect_live_basket(
     captured event is stamped there and no post-close print is admitted.
     """
     log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
-    resolved = resolve_index(transport, symbol=index.symbol, exchange=index.ibkr.exchange)
+    resolved = resolve_index(
+        transport, symbol=index.ibkr_search_symbol, exchange=index.ibkr.exchange
+    )
     conid = resolved.conid
     selection = selection or _selection_from_config(config)
     discovery = CpRestDiscovery(
@@ -333,6 +414,7 @@ def collect_live_basket(
         conid=conid,
         months=resolved.option_months,
         selection=selection,
+        spot=spot,
     )
     if not conid_by_contract:
         log.info("ibkr.close_capture.no_options", reason="index lists no qualifiable options")
@@ -367,7 +449,17 @@ def collect_live_basket(
     kept_options = [key for key in option_keys if key.canonical() in captured]
     keys_by_conid: dict[int, InstrumentKey] = {conid: index_key}
     for key in kept_options:
-        keys_by_conid[int(key.broker_contract_id)] = key
+        option_conid = _as_int_or_none(key.broker_contract_id)
+        if option_conid is None:
+            # A broker-supplied contract id that will not coerce to an int cannot be snapshotted by
+            # conid; skip it with a structured log rather than aborting the whole capture.
+            log.info(
+                "ibkr.close_capture.skip_unparseable_conid",
+                instrument_key=key.canonical(),
+                broker_contract_id=key.broker_contract_id,
+            )
+            continue
+        keys_by_conid[option_conid] = key
 
     session_id = f"{index.symbol}:{as_of.date().isoformat()}"
     events = _snapshot_events(

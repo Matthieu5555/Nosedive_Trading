@@ -647,7 +647,7 @@ def _read_manifests(repo: RunRegistry):  # type: ignore[no-untyped-def]
 # 10. Artifact sanity: the committed unit files carry the ADR 0032 obligations  #
 # =========================================================================== #
 def test_eod_capture_units_carry_the_adr_0032_obligations() -> None:
-    service = (CONNECTIVITY / "eod-capture.service").read_text(encoding="utf-8")
+    service = (CONNECTIVITY / "eod-capture@.service").read_text(encoding="utf-8")
     alert = (CONNECTIVITY / "eod-capture-alert.service").read_text(encoding="utf-8")
     timers = sorted(CONNECTIVITY.glob("eod-capture*.timer"))
     assert timers, "at least one eod-capture timer unit must be committed"

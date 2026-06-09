@@ -25,12 +25,11 @@
 #   systemctl --user list-timers 'eod-capture@*'           # next fire per calendar
 #
 # NOTE: commit this as `eod-capture@.service` (the templated name) — the literal `@` makes it a
-# systemd template instantiated per calendar. It is stored here without the `@` only because the
-# repo path is documentation; copy it to `eod-capture@.service` on install.
+# systemd template instantiated per calendar.
 
 [Unit]
 Description=AlgoTrading EOD close-capture (calendar %i)
-Documentation=file://%h/AlgoTrading/documentation/connectivity/README.md
+Documentation=file:///srv/project/documentation/connectivity/README.md
 # A failed run routes here — a single notification with the failed run's correlation_id.
 OnFailure=eod-capture-alert.service
 # Don't fire if the box has no network (the live capture needs the broker REST session).
@@ -41,11 +40,11 @@ Wants=network-online.target
 Type=oneshot
 # Run in the repo so `uv run` resolves the workspace and configs/. Adjust WorkingDirectory to
 # wherever the checkout lives on the server.
-WorkingDirectory=%h/AlgoTrading
+WorkingDirectory=/srv/project
 # Belt-and-suspenders for the IBKR_CP_* credentials: the entrypoint already loads the repo-root
 # .env itself (uv run does not), but loading it here too means a credentialed fire works even if
 # the ExecStart is ever changed. The leading `-` makes a missing file a no-op, not a unit failure.
-EnvironmentFile=-%h/AlgoTrading/.env
+EnvironmentFile=-/srv/project/.env
 # The runner is a one-shot; --calendar %i scopes the fire to this timer's exchange group.
 ExecStart=/usr/bin/env uv run python scripts/eod_run.py --calendar %i
 # Retry on a transient failure (a flaky broker session, a momentary disk hiccup). The run is

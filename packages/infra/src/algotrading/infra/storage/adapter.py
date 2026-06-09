@@ -272,9 +272,13 @@ class ParquetStore:
             return [single] if single.exists() else []
 
         # Check if we can do a direct date-range scan instead of globbing
-        if start_date is not None and end_date is not None and underlying is not None:
+        if start_date is not None and end_date is not None:
             delta = end_date - start_date
-            if 0 <= delta.days <= 1826:
+            can_direct = (
+                (underlying is not None and 0 <= delta.days <= 1826)
+                or (underlying is None and 0 <= delta.days <= 31)
+            )
+            if can_direct:
                 providers: list[str | None] = [provider]
                 if spec.provider_partitioned and provider is None:
                     base = table_dir(self.root, table)
@@ -292,11 +296,26 @@ class ParquetStore:
                 for p_val in providers:
                     curr = start_date
                     while curr <= end_date:
-                        path = partition_file(
-                            self.root, table, curr, underlying, version, p_val
-                        )
-                        if path.exists():
-                            files.append(path)
+                        if underlying is not None:
+                            path = partition_file(
+                                self.root, table, curr, underlying, version, p_val
+                            )
+                            if path.exists():
+                                files.append(path)
+                        else:
+                            # Direct date scan without underlying: list the
+                            # underlying subdirectories for this date
+                            d_dir = table_dir(self.root, table)
+                            if p_val is not None:
+                                d_dir = d_dir / f"provider={p_val}"
+                            d_dir = d_dir / f"trade_date={curr.isoformat()}"
+                            if d_dir.exists():
+                                if version is not None:
+                                    files.extend(d_dir.glob(f"**/version={version}/data.parquet"))
+                                else:
+                                    for p in d_dir.glob("**/data.parquet"):
+                                        if "version=" not in p.parts:
+                                            files.append(p)
                         curr += timedelta(days=1)
                 return sorted(files)
 

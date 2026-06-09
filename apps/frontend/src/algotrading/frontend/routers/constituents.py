@@ -95,7 +95,15 @@ def get_constituents(
     raw_rows: list[IndexConstituent] = [
         row for row in ctx.store.read("index_constituents") if row.index == resolved_index
     ]
-    closes = _latest_close_by_underlying(ctx.store.read("daily_bar"), as_of_date)
+    from datetime import timedelta
+    closes = _latest_close_by_underlying(
+        ctx.store.read(
+            "daily_bar",
+            start_date=as_of_date - timedelta(days=7),
+            end_date=as_of_date,
+        ),
+        as_of_date,
+    )
 
     rows: list[dict[str, object]] = []
     for member in basket:

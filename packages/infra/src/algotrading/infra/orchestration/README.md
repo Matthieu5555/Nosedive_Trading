@@ -44,15 +44,26 @@ lines), so a session resolves to the jobs it fed.
   the dashboard answerable. Nothing reads a clock; timestamps are injected.
 - **pipeline** — `run_end_of_day`, the ordered/idempotent/logged EOD sequence.
 - **eod_runner** — the one-shot the systemd timer fires (WS 1G, ADR 0032), behind
-  `scripts/eod_run.py`. `main()` resolves the trade date (default = the injected clock's market
-  day; `--trade-date` for catch-up; a *future* date rejected — no look-ahead), scopes the fire
-  to a calendar group (`--calendar XEUR` / `--index SX5E`; default = all enabled), reads the 1J
-  registry's `enabled_indices()` (never a hardcoded list), skips a non-session cleanly via the
-  calendar resolver, captures each index at its own `session_close`, binds one `correlation_id`,
-  calls `run_end_of_day`, and freezes a per-run manifest (config snapshot + hashes + code
-  identity). Exits non-zero on any stage failure so `Restart=on-failure`/`OnFailure=` engage. The
-  collection stage is the 1C seam — until 1C lands, `default_stages_builder` raises a labeled
-  error and a caller injects a replay/fixture `stages_builder` to exercise the timer path. The
+  `scripts/eod_run.py`. The runner is a thin command/application shell — `main()`/`_parse_args`
+  and `run_fire` (plan → wire stages → `run_end_of_day` → freeze manifest) — over four cohesive
+  pieces it composes:
+  - **eod_planning** — the dependency-free leaf: resolves the trade date (default = the injected
+    clock's market day; `--trade-date` for catch-up; a *future* date rejected — no look-ahead),
+    scopes the fire to a calendar group (`--calendar XEUR` / `--index SX5E`; default = all
+    enabled), reads the 1J registry's `enabled_indices()` (never a hardcoded list), and reduces to
+    the in-session set, each index paired with its own `session_close` (`plan_fire` → `EodRunPlan`).
+  - **eod_dependencies** — the injectable `RunnerDeps` bundle and its production default wiring
+    (`build_default_deps`: store, config + hashes, registry, resolver, run repository, stages
+    builder, code identity resolved once at the entrypoint).
+  - **eod_stages** — the live `default_stages_builder` (capture → analytics(`project_grid`) →
+    persist → reconciliation → QC) and its QC-stage helpers (`analytics_qc_results`,
+    `persist_triage`). The 1C seam is the *basket source*: until the broker→raw-event bridge
+    lands, `_empty_basket_source` returns `None` — a narrow, labeled no-capture gap (clean exit 0),
+    not a raise; a credentialed caller injects a live `collect_live`-backed source.
+  - **eod_manifest** — freezes the per-run lineage manifest (config snapshot + hashes + code
+    identity), recorded for both a clean and a failed fire so each is reproducible from its record.
+
+  `main` exits non-zero on any stage failure so `Restart=on-failure`/`OnFailure=` engage. The
   unit files (`eod-capture.service`, `eod-capture@{XEUR,XNYS}.timer`, `eod-capture-alert.service`)
   live under `documentation/connectivity/`.
 - **reconstruction/** — historical replay/backfill over a date range; see its own README.

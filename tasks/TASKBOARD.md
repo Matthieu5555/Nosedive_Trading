@@ -114,6 +114,16 @@ converged seam → contract-test map. Code without the named tests is not done.
   ticker** (merge old `(date, underlying)` files into `(underlying, month|year)`) — built **only when a
   measured threshold is crossed** (adding SP500, or file-count/query-latency past a bound), never
   speculatively. Non-blocking; lives behind the `StorageRepository` port over cold data only.
+  **▶ THRESHOLD NOW CROSSED (2026-06-10):** S&P500 backfill landed → `daily_bar` is **419 755 files /
+  4.9 GB for ~20 MB of real data** (1 row/file, ~250× overhead). Spec written:
+  [daily-bar-compaction](daily-bar-compaction.md) — **rulings recorded (OQ-1…4, 2026-06-10: 1 file/ticker,
+  hot/cold cold-only compaction, archive-then-delete, daily_bar only); ready, awaiting go on implementation.**
+- **[OHLC constituent backfill](ohlc-constituent-backfill.md) — queued (2026-06-10), unclaimed.** Per-component
+  candlesticks are empty for most names (all SX5E EU, NVDA…) — only index underlyings + some US names have
+  `daily_bar`. Root cause diagnosed: `ohlc_backfill.py` over the **attended Gateway** is impractically slow
+  (the `conid=0` warmup 503 + data-farm transient 503s → ~3 names/10 min), though the raw Gateway history
+  endpoint is fast for real conids (curl-verified). Fix the warmup/503 handling + clean the SX5E seed
+  (drop the `VGM6` future, verify EU conid resolution), then run for SPX+SX5E. Coordinate with daily-bar-compaction.
 - **[H1 — repo-hygiene audit](archive/H1-repo-hygiene-audit.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
   Read-only classification done; report at [H1-repo-hygiene-report.md](archive/H1-repo-hygiene-report.md).
   Outcome: **no tracked dead paths** (nothing to `git rm`). Applied safe patch — added the five

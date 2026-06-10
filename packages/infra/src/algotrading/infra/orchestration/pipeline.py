@@ -148,47 +148,40 @@ def run_end_of_day(
         ran.append(stage_name)
         log.info("orchestration.eod.stage.done", stage=stage_name, outcome=outcome)
 
-    if STAGE_UNIVERSE_REFRESH in already_done:
-        skipped.append(STAGE_UNIVERSE_REFRESH)
-    else:
-        log.info("orchestration.eod.stage.start", stage=STAGE_UNIVERSE_REFRESH)
-        universe = stages.universe_refresh()
-        _commit(STAGE_UNIVERSE_REFRESH, OUTCOME_OK)
+    # Overwrite-by-re-run (ADR 0032 refined): a re-fire RE-RUNS every stage rather than skipping
+    # the ones the ledger already recorded. Every stage write is idempotent — derived tables are
+    # replace-by-(trade_date, underlying), the raw layer is append-dedup on the content-addressed
+    # event_id — so re-running a given fired index set converges to the same store state, while a
+    # *different* calendar's fire (e.g. @XNYS after @XEUR the same day) now captures its own index
+    # instead of being skipped by the other calendar's ledger rows. It also self-heals an intraday
+    # dry-run that touched the slot: the real close overwrites it (no manual purge). The ledger
+    # stays for observability (the ``already_done`` log above), never a gate; ``skipped`` is empty.
+    log.info("orchestration.eod.stage.start", stage=STAGE_UNIVERSE_REFRESH)
+    universe = stages.universe_refresh()
+    _commit(STAGE_UNIVERSE_REFRESH, OUTCOME_OK)
 
-    if STAGE_COLLECTION in already_done:
-        skipped.append(STAGE_COLLECTION)
-    else:
-        log.info("orchestration.eod.stage.start", stage=STAGE_COLLECTION)
-        collection = stages.collection()
-        _commit(STAGE_COLLECTION, OUTCOME_OK)
+    log.info("orchestration.eod.stage.start", stage=STAGE_COLLECTION)
+    collection = stages.collection()
+    _commit(STAGE_COLLECTION, OUTCOME_OK)
 
-    if STAGE_ANALYTICS in already_done:
-        skipped.append(STAGE_ANALYTICS)
-    else:
-        log.info("orchestration.eod.stage.start", stage=STAGE_ANALYTICS)
-        analytics = stages.analytics()
-        _commit(STAGE_ANALYTICS, OUTCOME_OK)
+    log.info("orchestration.eod.stage.start", stage=STAGE_ANALYTICS)
+    analytics = stages.analytics()
+    _commit(STAGE_ANALYTICS, OUTCOME_OK)
 
-    if STAGE_RECONCILIATION in already_done:
-        skipped.append(STAGE_RECONCILIATION)
-    else:
-        log.info("orchestration.eod.stage.start", stage=STAGE_RECONCILIATION)
-        reconciliation = stages.reconciliation()
-        _commit(
-            STAGE_RECONCILIATION,
-            OUTCOME_OK if reconciliation.is_clean else OUTCOME_FAILED,
-        )
+    log.info("orchestration.eod.stage.start", stage=STAGE_RECONCILIATION)
+    reconciliation = stages.reconciliation()
+    _commit(
+        STAGE_RECONCILIATION,
+        OUTCOME_OK if reconciliation.is_clean else OUTCOME_FAILED,
+    )
 
-    if STAGE_QC in already_done:
-        skipped.append(STAGE_QC)
-    else:
-        log.info("orchestration.eod.stage.start", stage=STAGE_QC)
-        qc = stages.qc()
-        escalation = qc.escalation
-        _commit(
-            STAGE_QC,
-            OUTCOME_OK if qc.report.overall_status == "pass" else OUTCOME_FAILED,
-        )
+    log.info("orchestration.eod.stage.start", stage=STAGE_QC)
+    qc = stages.qc()
+    escalation = qc.escalation
+    _commit(
+        STAGE_QC,
+        OUTCOME_OK if qc.report.overall_status == "pass" else OUTCOME_FAILED,
+    )
 
     log.info("orchestration.eod.done", ran=ran, skipped=skipped, escalation=escalation)
     return EodResult(

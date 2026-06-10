@@ -9,8 +9,9 @@ tests pin, per the 1G spec's Test surface:
 * ``test_eod_run_builds_and_invokes`` — ``main`` calls ``run_end_of_day`` with a bound
   correlation id, the resolved trade date, an injected clock and a full ``EodStages``; no
   wall-clock read.
-* ``test_eod_run_idempotent_refire`` — two fires for one date; the second skips every clean
-  stage, no duplicate store output. Oracle: the ledger semantics in ``run_state.py``.
+* ``test_eod_run_idempotent_refire`` — two fires for one date; the second RE-RUNS every stage
+  (overwrite-by-re-run, ADR 0032 refined) and converges to the same store state, no duplicate
+  derived rows. Oracle: the idempotent stage writes (replace-derived, append-dedup raw).
 * ``test_eod_run_missed_day_catchup`` — fire D-2, then D (skip D-1), then D-1; the ledger shows
   D-1 filled and no gap (the Persistent=true catch-up the timer drives).
 * ``test_eod_run_midrun_kill_restart_converges`` — a stage raises → ``main`` non-zero, the
@@ -51,6 +52,7 @@ from algotrading.core.config import (
 from algotrading.core.manifest import validate_manifest
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.orchestration import (
+    EOD_STAGES,
     EodStages,
     RunnerDeps,
     backlog_stages,
@@ -372,23 +374,23 @@ def test_eod_run_idempotent_refire(tmp_path: Path) -> None:
     )
     result = run_fire(deps2, trade_date=CLOCK_DAY, index="SX5E")
     assert result is not None
-    # The clean stages were skipped, none re-ran (the ledger's clean-stage count is unchanged).
-    assert set(result.skipped) == clean_after_first
-    assert result.ran == ()
+    # Overwrite-by-re-run (ADR 0032 refined): the second fire re-runs every clean stage rather than
+    # skipping it. The stage set is unchanged, but fresh ledger rows record the re-run.
+    assert result.skipped == ()
+    assert set(result.ran) == clean_after_first
     assert completed_stages(root, CLOCK_DAY) == clean_after_first
-    # No duplicate clean rows were appended (count of stage rows unchanged on the no-op refire).
-    assert len(read_stage_runs(root)) == len(runs_after_first)
+    assert len(read_stage_runs(root)) > len(runs_after_first)
 
 
-def test_all_clean_date_is_a_noop_not_a_rerun(tmp_path: Path) -> None:
+def test_refire_clean_date_reruns_overwriting(tmp_path: Path) -> None:
     deps, _ = _deps(tmp_path)
     root = _store_root(deps)
     assert main(["--index", "SX5E"], deps=deps) == 0
     n = len(read_stage_runs(root))
-    # A second fire for the already-clean date ran nothing.
+    # A second fire for the already-clean date re-runs every stage (overwrite), not a no-op skip.
     res = run_fire(deps, trade_date=CLOCK_DAY, index="SX5E")
-    assert res is not None and res.ran == ()
-    assert len(read_stage_runs(root)) == n
+    assert res is not None and set(res.ran) == set(EOD_STAGES) and res.skipped == ()
+    assert len(read_stage_runs(root)) > n
 
 
 # =========================================================================== #
@@ -447,7 +449,8 @@ def test_eod_run_midrun_kill_restart_converges(tmp_path: Path) -> None:
     failed = _read_manifests(deps.run_repository)
     assert any(m.status == RunStatus.FAILED for m in failed)
 
-    # Restart with a clean stage set against the SAME roots — it resumes only the tail.
+    # Restart with a clean stage set against the SAME roots — overwrite re-runs every stage (not
+    # only the failed tail); the day converges gap-free.
     healthy = _StagesRecorder()
     deps2 = RunnerDeps(
         store=deps.store,
@@ -462,8 +465,8 @@ def test_eod_run_midrun_kill_restart_converges(tmp_path: Path) -> None:
     )
     result = run_fire(deps2, trade_date=CLOCK_DAY, index="SX5E")
     assert result is not None
-    assert set(result.skipped) == {"universe_refresh", "collection"}
-    assert set(result.ran) == {"analytics", "reconciliation", "qc"}
+    assert result.skipped == ()
+    assert set(result.ran) == set(EOD_STAGES)
     # Convergence: the day is now gap-free.
     assert backlog_stages(root, CLOCK_DAY) == []
     assert last_healthy_trade_date(root) == CLOCK_DAY

@@ -31,7 +31,6 @@ capture — and assert the shared correlation id and the per-underlying event co
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import MutableMapping
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -84,8 +83,17 @@ from algotrading.infra.orchestration import (
     run_qc,
     sample_value,
 )
+from algotrading.infra.orchestration.eod_runner import (
+    analytics_qc_results,
+    persist_triage,
+)
 from algotrading.infra.orchestration.run_state import OUTCOME_FAILED, OUTCOME_OK
-from algotrading.infra.qc import thresholds_from_config
+from algotrading.infra.qc import (
+    CHECK_DELTA_BAND_COMPLETENESS,
+    CHECK_SURFACE_FIT_ERROR,
+    CHECK_TENOR_COVERAGE_FLOOR,
+    thresholds_from_config,
+)
 from algotrading.infra.risk import BrokerGreeks
 from algotrading.infra.storage import ParquetStore
 from fixtures.events import quote_events
@@ -398,15 +406,16 @@ def test_kill_mid_pipeline_then_restart_converges_with_no_duplicate_rows(tmp_pat
     assert "collection" in completed_stages(tmp_path, TRADE_DATE)
     assert last_healthy_trade_date(tmp_path) is None
 
-    # Restart with a clean analytics stage; it resumes only the unfinished tail.
+    # Restart: overwrite-by-re-run (ADR 0032 refined) re-runs every stage, not only the failed
+    # tail — idempotent writes still converge the store to a single clean run.
     healthy = _eod_stages(
         store, events, instruments, masters, positions, clock=clock,
         correlation_id="corr-restart",
     )
     result = run_end_of_day(store, trade_date=TRADE_DATE, correlation_id="corr-restart",
                             clock=clock, stages=healthy)
-    assert set(result.skipped) == {"universe_refresh", "collection"}
-    assert set(result.ran) == {"analytics", "reconciliation", "qc"}
+    assert result.skipped == ()
+    assert set(result.ran) == set(EOD_STAGES)
 
     # The store converged: derived rows are present and equal a single clean run.
     snapshots_after_restart = store.read("market_state_snapshots")
@@ -429,8 +438,9 @@ def test_kill_mid_pipeline_then_restart_converges_with_no_duplicate_rows(tmp_pat
     assert last_healthy_trade_date(tmp_path) == TRADE_DATE
 
 
-def test_restart_skips_already_completed_stages_and_does_not_re_run_them(tmp_path: Path) -> None:
-    # A second full run over an already-clean day runs nothing: every stage is skipped.
+def test_refire_reruns_every_stage_and_reconverges(tmp_path: Path) -> None:
+    # A second full run over an already-clean day RE-RUNS every stage (overwrite-by-re-run,
+    # ADR 0032 refined); idempotent writes leave the store byte-identical to the single clean run.
     chain = get_fixture("synthetic_known_answer")
     events, instruments, masters = _chain_inputs(chain)
     positions = _positions(_call_options(chain)[:1], [10.0])
@@ -443,13 +453,18 @@ def test_restart_skips_already_completed_stages_and_does_not_re_run_them(tmp_pat
     first = run_end_of_day(store, trade_date=TRADE_DATE, correlation_id="corr-1",
                            clock=clock, stages=stages)
     assert set(first.ran) == set(EOD_STAGES)
+    snapshots_before = store.read("market_state_snapshots")
+    iv_before = store.read("iv_points")
 
     stages2 = _eod_stages(store, events, instruments, masters, positions, clock=clock,
                           correlation_id="corr-2")
     second = run_end_of_day(store, trade_date=TRADE_DATE, correlation_id="corr-2",
                             clock=clock, stages=stages2)
-    assert second.ran == ()
-    assert set(second.skipped) == set(EOD_STAGES)
+    assert set(second.ran) == set(EOD_STAGES)
+    assert second.skipped == ()
+    # Convergence: the re-run overwrote the derived partitions with byte-identical rows.
+    assert store.read("market_state_snapshots") == snapshots_before
+    assert store.read("iv_points") == iv_before
 
 
 # =========================================================================== #
@@ -678,6 +693,271 @@ def test_qc_job_clean_summary_does_not_page(tmp_path: Path) -> None:
 
 
 # =========================================================================== #
+# Analytics-plane QC wiring: the live EOD path actually runs the analytics      #
+# checks it has inputs for, not only the two grid checks.                       #
+# =========================================================================== #
+def _slice_fit(*, underlying: str, maturity: float, rmse: float, n_points: int = 5):  # type: ignore[no-untyped-def]
+    """A rich SVI :class:`surfaces.SliceFit` carrying a chosen fit RMSE — the check's real input.
+
+    Mirrors the actor's per-slice fit shape (an SVI slice is what projects parameters); only the
+    rmse the surface-fit check reads is pinned per case so pass/fail is hand-derivable from the
+    threshold. ``svi=None``/``raw_points=()`` matches the unread-field shape the check's own unit
+    tests use.
+    """
+    from algotrading.infra.surfaces import METHOD_SVI, SliceFit
+
+    return SliceFit(
+        underlying=underlying,
+        maturity_years=maturity,
+        expiry_date=date(2026, 9, 1),
+        day_count="ACT/365",
+        method=METHOD_SVI,
+        svi=None,
+        rmse=rmse,
+        n_points=n_points,
+        arb_free=True,
+        bound_hits=(),
+        butterfly_violations=(),
+        nonparametric_ks=(),
+        nonparametric_ws=(),
+        raw_points=(),
+    )
+
+
+def test_run_qc_emits_a_result_for_every_wired_analytics_and_grid_check(tmp_path: Path) -> None:
+    # A regression guard: if a future change silently drops a wired check from the live QC
+    # stage, the produced check_name set shrinks and this fails. The wired set today is the two
+    # grid checks (driven by grid_points) plus the surface-fit check (driven, off the run's
+    # QcInputs slice fits, through extra_results). Inputs are realistic: two clean SVI slices
+    # (rmse far below the 0.02 floor → pass) and a full grid for the same underlying.
+    from algotrading.infra.actor import ActorOutputs, QcInputs
+
+    config = _grid_config()
+    thresholds = thresholds_from_config(config.qc_threshold)
+    qc_inputs = QcInputs(
+        slice_fits=(
+            _slice_fit(underlying="SPX", maturity=0.05, rmse=1e-6),
+            _slice_fit(underlying="SPX", maturity=0.25, rmse=1e-6),
+        )
+    )
+    # The surface-fit QcResults the live analytics stage threads into run_qc's extra_results.
+    extra = analytics_qc_results(
+        ActorOutputs(), qc_inputs, thresholds=thresholds, run_id="qc-wired", run_ts=CALC_TS
+    )
+    # Hand oracle: one surface-fit result per slice (two), each a pass at rmse 1e-6. With no
+    # forwards/IV/risk inputs in this minimal bundle, surface-fit is the only analytics row.
+    assert len(extra) == 2
+    assert {r.check_name for r in extra} == {CHECK_SURFACE_FIT_ERROR}
+    assert all(r.qc_status == "pass" for r in extra)
+
+    full = _full_cells("SPX", "10d") + _full_cells("SPX", "1m") + _full_cells("SPX", "3m")
+    job = run_qc(
+        store=ParquetStore(tmp_path),
+        thresholds=thresholds,
+        collector_summary=None,
+        trade_date=TRADE_DATE,
+        run_id="qc-wired",
+        run_ts=CALC_TS,
+        correlation_id="corr-qc-wired",
+        grid_points={"SPX": full},
+        tenor_grid=_GRID_TENORS,
+        extra_results=extra,
+    )
+    produced = {r.check_name for r in job.report.results}
+    # Every wired check_name is present in the rolled report — the grid pair plus the analytics
+    # surface-fit check. A silent drop of any one shrinks this set and fails the gate.
+    assert {
+        CHECK_TENOR_COVERAGE_FLOOR,
+        CHECK_DELTA_BAND_COMPLETENESS,
+        CHECK_SURFACE_FIT_ERROR,
+    } <= produced
+    assert job.report.overall_status == "pass"  # clean inputs → no fail
+
+
+def test_surface_fit_check_fails_and_triage_persists_a_row(tmp_path: Path) -> None:
+    # A slice whose fit RMSE exceeds the floor must fail the surface-fit check, and folding the
+    # report through the unified triage plane must persist one triage_records row naming that
+    # slice. Threshold (fit_tolerance.max_surface_rmse) defaults to 0.02; rmse 0.5 >> 0.02 → fail.
+    from algotrading.infra.actor import ActorOutputs, QcInputs
+
+    store = ParquetStore(tmp_path)
+    config = _grid_config()
+    thresholds = thresholds_from_config(config.qc_threshold)
+    assert thresholds.max_surface_rmse < 0.5  # the failing margin, derived from config not code
+
+    qc_inputs = QcInputs(
+        slice_fits=(_slice_fit(underlying="SPX", maturity=0.25, rmse=0.5),)
+    )
+    extra = analytics_qc_results(
+        ActorOutputs(), qc_inputs, thresholds=thresholds, run_id="qc-fail", run_ts=CALC_TS
+    )
+    assert [r.qc_status for r in extra] == ["fail"]  # the one slice fails
+
+    job = run_qc(
+        store=store,
+        thresholds=thresholds,
+        collector_summary=None,
+        trade_date=TRADE_DATE,
+        run_id="qc-fail",
+        run_ts=CALC_TS,
+        correlation_id="corr-qc-fail",
+        extra_results=extra,
+    )
+    assert job.report.overall_status == "fail"
+
+    records = persist_triage(store, job.report, correlation_id="corr-qc-fail")
+    # One non-passing QC row → exactly one triage record, naming the failing slice and check.
+    assert len(records) == 1
+    row = records[0]
+    assert row.source == "qc"
+    assert row.name == CHECK_SURFACE_FIT_ERROR
+    assert row.status == "fail"
+    assert row.underlying == "SPX"
+
+    # The row was actually written to the triage_records table and reads back identically.
+    persisted = store.read("triage_records")
+    assert len(persisted) == 1
+    assert persisted[0].name == CHECK_SURFACE_FIT_ERROR
+    assert persisted[0].run_id == "qc-fail"
+    # The surface-fit check is warning-severity, so the unified escalation is a notice, not a
+    # page (which is reserved for a critical-severity failure).
+    from algotrading.infra.validation import escalation_level
+
+    assert escalation_level(records) == "notice"
+
+
+def test_live_analytics_qc_runs_the_full_wired_check_set_over_a_real_run(tmp_path: Path) -> None:
+    # The headline wiring proof: drive the *real* run_analytics_with_qc over a realistic liquid
+    # chain (a usable forward, an SVI slice, converged IVs, a held position), then assert
+    # analytics_qc_results emits one specific QcResult per wired check_name. A future regression
+    # that drops a check from the live stage shrinks this produced set and fails the gate.
+    from algotrading.infra.actor import run_analytics_with_qc
+    from algotrading.infra.qc import (
+        CHECK_CALENDAR_SANITY,
+        CHECK_FORWARD_STABILITY,
+        CHECK_GREEK_SANITY,
+        CHECK_IV_SOLVER_CONVERGENCE,
+        CHECK_OPTION_CHAIN_COVERAGE,
+        CHECK_PARITY_RESIDUAL,
+        CHECK_SCENARIO_COMPLETENESS,
+        CHECK_UNDERLYING_QUOTE_HEALTH,
+        deserialize_context,
+    )
+
+    chain = get_fixture("synthetic_known_answer")
+    events, instruments, masters = _chain_inputs(chain)
+    # One held call so the risk lines (Greek sanity) and the scenario cells (completeness) exist.
+    held = _call_options(chain)[:1]
+    positions = _positions(held, [1.0])
+    config = _config()
+    thresholds = thresholds_from_config(config.qc_threshold)
+
+    run = run_analytics_with_qc(
+        events,
+        positions,
+        instruments=instruments,
+        masters=masters,
+        config=config,
+        config_hashes=CONFIG_HASH,
+        as_of=AS_OF,
+        calc_ts=CALC_TS,
+    )
+    # The run is realistic: it produced a usable forward, a fitted slice, converged IVs, a netted
+    # risk line, and the scenario grid — the genuine inputs the checks read (no fabrication).
+    assert run.qc_inputs.forward_estimates and run.qc_inputs.forward_estimates[0].is_usable
+    assert run.qc_inputs.slice_fits
+    assert run.qc_inputs.iv_results and run.qc_inputs.iv_results[0][1]
+    assert run.qc_inputs.risk_lines
+    assert run.qc_inputs.scenario_grid
+    # The persisted iv_points are the converged subset; the QC bundle keeps the full solver set,
+    # so the persisted output is unchanged while the convergence ratio is honestly computable.
+    full_iv = run.qc_inputs.iv_results[0][1]
+    assert len(run.outputs.iv_points) <= len(full_iv)
+
+    results = analytics_qc_results(
+        run.outputs, run.qc_inputs, thresholds=thresholds, run_id="live", run_ts=CALC_TS
+    )
+    produced = {r.check_name for r in results}
+    # Every check whose input the real run genuinely carries is present. A drop fails this.
+    assert {
+        CHECK_SURFACE_FIT_ERROR,
+        CHECK_FORWARD_STABILITY,
+        CHECK_PARITY_RESIDUAL,
+        CHECK_IV_SOLVER_CONVERGENCE,
+        CHECK_CALENDAR_SANITY,
+        CHECK_UNDERLYING_QUOTE_HEALTH,
+        CHECK_OPTION_CHAIN_COVERAGE,
+        CHECK_GREEK_SANITY,
+        CHECK_SCENARIO_COMPLETENESS,
+    } == produced
+
+    # The analytics checks pass on the clean known-answer chain (independently derived: synthetic
+    # prices invert exactly → tight forward/parity/IV/fit, the single maturity is
+    # calendar-arb-free, the held call's Greeks are sign-sane, the reprice produced the full
+    # grid × the one contract, and the underlying's own quote is tight).
+    by_name = {r.check_name: r for r in results}
+    for name in (
+        CHECK_SURFACE_FIT_ERROR,
+        CHECK_FORWARD_STABILITY,
+        CHECK_PARITY_RESIDUAL,
+        CHECK_IV_SOLVER_CONVERGENCE,
+        CHECK_CALENDAR_SANITY,
+        CHECK_UNDERLYING_QUOTE_HEALTH,
+        CHECK_GREEK_SANITY,
+        CHECK_SCENARIO_COMPLETENESS,
+    ):
+        assert by_name[name].qc_status == "pass", name
+    # Scenario completeness is exact: produced cells == grid × held contracts, nothing missing.
+    scenario_ctx = deserialize_context(by_name[CHECK_SCENARIO_COMPLETENESS].context)
+    assert scenario_ctx["missing_count"] == 0
+    expected_cells = len(run.qc_inputs.scenario_grid) * len(run.qc_inputs.risk_lines)
+    assert scenario_ctx["expected_count"] == expected_cells
+    # Option-chain coverage runs live too and judges only quotes the assessor labels "usable":
+    # the synthetic chain's option quotes are labelled "caution", so it fails and names the
+    # specific contracts it considers absent — proving the check is genuinely wired and specific,
+    # not a fabricated pass.
+    coverage = by_name[CHECK_OPTION_CHAIN_COVERAGE]
+    assert coverage.qc_status == "fail"
+    assert deserialize_context(coverage.context)["missing_contracts"]
+
+
+def test_live_analytics_qc_surfaces_a_fail_on_a_dropped_scenario_cell(tmp_path: Path) -> None:
+    # The failing-path companion: when a persisted scenario cell is missing relative to the
+    # actor's grid × contracts, check_scenario_completeness must fail and name the missing cell.
+    # We drop one ScenarioResult row from the real run's outputs to simulate a reprice gap; the
+    # expected cartesian (carried on QcInputs) is unchanged, so the produced set is now short.
+    import dataclasses
+
+    from algotrading.infra.actor import run_analytics_with_qc
+    from algotrading.infra.qc import CHECK_SCENARIO_COMPLETENESS, deserialize_context
+
+    chain = get_fixture("synthetic_known_answer")
+    events, instruments, masters = _chain_inputs(chain)
+    positions = _positions(_call_options(chain)[:1], [1.0])
+    config = _config()
+    thresholds = thresholds_from_config(config.qc_threshold)
+
+    run = run_analytics_with_qc(
+        events, positions, instruments=instruments, masters=masters, config=config,
+        config_hashes=CONFIG_HASH, as_of=AS_OF, calc_ts=CALC_TS,
+    )
+    assert run.outputs.scenarios  # the reprice produced cells to drop one of
+
+    dropped = dataclasses.replace(run.outputs, scenarios=run.outputs.scenarios[1:])
+    results = analytics_qc_results(
+        dropped, run.qc_inputs, thresholds=thresholds, run_id="live-fail", run_ts=CALC_TS
+    )
+    scenario = next(r for r in results if r.check_name == CHECK_SCENARIO_COMPLETENESS)
+    # Exactly one cell missing → fail, and the context names the specific dropped cell.
+    assert scenario.qc_status == "fail"
+    scenario_ctx = deserialize_context(scenario.context)
+    assert scenario_ctx["missing_count"] == 1
+    missing = scenario_ctx["missing_cells"]
+    assert len(missing) == 1
+    assert "scenario_id" in missing[0] and "contract_key" in missing[0]
+
+
+# =========================================================================== #
 # Coverage-breach alert (WS 1H) — distinct from the missing-partition alert    #
 # =========================================================================== #
 _GRID_TENORS = ("10d", "1m", "3m")
@@ -695,9 +975,8 @@ def _grid_config() -> PlatformConfig:
         band_high_delta=0.30,
         max_delta_step=0.35,
     )
-    return dataclasses.replace(
-        base,
-        qc_threshold=dataclasses.replace(base.qc_threshold, grid=grid),
+    return base.model_copy(
+        update={"qc_threshold": base.qc_threshold.model_copy(update={"grid": grid})},
     )
 
 
@@ -893,3 +1172,60 @@ def test_dashboard_shows_no_data_and_backlog_on_an_empty_day(tmp_path: Path) -> 
     assert status.scenarios_current == "stale"
     assert list(status.backlog) == list(EOD_STAGES)  # nothing ran → full backlog
     assert not status.is_healthy
+
+
+def _record_one_stage_at_barrier(
+    root: Path, stage: str, run_id: str, barrier: object
+) -> None:
+    """Worker body: wait on the shared barrier, then append one distinct stage.
+
+    Defined at module level so a forked process can run it. The barrier releases all
+    workers together, so the appends genuinely race — exactly the systemd catch-up case
+    where both templated timers fire near-simultaneously against the one ledger.
+    """
+    barrier.wait()  # type: ignore[attr-defined]
+    record_stage(
+        root,
+        StageRun(
+            trade_date=TRADE_DATE,
+            stage=stage,
+            outcome=OUTCOME_OK,
+            run_id=run_id,
+            recorded_ts=CALC_TS,
+        ),
+    )
+
+
+def test_concurrent_record_stage_keeps_every_record(tmp_path: Path) -> None:
+    # Two+ processes recording DIFFERENT stages for the SAME trade_date at once must
+    # all survive: the old read-modify-rename lost all but the last rename. We fork
+    # one process per EOD stage, release them together on a barrier so the appends
+    # race, and assert every stage is present afterwards. Expected set is derived
+    # independently from the stage names we hand each worker (the EOD canon), not read
+    # back from the code under test.
+    import multiprocessing as mp
+
+    from algotrading.infra.orchestration.run_state import read_stage_runs
+
+    ctx = mp.get_context("fork")  # systemd timers fork; matches the real scenario
+    expected_stages = set(EOD_STAGES)
+    barrier = ctx.Barrier(len(EOD_STAGES))
+    procs = [
+        ctx.Process(
+            target=_record_one_stage_at_barrier,
+            args=(tmp_path, stage, f"r-{stage}", barrier),
+        )
+        for stage in EOD_STAGES
+    ]
+    for proc in procs:
+        proc.start()
+    for proc in procs:
+        proc.join(timeout=30)
+        assert proc.exitcode == 0, f"worker exited with {proc.exitcode}"
+
+    runs = read_stage_runs(tmp_path)
+    # No record was dropped: one row per worker, no torn/duplicated lines.
+    assert len(runs) == len(EOD_STAGES)
+    assert {run.stage for run in runs} == expected_stages
+    # And the per-stage run_ids round-trip intact (no interleaved/corrupted line).
+    assert {run.run_id for run in runs} == {f"r-{stage}" for stage in EOD_STAGES}

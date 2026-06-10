@@ -77,6 +77,7 @@ from .registry_loader import (
     index_registry_from_config,
     load_index_registry,
 )
+from .sample_bridge import contracts_to_events, events_to_contracts
 from .service import (
     ResolvedContract,
     UniverseService,
@@ -121,7 +122,9 @@ __all__ = [
     "basket_weight_sum",
     "build_instrument_masters",
     "canonical_payload",
+    "contracts_to_events",
     "enabled_indices",
+    "events_to_contracts",
     "index_registry_from_config",
     "ingest_membership_changes",
     "instrument_key",

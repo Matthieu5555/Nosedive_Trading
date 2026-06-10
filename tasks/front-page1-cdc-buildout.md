@@ -1,0 +1,46 @@
+# Task — Page-1 (Vision marché) build-out to the cahier des charges
+
+**Status:** queued (2026-06-10). **Owner:** unclaimed.
+**Goal:** bring Tab-1 up to the block set + reading order of
+[`documentation/cahier_des_charges_dashboard_page1.md`](../documentation/cahier_des_charges_dashboard_page1.md)
+(an **intent reference**, not a pixel spec — ignore its colours). The base is shipped (commit
+`ad97c6c`): control bar + QC badge, index history, constituents row, 3D surface, smile, the
+dollar-Greeks term structure. What's missing is the rest of the CDC's §3.3–3.6 and the §2 order.
+
+## Gap (CDC block → current → data today)
+
+| CDC block | Current | Data available now? |
+|---|---|---|
+| §3.1 control bar + QC badge | ✅ | yes |
+| §3.2 index history + [list \| component] row | ✅ | yes |
+| §3.3 **vol scorecards** (ATM, 25Δ skew, convexity, realized vol) | ❌ | partial — ATM/skew/convexity from the smile; realized vol from `daily_bar` |
+| §3.4 nappe = **heatmap** + 3D, shared colour scale | ⚠️ 3D only | yes (`surface_grid`) |
+| §3.5 **2D cuts side by side**: smile + **ATM term structure** | ⚠️ smile in an accordion; term structure absent | yes (`surface_grid`) |
+| §3.6 **Greeks = 4 shape cards vs strike** (selected maturity) | ⚠️ greeks vs *maturity*, and empty | ❌ needs **path A** (`projected_analytics` populated) |
+| global maturity selector | ❌ | — |
+
+## Phased plan (each phase = a shippable, gate-green increment)
+
+1. **Reading-order reflow + scaffolding** — restructure `Market.tsx` into the CDC §2 order;
+   every block a labelled panel with an honest empty/degraded state; lift the smile out of the
+   accordion. *(front only; reuses existing hooks)*
+2. **Heatmap (§3.4)** — Plotly heatmap of `surface_grid` (maturity × log-moneyness, colour = IV),
+   stacked above the 3D, **sharing one value→colour scale** with it. *(data OK today)*
+3. **ATM term structure (§3.5)** — 2D ATM-vol vs maturity, side-by-side with the smile, each with
+   its own maturity selector. *(data OK today)*
+4. **Vol scorecards (§3.3)** + a **global maturity selector** — ATM/25Δ-skew/convexity from the
+   smile; realized vol from `daily_bar` returns. *(some BFF compute; explicit rounding)*
+5. **Greeks shape cards (§3.6)** — 4 cards of the Greek's shape **along strike** for the selected
+   maturity. **Build the shell now; it fills when path A is persisted** (see
+   [[vol-surface-front-fallback]]). Distinct from the existing dollar-Greeks term-structure curve.
+6. **Design-system pass (§6, optional)** — flat surfaces, thin borders, rounded corners, sentence
+   case, two font weights, light/dark via CSS vars; the violet 7-stop ramp **for the nappe only**.
+
+## Notes / constraints
+
+- **Colours are out of scope until phase 6** — the owner ruled the CDC is an intent reference and
+  its colours are to be ignored ([[front-page1-design]]).
+- Phases **2 and 3 are data-backed today**; **5 stays empty** until path A lands; **4** is partly
+  computable now. Surface honest empty/degraded states, never a blank.
+- Recommended order: **1 → 2 → 3** as one increment (the bulk of "it finally looks like the CDC",
+  all data-backed), then 4, then 5, then 6.

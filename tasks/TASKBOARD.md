@@ -136,6 +136,11 @@ converged seam → contract-test map. Code without the named tests is not done.
   (the `conid=0` warmup 503 + data-farm transient 503s → ~3 names/10 min), though the raw Gateway history
   endpoint is fast for real conids (curl-verified). Fix the warmup/503 handling + clean the SX5E seed
   (drop the `VGM6` future, verify EU conid resolution), then run for SPX+SX5E. Coordinate with daily-bar-compaction.
+- **[Page-1 CDC build-out](front-page1-cdc-buildout.md) — queued (2026-06-10), unclaimed.** Tab-1 base is
+  shipped (`ad97c6c`: control bar+QC badge, index/constituent history, 3D surface, smile, dollar-Greeks term
+  structure). Missing the rest of the cahier des charges: **vol scorecards (§3.3)**, **nappe heatmap (§3.4)**,
+  **ATM term structure (§3.5)**, **Greeks-vs-strike shape cards (§3.6)**, global maturity selector. Phased; 2+3
+  are data-backed today, 5 waits on path A, colours out of scope until the §6 styling pass.
 - **[H1 — repo-hygiene audit](archive/H1-repo-hygiene-audit.md) — ✅ landed (2026-06-06, against `e0ab3ab`).**
   Read-only classification done; report at [H1-repo-hygiene-report.md](archive/H1-repo-hygiene-report.md).
   Outcome: **no tracked dead paths** (nothing to `git rm`). Applied safe patch — added the five

@@ -150,12 +150,17 @@ export const RECORDED_TWO_DATES: RecordedDatesResponse = {
   index: "SPX",
   count: 2,
   dates: ["2026-05-29", "2026-05-28"],
+  available: [
+    { date: "2026-05-29", qc: "pass" },
+    { date: "2026-05-28", qc: "pass" },
+  ],
 };
 
 export const RECORDED_EMPTY: RecordedDatesResponse = {
   index: "SPX",
   count: 0,
   dates: [],
+  available: [],
 };
 
 export const CONSTITUENTS_TWO: ConstituentsResponse = {

@@ -75,13 +75,19 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/config`, `GET /api/config/{filename}`.
 - `GET /api/price-history[?underlying=&start=&end=]` — daily OHLC bars for one ticker over a
   window, from the `daily_bar` table (WS 1I).
-- `GET /api/constituents[?index=&as_of=]` — the point-in-time, price-first index basket via
-  the as-of `members` resolver (the no-look-ahead gate), from `index_constituents` (WS 1I).
+- `GET /api/constituents[?index=&as_of=]` — the point-in-time index basket via the as-of
+  `members` resolver (the no-look-ahead gate), from `index_constituents`; the web app orders it
+  by **index weight** (market-cap proxy) and default-selects the heaviest name (WS 1I).
 - `GET /api/analytics[?underlying=&trade_date=]` — the projected tenor × delta-band grid
-  (smile + surface slice + dollar Greeks with unit strings) from
-  `projected_option_analytics` (WS 1I).
-- `GET /api/recorded-dates[?index=]` — the completed, gap-free trade dates + count, from the
-  1G run-state ledger (only complete runs, never a raw partition listing) (WS 1I).
+  (smile + surface slice + dollar Greeks with unit strings) from `projected_option_analytics`
+  (WS 1I). **Index-keyed:** the option chain is captured at the index level, so the web app
+  queries this with the *index* symbol (the vol surface is the index's), not the selected
+  constituent — the constituent selection only drives its price candlestick.
+- `GET /api/recorded-dates[?index=]` — from the 1G run-state ledger. Returns `dates`/`count`
+  (the **qc-clean, gap-free** days — the operator coverage figure) **and** `available`: every
+  **viewable** day (whose `analytics` stage produced a surface, **including qc-failing ones**),
+  each tagged with its QC verdict (`pass`/`fail`/`unknown`). The date picker offers `available`
+  and shows a QC badge, so a degraded snapshot is shown rather than hidden (WS 1I).
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

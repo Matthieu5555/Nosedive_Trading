@@ -19,6 +19,9 @@ export interface PlotProps {
 }
 
 export function Plot({ data, layout, label }: PlotProps) {
+  // Plotly's Layout type is intentionally loose here: the object is mutated (`scene`) and merged
+  // with caller overrides before reaching the typed prop, so a precise type fights the merge.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const defaultLayout: any = {
     autosize: true,
     paper_bgcolor: "rgba(0,0,0,0)",

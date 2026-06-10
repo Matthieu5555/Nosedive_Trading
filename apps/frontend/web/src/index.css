@@ -255,6 +255,33 @@ h2 {
   align-items: start;
 }
 
+/* Constituents list (left) + the selected component's price history (right), equal height
+   (cahier des charges §3.2). The list is wide enough that its columns never scroll sideways;
+   the component chart is wider than the list but narrower than the full-width index chart. */
+.constituents-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+
+/* Let the right-hand chart panel grow its candlestick to match the list block's height. */
+.component-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.component-panel .plot {
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .constituents-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .index-panel,
 .greeks-panel {
   min-height: 178px;
@@ -349,6 +376,66 @@ h2 {
 
 .plot .js-plotly-plot {
   width: 100%;
+}
+
+/* QC verdict chip next to the as-of date: pass (positive), fail (negative), n/a (muted). */
+.qc-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 0.5px solid var(--border-strong);
+}
+.qc-badge--pass {
+  color: var(--positive);
+  border-color: var(--positive);
+}
+.qc-badge--fail {
+  color: var(--negative);
+  border-color: var(--negative);
+}
+.qc-badge--unknown {
+  color: var(--muted);
+}
+
+/* The dollar-Greeks term structure lays its four Greek panels out two-up (one per Greek). */
+.greeks-term-structure .chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+@media (max-width: 900px) {
+  .greeks-term-structure .chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* lightweight-charts fills its container's box rather than auto-sizing like Plotly, so the
+   candlestick panel needs an explicit height to render. position:relative anchors the hover
+   read-out box overlaid on the chart. */
+.candle-chart {
+  position: relative;
+  width: 100%;
+  height: 360px;
+}
+
+/* The crosshair read-out: date + O/H(max)/L(min)/C + volume of the hovered bar, top-left over
+   the chart. pointer-events:none so it never intercepts the chart's own pan/zoom/crosshair. */
+.candle-legend {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 2;
+  pointer-events: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .scenario-cell {

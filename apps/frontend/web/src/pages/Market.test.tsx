@@ -2,9 +2,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
-// Plotly draws to a canvas jsdom does not implement; swap the Plot wrapper for a DOM stub that
-// exposes the self-label and trace types as text (see src/test/plotMock.tsx).
+// Plotly and lightweight-charts both draw to a canvas jsdom does not implement; swap each
+// wrapper for a DOM stub that exposes the self-label (and trace types / bar count) as text
+// (see src/test/plotMock.tsx and src/test/candleMock.tsx).
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
+vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
 
 import { MarketPage } from "./Market";
 import {
@@ -64,6 +66,20 @@ test("renders the point-in-time constituent list, scrollable, price-first", asyn
   expect(region).toHaveStyle({ overflowY: "auto" });
 });
 
+test("default-selects the heaviest constituent and shows its detail without a click", async () => {
+  // CONSTITUENTS_TWO weights: AAA 0.6 > BBB 0.4 — so AAA (the index's heaviest) is selected by
+  // default (cahier des charges §3.2), and its analytics render with no interaction.
+  mockEndpoints();
+  render(<MarketPage />);
+
+  const region = await screen.findByRole("region", { name: /constituents/i });
+  const aaaRow = within(region).getByText("AAA").closest("tr");
+  await waitFor(() => expect(aaaRow).toHaveAttribute("aria-selected", "true"));
+  // The volatility analytics panel is index-keyed (not the selected constituent) — the option
+  // chain is captured at the index level — and renders without any click.
+  expect(await screen.findByLabelText("Volatility analytics for SPX")).toBeInTheDocument();
+});
+
 test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and dollar Greeks", async () => {
   mockEndpoints();
   const user = userEvent.setup();
@@ -71,16 +87,28 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
 
   await user.click(await screen.findByRole("button", { name: "AAA" }));
 
-  // Candlesticks are present (the index history + the ticker detail both render one).
+  // Candlesticks are present (the index history + the ticker detail both render one), each fed
+  // its OHLC bars (the lightweight-charts stub echoes the bar count it received).
   const candles = await screen.findAllByLabelText(/daily price \(OHLC candlestick\)/i);
   expect(candles.length).toBeGreaterThanOrEqual(1);
-  expect(within(candles[0]).getByTestId("plot-types")).toHaveTextContent("candlestick");
+  expect(within(candles[0]).getByTestId("candle-bars")).toHaveTextContent("2");
 
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("mesh3d");
 
   const smile = await screen.findByLabelText(/Smile — 3m/i);
   expect(within(smile).getByTestId("plot-types")).toHaveTextContent("scatter");
+
+  // The dollar-Greeks term structure renders one labeled panel per Greek, each a scatter, with
+  // the $ unit string carried into the panel label (the curve view of the same projected data).
+  const deltaPanel = await screen.findByLabelText(/Delta \$ term structure/i);
+  expect(within(deltaPanel).getByTestId("plot-types")).toHaveTextContent("scatter");
+  expect(
+    await screen.findByLabelText(/Gamma \$ term structure \(\$ per 1% move\)/i),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByLabelText(/Theta \$ term structure \(\$ per calendar day\)/i),
+  ).toBeInTheDocument();
 
   // Dollar Greeks carry decimal (raw) AND currency, with the unit strings visible (P0.2/OQ-1).
   const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
@@ -92,7 +120,23 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
 test("renders a labeled empty state when no dates are recorded", async () => {
   mockEndpoints({ "/api/recorded-dates": RECORDED_EMPTY });
   render(<MarketPage />);
-  expect(await screen.findByText(/No completed capture runs/i)).toBeInTheDocument();
+  expect(await screen.findByText(/No capture runs to show/i)).toBeInTheDocument();
+});
+
+test("shows a qc-failing day with a QC fail badge instead of hiding it", async () => {
+  // count==0 (no clean day) but a viewable qc-failing day exists — it must be selectable and
+  // shown with its QC badge, not hidden (cahier des charges §3.1/§5).
+  mockEndpoints({
+    "/api/recorded-dates": {
+      index: "SPX",
+      count: 0,
+      dates: [],
+      available: [{ date: "2026-06-10", qc: "fail" }],
+    },
+  });
+  render(<MarketPage />);
+  expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
+  expect(await screen.findByText("QC fail")).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {

@@ -177,10 +177,22 @@ export interface AnalyticsResponse {
   maturities: AnalyticsMaturity[];
 }
 
+export type QcVerdict = "pass" | "fail" | "unknown";
+
+// A trade date the page can show, with its QC verdict. ``available`` includes qc-failing days
+// (shown with a fail badge), not just the clean ones in ``dates`` (cahier des charges §3.1/§5).
+export interface AvailableDate {
+  date: string;
+  qc: QcVerdict;
+}
+
 export interface RecordedDatesResponse {
   index: string;
   count: number;
   dates: string[];
+  // Optional only for resilience during a rolling BFF restart (an older BFF omits it); the
+  // current BFF always returns it. Callers guard with ``?? []``.
+  available?: AvailableDate[];
 }
 
 // --- WS 2A: multi-leg basket builder -------------------------------------------------

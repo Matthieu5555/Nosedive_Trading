@@ -8,6 +8,7 @@ up to the repo root and wires the canonical ``data/`` store.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -62,11 +63,17 @@ class AppContext:
     ) -> AppContext:
         """Construct context from the repo root (or injected overrides for tests).
 
-        ``store_root`` defaults to ``<repo_root>/data``; ``configs_dir`` to
-        ``<repo_root>/configs``. Both are injectable so a test can wire a tmp store.
+        ``store_root`` defaults to the ``ALGOTRADING_DATA_ROOT`` env var (the same override the
+        capture/runner reads) when set, else ``<repo_root>/data``; ``configs_dir`` to
+        ``<repo_root>/configs``. All are injectable so a test can wire a tmp store. The env
+        override lets the front point at a separate demo/test store without touching the prod data.
         """
         root = repo_root if repo_root is not None else _find_repo_root(Path(__file__).parent)
-        resolved_store_root = store_root if store_root is not None else root / "data"
+        if store_root is not None:
+            resolved_store_root = store_root
+        else:
+            env_root = os.environ.get("ALGOTRADING_DATA_ROOT")
+            resolved_store_root = Path(env_root) if env_root else root / "data"
         return cls(
             store_root=resolved_store_root,
             configs_dir=root / "configs",

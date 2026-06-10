@@ -25,6 +25,7 @@ import io
 import urllib.request
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Protocol
 
 from .membership import MembershipChange
@@ -171,4 +172,40 @@ class YfiuaSnapshotSource:
             knowledge_date=knowledge_date,
             default_add_date=self.default_add_date,
             symbol_field="Symbol",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CsvFileSource:
+    """A committed **local CSV** of an index's current members, with an optional weight column.
+
+    The honest seam for an index whose free feed carries no weights (the MVP gap): point this at a
+    CSV that has a ``Weight`` column and the weights flow unchanged through the same parser →
+    contract → resolver → BFF → front as any vendor feed. No network, no clock — the file is read
+    from disk and parsed by the same pure :func:`parse_constituents_csv`. A blank/absent weight
+    cell stays ``None`` (labeled unavailable), never zeroed or equal-weighted (OQ-1/OQ-3), so a
+    partially-weighted file is honest rather than silently wrong.
+
+    ``vendor`` records the file's provenance (e.g. an ETF-holdings snapshot + its date) so the
+    bitemporal table keeps an audit trail of where the weights came from.
+    """
+
+    path: Path
+    vendor: str
+    default_add_date: date
+    symbol_field: str = "Symbol"
+    add_date_field: str | None = None
+    weight_field: str | None = "Weight"
+
+    def fetch(self, index: str, knowledge_date: date) -> list[MembershipChange]:
+        text = Path(self.path).read_text(encoding="utf-8")
+        return parse_constituents_csv(
+            text,
+            index=index,
+            vendor=self.vendor,
+            knowledge_date=knowledge_date,
+            default_add_date=self.default_add_date,
+            symbol_field=self.symbol_field,
+            add_date_field=self.add_date_field,
+            weight_field=self.weight_field,
         )

@@ -163,6 +163,15 @@ source, so it carries no `provider=` partition segment; the data source is the `
 unavailable), never zeroed or equal-weighted. `basket_weight_sum(basket)` returns `None`
 (not `0.0`) when any weight is unavailable, so a partial basket is never treated as complete.
 
+**Membership sources** (`membership_source.py`) parse a raw vendor feed into typed
+`MembershipChange` rows — never touching storage. `SP500DatasetsSource` (SPX, dated, no
+weights) and `YfiuaSnapshotSource` (SX5E, current snapshot, no weights) pull free feeds;
+`CsvFileSource` reads a committed local CSV with an optional `Weight` column. **Current
+state (MVP):** SPX + SX5E weights are seeded from **SSGA SPDR ETF holdings** (SPY/FEZ) via
+`CsvFileSource` (`configs/index_weights/`, ingested by `scripts/ingest_membership.py --csv`),
+the honest free proxy for index weights until the OQ-3 source (Siblis Research) lands. A
+blank weight cell stays `None`, never zeroed.
+
 ```python
 from datetime import date
 from algotrading.infra.storage import ParquetStore

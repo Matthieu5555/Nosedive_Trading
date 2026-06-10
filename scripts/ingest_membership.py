@@ -21,6 +21,7 @@ from pathlib import Path
 
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import (
+    CsvFileSource,
     MembershipSource,
     SP500DatasetsSource,
     YfiuaSnapshotSource,
@@ -50,13 +51,59 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="Knowledge axis date (ISO). Default: today (UTC).",
     )
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a committed members CSV (overrides the built-in source). Use this to seed "
+            "weights the free feed lacks — the file needs a symbol column and, for weights, a "
+            "weight column (see --symbol-field / --weight-field)."
+        ),
+    )
+    parser.add_argument(
+        "--vendor",
+        default=None,
+        help="Provenance label for a --csv source (e.g. 'spdr-spy-holdings-2026-06-10').",
+    )
+    parser.add_argument("--symbol-field", default="Symbol", help="--csv symbol column name.")
+    parser.add_argument(
+        "--weight-field",
+        default="Weight",
+        help="--csv weight column name (blank cells stay None, never zeroed).",
+    )
+    parser.add_argument(
+        "--add-date-field",
+        default=None,
+        help="--csv add-date column name, if the file carries real per-name add dates.",
+    )
+    parser.add_argument(
+        "--default-add-date",
+        type=date.fromisoformat,
+        default=date(2000, 1, 1),
+        help="Fallback effective_add_date for --csv rows without an add-date column.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     index = args.index.upper()
-    source = _SOURCES.get(index)
+    source: MembershipSource | None
+    if args.csv is not None:
+        if args.vendor is None:
+            print("[FAIL] --csv requires --vendor (provenance label)", file=sys.stderr)
+            return 2
+        source = CsvFileSource(
+            path=args.csv,
+            vendor=args.vendor,
+            default_add_date=args.default_add_date,
+            symbol_field=args.symbol_field,
+            add_date_field=args.add_date_field,
+            weight_field=args.weight_field,
+        )
+    else:
+        source = _SOURCES.get(index)
     if source is None:
         print(f"[FAIL] no membership source configured for index {index!r}", file=sys.stderr)
         return 2

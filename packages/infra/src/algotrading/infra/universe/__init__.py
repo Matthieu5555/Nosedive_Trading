@@ -66,6 +66,7 @@ from .membership import (
     members,
 )
 from .membership_source import (
+    CsvFileSource,
     MembershipSource,
     SP500DatasetsSource,
     YfiuaSnapshotSource,
@@ -94,6 +95,7 @@ __all__ = [
     "CalendarResolver",
     "ChainPlan",
     "ChainSelection",
+    "CsvFileSource",
     "DeltaBandMarket",
     "DuplicateBrokerContractIdError",
     "IbkrRef",

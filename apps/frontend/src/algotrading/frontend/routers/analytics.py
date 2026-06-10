@@ -19,9 +19,14 @@ yields an empty ``maturities`` list with HTTP 200, never a 500.
 
 from __future__ import annotations
 
+import math
 from datetime import date
 
-from algotrading.infra.contracts import ProjectedOptionAnalytics, SurfaceParameters
+from algotrading.infra.contracts import (
+    ProjectedOptionAnalytics,
+    SurfaceGrid,
+    SurfaceParameters,
+)
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -90,6 +95,61 @@ def _group_by_maturity(
     return entries
 
 
+def _maturities_from_surface_grid(
+    grid: list[SurfaceGrid],
+    slices: list[SurfaceParameters],
+) -> list[dict[str, object]]:
+    """Build the nappe-de-vol view from the persisted ``surface_grid`` + fitted slices.
+
+    The fallback for the day before the tenor × delta-band projection has produced any cells:
+    the surface fit (``iv_points`` → ``surface_parameters`` → ``surface_grid``) persists even
+    when ``_build_projected_analytics`` skips an underlying for lack of a usable spot, so
+    ``projected_option_analytics`` is empty while a full fitted surface is on disk. Each grid
+    node carries ``total_variance`` on a (maturity_years, moneyness_bucket) cell, so the implied
+    vol is ``sqrt(total_variance / maturity_years)``. The 3D ``VolSurface`` and ``SmileChart``
+    read only ``smile.deltas``/``smile.implied_vols``, so the moneyness buckets stand in for the
+    delta axis here (a coarser nappe than the delta-band grid, and labelled as moneyness); the
+    per-cell dollar Greeks (``points``) are not available from the grid and come back empty until
+    the projection lands. Once ``projected_option_analytics`` populates, the caller prefers it and
+    this fallback is never reached — the upgrade to the rich grid is transparent to the front.
+    """
+    slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
+    grouped: dict[str, list[SurfaceGrid]] = {}
+    for cell in grid:
+        grouped.setdefault(_maturity_key(cell.maturity_years), []).append(cell)
+
+    entries: list[dict[str, object]] = []
+    for key in sorted(grouped, key=float):
+        cells = sorted(grouped[key], key=lambda c: c.moneyness_bucket)
+        maturity_years = cells[0].maturity_years
+        buckets = [cell.moneyness_bucket for cell in cells]
+        implied_vols = [
+            math.sqrt(cell.total_variance / cell.maturity_years)
+            if cell.total_variance > 0.0 and cell.maturity_years > 0.0
+            else 0.0
+            for cell in cells
+        ]
+        fitted = slice_by_maturity.get(key)
+        label = f"{maturity_years:.3f}y"
+        entries.append(
+            {
+                "maturity_years": maturity_years,
+                "tenor_label": label,
+                "label": label,
+                "smile": {
+                    "deltas": buckets,
+                    "implied_vols": implied_vols,
+                    "log_moneyness": buckets,
+                },
+                "surface_slice": (
+                    surface_parameters_to_dict(fitted) if fitted is not None else None
+                ),
+                "points": [],
+            }
+        )
+    return entries
+
+
 @router.get("")
 def get_analytics(
     request: Request, underlying: str | None = None, trade_date: str | None = None
@@ -122,11 +182,27 @@ def get_analytics(
         if row.underlying == resolved_underlying
     ]
     maturities = _group_by_maturity(cells, slices)
+    # The rich tenor × delta-band grid is the preferred view. When it is empty for the day (the
+    # projection skipped this underlying for lack of a usable spot, while the surface fit still
+    # persisted), fall back to the coarser nappe rebuilt from the fitted surface_grid so the front
+    # shows a real vol surface rather than "No surface to plot yet". The upgrade to the rich grid,
+    # once the projection lands, is transparent — this branch is simply no longer taken.
+    source = "projected_option_analytics"
+    if not maturities:
+        grid = [
+            row
+            for row in ctx.store.read("surface_grid", trade_date=resolved_date)
+            if row.underlying == resolved_underlying
+        ]
+        maturities = _maturities_from_surface_grid(grid, slices)
+        if maturities:
+            source = "surface_grid"
     return JSONResponse(
         {
             "underlying": resolved_underlying,
             "trade_date": resolved_date.isoformat() if resolved_date else None,
             "n_maturities": len(maturities),
+            "source": source,
             "maturities": maturities,
         }
     )

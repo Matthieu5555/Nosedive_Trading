@@ -15,6 +15,7 @@ cell) so each assertion pins a single contract field crossing the BFF<->infra se
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -913,6 +914,95 @@ def test_analytics_bad_trade_date_is_labeled_400(seeded_client: TestClient) -> N
     )
     assert response.status_code == 400
     assert response.json()["error"] == "bad_trade_date"
+
+
+def test_analytics_falls_back_to_surface_grid_when_projection_empty(tmp_path: Path) -> None:
+    # Friday-nappe path (B): when the tenor × delta-band projection produced no cells for the day
+    # (it skips an underlying lacking a usable spot) but the surface fit persisted, the endpoint
+    # rebuilds the nappe from surface_grid so the front shows a real vol surface instead of "No
+    # surface to plot yet". IV per node is sqrt(total_variance / maturity_years); the moneyness
+    # buckets stand in for the delta axis. Once projected_option_analytics lands it takes priority.
+    underlying = "GRIDONLY"
+    maturity_years = 0.25
+    grid_rows = [(0.10, 0.012), (-0.10, 0.020), (0.00, 0.010)]  # unsorted on purpose
+    store_root = tmp_path / "data"
+    store = ParquetStore(store_root)
+    store.write(
+        "surface_grid",
+        [
+            tables.SurfaceGrid(
+                snapshot_ts=AS_OF,
+                underlying=underlying,
+                maturity_years=maturity_years,
+                moneyness_bucket=bucket,
+                model_version="svi-readback",
+                total_variance=variance,
+                source_snapshot_ts=AS_OF,
+                provenance=_prov(f"grid:{bucket}"),
+            )
+            for bucket, variance in grid_rows
+        ],
+    )
+    store.write(
+        "surface_parameters",
+        [
+            tables.SurfaceParameters(
+                snapshot_ts=AS_OF,
+                underlying=underlying,
+                maturity_years=maturity_years,
+                model_version="svi-readback",
+                svi_a=SVI_A,
+                svi_b=SVI_B,
+                svi_rho=SVI_RHO,
+                svi_m=SVI_M,
+                svi_sigma=SVI_SIGMA,
+                expiry_date=EXPIRY,
+                day_count="ACT/365",
+                diagnostics=SurfaceFitDiagnostics(rmse=0.0008, n_points=9, arb_free=True),
+                source_snapshot_ts=AS_OF,
+                provenance=_prov("surface:GRIDONLY"),
+            )
+        ],
+    )
+    ctx = AppContext(
+        store_root=store_root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root),
+        default_underlying=underlying,
+    )
+    runner.JOB_STORE.clear()
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/analytics",
+            params={"underlying": underlying, "trade_date": TRADE_DATE.isoformat()},
+        ).json()
+
+    # No projected_option_analytics on disk → the grid fallback fired (and says so).
+    assert payload["source"] == "surface_grid"
+    assert payload["n_maturities"] == 1
+    maturity = payload["maturities"][0]
+    assert maturity["maturity_years"] == pytest.approx(maturity_years)
+    # Buckets sorted ascending stand in for the delta axis; IV = sqrt(variance / maturity).
+    ordered = sorted(grid_rows)
+    assert maturity["smile"]["deltas"] == [pytest.approx(bucket) for bucket, _ in ordered]
+    assert maturity["smile"]["implied_vols"] == [
+        pytest.approx(math.sqrt(variance / maturity_years)) for _, variance in ordered
+    ]
+    # The fitted SVI slice is still attached for the 3D trace; per-cell points stay empty until
+    # the rich projection lands.
+    assert maturity["surface_slice"]["svi_b"] == pytest.approx(SVI_B)
+    assert maturity["points"] == []
+
+
+def test_analytics_prefers_projection_over_grid_fallback(seeded_client: TestClient) -> None:
+    # When projected_option_analytics has cells, the rich grid wins and the fallback is not taken —
+    # the seeded store has both a projection and a surface for AAA, so source is the projection.
+    payload = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": MEMBER_AAA, "trade_date": TRADE_DATE.isoformat()},
+    ).json()
+    assert payload["source"] == "projected_option_analytics"
+    assert payload["maturities"][0]["points"], "rich per-cell points must be present"
 
 
 # -- recorded-dates: sourced from the 1G run ledger, only complete gap-free runs ----------

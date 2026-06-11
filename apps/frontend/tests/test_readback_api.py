@@ -65,18 +65,19 @@ PR_DOLLAR_THETA = -0.0000274
 PR_DOLLAR_RHO = 0.0003
 
 # A second pricing_results row under its own underlying ("GMMA") with round numbers, used to
-# pin the dollar_gamma value-vs-label seam by hand. Its stored dollar_gamma is the *per-$1*
-# (one_dollar) number the pricer writes — gamma*spot**2*mult*qty, no /100 — so the per-1%
-# (one_pct) value the BFF must serve under its "$ per 1% move" label is independently derivable:
+# pin the dollar_gamma value-vs-label seam by hand. The engine stores dollar_gamma in the
+# one_pct convention (ADR 0036: Γ·S²/100 per 1% move), so the stored and served value is:
 #   Γ·S²·mult·qty / 100 = 0.04 · 200² · 100 · 1 / 100 = 1600.0
+# The BFF passes this through unchanged; the per-$1 number (160000.0) is kept only as a
+# guard to catch a serializer that passes the un-divided value through.
 GAMMA_UNDERLYING = "GMMA"
 GMMA_RAW_GAMMA = 0.04
 GMMA_SPOT = 200.0
 GMMA_MULT = 100.0
 GMMA_QTY = 1.0
-# Per-$1 stored on the row (gamma*spot**2*mult*qty): 0.04*40000*100*1 = 160000.0
+# Per-$1 (one_dollar) number — kept as a guard in the adversarial seam test; NOT stored in the row.
 GMMA_DOLLAR_GAMMA_ONE_DOLLAR = GMMA_RAW_GAMMA * GMMA_SPOT * GMMA_SPOT * GMMA_MULT * GMMA_QTY
-# Per-1% the BFF must serve under "$ per 1% move": 160000.0 / 100 = 1600.0 (hand-checked below).
+# Per-1% (one_pct) stored on the row and served by the BFF: 160000.0 / 100 = 1600.0.
 GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED = 1600.0
 
 # Hand-chosen daily OHLC bars for the index members. The price-history endpoint must echo
@@ -399,7 +400,7 @@ def _seed_legacy_store(store: ParquetStore) -> None:
                 theta=-0.02,
                 rho=0.05,
                 dollar_delta=GMMA_RAW_GAMMA * 0.0,  # unused by the seam test; kept finite
-                dollar_gamma=GMMA_DOLLAR_GAMMA_ONE_DOLLAR,  # per-$1 (one_dollar), as the pricer writes
+                dollar_gamma=GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED,  # per-1% (one_pct), as the engine now stores
                 dollar_vega=0.002,
                 dollar_theta=-0.00005,
                 dollar_rho=0.0005,
@@ -665,13 +666,12 @@ def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
     # Gamma quoted per 1% move; theta per calendar day (the pinned defaults).
     assert metrics["gamma"]["unit"] == "$ per 1% move"
     assert metrics["theta"]["unit"] == "$ per calendar day"
-    # The stored dollar_gamma is per-$1 move (one_dollar); the BFF serves the canonical
-    # one_pct convention (ADR 0036), so the value crossing the boundary is /100 the stored one.
-    PR_DOLLAR_GAMMA_ONE_PCT = PR_DOLLAR_GAMMA / 100.0
+    # The stored dollar_gamma is already in one_pct units (ADR 0036: Γ·S²/100 per 1% move);
+    # the BFF passes it through unchanged under the matching label — no rescaling at the seam.
     # Every dollar metric has a non-empty unit string and the raw per-unit value beside it.
     for name, raw, dollar in [
         ("delta", 0.55, PR_DOLLAR_DELTA),
-        ("gamma", 0.02, PR_DOLLAR_GAMMA_ONE_PCT),
+        ("gamma", 0.02, PR_DOLLAR_GAMMA),
         ("vega", 0.10, PR_DOLLAR_VEGA),
         ("theta", -0.01, PR_DOLLAR_THETA),
         ("rho", 0.03, PR_DOLLAR_RHO),
@@ -683,18 +683,16 @@ def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
 
 
 def test_metrics_dollar_gamma_value_matches_its_one_pct_label(seeded_client: TestClient) -> None:
-    # The adversarial value-vs-label seam (audit M5). The pricer stores dollar_gamma in the
-    # per-$1 (one_dollar) convention — gamma*spot**2*mult*qty, no /100 — but /api/risk/metrics
-    # labels it "$ per 1% move" (one_pct, ADR 0036's canonical default, the same convention the
-    # projected-analytics path serves). So the *number* served must be the per-1% value, which we
-    # hand-compute here from round inputs rather than read off the stored row:
+    # The adversarial value-vs-label seam (audit M5). The pricing engine stores dollar_gamma in
+    # the one_pct convention (ADR 0036: Γ·S²/100 per 1% move), and /api/risk/metrics labels it
+    # "$ per 1% move". The BFF must pass the stored value through unchanged — no second /100.
+    # The expected value is hand-derived from round inputs to rule out a trivially-passing fixture:
     #
     #   gamma = 0.04, spot = 200, mult = 100, qty = 1
-    #   per-$1  dollar_gamma (stored) = 0.04 * 200**2 * 100 * 1 = 160000.0
-    #   per-1%  dollar_gamma (served) = 160000.0 / 100           =   1600.0
+    #   per-1%  dollar_gamma (stored & served) = 0.04 * 200**2 * 100 * 1 / 100 = 1600.0
     #
-    # A serializer that labels one_pct but serves the per-$1 number returns 160000.0 here and
-    # fails — this is the test the 100x-off behavior cannot pass.
+    # A serializer that divides by 100 again would return 16.0 and fail this assertion.
+    # A serializer that passes the per-$1 number (160000.0) through also fails the != guard.
     expected = GMMA_RAW_GAMMA * GMMA_SPOT * GMMA_SPOT * GMMA_MULT * GMMA_QTY / 100.0
     assert expected == pytest.approx(GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED)  # 1600.0, paper-derived
 
@@ -707,9 +705,9 @@ def test_metrics_dollar_gamma_value_matches_its_one_pct_label(seeded_client: Tes
     assert gamma["dollar"] == pytest.approx(GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED)
     # ...and its label truthfully describes that convention.
     assert gamma["unit"] == "$ per 1% move"
-    # The raw per-unit Greek is untouched (only the dollar layer is rescaled).
+    # The raw per-unit Greek is untouched (the dollar layer is a separate field, not derived here).
     assert gamma["raw"] == pytest.approx(GMMA_RAW_GAMMA)
-    # Guard against a self-consistent-but-wrong serializer that serves the per-$1 number:
+    # Guard against a self-consistent-but-wrong serializer that passes the per-$1 number through:
     assert gamma["dollar"] != pytest.approx(GMMA_DOLLAR_GAMMA_ONE_DOLLAR)
 
 

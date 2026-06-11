@@ -209,15 +209,6 @@ def _metric(raw: float, value: float | None, unit: str) -> dict[str, object]:
     return {"raw": raw, "dollar": value, "unit": unit}
 
 
-#: The dollar-gamma stored on ``PricingResult`` is per-$1 move (``Γ·S²·mult·qty``, the
-#: ``one_dollar`` convention the pricer's ``engine.pricing_result`` fills). ADR 0036 pins
-#: ``one_pct`` (per 1% move) as the canonical default the BFF serves — the same convention
-#: the projected-analytics path labels its dollar-gamma with. So the metrics seam converts
-#: per-$1 → per-1% by ``/100`` *here*, keeping the served value and its ``one_pct`` label in
-#: step (the prior code labelled the per-$1 value ``one_pct``, a 100× value-vs-label mismatch).
-_DOLLAR_GAMMA_ONE_DOLLAR_TO_ONE_PCT = 1.0 / 100.0
-
-
 def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
     """Serialize one contract's price, raw Greeks, and the unit-carrying dollar layer.
 
@@ -227,10 +218,9 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
     ``dollar_rho`` are additive-nullable; an older partition that lacks them serializes
     them as ``None`` dollar values rather than failing.
 
-    The stored ``dollar_gamma`` is per-$1 move (``one_dollar``); ADR 0036's canonical default
-    is per-1% move (``one_pct``), the convention the projected-analytics path also serves. So
-    the value is rescaled by ``/100`` at this seam to match its ``one_pct`` label, instead of
-    labelling a per-$1 number ``one_pct``.
+    The stored ``dollar_gamma`` is already in ``one_pct`` units (ADR 0036's canonical default:
+    Γ·S²/100 per 1% move) — the pricing engine emits it that way. The BFF passes the value
+    through unchanged under the matching ``one_pct`` unit label; no rescaling is needed here.
     """
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
@@ -241,7 +231,7 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
             "delta": _metric(row.delta, row.dollar_delta, UNIT_STRINGS["dollar_delta"]),
             "gamma": _metric(
                 row.gamma,
-                row.dollar_gamma * _DOLLAR_GAMMA_ONE_DOLLAR_TO_ONE_PCT,
+                row.dollar_gamma,
                 UNIT_STRINGS["dollar_gamma_one_pct"],
             ),
             "vega": _metric(row.vega, row.dollar_vega, UNIT_STRINGS["dollar_vega"]),

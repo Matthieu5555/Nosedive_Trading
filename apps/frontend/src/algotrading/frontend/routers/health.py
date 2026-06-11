@@ -37,7 +37,7 @@ def _qc_status_for(ctx: AppContext, trade_date: date) -> str:
     rows = ctx.store.read("qc_results", trade_date=trade_date)
     if not rows:
         return QC_UNKNOWN
-    if any(str(row.status).lower() in _QC_FAIL_STATUSES for row in rows):
+    if any(str(row.qc_status).lower() in _QC_FAIL_STATUSES for row in rows):
         return QC_FAILING
     return QC_PASSING
 

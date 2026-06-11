@@ -23,11 +23,14 @@ from .close_capture import (
 )
 from .driver import (
     DEFAULT_MONEYNESS_BUCKETS,
+    AnalyticsRun,
     persist_outputs,
     run_analytics,
+    run_analytics_with_qc,
     run_day,
 )
 from .outputs import ActorOutputs
+from .qc_inputs import QcInputs
 from .stamping import StampSource, build_stamp
 from .valuation_join import (
     DEFAULT_EXERCISE_STYLE,
@@ -40,8 +43,10 @@ __all__ = [
     "DEFAULT_EXERCISE_STYLE",
     "DEFAULT_MONEYNESS_BUCKETS",
     "ActorOutputs",
+    "AnalyticsRun",
     "CloseCaptureResult",
     "IndexBasket",
+    "QcInputs",
     "StampSource",
     "ValuationJoinError",
     "build_stamp",
@@ -52,5 +57,6 @@ __all__ = [
     "persist_outputs",
     "resolve_valuation_inputs",
     "run_analytics",
+    "run_analytics_with_qc",
     "run_day",
 ]

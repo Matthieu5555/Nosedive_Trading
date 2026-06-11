@@ -336,13 +336,17 @@ def scenario_line_pnls(
 
 
 def scenario_totals(cells: Iterable[ScenarioLinePnl]) -> dict[str, float]:
-    """Portfolio full-reprice PnL totalled per scenario id, in insertion order."""
-    totals: dict[str, float] = {}
+    """Portfolio full-reprice PnL totalled per scenario id, in insertion order.
+
+    Each scenario's total is accumulated with :func:`math.fsum` over its cells'
+    full-reprice PnLs, so the total is reorder-invariant — matching the rest of the
+    engine (``net_lots``, ``taylor_terms``) and keeping the worst-case selection that
+    reads these totals bit-stable across cell orderings.
+    """
+    by_scenario: dict[str, list[float]] = {}
     for cell in cells:
-        totals[cell.scenario.scenario_id] = (
-            totals.get(cell.scenario.scenario_id, 0.0) + cell.full_reprice_pnl
-        )
-    return totals
+        by_scenario.setdefault(cell.scenario.scenario_id, []).append(cell.full_reprice_pnl)
+    return {sid: math.fsum(pnls) for sid, pnls in by_scenario.items()}
 
 
 def worst_case(cells: Iterable[ScenarioLinePnl]) -> WorstCase:
@@ -357,7 +361,11 @@ def worst_case(cells: Iterable[ScenarioLinePnl]) -> WorstCase:
     by_scenario: dict[str, list[ScenarioLinePnl]] = {}
     for cell in cell_list:
         by_scenario.setdefault(cell.scenario.scenario_id, []).append(cell)
-    totals = {sid: sum(c.full_reprice_pnl for c in cs) for sid, cs in by_scenario.items()}
+    # fsum so each scenario total — and therefore the worst-case selection — is
+    # reorder-invariant, matching scenario_totals and the rest of the engine.
+    totals = {
+        sid: math.fsum(c.full_reprice_pnl for c in cs) for sid, cs in by_scenario.items()
+    }
     worst_sid = min(totals, key=lambda sid: totals[sid])
     contributors = tuple(
         sorted(by_scenario[worst_sid], key=lambda c: c.full_reprice_pnl)

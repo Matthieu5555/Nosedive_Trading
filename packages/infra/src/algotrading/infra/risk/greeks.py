@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from algotrading.infra.pricing import PriceGreeks, price
 
 from .bumps import DEFAULT_BUMPS, BumpSpec
-from .valuation import ContractValuationInput, pricing_state_for
+from .valuation import ContractValuationInput, ValuationError, pricing_state_for
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +96,16 @@ def position_risk(
 
     ``steps`` is forwarded to the American lattice and ignored for European
     contracts, mirroring :func:`algotrading.infra.pricing.price`.
+
+    ``quantity`` is guarded here at the public line-level entry point against a
+    non-finite value: a NaN/inf quantity is malformed input that would propagate
+    silently into ``scale`` and every Greek as NaN, so it is refused with a labeled
+    :class:`ValuationError` carrying the offending value. A *zero* quantity is NOT
+    refused — a net-flat line is a legitimate degenerate (scale-0) result that the
+    attribution and aggregation paths rely on, so it is priced normally.
     """
+    if not math.isfinite(quantity):
+        raise ValuationError("quantity", quantity, "must be a finite number")
     state = pricing_state_for(valuation)
     greeks = price(state, steps=steps) if steps is not None else price(state)
     return PositionRisk(

@@ -20,6 +20,7 @@ from algotrading.infra.risk import (
     position_risk,
     scenario_grid,
     scenario_line_pnls,
+    scenario_totals,
     worst_case,
 )
 from algotrading.infra.risk import greeks as greeks_mod
@@ -213,3 +214,27 @@ def test_persisted_scenario_version_moves_with_grid_construction_constants() -> 
     assert scenario_mod.effective_scenario_version(config) != scenario_mod.effective_scenario_version(
         ScenarioConfig(version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,), roll_down_days=(1, 7))
     )
+
+
+# --- Reorder-invariant accumulation (FIX 4: fsum, not sum/+=) ------------------
+def test_scenario_totals_and_worst_case_are_reorder_invariant() -> None:
+    # scenario_totals and worst_case accumulate per-scenario PnL with math.fsum, so the
+    # totals — and therefore the worst-case selection — are bit-stable regardless of the
+    # order the cells arrive in. We build the real pf-risk cells, then feed worst_case a
+    # reversed copy and assert it picks the identical scenario and the bit-identical total.
+    grid = [S1, S2, S3, S4, S5, S6, S7]
+    cells = scenario_line_pnls(pf_lines(), grid)
+
+    totals_forward = scenario_totals(cells)
+    totals_reversed = scenario_totals(list(reversed(cells)))
+    # Same keys, and each scenario's total is bit-identical under the reorder (fsum).
+    assert set(totals_forward) == set(totals_reversed)
+    for sid in totals_forward:
+        assert totals_forward[sid] == totals_reversed[sid]  # exact equality, not approx
+
+    wc_forward = worst_case(cells)
+    wc_reversed = worst_case(list(reversed(cells)))
+    assert wc_forward.scenario.scenario_id == wc_reversed.scenario.scenario_id
+    assert wc_forward.total_pnl == wc_reversed.total_pnl  # bit-stable worst-case total
+    # S7 (-25% spot) is the largest loss in this grid; pin it so the test is concrete.
+    assert wc_forward.scenario.scenario_id == "spot_down_25"

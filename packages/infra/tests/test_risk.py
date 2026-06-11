@@ -8,9 +8,12 @@ Market state: spot 100, carry 0 (so forward 100), T 0.25, sigma 0.20, DF 0.99
 (r = -ln(0.99)/0.25), multiplier 100, USD, European.
 
 Conventions asserted here: delta = dPrice/dspot; gamma = d2Price/dspot2; vega per
-1.00 of vol; theta = dPrice/dt per year (negative for a long option). Monetization:
-dollar_delta = delta*spot*M*Q, dollar_gamma = gamma*spot**2*M*Q (Eq 17),
-dollar_vega = vega*0.01*M*Q (Eq 18), dollar_theta = theta*M*Q.
+1.00 of vol; theta = dPrice/dt per year (negative for a long option). Monetization is
+NOT a property of ``PositionRisk``: the single $-Greek home is
+``pricing.dollar_greeks`` (config-driven, ADR 0036), so the monetization tests here
+call that canonical surface with an explicit :class:`MonetizationConfig` and assert the
+pinned-default conventions — Delta\\$ = Δ·S·M·Q, Gamma\\$ = Γ·S²/100·M·Q (per 1% move,
+``one_pct``), Vega\\$ = vega·0.01·M·Q, Theta\\$ = theta·M·Q/365 (per calendar day).
 """
 
 from __future__ import annotations
@@ -19,6 +22,8 @@ import dataclasses
 import math
 
 import pytest
+from algotrading.core.config import MonetizationConfig
+from algotrading.infra.pricing import DollarGreeks, dollar_greeks
 from algotrading.infra.risk import (
     DEFAULT_BUMPS,
     AggregationError,
@@ -59,11 +64,17 @@ NET_GAMMA = 30.48829087
 NET_VEGA = 15244.14543326
 NET_THETA = -5993.65908838
 
-# Per-position monetized dollar Greeks for P1 (+10 C100, multiplier 100), oracle:
+# Per-position monetized dollar Greeks for P1 (+10 C100, multiplier 100 => scale 1000),
+# under the pinned-default MonetizationConfig (gamma one_pct, theta 365). Hand-derived from
+# the ADR-0036 unit definitions and the oracle per-unit Greeks above:
+#   Delta$ = Δ·S·scale          = 0.514739417780 * 100 * 1000          =  51_473.94177800
+#   Gamma$ = Γ·S²/100·scale     = 0.039445947495 * 100² / 100 * 1000   =   3_944.59474954
+#   Vega$  = vega·0.01·scale     = 19.722973747691 * 0.01 * 1000        =     197.22973748
+#   Theta$ = theta·scale / 365   = -7.730479276483 * 1000 / 365         =     -21.17939528
 P1_DOLLAR_DELTA = 51473.94177800
-P1_DOLLAR_GAMMA = 394459.47495382
+P1_DOLLAR_GAMMA = 3944.59474954  # per 1% move (one_pct): the old per-$1 figure was 100x this
 P1_DOLLAR_VEGA = 197.22973748
-P1_DOLLAR_THETA = -7730.47927648
+P1_DOLLAR_THETA = -21.17939528
 
 
 CONTRACTS = ["AAPL|OPT|C|100", "AAPL|OPT|P|100", "AAPL|OPT|C|105", "AAPL|OPT|P|95"]
@@ -113,30 +124,57 @@ def test_analytic_and_central_difference_greeks_agree(contract: str) -> None:
     assert fd.theta == pytest.approx(analytic.theta, abs=1e-5)
 
 
-# --- Monetization ------------------------------------------------------------
+# --- Monetization (via the canonical pricing.dollar_greeks home, ADR 0036) ---
+# The $-Greek layer is no longer a property of PositionRisk; it lives in
+# pricing.dollar_greeks (config-driven). These tests feed a risk line's per-unit Greeks
+# and scale (multiplier × quantity) into that one home with an explicit MonetizationConfig.
+_PINNED_MONETIZATION = MonetizationConfig(version="risk-test")  # one_pct gamma, 365 theta
+
+
+def dollar_greeks_for(line: PositionRisk, config: MonetizationConfig) -> DollarGreeks:
+    """Monetize a risk line's Greeks through the canonical home at the line's scale.
+
+    Per-position dollar Greeks are per-contract × (multiplier × quantity); the home takes
+    ``multiplier`` and ``quantity`` separately, so passing the line's full ``scale`` as the
+    quantity (multiplier 1) gives the per-position figure the line used to expose.
+    """
+    g = line.greeks
+    return dollar_greeks(
+        delta=g.delta, gamma=g.gamma, vega=g.vega, theta=g.theta, rho=g.rho,
+        spot=line.valuation.spot, multiplier=1.0, quantity=line.scale, config=config,
+    )
+
+
 def test_dollar_greeks_use_documented_conventions() -> None:
-    # P1: +10 C100, multiplier 100 => scale 1000. Compare to the oracle dollar values.
+    # P1: +10 C100, multiplier 100 => scale 1000. Compare the canonical home's output to
+    # the hand-derived oracle dollar values (one_pct gamma, 365 theta).
     line = line_for(CALL_100, 10.0)
     assert line.scale == pytest.approx(1000.0)
-    assert line.dollar_delta == pytest.approx(P1_DOLLAR_DELTA, rel=1e-7)
-    assert line.dollar_gamma == pytest.approx(P1_DOLLAR_GAMMA, rel=1e-7)
-    assert line.dollar_vega == pytest.approx(P1_DOLLAR_VEGA, rel=1e-7)
-    assert line.dollar_theta == pytest.approx(P1_DOLLAR_THETA, rel=1e-7)
-    # And exactly the closed-form conventions, not just the oracle numbers.
+    d = dollar_greeks_for(line, _PINNED_MONETIZATION)
+    assert d.dollar_delta == pytest.approx(P1_DOLLAR_DELTA, rel=1e-7)
+    assert d.dollar_gamma == pytest.approx(P1_DOLLAR_GAMMA, rel=1e-7)
+    assert d.dollar_vega == pytest.approx(P1_DOLLAR_VEGA, rel=1e-7)
+    assert d.dollar_theta == pytest.approx(P1_DOLLAR_THETA, rel=1e-7)
+    # And exactly the documented conventions, derived here independently (not copied from
+    # the code under test): the load-bearing /100 on gamma (per 1% move) and /365 on theta.
     g = line.greeks
-    assert line.dollar_delta == pytest.approx(g.delta * RISK_SPOT * 1000.0)
-    assert line.dollar_gamma == pytest.approx(g.gamma * RISK_SPOT * RISK_SPOT * 1000.0)
-    assert line.dollar_vega == pytest.approx(g.vega * 0.01 * 1000.0)
-    assert line.dollar_theta == pytest.approx(g.theta * 1000.0)
+    assert d.dollar_delta == pytest.approx(g.delta * RISK_SPOT * 1000.0)
+    assert d.dollar_gamma == pytest.approx(g.gamma * RISK_SPOT * RISK_SPOT / 100.0 * 1000.0)
+    assert d.dollar_vega == pytest.approx(g.vega * 0.01 * 1000.0)
+    assert d.dollar_theta == pytest.approx(g.theta / 365.0 * 1000.0)
+    # The units carried beside the numbers are the pinned defaults.
+    assert d.gamma_unit == "$ per 1% move"
+    assert d.theta_unit == "$ per calendar day"
 
 
 def test_dollar_gamma_and_vega_scale_exactly_with_multiplier() -> None:
-    # A contract with multiplier 100 produces a dollar gamma (Eq 17) and dollar vega
-    # (Eq 18) exactly 100x the per-unit (multiplier 1) value (oracle: residual 0).
+    # A contract with multiplier 100 produces a dollar gamma and dollar vega exactly 100x
+    # the per-unit (multiplier 1) value (oracle: residual 0). Monetized through the
+    # canonical home so the invariant is asserted on the production $-Greek code path.
     mult_1 = dataclasses.replace(CALL_100, multiplier=1.0)
     mult_100 = dataclasses.replace(CALL_100, multiplier=100.0)
-    one = line_for(mult_1, 1.0)
-    hundred = line_for(mult_100, 1.0)
+    one = dollar_greeks_for(line_for(mult_1, 1.0), _PINNED_MONETIZATION)
+    hundred = dollar_greeks_for(line_for(mult_100, 1.0), _PINNED_MONETIZATION)
     assert hundred.dollar_gamma == pytest.approx(100.0 * one.dollar_gamma)
     assert hundred.dollar_vega == pytest.approx(100.0 * one.dollar_vega)
 
@@ -261,8 +299,11 @@ def test_greeks_under_nonzero_carry_match_independent_and_central_difference() -
     assert fd.vega == pytest.approx(line.greeks.vega, abs=1e-6)
     assert fd.theta == pytest.approx(line.greeks.theta, abs=1e-5)
     # Monetization scales with a non-default multiplier (50) and quantity (4): scale 200.
+    # The $-Greek home (config-driven, one_pct gamma) carries that scale through; the
+    # per-1% gamma is Γ·S²/100·scale, derived here independently of the code under test.
     assert line.scale == pytest.approx(200.0)
-    assert line.dollar_gamma == pytest.approx(line.greeks.gamma * RISK_SPOT * RISK_SPOT * 200.0)
+    d = dollar_greeks_for(line, _PINNED_MONETIZATION)
+    assert d.dollar_gamma == pytest.approx(line.greeks.gamma * RISK_SPOT * RISK_SPOT / 100.0 * 200.0)
 
 
 def test_reconciliation_surfaces_a_nan_broker_greek() -> None:
@@ -299,3 +340,58 @@ def test_degenerate_zero_maturity_prices_to_intrinsic_without_crashing() -> None
     line = line_for(expired, 1.0)
     assert line.greeks.price == pytest.approx(max(RISK_SPOT - 105.0, 0.0), abs=1e-12)
     assert line.greeks.gamma == pytest.approx(0.0, abs=1e-12)
+
+
+# --- position_risk guards quantity at the line-level entry point (FIX 4) ------
+@pytest.mark.parametrize("bad_quantity", [math.nan, math.inf, -math.inf])
+def test_position_risk_refuses_non_finite_quantity(bad_quantity: float) -> None:
+    # The public line-level entry point refuses a non-finite quantity, which would
+    # otherwise propagate silently into scale and every Greek as NaN. It is refused
+    # with a labeled error carrying the offending value, not priced.
+    with pytest.raises(ValuationError) as info:
+        position_risk(portfolio_id="pf-risk", quantity=bad_quantity, valuation=CALL_100)
+    assert info.value.field == "quantity"
+    assert info.value.reason == "must be a finite number"
+
+
+def test_position_risk_accepts_a_negative_quantity() -> None:
+    # A short position (negative quantity) is valid — only non-finite is refused.
+    line = position_risk(portfolio_id="pf-risk", quantity=-3.0, valuation=CALL_100)
+    assert line.scale == pytest.approx(CALL_100.multiplier * -3.0)
+
+
+def test_position_risk_accepts_a_zero_quantity() -> None:
+    # A net-flat line is a legitimate degenerate (scale-0) result the attribution and
+    # aggregation paths depend on (see test_attribution.py::test_degenerate_scale_zero_quantity
+    # and the portfolios() property strategy), so zero is priced, not refused.
+    line = position_risk(portfolio_id="pf-risk", quantity=0.0, valuation=CALL_100)
+    assert line.scale == pytest.approx(0.0)
+
+
+# --- basket_variance raises on a non-PSD (negative-variance) input (FIX 4) -----
+def test_basket_variance_raises_on_negative_variance_from_non_psd_correlation() -> None:
+    # For an equicorrelation basket of n assets, avg_correlation below -1/(n-1) makes the
+    # implied variance negative (a non-PSD input). Independently hand-derived for n=3,
+    # equal weights w=1/3, unit vols: the lower bound is -1/(n-1) = -0.5. At rho = -0.6:
+    #   own   = sum_i (w_i sigma_i)^2     = 3 * (1/3)^2            = 1/3
+    #   cross = (sum_i w_i sigma_i)^2 - own = 1^2 - 1/3            = 2/3
+    #   var   = own + rho*cross            = 1/3 + (-0.6)*(2/3)    = 1/3 - 0.4 = -0.0666...
+    # which is < 0, so it must raise (not floor vol to 0.0), carrying the negative variance.
+    from algotrading.infra.risk.basket import NonPSDBasketError, basket_variance
+
+    weights = [1 / 3, 1 / 3, 1 / 3]
+    vols = [1.0, 1.0, 1.0]
+    with pytest.raises(NonPSDBasketError) as info:
+        basket_variance(weights, vols, avg_correlation=-0.6)
+    assert info.value.variance == pytest.approx(-0.0666666666667, abs=1e-9)
+    assert info.value.variance < 0.0
+
+
+def test_basket_variance_at_the_psd_boundary_is_zero_not_an_error() -> None:
+    # At rho = -1/(n-1) = -0.5 the variance is exactly 0 (the PSD boundary): a valid,
+    # maximally-diversified basket. var = 1/3 + (-0.5)*(2/3) = 1/3 - 1/3 = 0. Not raised.
+    from algotrading.infra.risk.basket import basket_variance
+
+    result = basket_variance([1 / 3, 1 / 3, 1 / 3], [1.0, 1.0, 1.0], avg_correlation=-0.5)
+    assert result.variance == pytest.approx(0.0, abs=1e-12)
+    assert result.vol == pytest.approx(0.0, abs=1e-12)

@@ -9,12 +9,16 @@ its inputs with no wall-clock read.
 
 Cash-Greek conventions, per unit of underlying (the risk engine multiplies by the
 contract multiplier and the held quantity). The canonical definitions and the two
-convention forks live in :mod:`dollar_greeks` (ADR 0036); this adapter fills the
-``PricingResult`` dollar layer with the pinned-default units:
+convention forks live in :mod:`dollar_greeks` (ADR 0036), and this adapter fills the
+``PricingResult`` dollar layer by calling that one home with the pinned-default
+:class:`~algotrading.core.config.MonetizationConfig` — so this emission path and the
+surface-projection path (which calls the same :func:`pricing.dollar_greeks`) cannot
+disagree on a monetized number for the same option. Under the pinned defaults
+(``gamma_normalisation="one_pct"``, ``theta_day_count=365``):
 
 * ``dollar_delta = delta * spot`` — dollar value change for a 1.0 move in spot.
-* ``dollar_gamma = gamma * spot**2`` — dollar gamma; P&L of a move dS is about
-  ``0.5 * dollar_gamma * (dS / spot)**2``.
+* ``dollar_gamma = gamma * spot**2 / 100`` — Gamma\\$ per **1% move** (the data-dictionary
+  / blueprint default ``Γ·S²/100``), not the per-\\$1 ``Γ·S²``.
 * ``dollar_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
 * ``dollar_theta = theta / 365`` — per calendar day (the pinned default day-count).
 * ``dollar_rho = rho * 0.01`` — per 1% rate.
@@ -24,12 +28,21 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from algotrading.core.config import MonetizationConfig
 from algotrading.core.provenance import ProvenanceStamp
 from algotrading.infra.contracts import PricingResult
 
 from .american import price_american
 from .black76 import price_european
+from .dollar_greeks import dollar_greeks
 from .state import PriceGreeks, PricingState
+
+# The pinned-default $-Greek conventions (ADR 0036): gamma per 1% move (Γ·S²/100),
+# theta per 365-day calendar. Bound once here so the projection path and this
+# ``PricingResult`` adapter monetize the same option identically; a deployment that
+# wants the trading-day / per-$1 forks builds its own config and projects through
+# :func:`pricing.dollar_greeks` directly.
+_PRICING_RESULT_MONETIZATION = MonetizationConfig(version="monetization-default")
 
 # Bump only on a real change to the price or Greek formulas, never on config. The
 # "lr" tag names the American engine's lattice (Leisen-Reimer); the European leg is
@@ -62,7 +75,24 @@ def pricing_result(
     source_snapshot_ts: datetime,
     provenance: ProvenanceStamp,
 ) -> PricingResult:
-    """Project price and Greeks into A's ``PricingResult`` contract with dollar Greeks."""
+    """Project price and Greeks into A's ``PricingResult`` contract with dollar Greeks.
+
+    The dollar layer is derived through the single canonical home
+    :func:`pricing.dollar_greeks` under the pinned-default
+    :data:`_PRICING_RESULT_MONETIZATION`, so it agrees by construction with the
+    surface-projection path that monetizes the same option through the same function.
+    """
+    monetized = dollar_greeks(
+        delta=greeks.delta,
+        gamma=greeks.gamma,
+        vega=greeks.vega,
+        theta=greeks.theta,
+        rho=greeks.rho,
+        spot=state.spot,
+        multiplier=1.0,
+        quantity=1.0,
+        config=_PRICING_RESULT_MONETIZATION,
+    )
     return PricingResult(
         snapshot_ts=snapshot_ts,
         contract_key=contract_key,
@@ -73,11 +103,11 @@ def pricing_result(
         vega=greeks.vega,
         theta=greeks.theta,
         rho=greeks.rho,
-        dollar_delta=greeks.delta * state.spot,
-        dollar_gamma=greeks.gamma * state.spot * state.spot,
-        dollar_vega=greeks.vega * 0.01,
-        dollar_theta=greeks.theta / 365.0,
-        dollar_rho=greeks.rho * 0.01,
+        dollar_delta=monetized.dollar_delta,
+        dollar_gamma=monetized.dollar_gamma,
+        dollar_vega=monetized.dollar_vega,
+        dollar_theta=monetized.dollar_theta,
+        dollar_rho=monetized.dollar_rho,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
     )

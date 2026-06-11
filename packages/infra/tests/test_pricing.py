@@ -24,6 +24,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 
 import pytest
+from algotrading.core.config import MonetizationConfig
 from algotrading.core.provenance import source_ref, stamp
 from algotrading.infra import pricing
 from algotrading.infra.contracts import InstrumentKey, PricingResult, table_for_contract, validate
@@ -33,6 +34,7 @@ from algotrading.infra.pricing import (
     PricingError,
     PricingState,
     bjerksund_stensland_price,
+    dollar_greeks,
     price,
     price_american,
     price_european,
@@ -400,12 +402,65 @@ def test_pricing_result_is_a_valid_stamped_contract() -> None:
     assert isinstance(result, PricingResult)
     validate(result)  # raises if any field rule is violated
     assert table_for_contract(PricingResult) == "pricing_results"
-    # Cash Greeks use the documented per-unit-of-underlying conventions.
-    assert result.dollar_delta == pytest.approx(greeks.delta * state.spot)
-    assert result.dollar_gamma == pytest.approx(greeks.gamma * state.spot * state.spot)
+    # Cash Greeks use the documented (pinned-default) conventions, derived here
+    # INDEPENDENTLY from the blueprint data dictionary (documentation/blueprint/
+    # 09-data-dictionary.md) and ADR 0036 — not copied from the engine:
+    #   Delta$  = Δ·S                  ($ per $1 of underlying)
+    #   Gamma$  = Γ·S²/100             ($ per 1% move; default gamma_normalisation="one_pct")
+    #   Vega$   = vega·0.01            ($ per 1 vol point)
+    #   Theta$  = theta/365            ($ per calendar day; default theta_day_count=365)
+    #   Rho$    = rho·0.01             ($ per 1% rate)
+    # The /100 (per-1% gamma) is the load-bearing convention the old per-$1 emission
+    # (Γ·S²) got wrong; pinning it here cements the right one.
+    spot = state.spot
+    assert result.dollar_delta == pytest.approx(greeks.delta * spot)
+    assert result.dollar_gamma == pytest.approx(greeks.gamma * spot * spot / 100.0)
     assert result.dollar_vega == pytest.approx(greeks.vega * 0.01)
+    assert result.dollar_theta == pytest.approx(greeks.theta / 365.0)
+    assert result.dollar_rho == pytest.approx(greeks.rho * 0.01)
+    # Per-1% gamma is exactly the per-$1 figure divided by 100 (not equal to it): a
+    # guard that the engine is no longer emitting the old Γ·S² convention.
+    assert result.dollar_gamma == pytest.approx(greeks.gamma * spot * spot / 100.0)
+    assert result.dollar_gamma != pytest.approx(greeks.gamma * spot * spot)
     assert result.price == pytest.approx(greeks.price)
     assert result.pricer_version == PRICER_VERSION
+
+
+def test_pricing_result_dollar_greeks_agree_with_the_canonical_home() -> None:
+    # Cross-path agreement: the ``pricing_result`` adapter and the surface-projection
+    # path both monetize through the ONE canonical home ``pricing.dollar_greeks`` under
+    # the pinned-default MonetizationConfig. The same option must therefore produce the
+    # same dollar numbers on both paths — the 100x split this fix closes. We assert the
+    # adapter's output equals a direct call to that home (what the projection consumes).
+    state = ref_state("C")
+    greeks = price_european(state)
+    snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
+    a_stamp = stamp(
+        calc_ts=snap_ts,
+        code_version=PRICER_VERSION,
+        config_hashes={"cfg": "cfg-hash-0"},
+        source_records=(source_ref("market_state_snapshots", snap_ts, _option_key().canonical()),),
+        source_timestamps=(snap_ts,),
+    )
+    result = pricing_result(
+        state, greeks,
+        snapshot_ts=snap_ts,
+        contract_key=_option_key().canonical(),
+        source_snapshot_ts=snap_ts,
+        provenance=a_stamp,
+    )
+    # The pinned-default config is the one the projection path's monetization defaults to
+    # (gamma per 1% move, theta ÷365): the cross-path contract under ADR 0036.
+    canonical = dollar_greeks(
+        delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
+        rho=greeks.rho, spot=state.spot, multiplier=1.0, quantity=1.0,
+        config=MonetizationConfig(version="monetization-default"),
+    )
+    assert result.dollar_delta == pytest.approx(canonical.dollar_delta, rel=1e-15)
+    assert result.dollar_gamma == pytest.approx(canonical.dollar_gamma, rel=1e-15)
+    assert result.dollar_vega == pytest.approx(canonical.dollar_vega, rel=1e-15)
+    assert result.dollar_theta == pytest.approx(canonical.dollar_theta, rel=1e-15)
+    assert result.dollar_rho == pytest.approx(canonical.dollar_rho, rel=1e-15)
 
 
 # --------------------------------------------------------------------------- #

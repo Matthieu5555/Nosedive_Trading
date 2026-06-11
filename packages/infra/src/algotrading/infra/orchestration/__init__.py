@@ -73,6 +73,7 @@ from .dashboard import (
 )
 from .eod_runner import (
     EOD_JOB_NAME,
+    BasketSource,
     EodRunError,
     EodRunPlan,
     FiredIndex,
@@ -146,6 +147,7 @@ __all__ = [
     "STAGE_UNIVERSE_REFRESH",
     "Alert",
     "AnalyticsResult",
+    "BasketSource",
     "CollectionResult",
     "DashboardStatus",
     "EodResult",

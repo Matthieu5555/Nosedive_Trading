@@ -410,3 +410,76 @@ def test_calendar_bounds_are_deterministic_for_an_as_of() -> None:
     clock = ManualClock(start=datetime(2026, 3, 12, 22, 0, tzinfo=UTC))
     r_clock = CalendarResolver(registry, as_of=clock)
     assert r_clock.session_close("SPX", session_day) == r1.session_close("SPX", session_day)
+
+
+# =========================================================================== #
+# 5. The collection stage lands the captured close events to the raw layer      #
+#    BEFORE analytics (blueprint Part III Step 3/4), idempotently.              #
+# =========================================================================== #
+def _grid_deps(store: ParquetStore, tmp_path: Path) -> RunnerDeps:
+    """Production deps with the grid basket source injected — the only open seam (1C)."""
+    clock = ManualClock(start=CLOCK_NOW)
+
+    def basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+        return _grid_basket(fired.entry.symbol, fired.as_of)
+
+    return RunnerDeps(
+        store=store,
+        config=_config(),
+        registry=_registry(),
+        resolver=CalendarResolver(_registry(), as_of=clock),
+        run_repository=RunRegistry(tmp_path / "runs"),
+        stages_builder=functools.partial(default_stages_builder, basket_source=basket_source),
+        clock=clock,
+        code_identity="deadbeef",
+        environment="test",
+    )
+
+
+def test_collection_lands_captured_close_events_to_raw(tmp_path: Path) -> None:
+    """The live collection stage persists the captured basket's events to ``raw_market_events``.
+
+    Pre-fix the live ``_collection`` summarized an EMPTY session and never wrote raw, so the close
+    marks lived only in memory: an analytics failure lost them irrecoverably and the day could not
+    be replayed from disk (blueprint Part III Step 3/4 — raw is the evidentiary, replayable
+    record). This drives the production wiring and asserts the raw layer holds exactly the captured
+    close events, derived independently from the same deterministic basket the source produced.
+    """
+    store = ParquetStore(tmp_path / "data")
+    result = run_fire(_grid_deps(store, tmp_path), trade_date=TRADE_DATE, index="SPX")
+    assert result is not None
+    assert "collection" in result.ran
+
+    # Independent oracle: the event ids of the very basket the source builds for this fire.
+    expected_ids = {event.event_id for event in _grid_basket("SPX", SPX_CLOSE).events}
+    assert expected_ids, "the grid basket must carry events for this to be a meaningful check"
+
+    landed = store.read("raw_market_events", trade_date=TRADE_DATE)
+    assert landed, "collection must land the captured close events to the raw layer"
+    assert {event.event_id for event in landed} == expected_ids
+    # Replayable from disk without the broker: the unscoped read returns the same landed set.
+    assert {event.event_id for event in store.read("raw_market_events")} == expected_ids
+
+
+def test_collection_raw_landing_is_idempotent_on_prelanded_events(tmp_path: Path) -> None:
+    """A re-fire over already-landed close events is a clean no-op, never an append-only collision.
+
+    ``raw_market_events`` is append-only and content-addressed: re-writing an event whose id is on
+    disk would raise ``AppendOnlyViolation`` (the immutable-first-close rule). The collection stage
+    therefore filters to the ids not yet present before writing. Here the exact captured events are
+    pre-landed, so the fire's collection stage must write nothing new and must not raise — and the
+    raw layer is unchanged (no duplicate rows).
+    """
+    store = ParquetStore(tmp_path / "data")
+    prelanded = list(_grid_basket("SPX", SPX_CLOSE).events)
+    store.write("raw_market_events", prelanded)
+    before = {event.event_id for event in store.read("raw_market_events")}
+
+    # Must complete (no AppendOnlyViolation) and leave the raw layer byte-identical in id-set.
+    result = run_fire(_grid_deps(store, tmp_path), trade_date=TRADE_DATE, index="SPX")
+    assert result is not None
+    assert "collection" in result.ran
+
+    after = store.read("raw_market_events")
+    assert {event.event_id for event in after} == before
+    assert len(after) == len(prelanded)  # no duplicate rows appended

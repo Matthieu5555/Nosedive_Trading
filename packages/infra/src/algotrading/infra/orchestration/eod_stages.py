@@ -37,6 +37,11 @@ if TYPE_CHECKING:
 
 _LOGGER = structlog.get_logger("orchestration.eod_run")
 
+# The append-only raw layer the collection stage lands captured close events to, before analytics
+# (blueprint Part III Step 3/4: raw is the evidentiary record, persisted and replayable from disk
+# without reaching back to the broker). Same canonical table the replay/collector path reads/writes.
+_RAW_MARKET_EVENTS = "raw_market_events"
+
 
 # The 1C basket source: resolve the close-session basket (instruments + close events + masters)
 # to capture for one fired index on its trade date. This is the *one* seam still gated on 1C's
@@ -308,19 +313,38 @@ def default_stages_builder(
         )
 
     def _collection() -> CollectionResult:
-        # The 1C gap surfaced as a clean, labeled empty session summary (no broker bridge yet),
-        # never a raise: the pipeline records a clean collection stage and continues.
+        # Land the captured baskets' raw close events to the append-only raw layer BEFORE analytics
+        # (blueprint Part III Step 3/4: the raw layer is the evidentiary record, persisted and
+        # replayable from disk without reaching back to the broker). Without this, an analytics
+        # failure on the close basket loses the marks irrecoverably — the live snapshot is a current
+        # quote that cannot be re-fetched for a past close (no look-ahead). Once landed, the day is
+        # reconstructable via the replay collector. raw_market_events is content-addressed on
+        # event_id, so a re-fire is filtered to a clean no-op rather than an append-only collision
+        # (the first landed close is immutable). With no captured basket this writes nothing — the
+        # clean no-capture day, exit 0 — exactly as before.
+        events = [event for _fired, basket in baskets.values() for event in basket.events]
+        subscribed = sorted(
+            {key.canonical() for _fired, basket in baskets.values() for key in basket.instruments}
+        )
+        existing_ids = {
+            event.event_id for event in store.read(_RAW_MARKET_EVENTS, trade_date=trade_date)
+        }
+        fresh = [event for event in events if event.event_id not in existing_ids]
+        if fresh:
+            store.write(_RAW_MARKET_EVENTS, fresh)
         summary = summarize_session(
-            [],
+            events,
             session_id=correlation_id,
             trade_date=trade_date,
-            subscribed_keys=[],
+            subscribed_keys=subscribed,
             reconnect_count=0,
         )
         log.info(
-            "orchestration.eod_run.collection_gap",
+            "orchestration.eod_run.collection_landed",
             captured_indices=sorted(baskets),
-            reason="no live broker collection (1C); analytics runs over injected baskets only",
+            raw_events_landed=len(fresh),
+            raw_events_total=len(events),
+            reason="captured close events landed to raw_market_events before analytics (1C)",
         )
         return CollectionResult(
             correlation_id=correlation_id, session_id=correlation_id, summary=summary

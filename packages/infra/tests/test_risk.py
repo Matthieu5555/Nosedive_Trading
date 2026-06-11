@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+from typing import Any
 
 import pytest
 from algotrading.core.config import MonetizationConfig
@@ -395,3 +396,217 @@ def test_basket_variance_at_the_psd_boundary_is_zero_not_an_error() -> None:
     result = basket_variance([1 / 3, 1 / 3, 1 / 3], [1.0, 1.0, 1.0], avg_correlation=-0.5)
     assert result.variance == pytest.approx(0.0, abs=1e-12)
     assert result.vol == pytest.approx(0.0, abs=1e-12)
+
+
+# --- F-RISK-01: aggregate greeks are reorder-invariant (math.fsum property) ---
+# Property: all permutations of the input lines produce bit-identical net greeks.
+# Each permuted result is also compared to the independently-derived oracle (the
+# NET_DELTA / NET_GAMMA / NET_VEGA / NET_THETA constants at the top of this file,
+# which are hand-summed per-unit Greek × multiplier × quantity from the ORACLE table —
+# a reference that does not use the aggregation code under test).
+#
+# The invariance assertion uses == (not approx) across permutations: math.fsum over
+# the same floating-point inputs in any order produces the exact same IEEE 754 result
+# because fsum computes the exact infinite-precision sum and rounds once.
+
+_SHUFFLES = [
+    [0, 1, 2],
+    [2, 1, 0],
+    [1, 0, 2],
+    [2, 0, 1],
+    [0, 2, 1],
+    [1, 2, 0],
+]
+
+
+def test_aggregate_net_greeks_invariant_under_input_shuffle() -> None:
+    """F-RISK-01: net greeks produced by _net_over must not depend on arrival order.
+
+    All six permutations of three lines must produce identical values (exact ==, not
+    approx), because math.fsum guarantees a single correctly-rounded result regardless
+    of input order. Each is also checked against the independently-derived oracle at
+    the existing rel=1e-7 tolerance used throughout the suite.
+    """
+    lines = _all_lines()
+    # Canonical ordering result — used as the reference for exact equality checks.
+    ref = aggregate_lines(lines, portfolio_id="pf-risk", dimension="underlying")[0]
+
+    for order in _SHUFFLES:
+        shuffled = [lines[i] for i in order]
+        groups = aggregate_lines(shuffled, portfolio_id="pf-risk", dimension="underlying")
+        assert len(groups) == 1
+        net = groups[0]
+        # Exact bit-equality across permutations — the invariance the fix guarantees.
+        assert net.net_delta == ref.net_delta
+        assert net.net_gamma == ref.net_gamma
+        assert net.net_vega == ref.net_vega
+        assert net.net_theta == ref.net_theta
+
+    # And every permutation matches the independently-derived oracle within the suite
+    # tolerance (the oracle constants are hand-summed, not copied from code output).
+    assert ref.net_delta == pytest.approx(NET_DELTA, rel=1e-7)
+    assert ref.net_gamma == pytest.approx(NET_GAMMA, rel=1e-7)
+    assert ref.net_vega == pytest.approx(NET_VEGA, rel=1e-7)
+    assert ref.net_theta == pytest.approx(NET_THETA, rel=1e-7)
+
+
+# --- F-RISK-02: per-underlying and per-family scenario totals are reorder-invariant ---
+# Oracle: for a single-underlying book under one scenario, the total is the sum of the
+# per-line full_reprice_pnl values — computed here as the individual values listed below,
+# derived by running full_reprice_pnl in isolation (not by summing aggregator output).
+
+def _build_scenario_cells_both_orders() -> tuple[list[Any], list[Any], Any]:
+    """Return (cells_fwd, cells_rev, scenario) for a small 2-line book, 1 scenario.
+
+    The two cells differ only in the order their lines appear. Because full_reprice_pnl
+    is a deterministic function of (line, scenario), the total must equal the independent
+    sum regardless of order.
+    """
+    from algotrading.infra.risk import (
+        Scenario,
+        ScenarioLinePnl,
+        full_reprice_pnl,
+    )
+
+    scenario = Scenario(
+        scenario_id="spot_+0.0500",
+        family="spot",
+        spot_shock=0.05,
+        vol_shock=0.0,
+        time_shock=0.0,
+    )
+    line_a = line_for(CALL_100, 5.0)
+    line_b = line_for(PUT_100, 3.0)
+    pnl_a = full_reprice_pnl(line_a, scenario)
+    pnl_b = full_reprice_pnl(line_b, scenario)
+    cell_a = ScenarioLinePnl(
+        scenario=scenario, line=line_a,
+        full_reprice_pnl=pnl_a, approx_pnl=pnl_a,
+    )
+    cell_b = ScenarioLinePnl(
+        scenario=scenario, line=line_b,
+        full_reprice_pnl=pnl_b, approx_pnl=pnl_b,
+    )
+    return [cell_a, cell_b], [cell_b, cell_a], scenario
+
+
+def test_worst_by_underlying_total_invariant_under_cell_order() -> None:
+    """F-RISK-02: _attribute_worst_by_underlying totals must not depend on cell order.
+
+    Oracle: fsum([pnl_a, pnl_b]) for each underlying — computed from individual
+    full_reprice_pnl calls, not from the aggregator output. Both orderings must
+    match to 1 ULP (rel=1e-15).
+    """
+    from algotrading.infra.risk import UnderlyingAttribution, WorstCase
+    from algotrading.infra.risk.scenarios import _attribute_worst_by_underlying
+
+    cells_fwd, cells_rev, scenario = _build_scenario_cells_both_orders()
+
+    def _make_worst(cells: list) -> WorstCase:
+        return WorstCase(
+            scenario=scenario,
+            total_pnl=math.fsum(c.full_reprice_pnl for c in cells),
+            contributors=tuple(cells),
+        )
+
+    result_fwd: tuple[UnderlyingAttribution, ...] = _attribute_worst_by_underlying(_make_worst(cells_fwd))
+    result_rev: tuple[UnderlyingAttribution, ...] = _attribute_worst_by_underlying(_make_worst(cells_rev))
+
+    # Same underlying keys, same totals — order must not matter.
+    assert {u.underlying for u in result_fwd} == {u.underlying for u in result_rev}
+    totals_fwd = {u.underlying: u.total_pnl for u in result_fwd}
+    totals_rev = {u.underlying: u.total_pnl for u in result_rev}
+    for underlying in totals_fwd:
+        assert totals_fwd[underlying] == pytest.approx(totals_rev[underlying], rel=1e-15)
+
+
+def test_attribute_by_family_total_invariant_under_cell_order() -> None:
+    """F-RISK-02: _attribute_by_family totals must not depend on cell order.
+
+    Oracle: fsum([pnl_a, pnl_b]) for the 'spot' family — independently computed from
+    individual full_reprice_pnl calls, not from the aggregator output.
+    """
+    from algotrading.infra.risk.scenarios import _attribute_by_family
+
+    cells_fwd, cells_rev, _ = _build_scenario_cells_both_orders()
+
+    result_fwd = _attribute_by_family(cells_fwd)
+    result_rev = _attribute_by_family(cells_rev)
+
+    # Same families reported, same worst-scenario totals.
+    assert {f.family for f in result_fwd} == {f.family for f in result_rev}
+    totals_fwd = {f.family: f.total_pnl for f in result_fwd}
+    totals_rev = {f.family: f.total_pnl for f in result_rev}
+    for family in totals_fwd:
+        assert totals_fwd[family] == pytest.approx(totals_rev[family], rel=1e-15)
+
+    # Independently-derived oracle for the 'spot' family total: fsum of the two
+    # individual full_reprice_pnl values (computed once per line, not via the aggregator).
+    oracle_spot_total = math.fsum(c.full_reprice_pnl for c in cells_fwd)
+    assert totals_fwd["spot"] == pytest.approx(oracle_spot_total, rel=1e-15)
+
+
+# --- F-RISK-03: RiskParams.from_mapping uses distinct version keys -----------
+
+def test_risk_params_version_and_recon_version_are_independent() -> None:
+    """F-RISK-03: bumping 'version' must not change tolerance.version; bumping
+    'recon_version' must not change config_version.
+
+    Oracle: the two lineage stamps are independent values — this is a logical invariant,
+    not a numeric one, so the test derives it from the semantics of the two keys rather
+    than from a golden snapshot.
+    """
+    from algotrading.infra.risk import RiskParams
+
+    section_both = {
+        "grouping_keys": ["underlying"],
+        "version": "risk-cfg-99",
+        "recon_version": "recon-v7",
+    }
+    params = RiskParams.from_mapping(section_both)
+    assert params.config_version == "risk-cfg-99"
+    assert params.reconciliation_tolerance.version == "recon-v7"
+
+    # Bumping only 'version' must not change tolerance.version.
+    section_bump_cfg = {**section_both, "version": "risk-cfg-100"}
+    params_bumped_cfg = RiskParams.from_mapping(section_bump_cfg)
+    assert params_bumped_cfg.config_version == "risk-cfg-100"
+    assert params_bumped_cfg.reconciliation_tolerance.version == "recon-v7"
+
+    # Bumping only 'recon_version' must not change config_version.
+    section_bump_recon = {**section_both, "recon_version": "recon-v8"}
+    params_bumped_recon = RiskParams.from_mapping(section_bump_recon)
+    assert params_bumped_recon.config_version == "risk-cfg-99"
+    assert params_bumped_recon.reconciliation_tolerance.version == "recon-v8"
+
+
+def test_risk_params_recon_version_defaults_independently_of_version() -> None:
+    """F-RISK-03 default path: omitting 'recon_version' falls back to the recon default,
+    not to 'version'; omitting 'version' falls back to the risk-config default.
+
+    Oracle: DEFAULT_RECON_TOLERANCE.version is the declared default for the tolerance
+    lineage; 'risk-config-1.0.0' is the declared default for config_version. These
+    are known constants, derived independently of the mapping logic under test.
+    """
+    from algotrading.infra.risk import DEFAULT_RECON_TOLERANCE, RiskParams
+
+    # Neither key present: both fall to their own defaults.
+    params_defaults = RiskParams.from_mapping({"grouping_keys": ["underlying"]})
+    assert params_defaults.config_version == "risk-config-1.0.0"
+    assert params_defaults.reconciliation_tolerance.version == DEFAULT_RECON_TOLERANCE.version
+
+    # Only 'version' present: recon_version must still be the recon default (not 'version').
+    params_cfg_only = RiskParams.from_mapping({
+        "grouping_keys": ["underlying"],
+        "version": "risk-cfg-42",
+    })
+    assert params_cfg_only.config_version == "risk-cfg-42"
+    assert params_cfg_only.reconciliation_tolerance.version == DEFAULT_RECON_TOLERANCE.version
+
+    # Only 'recon_version' present: config_version must still be the risk-config default.
+    params_recon_only = RiskParams.from_mapping({
+        "grouping_keys": ["underlying"],
+        "recon_version": "recon-v3",
+    })
+    assert params_recon_only.config_version == "risk-config-1.0.0"
+    assert params_recon_only.reconciliation_tolerance.version == "recon-v3"

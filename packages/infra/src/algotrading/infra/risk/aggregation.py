@@ -21,6 +21,7 @@ injected at the emission boundary, never read from a clock here.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -91,10 +92,10 @@ def _net_over(
     return NetSensitivities(
         portfolio_id=portfolio_id,
         group_key=group_key,
-        net_delta=sum(line.position_delta for line in lines),
-        net_gamma=sum(line.position_gamma for line in lines),
-        net_vega=sum(line.position_vega for line in lines),
-        net_theta=sum(line.position_theta for line in lines),
+        net_delta=math.fsum(line.position_delta for line in lines),
+        net_gamma=math.fsum(line.position_gamma for line in lines),
+        net_vega=math.fsum(line.position_vega for line in lines),
+        net_theta=math.fsum(line.position_theta for line in lines),
         lines=lines,
     )
 

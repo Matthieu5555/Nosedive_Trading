@@ -133,16 +133,22 @@ class RiskParams:
         """Build risk params from a plain ``risk`` config mapping.
 
         Expects ``grouping_keys`` (a list of key names) and, optionally,
-        ``reconciliation_tolerances`` (a mapping of greek -> absolute threshold) and a
-        ``version``. Missing tolerances fall back to :data:`DEFAULT_RECON_TOLERANCE`'s
-        values; an unknown grouping key raises via :meth:`__post_init__`.
+        ``reconciliation_tolerances`` (a mapping of greek -> absolute threshold),
+        ``version`` (the risk-params lineage stamp), and ``recon_version`` (the
+        reconciliation-tolerance lineage stamp — a distinct key so bumping one does not
+        silently bump the other). Missing tolerances fall back to
+        :data:`DEFAULT_RECON_TOLERANCE`'s values; an unknown grouping key raises via
+        :meth:`__post_init__`.
         """
         keys = tuple(str(name) for name in section["grouping_keys"])
         raw = dict(section.get("reconciliation_tolerances", {}))
         tol_map = {str(g): float(v) for g, v in raw.items()}
-        version = str(section.get("version", DEFAULT_RECON_TOLERANCE.version))
+        # Independent lineage stamps (ADR 0028): recon_version keys the tolerance
+        # record; version (config_version) keys the overall risk-params record.
+        # Using the same key for both means bumping one silently bumps the other.
+        recon_version = str(section.get("recon_version", DEFAULT_RECON_TOLERANCE.version))
         tolerance = ReconciliationTolerance(
-            version=version,
+            version=recon_version,
             delta=tol_map.get("delta", DEFAULT_RECON_TOLERANCE.delta),
             gamma=tol_map.get("gamma", DEFAULT_RECON_TOLERANCE.gamma),
             vega=tol_map.get("vega", DEFAULT_RECON_TOLERANCE.vega),

@@ -420,23 +420,26 @@ class ScenarioReport:
 def _attribute_worst_by_underlying(
     worst: WorstCase,
 ) -> tuple[UnderlyingAttribution, ...]:
-    buckets: dict[str, float] = {}
+    # Collect per-underlying PnLs as lists, then fsum — reorder-invariant.
+    buckets: dict[str, list[float]] = {}
     for cell in worst.contributors:
         underlying = cell.line.underlying
-        buckets[underlying] = buckets.get(underlying, 0.0) + cell.full_reprice_pnl
+        buckets.setdefault(underlying, []).append(cell.full_reprice_pnl)
     return tuple(
-        UnderlyingAttribution(underlying=underlying, total_pnl=total)
-        for underlying, total in sorted(buckets.items())
+        UnderlyingAttribution(underlying=underlying, total_pnl=math.fsum(pnls))
+        for underlying, pnls in sorted(buckets.items())
     )
 
 
 def _attribute_by_family(cells: list[ScenarioLinePnl]) -> tuple[FamilyAttribution, ...]:
     family_of: dict[str, str] = {}
-    totals: dict[str, float] = {}
+    # Collect per-scenario PnLs as lists, then fsum — reorder-invariant.
+    by_scenario: dict[str, list[float]] = {}
     for cell in cells:
         sid = cell.scenario.scenario_id
         family_of[sid] = cell.scenario.family
-        totals[sid] = totals.get(sid, 0.0) + cell.full_reprice_pnl
+        by_scenario.setdefault(sid, []).append(cell.full_reprice_pnl)
+    totals = {sid: math.fsum(pnls) for sid, pnls in by_scenario.items()}
     worst: dict[str, tuple[float, str]] = {}
     for sid, total in totals.items():
         family = family_of[sid]

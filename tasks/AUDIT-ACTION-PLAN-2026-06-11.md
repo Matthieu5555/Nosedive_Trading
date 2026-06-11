@@ -11,8 +11,17 @@ OQ-4 ADR-0027 **buffer-and-sort** (deferred — not an active path).
 
 **Ordering = owner plan:** zero-risk fixes → REP0-10 (parallel) → mega-fix. Wave numbers are
 *priority*, not strict serialization — fan out non-conflicting work. **Shared tree: claim files
-in [TASKBOARD.md](TASKBOARD.md) before editing.** Precondition: confirm the QA-FIX branch
-(`fix/live-spine-wiring`) is fully merged before touching `risk/`, `pricing/`, `storage/`.
+in [TASKBOARD.md](TASKBOARD.md) before editing.** QA-FIX (`fix/live-spine-wiring`) is now merged.
+
+### Progress (2026-06-11)
+- ✅ **Wave 1 backend lanes landed** on `audit-fixes-batch1`: STORAGE F-STORE-01/03 (`445d1ac`),
+  RISK F-RISK-01/02/03 (`ba9dd26`), BFF F-BFF-01/02 (`059a9e8`). Gate green (983/0/16).
+- ✅ **SPX guard hotfix** landed on `hotfix/spx-post-close-guard` (`07c892d`); **F-UNI-01 leap-day
+  folded into it** (same `calendar_resolver.py`). Timer-coherence follow-up → `clock-timer-coherence.md`.
+- ⚠️ **REP1 = WON'T-FIX**: both micro-swaps break content-hash stability (np.interp 1-ULP drift;
+  scipy theilslopes intercept-convention shift). Verdict machine-checked by parity tests. Closed.
+- ↪️ **ADR-0040 mega-fix is owned by [`T-raw-invariant.md`](T-raw-invariant.md)** (raw-before-derived
+  + persist-entrypoint convergence, OQ-C) — Wave 4 below references it, does not duplicate it.
 
 ---
 
@@ -44,7 +53,7 @@ Each fix pairs with the test the finding names. Two commits.
 ## WAVE 3 — REP stack (parallel; fold audit findings into existing rows, do NOT duplicate)
 - **[REP0](REP0-dependency-hygiene.md)** ← F-DEP-01 (drop pandas; land-or-drop polars; fix false
   comment).
-- **[REP1](REP1-scipy-micro-swaps.md)** ← surfaces micro-swaps (library-leverage dim-3).
+- ~~**[REP1](REP1-scipy-micro-swaps.md)**~~ — **WON'T-FIX** (both swaps break content-hash stability; see Progress).
 - **[REP2](REP2-storage-asof-unification.md)** ← F-ASOF-01, F-STORE-03 (**high care — look-ahead
   boundary**; reuse one DuckDB connection / parity-tested winner).
 - **[REP5](REP5-pydantic-bff-contract.md)** ← F-BFF-05 (pydantic `response_model`; coordinate
@@ -55,10 +64,11 @@ Each fix pairs with the test the finding names. Two commits.
 - REP7/REP8 — **BLOCKED** (need live TradingNode / IBKR live-auth). Leave.
 
 ## WAVE 4 — Mega-fix clusters (rulings now in hand; higher break-risk, do SINGLY, gate green)
-- **ADR-0040 enforcement** (F-ACTOR-01 ×7 + F-ACTOR-02/03, F-IBKR-08, F-ORCH-03/04/05, F-QC-02,
-  F-BFF-03/04). **Write the ADR amendment first** (ratify OQ-2: capture path fail-loud iff zero
-  options on first run; raw-before-filter; EMPTY marker on replay only). Then the fix — **add
-  F-ACTOR-04 test first**, byte-identity tests green. **HIGH break-risk, hot persistence path.**
+- **ADR-0040 enforcement — owned by [`T-raw-invariant.md`](T-raw-invariant.md)** (now unblocked,
+  QA-FIX merged). Folds F-ACTOR-01 ×7 + F-ACTOR-02/03, F-IBKR-08, F-ORCH-03/04/05, F-QC-02,
+  F-BFF-03/04. OQ-2 ratified: capture path fail-loud iff zero options on first run; raw-before-filter;
+  EMPTY marker on replay only. **Add F-ACTOR-04 test first**, byte-identity green. **HIGH break-risk,
+  hot persistence path.** Update T-raw-invariant's spec with these finding IDs rather than re-spec'ing here.
 - **eod_stages refactor** (F-ORCH-02 last-wins outputs + F-EXEC-03 closure side-channels +
   F-ORCH-04 partial-failure flagging) — one coherent rework; return stage products explicitly.
 - **Connectivity hardening bundle** (F-IBKR-03/07, F-CONN-04, F-OPS-03) — thread the 429

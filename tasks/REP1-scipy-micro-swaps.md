@@ -1,9 +1,12 @@
 # REP1 — scipy / numpy micro-swaps
 
-> **READY — no blocker.** Small, contained
-> ([AUDIT-library-leverage-2026-06-07.md](AUDIT-library-leverage-2026-06-07.md)).
-> scipy is already well-leveraged (brentq, least_squares); these are the only two
-> hand-rolled numerics with a clean library equivalent.
+> **CLOSED — WON'T-FIX (2026-06-11).** Both candidate swaps were investigated and **rejected**
+> because they break content-hash stability (the spec's own constraint): `np.interp` differs from
+> `_interpolate_sorted` by 1 ULP on ~6/201 interior points (different FP eval order); and
+> `scipy.stats.theilslopes` uses a different intercept convention than `theil_sen_line` (shifts the
+> intercept by median(y) → changes which strikes are flagged outliers). Verdict machine-checked by
+> parity tests. The two heavy numerics (brentq, least_squares) were already on scipy; the remainder
+> is deliberately bespoke. **No action.** (Was: READY — see audit action plan Progress.)
 
 - **Owns:** `packages/infra/src/algotrading/infra/surfaces/fit.py` (`_interpolate_sorted`);
   optionally `packages/infra/src/algotrading/infra/utils/robust.py` (`theil_sen_line`) and

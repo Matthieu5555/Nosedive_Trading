@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 
 from .collector import FeedFault, MarketDataAdapter
-from .normalize import BrokerTick
+from .normalize import BrokerTick, is_storable_observation
 from .replay import next_sequence
 
 
@@ -51,6 +51,16 @@ class SequenceStamping:
 
     def _stamp(self, tick: BrokerTick) -> None:
         if self._downstream is None:
+            return
+        # Advance the per-(instrument, field) ordinal ONLY for ticks that will actually become
+        # stored events (finite-valued observations). A dropped tick — a None/NaN/categorical "no
+        # quote" sentinel, or a reserved meta field — is forwarded unchanged so the collector still
+        # records its absence, but it must NOT consume a sequence: the replay source re-derives the
+        # ordinal by iterating only the stored events, so consuming a sequence here for a tick that
+        # is never stored would shift every later stored tick's sequence (and thus its
+        # content-addressed event_id) between live capture and replay (ADR 0027).
+        if not is_storable_observation(tick):
+            self._downstream(tick)
             return
         sequence = next_sequence(self._counters, tick.instrument_key, tick.field_name)
         self._downstream(

@@ -24,6 +24,7 @@ from .normalize import (
     RESERVED_PREFIX,
     BrokerTick,
     is_observation,
+    is_storable_observation,
     normalize_event,
 )
 from .notices import ENTITLEMENT, OTHER, PACING, FeedNotice, classify_feed_notice
@@ -49,6 +50,7 @@ __all__ = [
     "build_gap_event",
     "classify_feed_notice",
     "is_observation",
+    "is_storable_observation",
     "meta_event_id",
     "next_sequence",
     "normalize_event",

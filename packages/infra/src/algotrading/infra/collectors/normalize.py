@@ -67,6 +67,21 @@ def is_observation(field_name: str) -> bool:
     return not field_name.startswith(RESERVED_PREFIX)
 
 
+def is_storable_observation(tick: BrokerTick) -> bool:
+    """True iff this tick becomes a stored :class:`RawMarketEvent` — the sequence-advance rule.
+
+    A tick is stored only when it is a real observation (not a reserved meta field) *and* it
+    carries a finite numeric value — exactly the two conditions under which
+    :func:`normalize_event` returns a non-``None`` event. The live sequence stamp must advance its
+    per-(instrument, field) counter only for these ticks, because the replay source re-derives the
+    sequence by iterating only the stored events. Advancing the counter for a dropped ``None`` /
+    ``NaN`` / categorical tick (the broker's "no quote" sentinel) would make the next stored tick's
+    sequence — and therefore its content-addressed ``event_id`` — differ between live capture and
+    replay, breaking the byte-identical-recapture guarantee.
+    """
+    return is_observation(tick.field_name) and _finite_value(tick.value) is not None
+
+
 def normalize_event(
     tick: BrokerTick,
     *,

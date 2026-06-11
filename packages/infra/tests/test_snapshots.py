@@ -9,11 +9,13 @@ rule, not from the code. Edge-case inputs come from named fixtures in
 
 from __future__ import annotations
 
-from datetime import timedelta
+import random
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from algotrading.core.config import QcThresholdConfig
-from algotrading.infra.contracts import MarketStateSnapshot, validate
+from algotrading.infra.contracts import MarketStateSnapshot, RawMarketEvent, validate
 from algotrading.infra.snapshots import (
     InsufficientSnapshotData,
     SnapshotContext,
@@ -46,6 +48,8 @@ from fixtures.events import (
     single_last_event,
     threshold_straddle_events,
 )
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 QC = QcThresholdConfig(
     version="qc-test",
@@ -86,6 +90,106 @@ def test_latest_by_field_before_is_order_independent() -> None:
     forward = latest_by_field_before(events, SNAPSHOT_TS)
     reversed_result = latest_by_field_before(tuple(reversed(events)), SNAPSHOT_TS)
     assert forward["bid"].event_id == reversed_result["bid"].event_id == "b-at"
+
+
+# --------------------------------------------------------------------------- #
+# As-of equivalence: REP2 replaced the per-field Python loop with a DuckDB     #
+# QUALIFY window. These property tests pin the new engine query to the EXACT   #
+# behaviour of the reference loop below — shuffle-invariance and the           #
+# exact-timestamp tiebreak — so the look-ahead boundary cannot silently move.  #
+# --------------------------------------------------------------------------- #
+_PROPERTY_TS = datetime(2026, 5, 29, 15, 30, 0, tzinfo=UTC)
+
+
+def _reference_latest_by_field_before(
+    events: Sequence[RawMarketEvent], snapshot_ts: datetime
+) -> dict[str, RawMarketEvent]:
+    """The pre-REP2 hand-looped as-of, kept verbatim as the equivalence oracle.
+
+    Later ``canonical_ts`` wins; an exact-timestamp tie is broken by the larger
+    ``event_id``; events strictly after ``snapshot_ts`` are dropped. This is the
+    behaviour ``latest_by_field_before`` must reproduce exactly.
+    """
+    latest: dict[str, RawMarketEvent] = {}
+    for candidate in events:
+        if candidate.canonical_ts > snapshot_ts:
+            continue
+        current = latest.get(candidate.field_name)
+        supersedes = current is None or (
+            candidate.canonical_ts > current.canonical_ts
+            if candidate.canonical_ts != current.canonical_ts
+            else candidate.event_id > current.event_id
+        )
+        if supersedes:
+            latest[candidate.field_name] = candidate
+    return latest
+
+
+def _make_event(field_name: str, offset_seconds: int, event_id: str) -> RawMarketEvent:
+    """A raw event at ``_PROPERTY_TS + offset_seconds`` with a unique event_id.
+
+    event_id is globally unique here (it carries the field and offset), which is the
+    real raw-event invariant: the (session_id, event_id) key is unique, so the
+    timestamp tiebreak is never asked to disambiguate two truly-identical rows.
+    """
+    ts = _PROPERTY_TS + timedelta(seconds=offset_seconds)
+    return event(UNDERLYING, field_name, float(offset_seconds), ts=ts, event_id=event_id)
+
+
+# Draw a list of events across a few fields, with offsets clustered tightly around
+# the snapshot instant (so the inclusive <= boundary is exercised) and many exact
+# ties on canonical_ts (so the event_id tiebreak is exercised).
+_events_strategy = st.lists(
+    st.builds(
+        _make_event,
+        field_name=st.sampled_from(["bid", "ask", "last"]),
+        offset_seconds=st.integers(min_value=-3, max_value=3),
+        event_id=st.text(alphabet="abcABC0123", min_size=1, max_size=4),
+    ),
+    min_size=0,
+    max_size=12,
+    # (session_id, event_id) is the raw-event primary key; session_id is constant in
+    # these fixtures, so make event_id globally unique to honour that PK invariant.
+    unique_by=lambda e: e.event_id,
+)
+
+
+@settings(max_examples=400)
+@given(events=_events_strategy)
+def test_engine_as_of_matches_reference_loop(events: list[RawMarketEvent]) -> None:
+    """The DuckDB as-of returns exactly what the reference loop returns."""
+    engine = latest_by_field_before(events, _PROPERTY_TS)
+    reference = _reference_latest_by_field_before(events, _PROPERTY_TS)
+    assert set(engine) == set(reference)
+    for field_name in reference:
+        # Same field maps to the same chosen event (by full key + value + ts).
+        assert engine[field_name].event_id == reference[field_name].event_id
+        assert engine[field_name].canonical_ts == reference[field_name].canonical_ts
+        assert engine[field_name].value == reference[field_name].value
+
+
+@settings(max_examples=200)
+@given(events=_events_strategy, seed=st.integers(min_value=0, max_value=10_000))
+def test_engine_as_of_is_shuffle_invariant(
+    events: list[RawMarketEvent], seed: int
+) -> None:
+    """Feeding the same events in any order yields the identical winner per field."""
+    shuffled = list(events)
+    random.Random(seed).shuffle(shuffled)
+    forward = latest_by_field_before(events, _PROPERTY_TS)
+    reshuffled = latest_by_field_before(shuffled, _PROPERTY_TS)
+    assert set(forward) == set(reshuffled)
+    for field_name in forward:
+        assert forward[field_name].event_id == reshuffled[field_name].event_id
+
+
+def test_engine_as_of_exact_tie_breaks_on_larger_event_id() -> None:
+    # Two bids at the identical instant; the larger event_id must win, regardless of
+    # input order. Derived from the documented tiebreak rule, not from the code.
+    early_id = event(UNDERLYING, "bid", 1.0, ts=_PROPERTY_TS, event_id="aaa")
+    late_id = event(UNDERLYING, "bid", 2.0, ts=_PROPERTY_TS, event_id="zzz")
+    assert latest_by_field_before((early_id, late_id), _PROPERTY_TS)["bid"].event_id == "zzz"
+    assert latest_by_field_before((late_id, early_id), _PROPERTY_TS)["bid"].event_id == "zzz"
 
 
 # --------------------------------------------------------------------------- #

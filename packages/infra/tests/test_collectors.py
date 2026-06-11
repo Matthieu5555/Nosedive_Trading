@@ -25,6 +25,7 @@ from algotrading.infra.collectors import (
     FeedFault,
     RawCollector,
     ReplaySource,
+    SequenceStamping,
     is_observation,
 )
 from algotrading.infra.connectivity import GapInterval
@@ -352,3 +353,67 @@ def test_replay_into_a_fresh_store_reproduces_the_same_event_ids(tmp_path: Path)
     )
     assert [e.event_id for e in replayed] == [e.event_id for e in captured]
     assert [e.value for e in replayed] == [e.value for e in captured]
+
+
+def test_live_stamping_skips_dropped_ticks_so_replay_ids_match(tmp_path: Path) -> None:
+    # The sequence-divergence regression (ADR 0027): the live SequenceStamping boundary must
+    # advance its per-(instrument, field) ordinal ONLY for ticks that actually become stored
+    # events. A feed that interleaves "no quote" sentinels (None / NaN) and a categorical str with
+    # finite quotes used to consume a sequence per sentinel live, while the replay source — which
+    # iterates only the STORED events — never sees them; the next stored tick then got a different
+    # sequence (and event_id) on replay. With the fix the dropped ticks consume no sequence, so the
+    # two finite bids land at sequence 0 and 1 on BOTH paths.
+    #
+    # Independent oracle: the finite stored observations, in arrival order, are
+    #   bid=10.0 (seq 0), bid=12.0 (seq 1), ask=7.0 (seq 0).
+    # Every interleaved None/NaN/str tick is dropped and must NOT shift those sequences. The
+    # expected event ids are exactly the content-addressed ids of those three observations.
+    from algotrading.infra.contracts import content_event_id
+
+    raw_ticks = [
+        BrokerTick(instrument_key=_KEY, field_name="bid", value=None, underlying="BTC"),
+        BrokerTick(instrument_key=_KEY, field_name="bid", value=10.0, underlying="BTC",
+                   exchange_ts=_T0 + timedelta(seconds=1)),
+        BrokerTick(instrument_key=_KEY, field_name="bid", value=float("nan"), underlying="BTC"),
+        BrokerTick(instrument_key=_KEY, field_name="ask", value="halted", underlying="BTC"),
+        BrokerTick(instrument_key=_KEY, field_name="bid", value=12.0, underlying="BTC",
+                   exchange_ts=_T0 + timedelta(seconds=2)),
+        BrokerTick(instrument_key=_KEY, field_name="ask", value=7.0, underlying="BTC",
+                   exchange_ts=_T0 + timedelta(seconds=3)),
+    ]
+    expected_ids = {
+        content_event_id(_KEY, "bid", 0),
+        content_event_id(_KEY, "bid", 1),
+        content_event_id(_KEY, "ask", 0),
+    }
+
+    # Live path: drive raw (unstamped) ticks through SequenceStamping into the collector.
+    live_store = ParquetStore(tmp_path / "live")
+    broker = _PushAdapter()
+    stamping = SequenceStamping(broker)
+    live = RawCollector(
+        store=live_store, adapter=stamping, session_id=_SESSION, trade_date=_TRADE_DATE,
+        clock=_FixedClock(), subscribed_keys=(_KEY,),
+    )
+    for tick in raw_ticks:
+        broker.tick_cb(tick)  # type: ignore[misc]
+    live.flush()
+    captured = sorted(_events(live_store), key=lambda e: e.event_id)
+    assert {e.event_id for e in captured} == expected_ids
+    assert sorted(e.value for e in captured) == [7.0, 10.0, 12.0]
+
+    # Replay path: re-pump the stored events through a fresh collector; the ids must match exactly.
+    replay_store = ParquetStore(tmp_path / "replay")
+    replay_source = ReplaySource(captured)
+    replay = RawCollector(
+        store=replay_store, adapter=replay_source, session_id=_SESSION,
+        trade_date=_TRADE_DATE, clock=_FixedClock(), subscribed_keys=(_KEY,),
+    )
+    replay_source.pump()
+    replay.flush()
+    replayed = sorted(
+        (e for e in _events(replay_store) if is_observation(e.field_name)),
+        key=lambda e: e.event_id,
+    )
+    assert {e.event_id for e in replayed} == expected_ids
+    assert [e.event_id for e in replayed] == [e.event_id for e in captured]

@@ -315,6 +315,93 @@ def test_duplicate_strikes_are_deduplicated() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Nonparametric interpolation kernel (REP1: numpy-backed _interpolate_sorted)  #
+# --------------------------------------------------------------------------- #
+def _flat_clamped_linear_interp(
+    ks: tuple[float, ...], ws: tuple[float, ...], k: float
+) -> float:
+    """Independent oracle for the kernel's contract: linear in w, flat past the ends.
+
+    Derived from the documented behaviour (REP1 / the docstring), not from the code
+    under test: clamp to the end value outside ``[ks[0], ks[-1]]``, otherwise find the
+    bracketing pair by a plain scan and linearly interpolate. Written deliberately
+    differently from the implementation so it cannot mirror an implementation bug.
+    """
+    if k <= ks[0]:
+        return ws[0]
+    if k >= ks[-1]:
+        return ws[-1]
+    for left in range(len(ks) - 1):
+        if ks[left] <= k <= ks[left + 1]:
+            frac = (k - ks[left]) / (ks[left + 1] - ks[left])
+            return ws[left] * (1.0 - frac) + ws[left + 1] * frac
+    raise AssertionError("k was bracketed by the guards above")  # pragma: no cover
+
+
+@pytest.mark.parametrize(
+    ("name", "ks", "ws"),
+    [
+        ("two_knots", (-0.5, 0.5), (0.04, 0.09)),
+        ("three_knots", (-1.0, 0.0, 1.0), (0.10, 0.04, 0.12)),
+        ("uneven_spacing", (-2.0, -0.3, 0.1, 1.7), (0.20, 0.07, 0.05, 0.15)),
+    ],
+)
+def test_interpolate_sorted_matches_flat_clamped_linear_oracle(
+    name: str, ks: tuple[float, ...], ws: tuple[float, ...]
+) -> None:
+    """The numpy-backed kernel reproduces the flat-clamped linear oracle.
+
+    Covers the two clamp edges (strictly outside, and exactly *at* the end knots),
+    every interior knot (must return its own w exactly), and interior midpoints.
+    """
+    from algotrading.infra.surfaces.fit import _interpolate_sorted
+
+    # Edges: strictly beyond the ends clamp flat to the end value (bit-exact).
+    assert _interpolate_sorted(ks, ws, ks[0] - 1.0) == ws[0]
+    assert _interpolate_sorted(ks, ws, ks[-1] + 1.0) == ws[-1]
+    # The end knots themselves also take the clamp path and return the end value exactly.
+    assert _interpolate_sorted(ks, ws, ks[0]) == ws[0]
+    assert _interpolate_sorted(ks, ws, ks[-1]) == ws[-1]
+    # Every interior knot returns its own total variance exactly.
+    for knot, value in zip(ks[1:-1], ws[1:-1], strict=True):
+        assert _interpolate_sorted(ks, ws, knot) == value
+    # Interior midpoints match the independent linear oracle to float tolerance.
+    for left in range(len(ks) - 1):
+        mid = 0.5 * (ks[left] + ks[left + 1])
+        assert _interpolate_sorted(ks, ws, mid) == pytest.approx(
+            _flat_clamped_linear_interp(ks, ws, mid), rel=1e-15, abs=1e-18
+        )
+
+
+def test_interpolate_sorted_clamp_edges_are_bit_identical_to_hand_rolled() -> None:
+    """The clamp edges (and end knots) match the pre-REP1 hand-rolled loop bit-for-bit.
+
+    The edges feed ``total_variance`` and thus the ``SurfaceGrid`` content hash, so they
+    must not shift by even one ULP. The hand-rolled reference is reproduced here verbatim
+    from the routine REP1 replaced; the interior is allowed to differ by op-ordering, the
+    edges are not.
+    """
+    from algotrading.infra.surfaces.fit import _interpolate_sorted
+
+    def hand_rolled(ks: tuple[float, ...], ws: tuple[float, ...], k: float) -> float:
+        if k <= ks[0]:
+            return ws[0]
+        if k >= ks[-1]:
+            return ws[-1]
+        for index in range(1, len(ks)):
+            if k <= ks[index]:
+                span = ks[index] - ks[index - 1]
+                weight = (k - ks[index - 1]) / span
+                return ws[index - 1] + weight * (ws[index] - ws[index - 1])
+        raise AssertionError  # pragma: no cover
+
+    ks = (-2.0, -0.3, 0.1, 1.7)
+    ws = (0.20, 0.07, 0.05, 0.15)
+    for k in (ks[0] - 5.0, ks[0], ks[-1], ks[-1] + 5.0):
+        assert _interpolate_sorted(ks, ws, k) == hand_rolled(ks, ws, k)
+
+
+# --------------------------------------------------------------------------- #
 # Cross-maturity interpolation (Eq 22)                                         #
 # --------------------------------------------------------------------------- #
 def test_interpolation_is_linear_in_total_variance_across_maturity() -> None:

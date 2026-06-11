@@ -54,6 +54,14 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 
 ## In flight
 
+> **▶ Audit remediation index (2026-06-11):**
+> [`AUDIT-ACTION-PLAN-2026-06-11.md`](AUDIT-ACTION-PLAN-2026-06-11.md) is the single ordered
+> worklist for the 101 audit findings (folds the REP rows + new groups, OQ rulings applied).
+> The full report is [`AUDIT-POST-CAPTURE-backend-2026-06-11.md`](AUDIT-POST-CAPTURE-backend-2026-06-11.md).
+> Parallel lanes are claimed below — **disjoint files; anything touching the SPX-hotfix files
+> (`infra-ibkr/.../cp_rest_close_capture.py`, `live_capture.py`, `collectors/__init__.py`,
+> `orchestration/eod_planning.py`, `universe/calendar_resolver.py`) waits until that hotfix lands.**
+
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude/Matthieu | `.env.example`, `scripts/ibkr_bootstrap.py`, `documentation/connectivity/**` | 2026-06-06 | server-deploy plumbing (non-compute); does **not** touch C7 / `core/config/**` — see [tasks/server-deploy-plumbing.md](server-deploy-plumbing.md) |
@@ -61,6 +69,12 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | Matthieu (Claude) | **V1** — NEW `scripts/smoke_e2e.py` + `packages/infra/tests/test_smoke_e2e.py` (driver-honesty tests only; owns no compute) | 2026-06-07 | e2e smoke: bootstrap → SAMPLE replay → analytics/grid → BFF HTTP (no 500s) → web build/test, single PASS/FAIL/SKIP summary, exit 0/1/2. Drives existing public entrypoints only; **off** all dirty shared files. See [tasks/V1-e2e-verification-smoke.md](V1-e2e-verification-smoke.md). (2C landed `4e3f50f`, on `main`/`perso`.) |
 | — (rows cleared) | **✅ LANDED — recorded in commits/ADRs, rows cleared.** **2B** stress surface (`d7a18f8`/`fe1138a`/`d935910`/`7005d4c`/`b947a63`). **2A + 1F-followup** (`b2b6a06`/`8f71fb5`). **T-bridge (ADR 0039)** `universe/sample_bridge.py` + export_sample + notebook de-rot + tests (`28ab59c`); **front nappe fallback** (`780ba85`); **ingestion audit** ADR 0039/0040/0041 (`0041a55`/`962809f`); **capture fixes** 429 backoff (`0c255ba`) + front `ALGOTRADING_DATA_ROOT` (`a2707e8`). | 2026-06-10 | this week's landed work — see commits + ADRs |
 | Matthieu (Claude) | **QA-FIX** (branch `fix/live-spine-wiring`) — audit-driven bug/quality pass. Files (partitioned, disjoint per agent): risk+pricing dollar-greek 100× fix + 3 red tests (`pricing/engine.py`, `pricing/dollar_greeks.py`, `risk/{greeks,basket,scenarios}.py`, `tests/test_{pricing,risk,scenario}.py`); storage silent-empty read (`storage/adapter.py`, `tests/test_storage.py`); run-state ledger lock (`orchestration/run_state.py`); open-session close capture (`collectors/{live,replay,normalize}.py`, `infra-ibkr/.../cp_rest_close_capture.py`); QC live-wiring + triage persist (`orchestration/{eod_runner,qc_job}.py`); ADR-0028 QC-threshold config migration (`qc/thresholds.py`, `validation/anomaly.py`, `configs/qc.yaml`, `core/.../platform_config.py`); hygiene (`.gitignore`, `.agent/map.md`, `pyproject.toml`, `AGENTS.md`, `core/.../log.py`). | 2026-06-08 | fleet code-review remediation; restores green gate + fixes latent correctness bugs. |
+| (parallel conv) | **SPX hotfix** (branch `hotfix/spx-post-close-guard`) — `infra-ibkr/.../cp_rest_close_capture.py`, `live_capture.py`, `collectors/__init__.py`, `orchestration/eod_planning.py`, `universe/calendar_resolver.py` (+ tests) | 2026-06-11 | session-bounded post-close guard + loud drop-100%. **Holds F-UNI-01 (leap-day, same file) and the XEUR timer shift.** |
+| audit-lane BFF | `apps/frontend/src/.../routers/health.py`, `serializers.py` (+ web fixtures) | 2026-06-11 | **F-BFF-02** qc_status crash + **F-BFF-01** Gamma$ double-/100 |
+| audit-lane RISK | `packages/infra/src/algotrading/infra/risk/**` (+ `tests/test_risk.py`) | 2026-06-11 | **F-RISK-01/02** math.fsum reorder-invariance + **F-RISK-03** version keys |
+| audit-lane SURFACES | `packages/infra/src/algotrading/infra/surfaces/fit.py`, `utils/robust.py` (+ tests) | 2026-06-11 | **REP1** scipy/numpy micro-swaps |
+| audit-lane STORAGE | `packages/infra/src/algotrading/infra/storage/adapter.py` (+ `tests/test_storage.py`) | 2026-06-11 | **F-STORE-01** restatement-leak + **F-STORE-03** helper extraction (NOT the full REP2 as-of unification — held, high-care) |
+| HELD (do after deps) | REP6 config (determinism), full REP2 as-of (look-ahead), Web REP3/4/9/10, connectivity bundle, ADR-0040 mega-fix | — | see [action plan](AUDIT-ACTION-PLAN-2026-06-11.md) waves 3-5 |
 
 
 ## What's next — the index-analytics build

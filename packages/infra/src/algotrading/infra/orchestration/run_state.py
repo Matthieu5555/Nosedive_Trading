@@ -21,10 +21,32 @@ the same ledger.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+
+
+def _atomic_append_limit() -> int:
+    """The largest write() guaranteed atomic against concurrent appenders.
+
+    POSIX guarantees a single ``write()`` of at most ``PIPE_BUF`` bytes is atomic, and
+    for a file opened ``O_APPEND`` the kernel also serialises the seek-to-end + write,
+    so two concurrent appenders never interleave or overwrite when each record is one
+    write of ``<= PIPE_BUF`` bytes. ``select.PIPE_BUF`` is POSIX-only; 512 is its
+    portable floor (the standard minimum on every POSIX host) and the fallback on a
+    non-POSIX host. Resolved once via this helper so the module has no reassigned
+    module-level name (which mypy treats as final on the imported constant).
+    """
+    try:
+        from select import PIPE_BUF
+    except ImportError:  # pragma: no cover - non-POSIX hosts only
+        return 512
+    return PIPE_BUF
+
+
+_PIPE_BUF = _atomic_append_limit()
 
 # The five canonical end-of-day stages, in run order (Part IV.F). A stage name is the
 # stable key the ledger, dashboard, and pipeline all agree on, so it lives once here.
@@ -49,6 +71,24 @@ OUTCOME_OK = "ok"
 OUTCOME_FAILED = "failed"
 
 _LEDGER_FILENAME = "_run_state.jsonl"
+
+
+class LedgerLineTooLargeError(ValueError):
+    """A ledger record encodes to more bytes than an atomic append can guarantee.
+
+    The lock-free append relies on a single ``write()`` of at most ``PIPE_BUF`` bytes
+    being atomic against concurrent appenders. A line larger than that could interleave
+    with another writer and tear the ledger, so we refuse it loudly rather than risk a
+    silent corruption — carrying the offending size so the caller can see the breach.
+    """
+
+    def __init__(self, line_bytes: int, limit: int) -> None:
+        self.line_bytes = line_bytes
+        self.limit = limit
+        super().__init__(
+            f"ledger record is {line_bytes} bytes, exceeds the {limit}-byte atomic "
+            f"append limit (PIPE_BUF); shorten run_id/stage to keep the append atomic"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,21 +137,33 @@ def _decode(line: str) -> StageRun:
 
 
 def record_stage(root: Path, stage_run: StageRun) -> None:
-    """Append one stage completion to the ledger, atomically.
+    """Append one stage completion to the ledger, concurrency-safely.
 
-    The ledger is JSON-lines: one record per line, append-only. The append is done by
-    reading the current file, adding the line, and renaming a fully-written temp file
-    into place, so an interrupted write never leaves a torn line — on restart the
-    ledger is always a sequence of whole records. Recording the same stage twice (a
-    re-run of an already-finished stage) simply appends a second row; readers take the
-    latest per (trade_date, stage), so a duplicate is harmless rather than a conflict.
+    The ledger is JSON-lines: one record per line, append-only. The append is a single
+    ``os.write`` of one ``\\n``-terminated JSON line to a file opened ``O_APPEND``. On
+    POSIX the kernel serialises the implicit seek-to-end and the write for ``O_APPEND``,
+    and a write of at most ``PIPE_BUF`` bytes is atomic, so two processes appending
+    concurrently never interleave or overwrite each other — both records survive. This
+    replaces the earlier read-modify-rename, which let two writers read the same file,
+    each append, and have the last rename silently drop the other's record (the two
+    templated EOD timers share one ledger and a ``Persistent=true`` catch-up fires them
+    near-simultaneously). Recording the same stage twice (a re-run of an
+    already-finished stage) simply appends a second row; readers take the latest per
+    (trade_date, stage), so a duplicate is harmless rather than a conflict.
+
+    Raises :class:`LedgerLineTooLargeError` if the encoded record would exceed the
+    atomic-append size, rather than risk a torn write.
     """
+    line = (_encode(stage_run) + "\n").encode("utf-8")
+    if len(line) > _PIPE_BUF:
+        raise LedgerLineTooLargeError(len(line), _PIPE_BUF)
     path = _ledger_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(existing + _encode(stage_run) + "\n", encoding="utf-8")
-    temp.replace(path)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, line)
+    finally:
+        os.close(fd)
 
 
 def read_stage_runs(root: Path) -> list[StageRun]:

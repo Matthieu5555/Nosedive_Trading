@@ -84,23 +84,79 @@ def test_config_hash_is_deterministic() -> None:
     assert config_hash(_config()) == config_hash(_config())
 
 
-def test_config_hash_moves_when_any_field_moves() -> None:
-    import dataclasses
+def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
+    # REP6 acceptance bar: the pydantic v2 config layer must produce the *same* bytes the
+    # hand-rolled dataclass layer did. These SHA-256 values were captured from the committed
+    # dataclass-era code (the golden oracle) over the fixed ``_config()`` bundle; the pydantic
+    # rewrite must reproduce them exactly. A changed hash is a reproducibility break, not a
+    # migration — every historical record branded with one of these must still resolve.
+    #
+    # C7 increment 2 (ADR 0028): the supplementary QC cut-offs and the anomaly bands moved
+    # from `.py` literals into the hashed `qc` block (QcThresholdConfig.continuity /
+    # forward_engine / fit_tolerance / anomaly). The `qc` bundle hash — and so the folded
+    # whole-config hash — therefore moved BY DESIGN; the three other bundle hashes
+    # (universe / pricing / scenarios) are byte-identical to the pre-expansion oracle, which
+    # is the section-isolation guarantee. The qc/full values below are regenerated over the
+    # expanded `qc` bundle.
+    config = _config()
+    assert config_hash(config) == (
+        "9a924a8780b7e24289578deb541b51bf8708e571411647db0525689e0fbdd4cf"
+    )
+    assert config_hashes(config) == {
+        "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
+        "qc": "47652138530ab77b3ae3f42efbaf6f60ffea9cff2a9fd60161867a826fc8d9ed",
+        "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
+        "universe": "50c147c465108024db571cdd3c6f41415e8e12e486093ad60a9e256a79fe5490",
+    }
 
+
+def test_supplementary_qc_cutoffs_fold_into_the_qc_bundle_hash() -> None:
+    # C7 increment 2 (ADR 0028): the supplementary QC cut-offs and anomaly bands live in the
+    # hashed `qc` block, not `.py` literals — so moving one moves ONLY the `qc` bundle hash,
+    # leaving the other three byte-identical (section isolation). Independent oracle: bump a
+    # cut-off in each new nested block and assert the qc hash changes while pricing/universe/
+    # scenarios do not.
     base = _config()
-    moved = dataclasses.replace(
-        base, solver=dataclasses.replace(base.solver, iv_tolerance=1e-9)
+    hashes = config_hashes(base)
+    for block, field, new_value in (
+        ("continuity", "max_gap_count", 9),
+        ("forward_engine", "max_residual_mad", 0.07),
+        ("fit_tolerance", "max_surface_rmse", 0.03),
+        ("anomaly", "fail_z", 6.0),
+    ):
+        nested = getattr(base.qc_threshold, block).model_copy(update={field: new_value})
+        moved = base.model_copy(
+            update={"qc_threshold": base.qc_threshold.model_copy(update={block: nested})}
+        )
+        moved_hashes = config_hashes(moved)
+        assert moved_hashes["qc"] != hashes["qc"], f"{block}.{field} must move the qc hash"
+        assert {k: moved_hashes[k] for k in ("universe", "pricing", "scenarios")} == {
+            k: hashes[k] for k in ("universe", "pricing", "scenarios")
+        }
+
+
+def test_anomaly_block_enforces_band_ordering() -> None:
+    # The anomaly block carries the rolling-baseline robust-z bands; a mis-tuned config
+    # (fail_z below warn_z) is rejected at construction, never silently accepted.
+    from algotrading.core.config import AnomalyQcConfig, ConfigFieldError
+
+    with pytest.raises(ConfigFieldError):
+        AnomalyQcConfig(version="bad", warn_z=5.0, fail_z=3.0)
+
+
+def test_config_hash_moves_when_any_field_moves() -> None:
+    base = _config()
+    moved = base.model_copy(
+        update={"solver": base.solver.model_copy(update={"iv_tolerance": 1e-9})}
     )
     assert config_hash(moved) != config_hash(base)
 
 
 def test_section_hash_isolates_one_section() -> None:
-    import dataclasses
-
     base = _config()
     # Bump only the scenario grid: scenario hash moves, solver hash does not.
-    moved = dataclasses.replace(
-        base, scenario=dataclasses.replace(base.scenario, vol_shocks=(-0.03, 0.03))
+    moved = base.model_copy(
+        update={"scenario": base.scenario.model_copy(update={"vol_shocks": (-0.03, 0.03)})}
     )
     assert section_hash(moved, "scenario") != section_hash(base, "scenario")
     assert section_hash(moved, "solver") == section_hash(base, "solver")
@@ -287,11 +343,13 @@ def test_from_config_rejects_a_missing_section(tmp_path) -> None:
 def test_config_hash_collapses_signed_zero() -> None:
     # -0.0 and 0.0 are mathematically equal; a reproducibility hash must not split them
     # (they serialize to different JSON tokens without normalization).
-    import dataclasses
-
     base = _config()
-    neg = dataclasses.replace(base, scenario=dataclasses.replace(base.scenario, vol_shocks=(-0.0, 0.05)))
-    pos = dataclasses.replace(base, scenario=dataclasses.replace(base.scenario, vol_shocks=(0.0, 0.05)))
+    neg = base.model_copy(
+        update={"scenario": base.scenario.model_copy(update={"vol_shocks": (-0.0, 0.05)})}
+    )
+    pos = base.model_copy(
+        update={"scenario": base.scenario.model_copy(update={"vol_shocks": (0.0, 0.05)})}
+    )
     assert config_hash(neg) == config_hash(pos)
 
 
@@ -443,83 +501,97 @@ def test_canonical_json_and_mapping_hash_reject_non_finite() -> None:
         mapping_config_hash({"x": float("-inf")})
 
 
+# A complete, valid qc_threshold section mapping (scalar cut-offs + the nested grid block),
+# the shape the loader validates into QcThresholdConfig. Each rejection test below mutates a
+# single field of a copy so the failure is isolated to that one bad value.
+_GOOD_GRID = {
+    "version": "grid-qc-1",
+    "tenor_floors": {"10d": 5, "1m": 5, "3m": 5, "6m": 5, "12m": 5, "18m": 5, "2y": 5, "3y": 5},
+    "band_low_delta": -0.30,
+    "band_high_delta": 0.30,
+    "max_delta_step": 0.25,
+}
 _GOOD_QC = {
     "version": "qc-1",
     "max_spread_pct": 0.05,
     "max_quote_age_seconds": 30.0,
     "min_chain_count": 6,
+    "grid": _GOOD_GRID,
 }
 
 
-def test_build_dataclass_coerces_by_declared_type() -> None:
-    from algotrading.core.config import build_dataclass
+def _build_qc(mapping: dict) -> QcThresholdConfig:
+    """Validate a qc_threshold mapping through the loader's pydantic seam.
 
-    # ``grid`` is a nested-map-bearing field the flat reflective coercion cannot type, so it
-    # is caller-supplied (the loader builds it via ``_build_qc_threshold``); these direct
-    # build_dataclass calls exercise the scalar fields and let ``grid`` take its default.
-    qc = build_dataclass(
-        QcThresholdConfig, _GOOD_QC, section="qc_threshold",
-        caller_supplied=frozenset({"grid"}),
-    )
+    ``_build_section`` is the one error boundary that maps a pydantic ``ValidationError``
+    onto the structured ``ConfigFieldError(section, field, value, reason)`` callers depend on.
+    """
+    from algotrading.core.config.loader import _build_section
+
+    return _build_section(QcThresholdConfig, "qc_threshold", mapping)
+
+
+def test_section_model_coerces_by_declared_type() -> None:
+    # The pydantic section models are the validation seam (REP6): nested ``grid`` is a native
+    # nested model, a YAML list becomes the declared tuple, and strict typing is preserved.
+    qc = _build_qc(_GOOD_QC)
     assert qc.max_spread_pct == 0.05 and isinstance(qc.min_chain_count, int)
-    # tuple[float, ...] coercion: a YAML list of numbers becomes a tuple of floats.
-    # ``stress_surface`` is a nested dataclass field the loader builds via ``_build_scenario``,
-    # so it is caller-supplied here (taking its default) like ``grid`` above.
-    sc = build_dataclass(
-        ScenarioConfig,
-        {"version": "sc", "spot_shocks": [-0.1, 0, 0.1], "vol_shocks": [0.0], "roll_down_days": [1, 7]},
-        section="scenario",
-        caller_supplied=frozenset({"stress_surface"}),
+    assert qc.grid.tenor_floors["10d"] == 5  # nested dict[str, int] field
+
+    # tuple[float, ...] / tuple[int, ...]: a YAML list becomes the declared tuple type.
+    sc = ScenarioConfig(
+        version="sc", spot_shocks=[-0.1, 0.0, 0.1], vol_shocks=[0.0], roll_down_days=[1, 7]
     )
     assert sc.spot_shocks == (-0.1, 0.0, 0.1)
     assert all(isinstance(x, float) for x in sc.spot_shocks)
-    # tuple[int, ...] coercion: a YAML list of day counts becomes a tuple of ints.
     assert sc.roll_down_days == (1, 7)
     assert all(isinstance(d, int) for d in sc.roll_down_days)
 
 
-def test_build_dataclass_rejects_unknown_key() -> None:
-    from algotrading.core.config import ConfigFieldError, build_dataclass
+def test_section_model_rejects_unknown_key() -> None:
+    # extra="forbid": an unknown YAML key is rejected, naming the field.
+    from algotrading.core.config import ConfigFieldError
 
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(
-            QcThresholdConfig, {**_GOOD_QC, "typo": 1}, section="qc_threshold",
-            caller_supplied=frozenset({"grid"}),
-        )
+        _build_qc({**_GOOD_QC, "typo": 1})
     assert exc.value.field == "typo"
 
 
-def test_build_dataclass_rejects_missing_field() -> None:
-    from algotrading.core.config import ConfigFieldError, build_dataclass
+def test_section_model_rejects_missing_field() -> None:
+    # A required economic field absent from the mapping is rejected, naming the field —
+    # never a silent default.
+    from algotrading.core.config import ConfigFieldError
 
     incomplete = {k: v for k, v in _GOOD_QC.items() if k != "min_chain_count"}
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(
-            QcThresholdConfig, incomplete, section="qc_threshold",
-            caller_supplied=frozenset({"grid"}),
-        )
-    assert exc.value.field == "min_chain_count" and "missing" in exc.value.reason
-
-
-def test_build_dataclass_rejects_fractional_int() -> None:
-    from algotrading.core.config import ConfigFieldError, build_dataclass
-
-    with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(
-            QcThresholdConfig, {**_GOOD_QC, "min_chain_count": 6.5}, section="qc_threshold",
-            caller_supplied=frozenset({"grid"}),
-        )
+        _build_qc(incomplete)
     assert exc.value.field == "min_chain_count"
 
 
-def test_post_init_range_validation_raises_labelled_error() -> None:
-    from algotrading.core.config import ConfigFieldError, build_dataclass
+def test_section_model_rejects_fractional_int() -> None:
+    # strict=True: 10.5 for an int field is a config error, not a silent truncation.
+    from algotrading.core.config import ConfigFieldError
 
     with pytest.raises(ConfigFieldError) as exc:
-        build_dataclass(
-            QcThresholdConfig, {**_GOOD_QC, "max_spread_pct": -0.01}, section="qc_threshold",
-            caller_supplied=frozenset({"grid"}),
-        )
+        _build_qc({**_GOOD_QC, "min_chain_count": 6.5})
+    assert exc.value.field == "min_chain_count"
+
+
+def test_section_model_rejects_bool_as_int() -> None:
+    # strict=True: a bool is not an int (a bool where an int is declared is a mistake).
+    from algotrading.core.config import ConfigFieldError
+
+    with pytest.raises(ConfigFieldError) as exc:
+        _build_qc({**_GOOD_QC, "min_chain_count": True})
+    assert exc.value.field == "min_chain_count"
+
+
+def test_range_validation_raises_labelled_error() -> None:
+    # A Field(gt=0) range violation raises the structured error naming section/field/value.
+    from algotrading.core.config import ConfigFieldError
+
+    with pytest.raises(ConfigFieldError) as exc:
+        _build_qc({**_GOOD_QC, "max_spread_pct": -0.01})
     assert exc.value.section == "qc_threshold"
     assert exc.value.field == "max_spread_pct"
     assert exc.value.value == -0.01
@@ -561,14 +633,14 @@ def _manifest(config: PlatformConfig, **overrides: object) -> Manifest:
 def test_config_hashes_are_per_bundle_and_move_only_their_bundle() -> None:
     # The blueprint manifest form: one hash per hashed Part VII bundle. An economic field
     # change moves exactly its bundle's hash and leaves the others byte-identical.
-    import dataclasses
-
     base = _config()
     hashes = config_hashes(base)
     assert set(hashes) == {"universe", "qc", "pricing", "scenarios"}
 
     # Move a solver field — only the pricing bundle (which carries solver) changes.
-    moved = dataclasses.replace(base, solver=dataclasses.replace(base.solver, iv_tolerance=1e-9))
+    moved = base.model_copy(
+        update={"solver": base.solver.model_copy(update={"iv_tolerance": 1e-9})}
+    )
     moved_hashes = config_hashes(moved)
     assert moved_hashes["pricing"] != hashes["pricing"]
     assert {k: moved_hashes[k] for k in ("universe", "qc", "scenarios")} == {

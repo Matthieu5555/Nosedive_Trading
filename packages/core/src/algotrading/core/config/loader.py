@@ -1,8 +1,11 @@
 """Build a :class:`PlatformConfig` from a versioned YAML overlay config or a mapping.
 
 The loader is the only place that knows the on-disk shape of the typed economic
-config. It turns lists into the tuples the frozen dataclasses expect and raises a
-clear error naming the missing section rather than a raw ``KeyError`` from deep inside.
+config. It hands the resolved YAML mapping straight to the pydantic v2 section models,
+which validate it: nested blocks (``universe.indices``, ``universe.strike_selection``,
+``qc_threshold.grid.tenor_floors``, ``scenario.stress_surface``) are native nested
+models / ``dict[str, int]`` fields on the section classes, so there is no hand-rolled
+coercion or escape-hatch builder — the schema *is* the validation.
 
 The economic config is authored in versioned YAML and resolved through the overlay
 loader (``from_config`` over a :class:`LoadedConfig` from ``load_yaml_config`` — base +
@@ -12,26 +15,21 @@ path C7/ADR 0028 standardize on; the legacy TOML loader was retired here.
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from pathlib import Path
-from types import MappingProxyType
-from typing import Any
+from typing import Any, NoReturn
 
 from .platform_config import (
+    ConfigFieldError,
     ForwardConfig,
-    GridQcConfig,
     MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
     SolverConfig,
-    StressSurfaceConfig,
-    StrikeSelectionConfig,
     SurfaceConfig,
     UniverseConfig,
 )
-from .reflective import ConfigFieldError, build_dataclass
 from .yaml_config import LoadedConfig, load_yaml_config
 
 # Each PlatformConfig section, mapped to the typed class that builds it and the bundle
@@ -56,161 +54,70 @@ class ConfigError(Exception):
     """The config file or mapping was missing a required section or field."""
 
 
+def _plain(value: Any) -> Any:
+    """Return a deep copy of ``value`` as plain ``dict``/``list`` containers.
+
+    The overlay loader freezes its resolved data into read-only ``MappingProxyType`` maps
+    and ``tuple`` sequences. pydantic's strict mode rejects a ``MappingProxyType`` where a
+    nested model (``strike_selection``, ``grid``, ``stress_surface``) is declared, so the
+    loader — which owns the on-disk shape — normalises a frozen section back to plain
+    ``dict``/``list`` before validation. The section models re-freeze on the way in
+    (tuples via ``_list_to_tuple``, the ``indices`` block via its ``model_validator``), so
+    nothing leaks a mutable container into the frozen config.
+    """
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return value
+
+
+def _relabel(section: str, exc: ConfigFieldError) -> NoReturn:
+    """Re-raise ``exc`` under the loader's bundle ``section`` name, preserving the rest.
+
+    The section models' ``_ConfigModel`` base already raises a :class:`ConfigFieldError`,
+    but labels it with the *model class name* (``QcThresholdConfig``). The loader knows the
+    bundle key the section was authored under (``qc_threshold``) and re-labels to it, so a
+    bad value loaded from YAML names the section the way callers and tests expect — keeping
+    section/field semantics identical to the hand-rolled coercer (ADR 0028 / REP6 6c).
+    """
+    raise ConfigFieldError(section, exc.field, exc.value, exc.reason) from exc
+
+
+def _build_section(cls: type, section: str, section_data: Any) -> Any:
+    """Validate one section's raw mapping into its pydantic model.
+
+    The section model is the whole schema: nested blocks (``grid``, ``stress_surface``,
+    ``indices``, ``strike_selection``) are native nested models / ``dict[str, int]`` fields
+    that pydantic builds from the YAML mapping, with the strict (``10.5 → int`` rejected),
+    extra-forbid (unknown key rejected) and range/membership constraints all enforced in one
+    pass. The model raises a structured :class:`ConfigFieldError` (its base class boundary);
+    the loader re-labels its ``section`` to the bundle key here so a bad field names its
+    section and field the same way the hand-rolled coercer used to (ADR 0028).
+    """
+    if not isinstance(section_data, Mapping):
+        raise ConfigError(f"config section '{section}' must be a mapping")
+    try:
+        return cls(**_plain(section_data))
+    except ConfigFieldError as exc:
+        _relabel(section, exc)
+
+
 def config_from_mapping(data: Mapping[str, Any]) -> PlatformConfig:
     """Build a validated config from a plain mapping (e.g. resolved YAML).
 
-    Each economic section is built by the one reflective :func:`build_dataclass` seam
-    (coerce by declared type, reject unknown/missing keys, validate in ``__post_init__``),
-    so the YAML↔dataclass schema cannot drift and a bad field raises a labelled
-    :class:`ConfigFieldError` naming the section and field. ``data`` is keyed by section
-    name (``universe``, ``qc_threshold``, ``solver``, ``surface``, ``scenario``).
+    Each economic section's raw mapping is handed to its pydantic model, which validates it
+    (coerce by declared type, reject unknown/missing keys, enforce ranges/membership) and
+    raises a labelled :class:`ConfigFieldError` naming the section and field on a bad value —
+    so the YAML↔model schema cannot drift. ``data`` is keyed by section name (``universe``,
+    ``qc_threshold``, ``solver``, ``surface``, ``forward``, ``scenario``, ``monetization``).
     """
     built: dict[str, Any] = {}
     for name, (cls, _filename, _subkey) in _PLATFORM_SECTIONS.items():
         if name not in data:
             raise ConfigError(f"config is missing required section '{name}'")
-        section_data = data[name]
-        if name == "universe":
-            built[name] = _build_universe(section_data)
-        elif name == "qc_threshold":
-            built[name] = _build_qc_threshold(section_data)
-        elif name == "scenario":
-            built[name] = _build_scenario(section_data)
-        else:
-            built[name] = build_dataclass(cls, section_data, section=name)
+        built[name] = _build_section(cls, name, data[name])
     return PlatformConfig(**built)
-
-
-def _build_scenario(section_data: Mapping[str, Any]) -> ScenarioConfig:
-    """Build :class:`ScenarioConfig`, handling the nested ``stress_surface:`` block (WS 2B).
-
-    The flat scalar/tuple shock fields are coerced by the reflective :func:`build_dataclass`
-    seam. The ``stress_surface:`` block (the 2B ±range cartesian surface grid) is itself a
-    flat scalar dataclass, so it is built through the *same* seam and reattached — it
-    canonicalizes into ``config_hashes["scenarios"]`` like any other field. The block is
-    **required** on the load path (no silent default for the economic stress grid): an absent
-    ``stress_surface:`` raises rather than falling back to the dataclass placeholder default
-    that older in-memory constructions use, the same discipline ``qc_threshold.grid`` follows.
-    """
-    if not isinstance(section_data, Mapping):
-        raise ConfigError("config section 'scenario' must be a mapping")
-    scalar_fields = {k: v for k, v in section_data.items() if k != "stress_surface"}
-    base = build_dataclass(
-        ScenarioConfig,
-        scalar_fields,
-        section="scenario",
-        caller_supplied=frozenset({"stress_surface"}),
-    )
-    if "stress_surface" not in section_data:
-        raise ConfigError("config section 'scenario' is missing the 'stress_surface:' block")
-    ss_data = section_data["stress_surface"]
-    if not isinstance(ss_data, Mapping):
-        raise ConfigError("config 'scenario.stress_surface' must be a mapping")
-    surface = build_dataclass(StressSurfaceConfig, ss_data, section="stress_surface")
-    return dataclasses.replace(base, stress_surface=surface)
-
-
-def _build_qc_threshold(section_data: Mapping[str, Any]) -> QcThresholdConfig:
-    """Build :class:`QcThresholdConfig`, handling the nested ``grid:`` block specially (WS 1H).
-
-    The flat scalar cut-offs are coerced by the reflective :func:`build_dataclass` seam. The
-    ``grid:`` block (the grid-aware QC cut-offs) carries ``tenor_floors``, a ``tenor → int``
-    mapping the flat coercion cannot type, so it is split out: the scalar grid fields go
-    through :func:`build_dataclass`, the ``tenor_floors`` map is coerced by hand to a plain
-    ``{str: int}`` dict (rejecting a non-mapping or a non-integer floor with a labelled
-    :class:`ConfigFieldError`), and the typed :class:`GridQcConfig` is reattached. The block
-    is required on the load path (no silent default for the economic floors); an absent
-    ``grid:`` raises rather than falling back to the dataclass default the way older in-memory
-    constructions may.
-    """
-    if not isinstance(section_data, Mapping):
-        raise ConfigError("config section 'qc_threshold' must be a mapping")
-    scalar_fields = {k: v for k, v in section_data.items() if k != "grid"}
-    base = build_dataclass(
-        QcThresholdConfig,
-        scalar_fields,
-        section="qc_threshold",
-        caller_supplied=frozenset({"grid"}),
-    )
-    if "grid" not in section_data:
-        raise ConfigError("config section 'qc_threshold' is missing the 'grid:' block")
-    grid_data = section_data["grid"]
-    if not isinstance(grid_data, Mapping):
-        raise ConfigError("config 'qc_threshold.grid' must be a mapping")
-    grid_scalars = {k: v for k, v in grid_data.items() if k != "tenor_floors"}
-    grid_base = build_dataclass(
-        GridQcConfig,
-        grid_scalars,
-        section="grid_qc",
-        caller_supplied=frozenset({"tenor_floors"}),
-    )
-    if "tenor_floors" not in grid_data:
-        raise ConfigError("config 'qc_threshold.grid' is missing 'tenor_floors'")
-    raw_floors = grid_data["tenor_floors"]
-    if not isinstance(raw_floors, Mapping):
-        raise ConfigError(
-            "config 'qc_threshold.grid.tenor_floors' must be a mapping of tenor → floor"
-        )
-    floors = {
-        str(tenor): _coerce_floor(tenor, value) for tenor, value in raw_floors.items()
-    }
-    grid = dataclasses.replace(grid_base, tenor_floors=floors)
-    return dataclasses.replace(base, grid=grid)
-
-
-def _coerce_floor(tenor: Any, value: Any) -> int:
-    """Coerce one tenor-floor entry to an int, rejecting a bool or non-integral value."""
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ConfigFieldError(
-            "grid_qc", "tenor_floors", {tenor: value}, "floor must be an integer"
-        )
-    return value
-
-
-def _build_universe(section_data: Mapping[str, Any]) -> UniverseConfig:
-    """Build :class:`UniverseConfig`, handling the nested ``indices:`` and ``strike_selection:``
-    blocks specially.
-
-    The reflective :func:`build_dataclass` coerces flat scalar/tuple fields, but two nested
-    blocks need special handling. The ``indices:`` block (ADR 0035) is a keyed map of nested
-    maps it cannot coerce, so it is split out and reattached canonicalized — a stable,
-    JSON-ready nested structure so it folds into ``config_hashes["universe"]`` deterministically
-    (no separate hash); it is *not* validated here (the calendar-code check is the infra layer's
-    ``parse_index_registry``, which core stays blind to). The ``strike_selection:`` block (WS
-    1B, ADR 0028) is itself a flat scalar dataclass, so it *is* built reflectively through the
-    same :func:`build_dataclass` seam (no silent default for the economic delta bound) and the
-    typed object is reattached — it canonicalizes into the universe hash like any other field.
-    Both blocks are absent-tolerant: a missing ``indices:`` is an empty registry; a missing
-    ``strike_selection:`` falls back to the dataclass default (used by older configs/tests).
-    """
-    if not isinstance(section_data, Mapping):
-        raise ConfigError("config section 'universe' must be a mapping")
-    nested = frozenset({"indices", "strike_selection"})
-    scalar_fields = {k: v for k, v in section_data.items() if k not in nested}
-    base = build_dataclass(
-        UniverseConfig, scalar_fields, section="universe", caller_supplied=nested
-    )
-    raw_indices = section_data.get("indices", {})
-    if not isinstance(raw_indices, Mapping):
-        raise ConfigError("config 'universe.indices' must be a mapping of index symbol → entry")
-    replacements: dict[str, Any] = {"indices": _canonical_indices(raw_indices)}
-    if "strike_selection" in section_data:
-        ss_data = section_data["strike_selection"]
-        if not isinstance(ss_data, Mapping):
-            raise ConfigError("config 'universe.strike_selection' must be a mapping")
-        replacements["strike_selection"] = build_dataclass(
-            StrikeSelectionConfig, ss_data, section="strike_selection"
-        )
-    return dataclasses.replace(base, **replacements)
-
-
-def _canonical_indices(value: Any) -> Any:
-    """Return a deeply-immutable, JSON-ready copy of the indices block for stable hashing."""
-    if isinstance(value, Mapping):
-        return MappingProxyType({str(k): _canonical_indices(v) for k, v in value.items()})
-    if isinstance(value, (list, tuple)):
-        return tuple(_canonical_indices(v) for v in value)
-    return value
 
 
 def from_config(loaded: LoadedConfig) -> PlatformConfig:
@@ -218,12 +125,12 @@ def from_config(loaded: LoadedConfig) -> PlatformConfig:
 
     The economic config is authored in versioned YAML and resolved through the overlay
     loader (``load_yaml_config`` — base + one overlay, deep-merged), then validated into
-    the frozen dataclasses by the *same* ``config_from_mapping`` the TOML path uses. This
-    is the unified typed entry C7/ADR 0028 standardize on: one schema, one validation, the
-    overlay loader's inheritance instead of a second untyped path.
+    the frozen pydantic models by the *same* ``config_from_mapping`` the bundle loader uses.
+    This is the unified typed entry C7/ADR 0028 standardize on: one schema, one validation,
+    the overlay loader's inheritance instead of a second untyped path.
 
-    The four required sections (``universe``, ``qc_threshold``, ``solver``, ``scenario``)
-    must be present in the resolved mapping; a missing one raises :class:`ConfigError`.
+    The required sections must be present in the resolved mapping; a missing one raises
+    :class:`ConfigError`.
     """
     return config_from_mapping(dict(loaded.data))
 
@@ -233,7 +140,7 @@ def load_platform_config(configs_dir: str | Path) -> PlatformConfig:
 
     Reads the economic bundles in ``configs_dir`` (``universe.yaml``, ``qc.yaml``,
     ``pricing.yaml``, ``scenarios.yaml``) — each authored per the blueprint Part VII
-    taxonomy — and assembles them into the typed config through the one reflective
+    taxonomy — and assembles them into the typed config through the one
     :func:`config_from_mapping` seam. A bundle may carry more than one section:
     ``pricing.yaml`` holds both ``solver:`` and ``surface:``. The operational bundles
     (``environment.yaml``, ``broker.yaml``) are not loaded here: they are not economics

@@ -166,7 +166,6 @@ def test_missing_primary_key_field_is_rejected(tmp_path: Path) -> None:
 def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
     # source="qc": a grid coverage-floor breach (WS 1H). "SPX" is missing its "3m" tenor
     # entirely, so the per-tenor coverage-floor check fails and names the tenor.
-    import dataclasses
 
     from algotrading.core.config import GridQcConfig
     from algotrading.infra.qc import check_tenor_coverage_floor
@@ -178,7 +177,7 @@ def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
         band_high_delta=0.30,
         max_delta_step=0.35,
     )
-    thresholds = thresholds_from_config(dataclasses.replace(QC_CONFIG, grid=grid_cfg))
+    thresholds = thresholds_from_config(QC_CONFIG.model_copy(update={"grid": grid_cfg}))
 
     class _GP:
         def __init__(self, underlying: str, tenor: str, delta: float) -> None:

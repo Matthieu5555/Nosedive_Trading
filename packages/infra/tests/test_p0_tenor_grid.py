@@ -11,7 +11,6 @@ mirrored into ``configs/universe.yaml`` (the hashed ``universe`` bundle). These 
 
 from __future__ import annotations
 
-import dataclasses
 import re
 from pathlib import Path
 
@@ -61,18 +60,17 @@ def test_a_comment_only_edit_leaves_the_universe_hash_identical() -> None:
     # Reordering/adding a comment is not an economic change; the hash is over content, so
     # the universe bundle hash must not move. Simulate by hashing two equal configs.
     config = load_platform_config(CONFIGS_DIR)
-    same = dataclasses.replace(config)
+    same = config.model_copy()
     assert config_hashes(config)["universe"] == config_hashes(same)["universe"]
 
 
 def test_changing_a_tenor_moves_exactly_the_universe_hash() -> None:
     config = load_platform_config(CONFIGS_DIR)
     before = config_hashes(config)
-    moved_universe = dataclasses.replace(
-        config.universe,
-        tenor_grid=(*EXPECTED_TENOR_GRID[:-1], "5y"),  # swap the tail tenor
+    moved_universe = config.universe.model_copy(
+        update={"tenor_grid": (*EXPECTED_TENOR_GRID[:-1], "5y")},  # swap the tail tenor
     )
-    moved = dataclasses.replace(config, universe=moved_universe)
+    moved = config.model_copy(update={"universe": moved_universe})
     after = config_hashes(moved)
     assert after["universe"] != before["universe"]
     # Every other bundle is byte-identical: the grid lives only in the universe bundle.

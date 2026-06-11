@@ -35,3 +35,36 @@ grid:
   # The largest acceptable gap between consecutive selected deltas inside the band; a hole
   # wider than this is a completeness breach.
   max_delta_step: 0.25
+
+# Collector-continuity cut-offs (C7 increment 2). Economic — they decide whether a capture
+# session is continuous enough to trust — so hashed here, never `.py` literals (ADR 0028).
+continuity:
+  version: "2026.05.31"
+  max_gap_count: 5            # at most this many gap events before the session fails
+  warn_gap_count: 1          # above this (but <= max) warns; must be <= max_gap_count
+  min_coverage_ratio: 0.95   # fraction of subscribed instruments that must be covered
+
+# Forward-stability + parity-residual cut-offs (C7 increment 2). Economic (they gate which
+# forwards/curve points survive QC), so hashed here, never `.py` literals (ADR 0028).
+forward_engine:
+  version: "2026.05.31"
+  max_residual_mad: 0.05         # largest acceptable parity-line residual MAD
+  min_forward_confidence: 0.5    # lowest acceptable forward-estimate confidence (0..1)
+  max_parity_residual: 0.10      # largest acceptable single put-call-parity residual
+
+# IV-convergence + surface-fit cut-offs (C7 increment 2). Economic (they gate which smiles
+# and slice fits survive QC), so hashed here, never `.py` literals (ADR 0028).
+fit_tolerance:
+  version: "2026.05.31"
+  max_non_convergence_ratio: 0.10  # largest acceptable solver non-convergence fraction (0..1)
+  max_surface_rmse: 0.02           # largest acceptable per-slice RMSE (total-variance units)
+
+# Anomaly bands (C7 increment 2). The static-check MAD multiplier and the rolling-baseline
+# robust-z warn/fail bands + minimum baseline length. Economic (they decide whether a metric
+# shifted abnormally), so hashed here, never `.py` literals (ADR 0028).
+anomaly:
+  version: "2026.05.31"
+  mad_multiplier: 5.0   # static-check spike cut-off, in baseline MADs from the median
+  warn_z: 3.5           # rolling-baseline |robust z| WARN band
+  fail_z: 5.0           # rolling-baseline FAIL band; must be >= warn_z
+  min_baseline: 10      # fewer baseline points than this -> NO_BASELINE, never assumed normal

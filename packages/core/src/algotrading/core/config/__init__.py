@@ -19,7 +19,12 @@ from .platform_config import (
     GAMMA_NORMALISATIONS,
     SECTION_NAMES,
     THETA_DAY_COUNTS,
+    AnomalyQcConfig,
+    ConfigFieldError,
+    ContinuityQcConfig,
+    FitToleranceQcConfig,
     ForwardConfig,
+    ForwardEngineQcConfig,
     GridQcConfig,
     MonetizationConfig,
     PlatformConfig,
@@ -38,7 +43,6 @@ from .platform_config import (
     section_hash,
     section_versions,
 )
-from .reflective import ConfigFieldError, build_dataclass
 from .yaml_config import LoadedConfig, load_yaml_config, mapping_config_hash
 
 __all__ = [
@@ -46,9 +50,13 @@ __all__ = [
     "GAMMA_NORMALISATIONS",
     "SECTION_NAMES",
     "THETA_DAY_COUNTS",
+    "AnomalyQcConfig",
     "ConfigError",
     "ConfigFieldError",
+    "ContinuityQcConfig",
+    "FitToleranceQcConfig",
     "ForwardConfig",
+    "ForwardEngineQcConfig",
     "GridQcConfig",
     "LoadedConfig",
     "MonetizationConfig",
@@ -60,7 +68,6 @@ __all__ = [
     "StrikeSelectionConfig",
     "SurfaceConfig",
     "UniverseConfig",
-    "build_dataclass",
     "canonical_json",
     "composite_config_hash",
     "config_from_mapping",
@@ -74,3 +81,6 @@ __all__ = [
     "section_hash",
     "section_versions",
 ]
+
+# `build_dataclass` retired: the pydantic v2 section models are the validation seam now
+# (REP6 / ADR 0028). `ConfigFieldError` moved to `platform_config` with the error boundary.

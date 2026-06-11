@@ -26,7 +26,10 @@ import-linter enforces that this is the bottom of the stack.
   which code version, which config hash) and the stamp helpers. This is the mechanism
   behind the platform's determinism and reproducibility guarantees.
 - **`manifest.py`** — the run manifest (the per-run record that makes a run reproducible).
-- **`log.py`** — structured logging (`structlog`) with correlation-id binding.
+- **`log.py`** — structured (JSON) logging on stdlib `logging`: `get_logger(name)` returns
+  a logger whose handler renders each record as one-line JSON via a custom `JsonFormatter`
+  (it lifts any non-reserved `extra=` keys into the payload). No `structlog` dependency and
+  no correlation-id binding today.
 
 ## Why it's separate
 

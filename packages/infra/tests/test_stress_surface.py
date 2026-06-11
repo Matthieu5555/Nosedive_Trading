@@ -167,9 +167,8 @@ def test_stress_range_is_config_driven() -> None:
     assert min(spot_axis) == pytest.approx(-0.5) and max(spot_axis) == pytest.approx(0.5)
     # A YAML-equivalent edit (range/steps) changes the axes and the cell count with no code
     # change — the construction is a pure function of the config.
-    narrowed = dataclasses.replace(
-        config.scenario,
-        stress_surface=dataclasses.replace(ss, spot_steps=3, spot_shock_abs=0.2),
+    narrowed = config.scenario.model_copy(
+        update={"stress_surface": ss.model_copy(update={"spot_steps": 3, "spot_shock_abs": 0.2})},
     )
     n_spot, n_vol = surface_axes(narrowed)
     assert len(n_spot) == 3 and max(n_spot) == pytest.approx(0.2)
@@ -208,8 +207,8 @@ def test_surface_version_moves_with_stress_block() -> None:
 
     def moved(**ss_changes: object) -> str:
         return effective_surface_version(
-            dataclasses.replace(
-                base, stress_surface=dataclasses.replace(base.stress_surface, **ss_changes)
+            base.model_copy(
+                update={"stress_surface": base.stress_surface.model_copy(update=ss_changes)}
             )
         )
 

@@ -16,7 +16,6 @@ Backend: ``SqliteProfileRepository`` behind the ``ProfileRepository`` port, sele
 
 from __future__ import annotations
 
-import dataclasses
 from datetime import date
 from pathlib import Path
 
@@ -40,8 +39,8 @@ def _config() -> PlatformConfig:
 
 def _tightened(config: PlatformConfig) -> PlatformConfig:
     """A one-field variant (a different solver tolerance) — a distinct economic config."""
-    return dataclasses.replace(
-        config, solver=dataclasses.replace(config.solver, iv_tolerance=1e-9)
+    return config.model_copy(
+        update={"solver": config.solver.model_copy(update={"iv_tolerance": 1e-9})}
     )
 
 

@@ -6,7 +6,7 @@
 # enforced mechanically by import-linter (a layer never imports a layer above it).
 #
 # Full quality gate (AGENTS.md "Verify before you declare done"):
-#     uv run ruff check . && uv run mypy . && uv run import-linter && uv run pytest -q
+#     uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q
 
 [tool.uv.workspace]
 members = [
@@ -41,6 +41,7 @@ notebooks = [
     "ipykernel>=7.2.0",
     "nbconvert>=7.16",
     "kaleido>=1.3.0",
+    "marimo>=0.10",
 ]
 
 # --- Lint -----------------------------------------------------------------
@@ -56,7 +57,7 @@ extend-exclude = [
     "scripts",
     "Vincent's Code",
     "Test Lenny",
-    "ThomasOssen",
+    "ThomasHossen",
     "research",
     "data",
 ]
@@ -92,7 +93,9 @@ files = ["packages", "apps"]
 exclude = [
     "Vincent's Code/",
     "Test Lenny/",
+    "ThomasHossen/",
     "scripts/",
+    "notebooks/",
     "/tests/",
 ]
 

@@ -451,3 +451,57 @@ def test_read_with_date_range(tmp_path: Path) -> None:
     assert {b.trade_date for b in res} == {date(2026, 6, 2), date(2026, 6, 3)}
     assert {b.close for b in res} == {5002.0, 5003.0}
 
+
+# -- F-STORE-01 / F-STORE-02: version-leak regression -----------------------
+# A live-only read (version=None) must NEVER include files from a version=<V>
+# restatement sub-partition. The bug was `"version=" not in p.parts` in the
+# date-range direct scan branch — always True, so restatement files leaked in.
+# Both read paths are exercised: (a) the glob path (`_files_by_glob`) used when
+# no date range is given, and (b) the date-range direct path
+# (`_files_by_date_range_direct`) where the original bug lived.
+
+
+def test_live_only_read_excludes_restatement_via_glob(tmp_path: Path) -> None:
+    # Build a store with a live forward_curve row AND a version= restatement.
+    # A version-blind read must return ONLY the live row.
+    store = _store(tmp_path)
+    live = _forward(5050.0)
+    restated = _forward(5060.0)
+    store.write("forward_curve", [live])
+    store.write("forward_curve", [restated], version="reproc-1")
+
+    # Glob path: no date range, triggers _files_by_glob after the single-partition
+    # fast path (which already works — the glob path is the regression target).
+    # Force the glob path by omitting trade_date so the fast-path is skipped.
+    result = store.read("forward_curve")
+    assert len(result) == 1, (
+        f"Expected 1 live row, got {len(result)}: {[r.forward_price for r in result]}"
+    )
+    assert result[0].forward_price == 5050.0
+
+
+def test_live_only_read_excludes_restatement_via_date_range_direct(tmp_path: Path) -> None:
+    # Same store layout as above but read via the date-range direct path
+    # (_files_by_date_range_direct), which is the branch that contained the bug
+    # `"version=" not in p.parts` (always True -> restatement leaks in).
+    # forward_curve is not provider-partitioned, so the date-range direct path is
+    # exercised when underlying=None and the range is <= 31 days.
+    store = _store(tmp_path)
+    live = _forward(5050.0)
+    restated = _forward(5060.0)
+    store.write("forward_curve", [live])
+    store.write("forward_curve", [restated], version="reproc-1")
+
+    # Date-range path without pinning underlying: goes through
+    # _files_by_date_range_direct -> d_dir.glob("**/data.parquet") + _is_live_file.
+    result = store.read(
+        "forward_curve",
+        start_date=_TD,
+        end_date=_TD,
+    )
+    assert len(result) == 1, (
+        f"Expected 1 live row via date-range, got {len(result)}: "
+        f"{[r.forward_price for r in result]}"
+    )
+    assert result[0].forward_price == 5050.0
+

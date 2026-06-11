@@ -20,10 +20,11 @@ this?".
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -227,6 +228,139 @@ class ParquetStore:
                     temp.unlink(missing_ok=True)
 
     # -- reading ----------------------------------------------------------
+    def _discover_providers(self, table: str, spec: Any) -> list[str | None]:
+        """Return every provider segment present for *table*, or ``[None]`` if none."""
+        base = table_dir(self.root, table)
+        if not base.exists():
+            return []
+        return [
+            p.name.split("=", 1)[1]
+            for p in base.iterdir()
+            if p.is_dir() and p.name.startswith("provider=")
+        ]
+
+    @staticmethod
+    def _is_live_file(path: Path) -> bool:
+        """True when *path* is a live (unversioned) Parquet file.
+
+        A live file sits directly under ``underlying=<SYM>/data.parquet``.
+        A restated file sits one level deeper under ``version=<V>/data.parquet``,
+        so its parent directory name starts with ``"version="``.
+        """
+        return not path.parent.name.startswith("version=")
+
+    def _files_by_date_range_direct(
+        self,
+        table: str,
+        spec: Any,
+        start_date: date,
+        end_date: date,
+        underlying: str | None,
+        version: str | None,
+        provider: str | None,
+    ) -> list[Path]:
+        """Collect Parquet files by walking dates one day at a time.
+
+        Faster than a recursive glob for narrow ranges because it only stats the
+        exact paths it expects rather than traversing the whole tree. Used when
+        the date range is short enough to make the per-day stat budget acceptable:
+        up to 5 years when ``underlying`` is fixed, up to 31 days otherwise.
+        """
+        if spec.provider_partitioned and provider is None:
+            providers: list[str | None] = self._discover_providers(table, spec)
+        else:
+            providers = [provider]
+
+        files: list[Path] = []
+        curr = start_date
+        while curr <= end_date:
+            for p_val in providers:
+                if underlying is not None:
+                    path = partition_file(
+                        self.root, table, curr, underlying, version, p_val
+                    )
+                    if path.exists():
+                        files.append(path)
+                else:
+                    # No underlying given: iterate underlying subdirs for this date.
+                    d_dir = table_dir(self.root, table)
+                    if p_val is not None:
+                        d_dir = d_dir / f"provider={p_val}"
+                    d_dir = d_dir / f"trade_date={curr.isoformat()}"
+                    if d_dir.exists():
+                        if version is not None:
+                            files.extend(
+                                d_dir.glob(f"**/version={version}/data.parquet")
+                            )
+                        else:
+                            files.extend(
+                                p
+                                for p in d_dir.glob("**/data.parquet")
+                                if self._is_live_file(p)
+                            )
+            curr += timedelta(days=1)
+        return sorted(files)
+
+    def _files_by_glob(
+        self,
+        table: str,
+        trade_date: date | None,
+        underlying: str | None,
+        version: str | None,
+        provider: str | None,
+        start_date: date | None,
+        end_date: date | None,
+    ) -> list[Path]:
+        """Collect Parquet files via recursive glob, then filter by date/version.
+
+        Used when the date range is too wide for the per-day stat approach, or
+        when neither ``start_date`` nor ``end_date`` is given. Applies date-range
+        filtering in a post-glob pass by parsing ``trade_date=<D>`` path segments.
+        """
+        base = table_dir(self.root, table)
+        if provider is not None:
+            base = base / f"provider={provider}"
+        if not base.exists():
+            return []
+
+        if underlying is not None:
+            files: list[Path] = sorted(
+                base.glob(f"**/underlying={underlying}/**/*.parquet")
+            )
+        else:
+            files = sorted(base.glob("**/*.parquet"))
+
+        # Narrow to the requested trade_date when one is given (cross-provider
+        # reads fall through here because the single-partition fast path is
+        # skipped for provider-partitioned tables with provider=None).
+        if trade_date is not None:
+            segment = f"trade_date={trade_date.isoformat()}"
+            files = [path for path in files if segment in path.parts]
+
+        # Post-glob date-range filter: parse the trade_date= path segment.
+        if start_date is not None or end_date is not None:
+            filtered: list[Path] = []
+            for path in files:
+                dt_val: date | None = None
+                for part in path.parts:
+                    if part.startswith("trade_date="):
+                        with contextlib.suppress(ValueError):
+                            dt_val = date.fromisoformat(part.split("=", 1)[1])
+                        break
+                if dt_val is not None:
+                    if start_date is not None and dt_val < start_date:
+                        continue
+                    if end_date is not None and dt_val > end_date:
+                        continue
+                filtered.append(path)
+            files = filtered
+
+        # Version filter: live rows sit directly under underlying=<SYM>; a
+        # restatement file sits one level deeper under version=<V>.
+        if version is None:
+            return [path for path in files if self._is_live_file(path)]
+        return [path for path in files if path.parent.name == f"version={version}"]
+
     def _partition_files(
         self,
         table: str,
@@ -271,7 +405,7 @@ class ParquetStore:
             )
             return [single] if single.exists() else []
 
-        # Check if we can do a direct date-range scan instead of globbing
+        # For short date ranges prefer a per-day stat walk over a recursive glob.
         if start_date is not None and end_date is not None:
             delta = end_date - start_date
             can_direct = (
@@ -279,85 +413,13 @@ class ParquetStore:
                 or (underlying is None and 0 <= delta.days <= 31)
             )
             if can_direct:
-                providers: list[str | None] = [provider]
-                if spec.provider_partitioned and provider is None:
-                    base = table_dir(self.root, table)
-                    if base.exists():
-                        providers = [
-                            p.name.split("=", 1)[1]
-                            for p in base.iterdir()
-                            if p.is_dir() and p.name.startswith("provider=")
-                        ]
-                    else:
-                        providers = []
-                
-                files = []
-                from datetime import timedelta
-                for p_val in providers:
-                    curr = start_date
-                    while curr <= end_date:
-                        if underlying is not None:
-                            path = partition_file(
-                                self.root, table, curr, underlying, version, p_val
-                            )
-                            if path.exists():
-                                files.append(path)
-                        else:
-                            # Direct date scan without underlying: list the
-                            # underlying subdirectories for this date
-                            d_dir = table_dir(self.root, table)
-                            if p_val is not None:
-                                d_dir = d_dir / f"provider={p_val}"
-                            d_dir = d_dir / f"trade_date={curr.isoformat()}"
-                            if d_dir.exists():
-                                if version is not None:
-                                    files.extend(d_dir.glob(f"**/version={version}/data.parquet"))
-                                else:
-                                    for p in d_dir.glob("**/data.parquet"):
-                                        if "version=" not in p.parts:
-                                            files.append(p)
-                        curr += timedelta(days=1)
-                return sorted(files)
+                return self._files_by_date_range_direct(
+                    table, spec, start_date, end_date, underlying, version, provider
+                )
 
-        base = table_dir(self.root, table)
-        if provider is not None:
-            base = base / f"provider={provider}"
-        if not base.exists():
-            return []
-        if underlying is not None:
-            files = sorted(base.glob(f"**/underlying={underlying}/**/*.parquet"))
-        else:
-            files = sorted(base.glob("**/*.parquet"))
-        # A cross-provider read of one partition (provider=None on a provider-partitioned
-        # table) still names a single (trade_date, underlying): keep only files under that
-        # partition, so the union stays scoped to the requested day/symbol across providers
-        # rather than scanning the whole table.
-        if trade_date is not None:
-            segment = f"trade_date={trade_date.isoformat()}"
-            files = [path for path in files if segment in path.parts]
-        if start_date is not None or end_date is not None:
-            import contextlib
-            filtered: list[Path] = []
-            for path in files:
-                dt_val: date | None = None
-                for part in path.parts:
-                    if part.startswith("trade_date="):
-                        with contextlib.suppress(ValueError):
-                            dt_val = date.fromisoformat(part.split("=", 1)[1])
-                        break
-                if dt_val is not None:
-                    if start_date is not None and dt_val < start_date:
-                        continue
-                    if end_date is not None and dt_val > end_date:
-                        continue
-                filtered.append(path)
-            files = filtered
-        if version is None:
-            # Live rows only: the file directly under underlying=<SYM>. A restatement
-            # file lives one level deeper under version=<V>, so its parent dir name
-            # starts with "version=" and is excluded here.
-            return [path for path in files if not path.parent.name.startswith("version=")]
-        return [path for path in files if path.parent.name == f"version={version}"]
+        return self._files_by_glob(
+            table, trade_date, underlying, version, provider, start_date, end_date
+        )
 
     def read(
         self,

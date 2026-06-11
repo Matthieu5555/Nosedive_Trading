@@ -11,12 +11,20 @@ wiring is allowed exactly here and nowhere in the packages).
 It resolves the enabled indices from the 1J registry, each index's underlying conid (and, by
 default, its as-of constituents' equity conids) at fetch time, then fetches + persists each daily
 bars — resumable and idempotent on ``(provider, underlying, trade_date)`` (a run killed mid-way
-re-fetches only the missing tail). A non-credentialed environment is a clean no-op (exit 0): no
-IBKR CP OAuth artifacts, nothing to fetch — see ``.env.example`` for the ``IBKR_CP_*`` vars.
+re-fetches only the missing tail). A session with neither a Gateway nor OAuth credentials is a
+clean no-op (exit 0): nothing to fetch.
+
+Two authentications (same selection as ``scripts/eod_run.py``): set ``IBKR_CP_GATEWAY=1`` to run
+over the locally-running Client Portal Gateway (browser-login cookie, no OAuth enrolment — see
+``documentation/connectivity/ibkr-gateway-quickstart.md``); else the hosted OAuth path runs when
+the ``IBKR_CP_*`` artifacts are present (``.env.example``).
+
+**CP REST caps a single history request at ~999 daily bars (~4y)**, so one run backfills at most
+the most recent ~4 years per ticker — there is no multi-request pagination yet (a follow-up).
 
 Usage:
-    uv run python scripts/ohlc_backfill.py                    # all enabled indices + constituents
-    uv run python scripts/ohlc_backfill.py --index SX5E --period 10y
+    IBKR_CP_GATEWAY=1 uv run python scripts/ohlc_backfill.py  # via the local Gateway, all indices
+    uv run python scripts/ohlc_backfill.py --index SX5E --period 5y
     uv run python scripts/ohlc_backfill.py --no-constituents  # index underlyings only
     uv run python scripts/ohlc_backfill.py --as-of 2026-06-01 # basket as it stood on that date
 """
@@ -39,7 +47,11 @@ from algotrading.infra_ibkr.history_backfill import (
     build_history_collector,
     history_requests_for,
 )
-from algotrading.infra_ibkr.session_factory import build_credentialed_session
+from algotrading.infra_ibkr.session_factory import (
+    build_credentialed_session,
+    build_gateway_session,
+    gateway_requested,
+)
 
 _LOGGER = structlog.get_logger("ibkr.ohlc_backfill")
 
@@ -82,8 +94,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     A non-credentialed environment returns 0 without touching the network (nothing to backfill).
     """
     args = _parse_args(argv)
-    # Load the repo-root .env (the IBKR_CP_* credentials) before the credentialed session is built;
-    # neither `uv run` nor the caller's shell does it. The real environment still wins over the file.
+    # Load the repo-root .env (IBKR_CP_* / IBKR_CP_GATEWAY) before the session is built; neither
+    # `uv run` nor the caller's shell does it. The real environment still wins over the file.
     load_env_file(_REPO_ROOT / ".env")
     as_of = date.fromisoformat(args.as_of) if args.as_of else datetime.now(UTC).date()
     calc_ts = datetime.now(UTC)
@@ -95,11 +107,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     data_root = Path(os.environ.get("ALGOTRADING_DATA_ROOT", str(_REPO_ROOT / "data")))
     store = ParquetStore(data_root)
 
-    built = build_credentialed_session()
+    # Session selection mirrors scripts/eod_run.py: the operator opts into the local CP Gateway
+    # cookie path with IBKR_CP_GATEWAY (no OAuth enrolment — the path that sidesteps the broken
+    # Self-Service OAuth portal); otherwise the hosted OAuth path runs when IBKR_CP_* is present.
+    if gateway_requested():
+        _LOGGER.info(
+            "ibkr.ohlc_backfill.gateway",
+            reason="IBKR_CP_GATEWAY set — backfilling over the local Client Portal Gateway",
+        )
+        built: tuple[object, object] | None = build_gateway_session()
+    else:
+        built = build_credentialed_session()
     if built is None:
         _LOGGER.info(
             "ibkr.ohlc_backfill.no_credentials",
-            reason="no IBKR CP OAuth artifacts in environment; nothing to backfill (clean no-op)",
+            reason="no IBKR CP Gateway/OAuth session; nothing to backfill (clean no-op)",
         )
         return 0
     transport, session = built

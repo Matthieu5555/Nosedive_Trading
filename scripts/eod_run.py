@@ -33,8 +33,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from algotrading.infra.connectivity import load_env_file
-from algotrading.infra.orchestration.eod_runner import RunnerDeps, build_default_deps, main
-from algotrading.infra_ibkr.live_capture import live_basket_source
+from algotrading.infra.orchestration.eod_runner import (
+    BasketSource,
+    RunnerDeps,
+    build_default_deps,
+    main,
+)
+from algotrading.infra_ibkr.live_capture import gateway_basket_source, live_basket_source
 
 # The repo-root .env holds the IBKR_CP_* credentials the live capture keys on (neither `uv run`
 # nor the systemd unit loads it). Load it here, at the one entrypoint, before any deps are built —
@@ -42,15 +47,27 @@ from algotrading.infra_ibkr.live_capture import live_basket_source
 _DOTENV = Path(__file__).resolve().parents[1] / ".env"
 
 
-def _deps_factory() -> RunnerDeps:
-    """Build the production deps with the live IBKR basket source when credentials are present.
+def _select_basket_source() -> BasketSource | None:
+    """Pick the 1C close-capture source: local Gateway first, then hosted OAuth, then empty.
 
-    Selects the 1C close-capture source: ``live_basket_source()`` returns a credentialed
-    ``collect_live`` CP REST source, or ``None`` when the environment carries no IBKR CP OAuth
-    artifacts. ``build_default_deps(basket_source=...)`` threads whichever it gets into the stage
-    wiring; ``None`` leaves the runner on its empty no-capture default (a clean exit-0 day).
+    Two live CP REST authentications exist (`packages/infra-ibkr/README.md`). The operator opts
+    into the **local CP Gateway** path with ``IBKR_CP_GATEWAY`` (browser-login cookie, no OAuth
+    enrolment — the path that sidesteps the Self-Service OAuth portal); ``gateway_basket_source()``
+    returns that source when the flag is set, else ``None``. Falling through,
+    ``live_basket_source()`` returns the **hosted OAuth** source when the ``IBKR_CP_*`` artifacts
+    are present, else ``None``. Both ``None`` leaves the runner on its empty no-capture default (a
+    clean exit-0 day).
     """
-    return build_default_deps(basket_source=live_basket_source())
+    return gateway_basket_source() or live_basket_source()
+
+
+def _deps_factory() -> RunnerDeps:
+    """Build the production deps with the selected live IBKR basket source (or the empty default).
+
+    ``build_default_deps(basket_source=...)`` threads whichever source :func:`_select_basket_source`
+    picks into the stage wiring; ``None`` leaves the runner on its empty no-capture default.
+    """
+    return build_default_deps(basket_source=_select_basket_source())
 
 
 if __name__ == "__main__":

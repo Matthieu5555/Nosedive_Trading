@@ -889,6 +889,57 @@ def test_robust_z_score_matches_hand_computed_mad() -> None:
     assert robust_z_score(40.0, baseline) == pytest.approx(24.5 / (1.4826 * 3.0), rel=1e-9)
 
 
+# --- ADR 0028: supplementary QC cut-offs are hydrated from config, not `.py` literals ---
+def test_supplementary_thresholds_come_from_config() -> None:
+    # C7 increment 2: the supplementary cut-offs now live in the hashed `qc` config blocks
+    # (continuity / forward_engine / fit_tolerance / anomaly), not module literals. An
+    # override on the typed config must flow straight through the QcThresholds bundle.
+    # Independent oracle: the values asserted are the exact ones placed on the config blocks.
+    overridden = QC_CONFIG.model_copy(
+        update={
+            "continuity": QC_CONFIG.continuity.model_copy(
+                update={"max_gap_count": 9, "warn_gap_count": 2, "min_coverage_ratio": 0.80}
+            ),
+            "forward_engine": QC_CONFIG.forward_engine.model_copy(
+                update={
+                    "max_residual_mad": 0.07,
+                    "min_forward_confidence": 0.6,
+                    "max_parity_residual": 0.15,
+                }
+            ),
+            "fit_tolerance": QC_CONFIG.fit_tolerance.model_copy(
+                update={"max_non_convergence_ratio": 0.20, "max_surface_rmse": 0.03}
+            ),
+            "anomaly": QC_CONFIG.anomaly.model_copy(update={"mad_multiplier": 7.0}),
+        }
+    )
+    t = thresholds_from_config(overridden)
+    assert t.max_gap_count == 9
+    assert t.warn_gap_count == 2
+    assert t.min_coverage_ratio == pytest.approx(0.80)
+    assert t.max_residual_mad == pytest.approx(0.07)
+    assert t.min_forward_confidence == pytest.approx(0.6)
+    assert t.max_parity_residual == pytest.approx(0.15)
+    assert t.max_non_convergence_ratio == pytest.approx(0.20)
+    assert t.max_surface_rmse == pytest.approx(0.03)
+    assert t.anomaly_mad_multiplier == pytest.approx(7.0)
+
+
+def test_default_supplementary_thresholds_match_config_defaults() -> None:
+    # The shared THRESHOLDS bundle (built from QC_CONFIG with default nested blocks) exposes
+    # exactly the config-default cut-offs the boundary cases above are hand-derived against.
+    # Independent oracle: the AnomalyQcConfig/etc. schema defaults pinned in platform_config.
+    assert THRESHOLDS.max_gap_count == 5
+    assert THRESHOLDS.warn_gap_count == 1
+    assert THRESHOLDS.min_coverage_ratio == pytest.approx(0.95)
+    assert THRESHOLDS.max_residual_mad == pytest.approx(0.05)
+    assert THRESHOLDS.min_forward_confidence == pytest.approx(0.5)
+    assert THRESHOLDS.max_parity_residual == pytest.approx(0.10)
+    assert THRESHOLDS.max_non_convergence_ratio == pytest.approx(0.10)
+    assert THRESHOLDS.max_surface_rmse == pytest.approx(0.02)
+    assert THRESHOLDS.anomaly_mad_multiplier == pytest.approx(5.0)
+
+
 # --- WS 1H: grid-aware QC — per-tenor coverage floor + Δ-band completeness ----------
 #
 # Expected pass/fail are hand-derived from a grid fixture built by hand from a pinned
@@ -911,7 +962,7 @@ GRID_QC = GridQcConfig(
     max_delta_step=0.35,
 )
 GRID_THRESHOLDS = thresholds_from_config(
-    dataclasses.replace(QC_CONFIG, grid=GRID_QC)
+    QC_CONFIG.model_copy(update={"grid": GRID_QC})
 )
 
 
@@ -1096,7 +1147,7 @@ def test_grid_thresholds_missing_tenor_floor_raises() -> None:
         band_high_delta=0.30,
         max_delta_step=0.35,
     )
-    thresholds = thresholds_from_config(dataclasses.replace(QC_CONFIG, grid=partial_grid))
+    thresholds = thresholds_from_config(QC_CONFIG.model_copy(update={"grid": partial_grid}))
     with pytest.raises(ConfigFieldError) as excinfo:
         check_tenor_coverage_floor(
             _full_grid(), "SPX", GRID_TENORS,

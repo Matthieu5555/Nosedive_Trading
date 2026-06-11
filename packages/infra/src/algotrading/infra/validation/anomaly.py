@@ -21,13 +21,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-# --- supplementary defaults ------------------------------------------------------
-# |robust z| at or above this many MADs from the baseline median is a WARN.
-DEFAULT_WARN_Z = 3.5
-# ... at or above this is a FAIL. Must be >= the warn band.
-DEFAULT_FAIL_Z = 5.0
-# Fewer baseline points than this and we cannot honestly judge — NO_BASELINE, not normal.
-DEFAULT_MIN_BASELINE = 10
+from algotrading.core.config import AnomalyQcConfig, QcThresholdConfig
+
+# The anomaly bands are economic and live in the hashed ``qc`` config block
+# (``AnomalyQcConfig``), never as ``.py`` literals (ADR 0028). The dataclass field defaults
+# below take their values from that schema's defaults — the single source of truth — so a
+# no-argument ``AnomalyThresholds()`` (the in-memory/test construction) matches what the
+# config-default block would hydrate, while a production run hydrates from the loaded,
+# hashed ``qc.yaml`` via :func:`anomaly_thresholds_from_config`.
+_DEFAULT_ANOMALY = AnomalyQcConfig(version="anomaly-default")
 
 
 def _median(values: Sequence[float]) -> float:
@@ -76,15 +78,19 @@ class AnomalyStatus(StrEnum):
 class AnomalyThresholds:
     """The robust-z bands and the minimum baseline length to judge an anomaly.
 
-    Modelled on the QC plane's threshold bundle: documented defaults, plus a
-    ``threshold_version`` so every outcome is traceable to the config that judged it.
-    The ordering invariants (``fail_z >= warn_z``, ``min_baseline >= 1``) are enforced
-    here so a mis-tuned config fails loudly at construction, not silently at runtime.
+    Modelled on the QC plane's threshold bundle. Every field is economic and its default is
+    sourced from the hashed ``qc`` config block (:class:`AnomalyQcConfig`) — not a ``.py``
+    literal — so a no-argument construction matches what the config-default block hydrates
+    (ADR 0028); a production run hydrates from the loaded, hashed config via
+    :func:`anomaly_thresholds_from_config`. ``threshold_version`` makes every outcome
+    traceable to the config that judged it. The ordering invariants (``fail_z >= warn_z``,
+    ``min_baseline >= 1``) are enforced here so a mis-tuned config fails loudly at
+    construction, not silently at runtime.
     """
 
-    warn_z: float = DEFAULT_WARN_Z
-    fail_z: float = DEFAULT_FAIL_Z
-    min_baseline: int = DEFAULT_MIN_BASELINE
+    warn_z: float = _DEFAULT_ANOMALY.warn_z
+    fail_z: float = _DEFAULT_ANOMALY.fail_z
+    min_baseline: int = _DEFAULT_ANOMALY.min_baseline
     threshold_version: str = "anomaly-default"
 
     def __post_init__(self) -> None:
@@ -92,6 +98,23 @@ class AnomalyThresholds:
             raise ValueError(f"anomaly fail_z ({self.fail_z}) must be >= warn_z ({self.warn_z})")
         if self.min_baseline < 1:
             raise ValueError(f"anomaly min_baseline ({self.min_baseline}) must be >= 1")
+
+
+def anomaly_thresholds_from_config(config: QcThresholdConfig) -> AnomalyThresholds:
+    """Hydrate :class:`AnomalyThresholds` from the hashed ``qc`` config's anomaly block.
+
+    The bands come from ``config.anomaly`` (an :class:`AnomalyQcConfig` folded into
+    ``config_hashes["qc"]``), so the values that judge a run are the same ones the
+    reproducibility hash covers (ADR 0028). ``threshold_version`` carries the ``qc`` section
+    version, so every outcome points back at the economics version that judged it.
+    """
+    anomaly = config.anomaly
+    return AnomalyThresholds(
+        warn_z=anomaly.warn_z,
+        fail_z=anomaly.fail_z,
+        min_baseline=anomaly.min_baseline,
+        threshold_version=config.version,
+    )
 
 
 @dataclass(frozen=True, slots=True)

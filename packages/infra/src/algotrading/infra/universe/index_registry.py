@@ -38,7 +38,11 @@ from .errors import IndexRegistryError
 # an entry is rejected (a typo must fail loudly, not be ignored), the same discipline the
 # reflective config loader enforces for the flat economic sections.
 _ENTRY_FIELDS = frozenset({"name", "calendar", "currency", "ibkr", "enabled"})
-_IBKR_FIELDS = frozenset({"conid", "secType", "exchange"})
+# The IBKR sub-block: the three required keys, plus the optional ``symbol`` override (the IBKR
+# secdef ticker when it differs from the registry key). ``_IBKR_FIELDS`` is the allow-list (a typo
+# still fails loudly); only ``_IBKR_REQUIRED`` must be present.
+_IBKR_REQUIRED = frozenset({"conid", "secType", "exchange"})
+_IBKR_FIELDS = _IBKR_REQUIRED | frozenset({"symbol"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +60,11 @@ class IbkrRef:
     conid: int
     sec_type: str
     exchange: str
+    # The symbol to search IBKR's ``secdef`` by, when it differs from the registry key. IBKR does
+    # not list every index under its common code (e.g. Euro Stoxx 50 is ``ESTX50`` on IBKR, not the
+    # registry's ``SX5E``); set ``ibkr.symbol`` to the IBKR ticker and resolution uses it while the
+    # rest of the platform keeps the registry symbol. ``None`` (the default) means same as the key.
+    symbol: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +84,15 @@ class IndexEntry:
     currency: str
     ibkr: IbkrRef
     enabled: bool
+
+    @property
+    def ibkr_search_symbol(self) -> str:
+        """The symbol to resolve this index against IBKR — ``ibkr.symbol`` override, else the key.
+
+        Used only at the IBKR ``secdef`` resolution door (conid + option discovery); every other
+        seam (membership, keys, the front) keeps :attr:`symbol`, the platform-wide vocabulary.
+        """
+        return self.ibkr.symbol or self.symbol
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +144,7 @@ def _parse_ibkr(symbol: str, raw: object) -> IbkrRef:
     if unknown:
         bad = sorted(unknown)[0]
         raise IndexRegistryError(symbol, f"ibkr.{bad}", raw[bad], "unknown key")
-    missing = _IBKR_FIELDS - set(raw)
+    missing = _IBKR_REQUIRED - set(raw)
     if missing:
         raise IndexRegistryError(symbol, f"ibkr.{sorted(missing)[0]}", None, "missing field")
     conid = raw["conid"]
@@ -135,10 +153,14 @@ def _parse_ibkr(symbol: str, raw: object) -> IbkrRef:
         raise IndexRegistryError(symbol, "ibkr.conid", conid, "must be an integer")
     if conid < 0:
         raise IndexRegistryError(symbol, "ibkr.conid", conid, "must be >= 0")
+    ibkr_symbol = raw.get("symbol")
+    if ibkr_symbol is not None:
+        ibkr_symbol = _require_str(symbol, "ibkr.symbol", ibkr_symbol)
     return IbkrRef(
         conid=conid,
         sec_type=_require_str(symbol, "ibkr.secType", raw["secType"]),
         exchange=_require_str(symbol, "ibkr.exchange", raw["exchange"]),
+        symbol=ibkr_symbol,
     )
 
 

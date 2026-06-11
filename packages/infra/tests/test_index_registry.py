@@ -18,7 +18,6 @@ oracle; the parser output is checked against them, not the reverse.
 
 from __future__ import annotations
 
-import dataclasses
 from pathlib import Path
 
 import pytest
@@ -175,6 +174,43 @@ def test_bad_ibkr_subblock_is_rejected() -> None:
     assert exc.value.field == "ibkr.exchange"
 
 
+def test_ibkr_symbol_override_is_parsed_and_drives_search_symbol() -> None:
+    """``ibkr.symbol`` is the IBKR secdef ticker override; the registry key stays the vocabulary.
+
+    Euro Stoxx 50 lists on IBKR as ``ESTX50``, not ``SX5E`` — the override carries that, while
+    ``symbol`` (the platform-wide key) is unchanged. ``ibkr_search_symbol`` prefers the override and
+    falls back to the key when absent (an entry that needs no override is untouched).
+    """
+    block = {
+        "SX5E": {
+            "name": "EURO STOXX 50", "calendar": "XEUR", "currency": "EUR",
+            "ibkr": {"conid": 4356500, "secType": "IND", "exchange": "EUREX", "symbol": "ESTX50"},
+            "enabled": True,
+        },
+        "SPX": {
+            "name": "S&P 500", "calendar": "XNYS", "currency": "USD",
+            "ibkr": {"conid": 416904, "secType": "IND", "exchange": "CBOE"},  # no override needed
+            "enabled": True,
+        },
+    }
+    registry = parse_index_registry(block)
+    sx5e, spx = registry.get("SX5E"), registry.get("SPX")
+    assert sx5e.ibkr.symbol == "ESTX50"
+    assert sx5e.ibkr_search_symbol == "ESTX50"  # resolution uses the IBKR ticker
+    assert sx5e.symbol == "SX5E"  # the platform vocabulary is unchanged
+    assert spx.ibkr.symbol is None
+    assert spx.ibkr_search_symbol == "SPX"  # no override → the registry key
+
+
+def test_blank_ibkr_symbol_override_is_rejected() -> None:
+    """A present-but-blank ``ibkr.symbol`` is an operator error, not a clean 'no override'."""
+    with pytest.raises(IndexRegistryError) as exc:
+        parse_index_registry(
+            _block_with("SPX", ibkr={"conid": 1, "secType": "IND", "exchange": "CBOE", "symbol": " "})
+        )
+    assert exc.value.field == "ibkr.symbol"
+
+
 def test_duplicate_symbol_after_normalisation_is_rejected() -> None:
     # YAML keys are unique, but a registry built in memory from a list could repeat; the
     # frozen registry refuses a duplicate symbol rather than silently keeping the last.
@@ -205,8 +241,8 @@ def test_loads_from_real_universe_yaml() -> None:
     symbols = {e.symbol for e in registry.entries}
     assert {"SX5E", "SPX"} <= symbols
     # Both seed indices are now enabled (the live EOD spine surfaces them); the calendar/
-    # projection path uses only the symbol/calendar, so the still-placeholder conids do not
-    # block enabling. The enabled set is exactly the two seeds, in canonical (sorted) order.
+    # projection path uses only the symbol/calendar (the conids, now verified-live, are consumed
+    # only at the IBKR door). The enabled set is exactly the two seeds, in canonical (sorted) order.
     assert [e.symbol for e in enabled_indices(registry)] == ["SPX", "SX5E"]
     # The canonical symbol is SPX (never SP500) per the spec audit.
     assert "SP500" not in symbols
@@ -229,8 +265,8 @@ def test_changing_an_index_moves_only_the_universe_hash() -> None:
         symbol: ({**dict(entry), "enabled": False} if symbol == "SPX" else dict(entry))
         for symbol, entry in config.universe.indices.items()
     }
-    moved_universe = dataclasses.replace(config.universe, indices=new_indices)
-    moved = dataclasses.replace(config, universe=moved_universe)
+    moved_universe = config.universe.model_copy(update={"indices": new_indices})
+    moved = config.model_copy(update={"universe": moved_universe})
     after = config_hashes(moved)
     assert after["universe"] != before["universe"]
     for bundle in ("qc", "pricing", "scenarios"):

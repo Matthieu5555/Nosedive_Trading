@@ -73,11 +73,15 @@ indices:
     name: "EURO STOXX 50"
     calendar: XEUR
     currency: EUR
-    ibkr: { conid: 0, secType: IND, exchange: EUREX }  # conid UNVERIFIED — see TODO(1C) above
+    # IBKR lists Euro Stoxx 50 as ESTX50 (NOT SX5E) — `symbol` is the secdef search override; the
+    # registry key SX5E stays the platform-wide vocabulary. conid + symbol VERIFIED live 2026-06-08
+    # (secdef/search symbol=ESTX50, secType=IND, exchange=EUREX → conid 4356500).
+    ibkr: { conid: 4356500, secType: IND, exchange: EUREX, symbol: ESTX50 }
     enabled: true
   SPX:
     name: "S&P 500"
     calendar: XNYS
     currency: USD
-    ibkr: { conid: 0, secType: IND, exchange: CBOE }  # conid UNVERIFIED — see TODO(1C) above
+    # conid VERIFIED live 2026-06-08 (secdef/search symbol=SPX, secType=IND, exchange=CBOE).
+    ibkr: { conid: 416904, secType: IND, exchange: CBOE }
     enabled: true

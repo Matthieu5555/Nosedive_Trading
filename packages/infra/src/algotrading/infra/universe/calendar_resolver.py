@@ -36,7 +36,7 @@ off the library's pandas ``Timestamp`` so the resolver's signature carries no pa
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
-from functools import cache
+from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
 import exchange_calendars as xcals
@@ -54,6 +54,16 @@ from .index_registry import IndexRegistry
 # covers any history the platform replays while keeping the index small.
 _CALENDAR_LOOKBACK_YEARS = 30
 
+# Bound on the number of distinct (code, as_of) calendars kept live. Each cached calendar is a
+# full ~30-year session index, so an UNbounded cache (plain ``@cache``) would leak one calendar per
+# distinct as_of forever — a long-running babysitter / multi-day backfill that resolves a new as_of
+# each fire would accumulate them without limit. A small LRU bound caps the resident set: a single
+# fire touches only a handful of (code, as_of) pairs and reuses them within the fire (LRU keeps the
+# hot ones), while stale calendars from earlier as_ofs are evicted. Not an economic tunable — a
+# pure memory-footprint bound — so it stays a code constant per the config standard's invariant
+# carve-out.
+_CALENDAR_CACHE_SIZE = 32
+
 
 @runtime_checkable
 class _DayClock(Protocol):
@@ -67,7 +77,7 @@ class _DayClock(Protocol):
     def now(self) -> datetime: ...
 
 
-@cache
+@lru_cache(maxsize=_CALENDAR_CACHE_SIZE)
 def _calendar(code: str, as_of: date) -> ExchangeCalendar:
     """Return (and cache) the library calendar for a code, bounded to an explicit as-of date.
 

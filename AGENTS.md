@@ -98,3 +98,22 @@ the code is part of the change, not a follow-up.
   derived independently, never copied from the code under test.
 - Financial/time-series code: no look-ahead bias. All data access through an
   as-of abstraction. See `.agent/conventions.md` and the `check-lookahead-bias` skill.
+- **Lean on well-maintained libraries; do not hand-roll what one already does.**
+  When a proven, maintained library covers the job, use it — pydantic for
+  validation/coercion/typed config, Nautilus for the finance runtime spine
+  (catalog, replay/backtest, actor host, broker lifecycle), QuantLib/`py_vollib`
+  for pricing/Greeks/IV, SciPy/NumPy for numerics, DuckDB/PyArrow/Polars for
+  analytical storage, pycryptodome for crypto, `secrets` for CSPRNG. Re-implementing
+  a library's job in-house is a defect to be removed, not a style choice. The one
+  sanctioned exception is the bespoke vol math no library provides. The bar for a
+  wrapper is depth: it must hide real complexity, never be a thin shim that only
+  adds a dependency. See `.agent/conventions.md` and
+  [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md).
+- **Prove the environment before you believe it — measure, don't read.** A label
+  in a task file, a docstring, an ADR, a prior agent's summary, or your own earlier
+  claim is a *hypothesis*, not a fact. Before asserting that something is blocked,
+  done, present, broken, or absent: run it. Execute the test, list the file, hit the
+  port, check the credential, run the gate. State conclusions as "measured: …" with
+  the command that proved it — never "blocked because the spec says so." Task specs
+  drift (a spec called a built, green-tested module "absent" the day after it
+  landed); the running system does not lie. See the `probe-environment` skill.

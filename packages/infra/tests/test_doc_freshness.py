@@ -54,7 +54,7 @@ REQUIRED_AREAS = {
 
 # Non-routable top-level dirs: reference checkouts (kept in place, flagged by their
 # own README banners — see the H1 audit) and hidden dot-dirs (rulebook, caches, vcs).
-REFERENCE_DIRS = {"Test Lenny", "Vincent's Code", "ThomasOssen"}
+REFERENCE_DIRS = {"Test Lenny", "Vincent's Code", "ThomasHossen"}
 
 _LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 

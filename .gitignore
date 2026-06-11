@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+__marimo__/
 *.py[oc]
 build/
 dist/
@@ -38,7 +39,7 @@ data/**
 *.db
 
 # Personal scratch — not part of the canonical workspace
-ThomasOssen/
+ThomasHossen/
 
 # Vincent's AlgoTrading repo (branch refactor/audit-remediation) — reference only,
 # source of inspiration for the M-series tasks. Not part of the canonical workspace.

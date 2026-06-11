@@ -22,5 +22,5 @@ top-level area, update this file in the same change.
 | Glossary | `.agent/glossary.md` | Domain vocabulary an agent won't infer. | `.agent/glossary.md` |
 | Decisions | `.agent/decisions/` | Append-only ADRs for non-obvious choices. | `.agent/decisions/` |
 
-Not part of the canonical structure: `ThomasOssen/` is personal scratch space,
+Not part of the canonical structure: `ThomasHossen/` is personal scratch space,
 not covered by these conventions.

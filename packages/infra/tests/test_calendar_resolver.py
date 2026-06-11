@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+import exchange_calendars as xcals
 import pytest
 from algotrading.infra.universe import (
     CalendarResolutionError,
@@ -29,6 +30,7 @@ from algotrading.infra.universe import (
     IndexRegistryError,
     parse_index_registry,
 )
+from algotrading.infra.universe.calendar_resolver import _NEXT_SESSION_MARGIN
 
 # A two-index registry: SX5E on Eurex (XEUR), SPX on NYSE (XNYS). Both enabled here so the
 # resolver is exercised for each; the on-disk seed keeps them disabled for capture safety.
@@ -190,3 +192,69 @@ def test_two_injected_dates_give_each_dates_answer() -> None:
     res = _resolver()
     assert res.is_session("SPX", date(2026, 6, 8)) is True
     assert res.is_session("SPX", date(2026, 7, 4)) is False  # Independence Day (Sat) / closed
+
+
+# --- next_session_open: the upper bound of the close set (the post-close-drop fix) ----------
+def test_next_session_open_is_the_following_session_open() -> None:
+    # 2026-06-10 (Wed) → next session 2026-06-11 (Thu). Independent oracle: NYSE opens 09:30 ET
+    # = 13:30 UTC (EDT); Eurex's session opens 08:00 CEST = 06:00 UTC.
+    res = CalendarResolver(parse_index_registry(_BLOCK), as_of=date(2026, 6, 10))
+    assert res.next_session_open("SPX", date(2026, 6, 10)) == datetime(
+        2026, 6, 11, 13, 30, tzinfo=UTC
+    )
+    assert res.next_session_open("SX5E", date(2026, 6, 10)) == datetime(
+        2026, 6, 11, 6, 0, tzinfo=UTC
+    )
+
+
+def test_next_session_open_skips_a_weekend() -> None:
+    # Friday 2026-06-12 → the next NYSE session is Monday 2026-06-15 (open 13:30 UTC).
+    res = CalendarResolver(parse_index_registry(_BLOCK), as_of=date(2026, 6, 12))
+    assert res.next_session_open("SPX", date(2026, 6, 12)) == datetime(
+        2026, 6, 15, 13, 30, tzinfo=UTC
+    )
+
+
+def test_next_session_open_skips_a_holiday() -> None:
+    # Thursday 2026-06-18 → Friday 2026-06-19 is Juneteenth (NYSE closed), so the next session is
+    # Monday 2026-06-22 (open 13:30 UTC). The library skips the holiday, not this code.
+    res = CalendarResolver(parse_index_registry(_BLOCK), as_of=date(2026, 6, 18))
+    assert res.next_session_open("SPX", date(2026, 6, 18)) == datetime(
+        2026, 6, 22, 13, 30, tzinfo=UTC
+    )
+
+
+def test_next_session_open_does_not_widen_backward_coverage() -> None:
+    # next_session_open looks one session past the as-of, but the forward margin must NOT leak
+    # into the backward queries: session_close / is_session for a date after the as-of still raise
+    # (the look-ahead guard the medallion replay relies on). Same resolver, same as-of.
+    res = CalendarResolver(parse_index_registry(_BLOCK), as_of=date(2026, 6, 10))
+    # The forward query resolves the next session fine...
+    assert res.next_session_open("SPX", date(2026, 6, 10)) == datetime(
+        2026, 6, 11, 13, 30, tzinfo=UTC
+    )
+    # ...but the backward queries still reject any date past the as-of.
+    with pytest.raises(CalendarResolutionError):
+        res.session_close("SPX", date(2026, 6, 11))
+    with pytest.raises(CalendarResolutionError):
+        res.is_session("SPX", date(2026, 6, 11))
+
+
+def test_next_session_within_margin() -> None:
+    """Every registry calendar's widest closure fits inside ``_NEXT_SESSION_MARGIN``.
+
+    The margin is what ``next_session_open`` builds its forward calendar with; if any calendar
+    ever has a gap between consecutive sessions wider than the margin, the forward resolution
+    would fail in production. This pins the constant against each calendar's real multi-year
+    schedule, so adding a longer-closing calendar (e.g. a Lunar-New-Year market) fails loudly
+    here rather than silently mis-capturing in prod — exactly the bump-the-margin signal.
+    """
+    codes = {spec["calendar"] for spec in _BLOCK.values()}
+    for code in codes:
+        cal = xcals.get_calendar(code, start="2015-01-01", end="2026-12-31")
+        sessions = [ts.date() for ts in cal.sessions]
+        widest_gap = max((b - a).days for a, b in zip(sessions, sessions[1:], strict=False))
+        assert widest_gap <= _NEXT_SESSION_MARGIN.days, (
+            f"{code} has a {widest_gap}-day closure exceeding the "
+            f"{_NEXT_SESSION_MARGIN.days}-day margin — bump _NEXT_SESSION_MARGIN"
+        )

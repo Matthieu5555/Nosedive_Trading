@@ -37,16 +37,20 @@ class EodRunError(Exception):
 
 @runtime_checkable
 class SessionResolver(Protocol):
-    """The two calendar answers the runner needs — the 1J :class:`CalendarResolver` seam.
+    """The calendar answers the runner needs — the 1J :class:`CalendarResolver` seam.
 
     Typed as a Protocol (not the concrete class) so the runner depends on the *signature*,
     not on ``exchange_calendars``: a test injects a fake resolver with controlled
-    holiday/close behaviour, and 1C/1G consume the same two methods the real resolver exposes.
+    holiday/close behaviour, and 1C/1G consume the same methods the real resolver exposes —
+    ``is_session`` (fire/skip), ``session_close`` (the capture instant), and
+    ``next_session_open`` (the upper bound of the close set, see :class:`FiredIndex`).
     """
 
     def is_session(self, index: str, on_date: date) -> bool: ...
 
     def session_close(self, index: str, on_date: date) -> datetime: ...
+
+    def next_session_open(self, index: str, on_date: date) -> datetime: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,10 +60,18 @@ class FiredIndex:
     ``as_of`` is :meth:`CalendarResolver.session_close` for the index on the trade date — its
     own timezone-correct close (Eurex close for SX5E, NYSE close for SPX), the exact
     look-ahead-sensitive instant 1C captures at and the value the stage wiring injects.
+
+    ``next_open`` is :meth:`CalendarResolver.next_session_open` for the same index/date — the
+    open of the following session. It is the upper bound of the close set: 1C keeps a snapshot
+    row whose broker update stamp lands in ``[as_of, next_open)`` (post-close settlement marks)
+    and drops one stamped at/after ``next_open`` (a later session, i.e. a wrong-day catch-up
+    snapshot). Resolved here, upstream, alongside ``as_of`` so the live capture layer is handed
+    a deterministic instant rather than recomputing it — the same determinism rail ``as_of`` rides.
     """
 
     entry: IndexEntry
     as_of: datetime
+    next_open: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +167,7 @@ def plan_fire(
             FiredIndex(
                 entry=entry,
                 as_of=deps.resolver.session_close(entry.symbol, resolved_date),
+                next_open=deps.resolver.next_session_open(entry.symbol, resolved_date),
             )
         )
     return EodRunPlan(

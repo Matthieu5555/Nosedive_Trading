@@ -26,10 +26,15 @@ The capture is the two-stage chain-selection policy the platform fixes once
    projection then run *inside* the analytics over this captured set.
 
 No look-ahead: the capture *is* the session close. Every emitted event is stamped at the index's
-own ``FiredIndex.as_of`` (the resolver's ``session_close``), and a snapshot row carrying an
-update time *after* that close is dropped (never folded into the close basket) — the capture
-reads the close, never a post-close print. Pure given the transport's responses; the only clock
-read is the injected ``as_of``.
+own ``FiredIndex.as_of`` (the resolver's ``session_close``). The close set is the half-open
+interval ``[as_of, next_open)``: a snapshot row whose broker update time lands in it (the
+settlement-window marks the timer fires into, minutes after the close) is kept, and one stamped
+at/after the *next session's open* (``FiredIndex.next_open``) is dropped — that is a later
+session, i.e. a wrong-day catch-up snapshot, never folded into this close basket. Bounding on the
+next open rather than the close instant itself is deliberate: the broker's ``_updated`` keeps
+advancing through the settlement window after the close, so a guard pinned at the close instant
+would drop the very post-close snapshot the timer is designed to take. Pure given the transport's
+responses; the only clock reads are the injected ``as_of`` / ``next_open``.
 
 Transport stays on CP REST (the settled decision, ADR 0024/0031): no Nautilus ``TradingNode`` is
 introduced for capture. The HTTP layer is the injected transport, so the gate drives the whole
@@ -61,6 +66,18 @@ from .cp_rest_index import resolve_index
 from .cp_rest_normalize import REQUEST_FIELD_TAGS, snapshot_to_events
 
 _LOGGER = structlog.get_logger("ibkr.close_capture")
+
+
+class CloseCaptureError(Exception):
+    """A close capture that fetched contracts but kept none — a loud, non-silent failure.
+
+    Raised when the snapshot returned option rows but every one was dropped (all post-``next_open``,
+    i.e. a wrong-day capture), so the basket would land *zero* events. That is an anomaly, not a
+    clean no-capture day: a genuinely optionless index returns ``None`` from
+    :func:`collect_live_basket` upstream of any snapshot (a labeled no-op). Surfacing this as a
+    raised error makes the runner exit non-zero so the systemd ``OnFailure=`` alert fires, rather
+    than silently landing an empty day that only an audit would later notice.
+    """
 
 # The index itself is a non-option underlying; its security type in our key space. The option
 # multiplier IBKR lists is a string ("100"); the index leg carries a multiplier of 1.0 (it is
@@ -412,13 +429,17 @@ def _snapshot_events(
     underlying: str,
     session_id: str,
     as_of: datetime,
+    next_open: datetime,
 ) -> list[RawMarketEvent]:
     """Snapshot the selected contracts at the close and normalize to ``RawMarketEvent`` rows.
 
     Every event is stamped at ``as_of`` (the session close) — both the exchange and receipt time
     — so the basket is the close set, byte-identical on replay. A snapshot row whose own update
-    time (``_updated``) is *after* the close is dropped: the close capture never folds a
-    post-close print (the look-ahead guard). A row for an unrequested conid is ignored.
+    time (``_updated``) is at or after ``next_open`` (the next session's open) is dropped: it
+    belongs to a later session, a wrong-day catch-up snapshot the close capture never folds in
+    (the look-ahead guard). The admitted window is the half-open ``[as_of, next_open)``, so the
+    post-close settlement marks the timer fires into — whose ``_updated`` is after ``as_of`` but
+    before the next open — are kept, not dropped. A row for an unrequested conid is ignored.
 
     ``sequence`` is assigned from the kept contracts' *stable identity* (their canonical instrument
     key), NOT from the broker's response row order: a re-fire / retry that returns the same
@@ -432,7 +453,7 @@ def _snapshot_events(
     # Warm-up polled like the spot snapshot: a cold first call returns metadata-only rows (no
     # marks), which would yield a basket of contracts with no quotes — IV/Greeks could not price.
     rows = _snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
-    close_ms = int(as_of.timestamp() * 1000)
+    next_open_ms = int(next_open.timestamp() * 1000)
     if not isinstance(rows, Sequence):
         return []
     # First pass: keep the admitted (instrument, row) pairs, dropping unrequested conids, malformed
@@ -448,13 +469,15 @@ def _snapshot_events(
         if instrument is None:
             continue
         updated = _as_int_or_none(row.get("_updated"))
-        if updated is not None and updated > close_ms:
-            # A print stamped after the session close is post-close data — never in the basket.
+        if updated is not None and updated >= next_open_ms:
+            # A row updated at/after the next session's open belongs to a later session (a
+            # wrong-day catch-up snapshot) — never in this close basket. A row updated in the
+            # settlement window after the close but before the next open is kept (it is the close).
             _LOGGER.info(
-                "ibkr.close_capture.drop_post_close",
+                "ibkr.close_capture.drop_later_session",
                 conid=row_conid,
                 updated_ms=updated,
-                close_ms=close_ms,
+                next_open_ms=next_open_ms,
             )
             continue
         kept.append((instrument, row))
@@ -482,6 +505,7 @@ def collect_live_basket(
     *,
     index: IndexEntry,
     as_of: datetime,
+    next_open: datetime,
     config: PlatformConfig,
     selection: ChainSelection | None = None,
 ) -> IndexBasket | None:
@@ -496,7 +520,10 @@ def collect_live_basket(
     ``selection`` defaults to a :class:`ChainSelection` built from the universe config's strike-
     selection knobs (nearest maturities, the per-session strike budget); the economic 30Δ band
     runs downstream in :func:`run_analytics`. ``as_of`` is the index's own session close — every
-    captured event is stamped there and no post-close print is admitted.
+    captured event is stamped there; ``next_open`` is the next session's open and bounds the
+    admitted close set to the half-open ``[as_of, next_open)`` (a later-session row is dropped).
+    A snapshot that returns option contracts but keeps none after that guard raises
+    :class:`CloseCaptureError` (a loud failure), never a silently-empty basket.
     """
     log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
     resolved = resolve_index(
@@ -568,6 +595,7 @@ def collect_live_basket(
         underlying=index.symbol,
         session_id=session_id,
         as_of=as_of,
+        next_open=next_open,
     )
 
     instruments = (index_key, *kept_options)
@@ -579,6 +607,15 @@ def collect_live_basket(
         event_count=len(events),
         spot=spot,
     )
+    if kept_options and not events:
+        # Contracts came back but every row was dropped as a later session: a wrong-day / wrong-time
+        # capture, not a clean optionless no-op (that returned None far above). Fail loud so the
+        # runner exits non-zero and OnFailure= alerts, rather than silently landing an empty day.
+        raise CloseCaptureError(
+            f"{index.symbol}: snapshot returned {len(kept_options)} option contracts but kept 0 "
+            f"events after the look-ahead guard (as_of={as_of.isoformat()}, "
+            f"next_open={next_open.isoformat()}) — empty close set, refusing to land it silently"
+        )
     return IndexBasket(
         instruments=instruments, events=tuple(events), masters=masters
     )

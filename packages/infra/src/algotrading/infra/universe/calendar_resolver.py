@@ -35,7 +35,7 @@ off the library's pandas ``Timestamp`` so the resolver's signature carries no pa
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from typing import Protocol, runtime_checkable
 
@@ -64,6 +64,20 @@ _CALENDAR_LOOKBACK_YEARS = 30
 # carve-out.
 _CALENDAR_CACHE_SIZE = 32
 
+# Forward margin the next-session calendar is built with, so
+# :meth:`CalendarResolver.next_session_open` can resolve the session AFTER the trade date — which
+# lies past the as-of bound the backward queries (``is_session`` / ``session_close``) build to. It
+# must exceed the longest run of consecutive non-session days across every calendar in the registry:
+# a weekend plus the longest holiday cluster (year-end, Easter today; a Lunar-New-Year calendar, if
+# one is ever added, needs ~9–10 days). A pure structural bound like ``_CALENDAR_LOOKBACK_YEARS`` —
+# not an economic tunable — so it stays a code constant per the config standard's invariant
+# carve-out. It never widens the look-ahead surface: ONLY ``next_session_open`` builds with this
+# margin; ``is_session`` / ``session_close`` build with the default ``forward=0`` and keep rejecting
+# any date past the as-of. ``test_next_session_within_margin`` pins it against each registry
+# calendar's widest closure, so a calendar that needs a bigger margin fails the test loudly rather
+# than silently mis-capturing in production.
+_NEXT_SESSION_MARGIN = timedelta(days=16)
+
 
 @runtime_checkable
 class _DayClock(Protocol):
@@ -78,19 +92,25 @@ class _DayClock(Protocol):
 
 
 @lru_cache(maxsize=_CALENDAR_CACHE_SIZE)
-def _calendar(code: str, as_of: date) -> ExchangeCalendar:
+def _calendar(
+    code: str, as_of: date, forward: timedelta = timedelta(0)
+) -> ExchangeCalendar:
     """Return (and cache) the library calendar for a code, bounded to an explicit as-of date.
 
-    Bounded — ``end=as_of`` and ``start`` a fixed span before it — so the calendar's coverage
-    window is a deterministic function of ``(code, as_of)`` and never of wall-clock today (the
-    library defaults ``end`` to *today + ~1y*, which silently moves the window day to day). The
-    same handful of ``(code, as_of)`` pairs are resolved repeatedly across one fire, so the
-    bounded calendar is cached; the result is immutable for our read-only use, so sharing one
-    instance is safe. Keyed by the as-of too, so a backfill fire at a different as-of gets its
-    own correctly-bounded calendar rather than a stale cached one.
+    Bounded — ``end = as_of + forward`` and ``start`` a fixed span before it — so the calendar's
+    coverage window is a deterministic function of ``(code, as_of, forward)`` and never of
+    wall-clock today (the library defaults ``end`` to *today + ~1y*, which silently moves the
+    window day to day). ``forward`` defaults to zero — the backward queries (``is_session`` /
+    ``session_close``) build with ``end = as_of`` exactly and so never see a future date — and is
+    a small positive margin only for :meth:`CalendarResolver.next_session_open`, which must read
+    one session past the as-of (see :data:`_NEXT_SESSION_MARGIN`). The same handful of keys are
+    resolved repeatedly across one fire, so the bounded calendar is cached; the result is immutable
+    for our read-only use, so sharing one instance is safe. Keyed by the as-of (and forward) too,
+    so a backfill fire at a different as-of gets its own correctly-bounded calendar rather than a
+    stale cached one.
     """
     start = as_of.replace(year=as_of.year - _CALENDAR_LOOKBACK_YEARS)
-    return xcals.get_calendar(code, start=start, end=as_of)
+    return xcals.get_calendar(code, start=start, end=as_of + forward)
 
 
 def _resolve_as_of(as_of: date | _DayClock | None) -> date | None:
@@ -189,3 +209,45 @@ class CalendarResolver:
         # The library returns a UTC-tz pandas Timestamp; hand back a stdlib aware datetime so
         # our signature carries no pandas type. Normalise to UTC explicitly.
         return close.to_pydatetime().astimezone(UTC)
+
+    def next_session_open(self, index: str, on_date: date) -> datetime:
+        """The timezone-aware UTC open of the session *after* ``on_date`` for ``index``.
+
+        This is the upper bound of the close set the 1C capture admits: a snapshot row whose
+        broker update stamp falls in ``[session_close(on_date), next_session_open(on_date))`` is
+        still the close (post-close settlement marks included), while one stamped at or after this
+        open belongs to a later session — a wrong-day catch-up snapshot — and is dropped. The
+        half-open interval is why the bound is the next *open*, not the next *close*.
+
+        Unlike :meth:`is_session` / :meth:`session_close`, this answer deliberately looks one
+        session *past* the as-of, so it builds the calendar with :data:`_NEXT_SESSION_MARGIN`
+        rather than the bare-as-of calendar the backward queries use. That widened calendar is
+        never served to a backward query, so the look-ahead guard there is untouched; and an
+        exchange's published open instant is schedule, not a quote, so returning it leaks no
+        market data. ``on_date`` must be a trading session (a non-session raises, as for
+        :meth:`session_close`); a closure longer than the margin — the next session falling
+        outside the built window — raises a labeled :class:`CalendarResolutionError` rather than
+        guessing, the loud signal that the margin must grow for a newly-added calendar.
+        """
+        code, _ = self._entry_calendar(index)
+        cal = (
+            xcals.get_calendar(code)
+            if self._as_of is None
+            else _calendar(code, self._as_of, _NEXT_SESSION_MARGIN)
+        )
+        self._check_coverage(index, code, cal, on_date)
+        if not cal.is_session(on_date):
+            raise CalendarResolutionError(
+                index, code, on_date, "not a trading session (holiday/weekend)"
+            )
+        try:
+            nxt = cal.next_session(on_date)
+            open_instant = cal.session_open(nxt)
+        except xcals.errors.CalendarError as exc:
+            raise CalendarResolutionError(
+                index,
+                code,
+                on_date,
+                f"next session falls beyond the {_NEXT_SESSION_MARGIN.days}-day margin: {exc}",
+            ) from exc
+        return open_instant.to_pydatetime().astimezone(UTC)

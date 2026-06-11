@@ -58,6 +58,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 # The fired index + its session close (NYSE 16:00 EDT on the trade date) and the clock day.
 TRADE_DATE = date(2026, 3, 12)
 SPX_CLOSE = datetime(2026, 3, 12, 20, 0, tzinfo=UTC)
+SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)  # next NYSE open (09:30 ET = 13:30 UTC)
 CLOCK_NOW = datetime(2026, 3, 12, 22, 0, tzinfo=UTC)
 PROVIDER = "IBKR"
 INDEX_CONID = 416904
@@ -343,7 +344,7 @@ def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> Non
     """
     from datetime import timedelta
 
-    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE)
+    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
     selection = ChainSelection(max_expiries=3, min_strikes_per_side=10, option_exchange="CBOE")
 
     def _source(today: date) -> Any:

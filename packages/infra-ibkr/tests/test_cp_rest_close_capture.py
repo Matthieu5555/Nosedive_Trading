@@ -10,8 +10,9 @@ chain (a fixed set of months × strikes × rights, each with a known conid) and 
 marks; the test hand-derives which contracts the capture *must* return and what their close events
 must carry, then asserts the basket matches — not by reading back what the code emitted.
 
-The look-ahead obligation has its own test: a snapshot row stamped *after* the session close is
-never folded into the close basket.
+The look-ahead obligation has its own tests: a snapshot row updated in ``[close, next_open)`` (the
+post-close settlement window) is kept, one updated at/after the next session's open is dropped, and
+a capture that keeps zero events after that guard fails loud rather than landing an empty basket.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+import pytest
 from algotrading.core.config import (
     PlatformConfig,
     QcThresholdConfig,
@@ -32,6 +34,7 @@ from algotrading.infra.universe import ChainSelection, IbkrRef, IndexEntry
 from algotrading.infra_ibkr.collectors import cp_rest_close_capture
 from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
     _DISCOVERY_STRIKES_PER_SIDE,
+    CloseCaptureError,
     _nearest_strikes,
     collect_live_basket,
 )
@@ -40,6 +43,10 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 # The fired index and its own session close (the as-of every captured event is stamped at).
 SPX = IndexEntry("SPX", "S&P 500", "XNYS", "USD", IbkrRef(0, "IND", "CBOE"), True)
 CLOSE = datetime(2026, 3, 12, 20, 0, tzinfo=UTC)
+# The next session's open — the upper bound of the admitted close set. A snapshot row updated in
+# [CLOSE, NEXT_OPEN) is the close (post-close settlement marks); one at/after NEXT_OPEN is a later
+# session and is dropped. 2026-03-13 is the next NYSE session; its 09:30 ET open is 13:30 UTC (EDT).
+NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)
 TRADE_DATE = date(2026, 3, 12)
 INDEX_CONID = 416904
 
@@ -178,7 +185,7 @@ def _expected_option_keys() -> set[tuple[date, float, str]]:
 def _capture() -> IndexBasket | None:
     gateway = _FakeGateway()
     return collect_live_basket(
-        gateway, index=SPX, as_of=CLOSE, config=_config(),
+        gateway, index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
 
@@ -224,17 +231,43 @@ def test_close_events_carry_the_session_close_and_the_known_marks() -> None:
     assert by_key_field[(sample.canonical(), "last")] == _close_mark(105.0, "C")
 
 
-def test_capture_never_admits_a_post_close_print() -> None:
-    """A snapshot row stamped AFTER the session close is dropped — the look-ahead guard.
+def test_capture_keeps_a_post_close_settlement_print() -> None:
+    """A row updated AFTER the close but BEFORE the next open is kept — the settlement window.
 
-    One contract's ``_updated`` is moved one minute past the close. Its events must be absent
-    from the basket; every admitted event still carries the close instant, and no event's source
-    timestamp is later than the close.
+    This is the regression guard for the SPX miss: the timer fires minutes after the close, so the
+    broker's ``_updated`` is already past the close instant — but the row is still the close set.
+    One contract's ``_updated`` is moved one minute past the close (well inside ``[CLOSE,
+    NEXT_OPEN)``); its events MUST be present, and every event is still stamped at the close.
+    """
+    settled = _conid_for(_MONTHS["JUN26"], 100.0, "C")
+    gateway = _FakeGateway(updated_override={settled: int(CLOSE.timestamp() * 1000) + 60_000})
+    basket = collect_live_basket(
+        gateway, index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+    )
+    assert basket is not None
+
+    settled_key = next(
+        k.canonical() for k in basket.instruments
+        if k.is_option() and k.broker_contract_id == str(settled)
+    )
+    # The post-close settlement contract DID contribute events (its row was kept).
+    assert any(e.instrument_key == settled_key for e in basket.events)
+    # Every admitted event is still stamped at the close instant (not the broker update time).
+    assert all(e.canonical_ts == CLOSE for e in basket.events)
+
+
+def test_capture_drops_a_later_session_print() -> None:
+    """A snapshot row updated at/after the NEXT session's open is dropped — the look-ahead guard.
+
+    One contract's ``_updated`` is moved to the next session's open (``NEXT_OPEN``): that belongs
+    to a later session — a wrong-day catch-up snapshot — so its events must be absent, while every
+    admitted event still carries the close instant.
     """
     poisoned = _conid_for(_MONTHS["JUN26"], 100.0, "C")
-    gateway = _FakeGateway(updated_override={poisoned: int(CLOSE.timestamp() * 1000) + 60_000})
+    gateway = _FakeGateway(updated_override={poisoned: int(NEXT_OPEN.timestamp() * 1000)})
     basket = collect_live_basket(
-        gateway, index=SPX, as_of=CLOSE, config=_config(),
+        gateway, index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
     assert basket is not None
@@ -243,10 +276,42 @@ def test_capture_never_admits_a_post_close_print() -> None:
         k.canonical() for k in basket.instruments
         if k.is_option() and k.broker_contract_id == str(poisoned)
     )
-    # The post-close contract contributed NO events (its snapshot row was dropped).
+    # The later-session contract contributed NO events (its snapshot row was dropped).
     assert all(e.instrument_key != poisoned_key for e in basket.events)
-    # And no admitted event is stamped after the close.
-    assert all(e.canonical_ts <= CLOSE for e in basket.events)
+    assert all(e.canonical_ts == CLOSE for e in basket.events)
+
+
+class _AllLaterSessionGateway(_FakeGateway):
+    """Every snapshot row is stamped at the next session's open — a whole wrong-day catch-up.
+
+    The fired index lists options and the snapshot returns them, but every row's ``_updated`` is a
+    later session, so the guard drops all of them — the empty-close-set anomaly the loud failure
+    is meant to catch (distinct from an index that lists no options at all).
+    """
+
+    def _snapshot(self, params: dict[str, Any]) -> Any:
+        rows = super()._snapshot(params)
+        next_open_ms = int(NEXT_OPEN.timestamp() * 1000)
+        for row in rows:
+            row["_updated"] = next_open_ms
+        return rows
+
+
+def test_all_rows_in_a_later_session_raises_rather_than_landing_empty() -> None:
+    """Contracts came back but every row was dropped → CloseCaptureError, never a silent empty day.
+
+    The loud-failure guard for the silent-miss that started this: a capture that fetches contracts
+    but keeps zero events raises (so the runner exits non-zero and ``OnFailure=`` alerts), unlike a
+    genuinely optionless index, which returns ``None`` far upstream (see the no-listed-options test).
+    """
+    with pytest.raises(CloseCaptureError):
+        collect_live_basket(
+            _AllLaterSessionGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN,
+            config=_config(),
+            selection=ChainSelection(
+                max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"
+            ),
+        )
 
 
 class _ShuffledSnapshotGateway(_FakeGateway):
@@ -271,10 +336,10 @@ def test_event_ids_are_invariant_to_snapshot_row_order() -> None:
     selection = ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE")
 
     in_order = collect_live_basket(
-        _FakeGateway(), index=SPX, as_of=CLOSE, config=_config(), selection=selection
+        _FakeGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(), selection=selection
     )
     shuffled = collect_live_basket(
-        _ShuffledSnapshotGateway(), index=SPX, as_of=CLOSE, config=_config(), selection=selection
+        _ShuffledSnapshotGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(), selection=selection
     )
     assert in_order is not None
     assert shuffled is not None
@@ -346,7 +411,7 @@ def test_discovery_qualifies_only_the_near_the_money_block_on_a_dense_ladder() -
     """
     gateway = _DenseLadderGateway()
     basket = collect_live_basket(
-        gateway, index=SPX, as_of=CLOSE, config=_config(),
+        gateway, index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
     assert basket is not None
@@ -374,7 +439,7 @@ def test_a_name_with_no_listed_options_is_a_clean_no_capture() -> None:
             ]
 
     basket = collect_live_basket(
-        _NoOptionsGateway(), index=SPX, as_of=CLOSE, config=_config(),
+        _NoOptionsGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
     assert basket is None
@@ -415,7 +480,7 @@ def test_snapshot_warms_up_before_reading_marks(monkeypatch: Any) -> None:
     monkeypatch.setattr(cp_rest_close_capture.time, "sleep", lambda seconds: sleeps.append(seconds))
 
     basket = collect_live_basket(
-        _ColdThenWarmGateway(), index=SPX, as_of=CLOSE, config=_config(),
+        _ColdThenWarmGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
     assert basket is not None

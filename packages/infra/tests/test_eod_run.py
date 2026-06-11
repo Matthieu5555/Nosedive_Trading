@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -142,6 +142,17 @@ class _FakeResolver:
         return self._closes[index].replace(
             year=on_date.year, month=on_date.month, day=on_date.day
         )
+
+    def next_session_open(self, index: str, on_date: date) -> datetime:
+        if (index, on_date) in self._holidays:
+            raise AssertionError(f"next_session_open called on a holiday: {index} {on_date}")
+        # The next date that is a session for this index (skip the index's holidays); the open
+        # time-of-day reuses the close instant's clock — the oracle only needs a deterministic
+        # instant strictly after the close, which this is (next day ≥ close day).
+        nxt = on_date + timedelta(days=1)
+        while (index, nxt) in self._holidays:
+            nxt += timedelta(days=1)
+        return self._closes[index].replace(year=nxt.year, month=nxt.month, day=nxt.day)
 
 
 def _config() -> PlatformConfig:

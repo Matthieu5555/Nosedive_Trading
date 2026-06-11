@@ -114,6 +114,7 @@ def live_basket_source(
             transport,
             index=fired.entry,
             as_of=fired.as_of,
+            next_open=fired.next_open,
             config=resolved_config,
             selection=selection,
         )

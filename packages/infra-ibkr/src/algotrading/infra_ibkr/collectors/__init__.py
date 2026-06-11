@@ -11,7 +11,7 @@ are **superseded** — kept as files until C5, reached only by direct import, no
 """
 
 from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter
-from .cp_rest_close_capture import collect_live_basket
+from .cp_rest_close_capture import CloseCaptureError, collect_live_basket
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
 from .cp_rest_history import (
     BackfillResult,
@@ -58,6 +58,7 @@ __all__ = [
     "ResolvedIndex",
     "IndexConidError",
     "collect_live_basket",
+    "CloseCaptureError",
     # Historical OHLC backfill (ADR 0031)
     "CpRestHistoryCollector",
     "HistoryRequest",

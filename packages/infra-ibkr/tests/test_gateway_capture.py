@@ -35,6 +35,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
 TRADE_DATE = date(2026, 3, 12)
 SPX_CLOSE = datetime(2026, 3, 12, 20, 0, tzinfo=UTC)
+SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)  # next NYSE open (09:30 ET = 13:30 UTC)
 INDEX_CONID = 416904
 _SPOT = 100.0
 _MONTH = "JUN26"
@@ -184,7 +185,7 @@ def test_gateway_requested_binds_and_captures() -> None:
     )
     assert source is not None
 
-    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE)
+    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
     basket = source(fired, TRADE_DATE)
     assert basket is not None and basket.events, "the requested same-day Gateway fire must capture"
     # The conid was resolved from the symbol (registry carries the 0 placeholder), and the index

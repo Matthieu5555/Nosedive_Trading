@@ -108,6 +108,15 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   returns `None` so the runner falls back to its empty no-capture source (clean exit 0). The
   full path (auth-from-env → conid → capture → persisted grid) and the fallback are pinned in
   `test_live_capture_spine.py`.
+- `live_capture.py` — `gateway_basket_source`: the **local CP Gateway** counterpart for when the
+  Self-Service OAuth portal will not enrol (the "Enable OAuth Access → 400 not authenticated"
+  wall). Keyed on the `IBKR_CP_GATEWAY` opt-in flag (not the `IBKR_CP_*` artifacts): it builds +
+  establishes a **cookie-session** transport over the browser-logged-in `clientportal.gw`
+  (`session_factory.build_gateway_session`, `oauth_signer=None`) and binds the *same* `collect_live`
+  capture over it — no OAuth crypto, an attended path (the Gateway cookie lapses ~daily). Not set →
+  `None`, so the `scripts/eod_run.py` shim falls through to the OAuth source, else the empty default.
+  The flag gate, the bind-and-capture, and the establish handshake are pinned in
+  `test_gateway_capture.py`.
 
 ### Nautilus TWS (fallback, ADR 0025)
 

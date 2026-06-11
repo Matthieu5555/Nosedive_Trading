@@ -39,6 +39,7 @@ capture against a fake gateway with no network and no secrets.
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol
@@ -105,6 +106,106 @@ def _as_int_or_none(value: object) -> int | None:
         except ValueError:
             return None
     return None
+
+
+# IBKR's `/iserver/marketdata/snapshot` returns only field *metadata* (server ids, request echo)
+# on the first call(s) for a freshly-subscribed conid; the requested value tags (last/bid/ask/…)
+# populate only once the server-side market-data line warms — typically a second or two later. A
+# single un-retried call is exactly why a cold capture saw `spot=None` and then selected zero
+# options. So we poll the same request until the values appear. Bounded by `_..._ATTEMPTS` so an
+# illiquid contract that never prints cannot hang the fire, and the loop stops early once the
+# populated set stops growing (converged) — the dead wings won't print, no point waiting on them.
+_SNAPSHOT_WARMUP_ATTEMPTS = 8
+_SNAPSHOT_WARMUP_SLEEP_S = 1.0
+
+# IBKR's snapshot is a GET carrying the conids in the query string. A full index chain is hundreds
+# of contracts, and that many conids overflow the gateway's request-URI length limit (HTTP 414 —
+# the failure a real ESTX50 capture hit once spot resolved and the whole chain was discovered). So
+# the request is split into URI-safe batches and the rows concatenated; each batch is independently
+# warm-up polled. 50 conids ≈ a 600-char URL, comfortably under the limit and well within IBKR's
+# documented per-request conid cap.
+_SNAPSHOT_MAX_CONIDS = 50
+
+
+def _row_has_value(row: Mapping[str, object]) -> bool:
+    """True when a snapshot row carries at least one parseable market-data value tag.
+
+    The warm/cold discriminator: a cold row carries only metadata (``conid``, ``server_id``,
+    field-availability flags), no value tag; a warm row carries last/bid/ask/size. A tag counts as
+    present when it parses to a float (after stripping a leading status flag like ``C``/``H``),
+    mirroring the normalizer's own parse so "populated" here means "will yield an event".
+    """
+    for tag in REQUEST_FIELD_TAGS:
+        value = row.get(tag)
+        if value is None:
+            continue
+        try:
+            float(str(value).lstrip("CHch").strip())
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def _populated_conids(rows: object, requested: frozenset[int]) -> set[int]:
+    """The subset of ``requested`` conids whose snapshot row carries a parseable value tag."""
+    populated: set[int] = set()
+    if not isinstance(rows, Sequence):
+        return populated
+    for row in rows:
+        if not isinstance(row, Mapping):
+            continue
+        conid = _as_int_or_none(row.get("conid"))
+        if conid is None or conid not in requested:
+            continue
+        if _row_has_value(row):
+            populated.add(conid)
+    return populated
+
+
+def _warmup_poll_batch(transport: _SupportsGet, batch: Sequence[int]) -> list[Any]:
+    """Warm-up poll ONE URI-safe batch of conids; return its snapshot rows (possibly empty).
+
+    Issues the same ``/iserver/marketdata/snapshot`` request up to ``_SNAPSHOT_WARMUP_ATTEMPTS``
+    times, returning as soon as every conid in the batch carries a value tag (fully warm) or the
+    populated set stops growing between two polls (converged — the rest are illiquid and won't
+    print). On a gateway that already returns values on the first call this returns immediately
+    with a single request and no sleep; on a cold subscription it pays a few short polls so the
+    capture sees real marks instead of an empty first response.
+    """
+    requested = frozenset(batch)
+    params = {
+        "conids": ",".join(str(conid) for conid in sorted(requested)),
+        "fields": ",".join(REQUEST_FIELD_TAGS),
+    }
+    rows = transport.get("/iserver/marketdata/snapshot", params=params)
+    populated = _populated_conids(rows, requested)
+    for _attempt in range(_SNAPSHOT_WARMUP_ATTEMPTS - 1):
+        if populated == requested:
+            break  # every requested conid is warm — nothing left to wait for
+        time.sleep(_SNAPSHOT_WARMUP_SLEEP_S)
+        rows = transport.get("/iserver/marketdata/snapshot", params=params)
+        next_populated = _populated_conids(rows, requested)
+        if next_populated and next_populated <= populated:
+            break  # no new conid warmed since the last poll — converged, stop polling
+        populated = next_populated
+    if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
+        return list(rows)
+    return []
+
+
+def _snapshot_with_warmup(transport: _SupportsGet, *, conids: Sequence[int]) -> list[Any]:
+    """Snapshot the conids in URI-safe batches (each warm-up polled) and concatenate the rows.
+
+    A full chain's conids overflow the snapshot GET's URI length (HTTP 414), so the request is
+    split into ``_SNAPSHOT_MAX_CONIDS``-sized batches; :func:`_warmup_poll_batch` handles the
+    cold-snapshot warm-up per batch. Deterministic order: conids are sorted, then batched.
+    """
+    ordered = sorted(frozenset(conids))
+    rows: list[Any] = []
+    for start in range(0, len(ordered), _SNAPSHOT_MAX_CONIDS):
+        rows.extend(_warmup_poll_batch(transport, ordered[start : start + _SNAPSHOT_MAX_CONIDS]))
+    return rows
 
 
 def _index_key(index: IndexEntry, conid: int) -> InstrumentKey:
@@ -177,11 +278,12 @@ def _spot_from_snapshot(
 
 
 def _snapshot_index_spot(transport: _SupportsGet, conid: int) -> float | None:
-    """REST snapshot the index level to centre the chain window (request-shaping only)."""
-    rows = transport.get(
-        "/iserver/marketdata/snapshot",
-        params={"conids": str(conid), "fields": ",".join(REQUEST_FIELD_TAGS)},
-    )
+    """REST snapshot the index level to centre the chain window (request-shaping only).
+
+    Warm-up polled (:func:`_snapshot_with_warmup`): the index's first cold snapshot carries no
+    value tag, so a single call would return ``spot=None`` and collapse the downstream selection.
+    """
+    rows = _snapshot_with_warmup(transport, conids=(conid,))
     return _spot_from_snapshot(rows, conid=conid)
 
 
@@ -327,11 +429,9 @@ def _snapshot_events(
     """
     if not keys_by_conid:
         return []
-    conids = ",".join(str(conid) for conid in sorted(keys_by_conid))
-    rows = transport.get(
-        "/iserver/marketdata/snapshot",
-        params={"conids": conids, "fields": ",".join(REQUEST_FIELD_TAGS)},
-    )
+    # Warm-up polled like the spot snapshot: a cold first call returns metadata-only rows (no
+    # marks), which would yield a basket of contracts with no quotes — IV/Greeks could not price.
+    rows = _snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
     close_ms = int(as_of.timestamp() * 1000)
     if not isinstance(rows, Sequence):
         return []

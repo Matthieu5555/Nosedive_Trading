@@ -116,6 +116,21 @@ def test_history_path_is_read_only(tmp_path: Path) -> None:
     assert not any("order" in p for p in transport.get_paths + transport.post_paths)
 
 
+# -- warmup is a throwaway: a failing warmup must not abort the real fetch -----------------
+def test_warmup_failure_is_non_fatal(tmp_path: Path) -> None:
+    """A 503 (or any error) on the throwaway warmup probe is swallowed; the real fetch proceeds.
+
+    The warmup wakes IBKR's data farm and its own result is never used — over the local CP
+    Gateway the ``conid=0`` probe answers 503. The queued error is popped by the warmup's first
+    ``get``; the subsequent real fetch (conid 8314) still returns its payload and persists.
+    """
+    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[RuntimeError("503 on warmup")])
+    result = _collector(transport, ParquetStore(tmp_path)).backfill(
+        [HistoryRequest("AAPL", 8314, "1y")]
+    )
+    assert result.fetched == ("AAPL",) and result.bar_count == 2
+
+
 # -- session gating ----------------------------------------------------------------------
 def test_fetch_before_established_is_raised_not_sent(tmp_path: Path) -> None:
     transport = _FakeTransport({8314: _payload("AAPL")})
@@ -200,3 +215,149 @@ def test_ticker_with_no_history_in_window_persists_no_bars(tmp_path: Path) -> No
     assert result.fetched == ("AAPL",)
     assert result.bar_count == 0
     assert store.read("daily_bar") == []
+
+
+# -- pagination: page backward over the ~999-bar/request cap to the full history -----------
+def _epoch_ms(d: date) -> int:
+    return int((datetime(d.year, d.month, d.day, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC))
+               .total_seconds() * 1000)
+
+
+def _series(n: int) -> list[dict[str, Any]]:
+    """``n`` consecutive synthetic daily bars (strictly valid OHLC, ascending by date)."""
+    base = date(2016, 1, 4).toordinal()
+    out: list[dict[str, Any]] = []
+    for i in range(n):
+        d = date.fromordinal(base + i)
+        out.append({"date": d, "t": _epoch_ms(d),
+                    "o": 100.0 + i, "h": 101.0 + i, "l": 99.0 + i, "c": 100.5 + i, "v": 1000 + i})
+    return out
+
+
+class _BoundaryHttpError(Exception):
+    """Stand-in for httpx's status error: carries ``.response.status_code`` (what the collector reads)."""
+
+    def __init__(self, code: int) -> None:
+        super().__init__(f"HTTP {code}")
+        self.response = type("_R", (), {"status_code": code})()
+
+
+def _terminal_transport_error(code: int) -> RuntimeError:
+    """A transport error chained ``from`` an HTTP status error — the real ``CpRestTransport`` shape."""
+    err = RuntimeError(f"GET history failed: HTTP {code}")
+    err.__cause__ = _BoundaryHttpError(code)
+    return err
+
+
+class _PaginatedGateway:
+    """Fake CP history endpoint: a long series, returns <=cap bars ENDING at ``startTime``.
+
+    Models the verified live semantics — ``startTime`` is the END anchor and a request returns at
+    most ``cap`` bars going back from it — and, like the real CP Gateway, raises an HTTP **500**
+    when the window is at/before the start of available history (the boundary the pager must
+    tolerate), rather than a clean empty response.
+    """
+
+    def __init__(self, series: list[dict[str, Any]], *, cap: int = 999) -> None:
+        self._series = series
+        self._cap = cap
+        self.window_starts: list[str | None] = []  # the startTime of each REAL (conid!=0) window
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        p = params or {}
+        if str(p.get("conid")) == "0":  # the throwaway warmup probe
+            return {"data": []}
+        start_time = p.get("startTime")
+        self.window_starts.append(start_time)
+        if start_time is None:
+            end_idx = len(self._series) - 1  # the most-recent window
+        else:
+            end = date(int(start_time[0:4]), int(start_time[4:6]), int(start_time[6:8]))
+            if end <= self._series[0]["date"]:
+                raise _terminal_transport_error(500)  # before the start of history — IBKR 500s
+            end_idx = max(i for i, b in enumerate(self._series) if b["date"] <= end)
+        start_idx = max(0, end_idx - self._cap + 1)
+        window = self._series[start_idx : end_idx + 1]
+        return {"data": [{k: b[k] for k in ("t", "o", "h", "l", "c", "v")} for b in window]}
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> Any:
+        return None
+
+
+def test_fetch_pages_backward_over_the_cap_to_full_history(tmp_path: Path) -> None:
+    """A 2300-day history (>2x the 999 cap) is reassembled in full by paging ``startTime`` back.
+
+    Every distinct day is merged exactly once, in ascending order, with no gap or duplicate. The
+    oldest window raises the boundary HTTP 500 (as the live Gateway does) and the pager stops
+    cleanly on it — returning the full paged history rather than crashing.
+    """
+    series = _series(2300)
+    gateway = _PaginatedGateway(series, cap=999)
+    bars = _collector(gateway, ParquetStore(tmp_path)).fetch(HistoryRequest("AAPL", 8314, "5y"))
+
+    assert [b.trade_date for b in bars] == [s["date"] for s in series]  # full, ordered, deduped
+    assert len(bars) == 2300
+    assert len(gateway.window_starts) >= 3  # the cap forced multiple windows
+    assert gateway.window_starts[0] is None  # first window is the most-recent (unanchored)
+    assert all(start for start in gateway.window_starts[1:])  # later windows anchor backward
+
+
+def test_first_window_failure_is_surfaced_not_swallowed(tmp_path: Path) -> None:
+    """A boundary error on the FIRST (most-recent) window is a genuine failure, raised — not empty."""
+    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(500)])
+    collector = _collector(transport, ParquetStore(tmp_path))
+    collector._warmed_up = True  # the queued 500 lands on the first real window
+    with pytest.raises(HistoryFetchError, match="HTTP 500"):
+        collector.fetch(HistoryRequest("AAPL", 8314, "5y"))
+
+
+def test_terminal_status_is_not_retried(tmp_path: Path) -> None:
+    """A 404/500 window fails fast (no backoff burned); only 503/timeouts are retried."""
+    slept: list[float] = []
+    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(404)])
+    collector = CpRestHistoryCollector(
+        transport=transport, store=ParquetStore(tmp_path), config=load_ibkr_history_config(),
+        provider="IBKR", is_established=lambda: True, provenance_for=_provenance_for,
+        sleep=slept.append,
+    )
+    collector._warmed_up = True
+    with pytest.raises(HistoryFetchError, match="HTTP 404"):
+        collector.fetch(HistoryRequest("AAPL", 8314, "5y"))
+    assert slept == []  # not a single backoff — the terminal status short-circuited the retry
+
+
+def test_window_cap_bounds_a_nonterminating_feed(tmp_path: Path) -> None:
+    """The safety cap stops a feed that never runs dry, returning what was paged (never hangs)."""
+    series = _series(5000)
+    gateway = _PaginatedGateway(series, cap=999)
+    collector = _collector(gateway, ParquetStore(tmp_path))
+    collector.max_history_windows = 2  # force the backstop before the series is exhausted
+    bars = collector.fetch(HistoryRequest("AAPL", 8314, "5y"))
+    # Two windows of fresh data only (~1998 bars), bounded — not the full 5000, and no infinite loop.
+    assert 0 < len(bars) <= 999 * 2
+    assert len(gateway.window_starts) == 2
+
+
+def test_backfill_continues_past_a_failed_ticker(tmp_path: Path) -> None:
+    """A ticker whose fetch fails is recorded in ``failed`` and the sweep finishes the rest.
+
+    AAPL/GOOG resolve and persist; BADX (conid 7) always answers a boundary 500 (a constituent
+    IBKR cannot serve) — it lands in ``failed`` without aborting the other two.
+    """
+    class _Routed(_FakeTransport):
+        def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+            conid = int((params or {}).get("conid", 0))
+            if conid == 7:  # BADX — always a boundary error
+                raise _terminal_transport_error(500)
+            return super().get(path, params)
+
+    routed = _Routed({8314: _payload("AAPL"), 9999: _payload("GOOG")})
+    result = _collector(routed, ParquetStore(tmp_path)).backfill(
+        [HistoryRequest("AAPL", 8314, "1y"),
+         HistoryRequest("BADX", 7, "1y"),
+         HistoryRequest("GOOG", 9999, "1y")]
+    )
+    assert sorted(result.fetched) == ["AAPL", "GOOG"]
+    assert result.failed == ("BADX",)
+    assert result.bar_count == 4  # AAPL (2) + GOOG (2); BADX contributed none
+    assert {b.underlying for b in ParquetStore(tmp_path).read("daily_bar")} == {"AAPL", "GOOG"}

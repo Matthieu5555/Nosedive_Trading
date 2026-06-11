@@ -117,7 +117,7 @@ def history_requests_for(
     seen: set[str] = set()
     for entry in entries:
         index_conid = resolve_index(
-            transport, symbol=entry.symbol, exchange=entry.ibkr.exchange
+            transport, symbol=entry.ibkr_search_symbol, exchange=entry.ibkr.exchange
         ).conid
         if entry.symbol not in seen:
             requests.append(HistoryRequest(entry.symbol, index_conid, period))
@@ -128,9 +128,21 @@ def history_requests_for(
         for member in members(store, entry.symbol, as_of_date):
             if member.constituent in seen:
                 continue
-            conid = discovery.underlying_conid(member.constituent)
-            requests.append(HistoryRequest(member.constituent, conid, period))
             seen.add(member.constituent)
+            # Resolve the constituent's equity conid; a name IBKR does not list (a non-US ticker
+            # under a different symbol, a delisted member) must not abort the whole sweep — log it
+            # and move on. The ticker simply gets no history this run.
+            try:
+                conid = discovery.underlying_conid(member.constituent)
+            except Exception as exc:  # noqa: BLE001 — one unresolved constituent is non-fatal
+                _LOGGER.info(
+                    "ibkr.history_backfill.constituent_unresolved",
+                    index=entry.symbol,
+                    constituent=member.constituent,
+                    error=str(exc),
+                )
+                continue
+            requests.append(HistoryRequest(member.constituent, conid, period))
     _LOGGER.info(
         "ibkr.history_backfill.requests_resolved",
         index_count=len(entries),

@@ -150,6 +150,36 @@ session day. A `--trade-date` in the past does **not** reconstruct a past option
 historical option-quote endpoint); past dates are served by the underlying-OHLC `/iserver/marketdata/
 history` backfill (`CpRestHistoryCollector`), not the live basket source.
 
+### Escape hatch — the local CP Gateway (no Self-Service OAuth enrolment)
+
+If the Self-Service OAuth portal will not enrol the account — the common
+**"Enable OAuth Access" → `HTTP 400 "You are not authenticated"`** wall on the agreement-submit
+step (a browser-session bug on IBKR's side, not our code) — you do **not** need the `IBKR_CP_*`
+artifacts at all. The **same** EOD capture runs over IBKR's locally-running **Client Portal
+Gateway** with a browser-login **cookie** session (ADR 0024, `oauth_signer=None`), keyed on a single
+opt-in flag:
+
+```bash
+# 1. Download + run IBKR's Client Portal Gateway (clientportal.gw — the Java bundle), then:
+open https://localhost:5000        # log in (paper is fine) until it says "Client login succeeds"
+# 2. Flip the flag and run the normal EOD capture — it now uses the Gateway, not OAuth:
+IBKR_CP_GATEWAY=1 uv run python scripts/eod_run.py --calendar XNYS
+```
+
+`scripts/eod_run.py` picks the source in this order: **`IBKR_CP_GATEWAY` set → the local Gateway**
+(cookie); else **`IBKR_CP_*` present → the hosted OAuth path**; else a clean no-capture day. The
+trade-off is honest: the Gateway needs a **browser re-login ~daily** (the SSO cookie lapses), so this
+is the **manual/attended** path — fine to prove capture and run by hand, whereas the OAuth block is
+the one that runs **unattended** under the systemd timer. Same `RawMarketEvent` rows either way; the
+look-ahead note above applies identically (it is still a current-session snapshot). Override the
+Gateway URL with `IBKR_CP_GATEWAY_URL` only for a non-default listener.
+
+`scripts/ohlc_backfill.py` honours the **same** `IBKR_CP_GATEWAY` selection, so the daily-OHLC
+history backfill (the candlestick data — index underlyings + their constituents) runs over the
+Gateway too. **Full step-by-step setup: [`ibkr-gateway-quickstart.md`](ibkr-gateway-quickstart.md).**
+One caveat proven live: CP REST caps a history request at **~999 daily bars (~4 years)** and there is
+no pagination yet, so one backfill run reaches back ~4 years per ticker, not the full history.
+
 ---
 
 ## Troubleshooting (verified meanings)

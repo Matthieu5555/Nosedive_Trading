@@ -34,7 +34,11 @@ from algotrading.infra.orchestration.eod_runner import FiredIndex
 from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
-from .session_factory import build_credentialed_session
+from .session_factory import (
+    build_credentialed_session,
+    build_gateway_session,
+    gateway_requested,
+)
 
 _LOGGER = structlog.get_logger("ibkr.live_capture")
 
@@ -118,6 +122,44 @@ def live_basket_source(
     return source
 
 
+def gateway_basket_source(
+    *,
+    env: Mapping[str, str] | None = None,
+    transport: Any | None = None,
+    config: PlatformConfig | None = None,
+    selection: ChainSelection | None = None,
+    now: Callable[[], date] | None = None,
+) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
+    """Build the live ``BasketSource`` over the local CP Gateway, or ``None`` when not requested.
+
+    The local-Gateway counterpart of :func:`live_basket_source`: instead of keying on the
+    ``IBKR_CP_*`` OAuth artifacts it keys on the explicit ``IBKR_CP_GATEWAY`` opt-in flag
+    (:func:`gateway_requested`). When set, it builds + establishes a cookie-session CP REST
+    transport against the running ``clientportal.gw`` (:func:`build_gateway_session`) and binds the
+    same ``collect_live`` capture over it — the path that needs **no** Self-Service OAuth enrolment,
+    only a browser-logged-in Gateway. When the flag is not set it returns ``None`` so the caller
+    falls through to the OAuth path (or the empty no-capture default).
+
+    Binding, the no-look-ahead guard, and the ``config``/``selection``/``now`` defaults are
+    :func:`live_basket_source`'s — this function only swaps the *authentication* (Gateway cookie vs
+    LST signer) and then delegates. ``transport`` is injectable so the gate drives an
+    already-established fake Gateway without the establish handshake or a socket.
+    """
+    resolved_env = os.environ if env is None else env
+    if transport is None:
+        if not gateway_requested(resolved_env):
+            _LOGGER.info(
+                "ibkr.live_capture.gateway_not_requested",
+                reason="IBKR_CP_GATEWAY not set — not the local-Gateway path",
+            )
+            return None
+        transport, _session = build_gateway_session(resolved_env)
+    _LOGGER.info("ibkr.live_capture.gateway_requested", reason="local CP Gateway capture path")
+    return live_basket_source(
+        env=resolved_env, transport=transport, config=config, selection=selection, now=now
+    )
+
+
 def _load_config() -> PlatformConfig:
     """Load the platform config from the repo ``configs/`` (live path only)."""
     from pathlib import Path
@@ -125,6 +167,6 @@ def _load_config() -> PlatformConfig:
     from algotrading.core.config.loader import load_platform_config
 
     # This file: packages/infra-ibkr/src/algotrading/infra_ibkr/live_capture.py
-    # parents[4] == packages/infra-ibkr ; the repo root holds configs/ two more up.
-    repo_root = Path(__file__).resolve().parents[6]
+    # parents[3] == packages/infra-ibkr ; parents[5] == the repo root that holds configs/.
+    repo_root = Path(__file__).resolve().parents[5]
     return load_platform_config(repo_root / "configs")

@@ -22,7 +22,18 @@ export interface SurfaceSlice {
   svi_sigma: number;
   expiry_date: string;
   day_count: string;
-  diagnostics: { rmse: number; n_points: number; arb_free: boolean };
+  // bound_hits/converged are null on rows persisted before the degeneracy fields existed
+  // (unknown, not clean). degenerate applies the backend policy: a railed, non-converged,
+  // or arb-breached calibration is flagged, never served as clean.
+  diagnostics: {
+    rmse: number;
+    n_points: number;
+    arb_free: boolean;
+    bound_hits: string[] | null;
+    converged: boolean | null;
+  };
+  degenerate: boolean;
+  degenerate_reasons: string[];
   source_snapshot_ts: string;
   provenance: Provenance;
 }
@@ -157,15 +168,23 @@ export interface AnalyticsPoint {
   provenance: Provenance;
 }
 
+// The smile x-axis declares what it is (F-BFF-04): the rich projection serves signed target
+// deltas; the surface-grid fallback serves moneyness buckets (in log-moneyness units) and
+// must never relabel them as deltas.
+export type SmileAxis =
+  | { axis_type: "delta"; deltas: number[]; implied_vols: number[]; log_moneyness: number[] }
+  | {
+      axis_type: "moneyness";
+      moneyness_buckets: number[];
+      implied_vols: number[];
+      log_moneyness: number[];
+    };
+
 export interface AnalyticsMaturity {
   maturity_years: number;
   tenor_label: string;
   label: string;
-  smile: {
-    deltas: number[];
-    implied_vols: number[];
-    log_moneyness: number[];
-  };
+  smile: SmileAxis;
   surface_slice: SurfaceSlice | null;
   points: AnalyticsPoint[];
 }

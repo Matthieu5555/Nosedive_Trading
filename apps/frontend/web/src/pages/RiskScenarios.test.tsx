@@ -22,6 +22,29 @@ const SCENARIOS: ScenariosResponse = {
     scenario_version: "v3",
     unit: "$ (full-reprice PnL)",
     n_cells: 9,
+    has_holes: false,
+    n_holes: 0,
+  },
+};
+
+// One (spot, vol) combination genuinely missing: a labelled null hole (F-BFF-03), never 0.0.
+// The hole at [0][2] would have been the max gain if zero-filled stats coerced it.
+const SCENARIOS_WITH_HOLE: ScenariosResponse = {
+  portfolio_id: null,
+  n_cells: 8,
+  surface: {
+    spot_shock: [-0.5, 0, 0.5],
+    vol_shock: [-0.1, 0, 0.1],
+    scenario_pnl: [
+      [-1200, -800, null],
+      [-200, 0, 250],
+      [400, 900, 1500],
+    ],
+    scenario_version: "v3",
+    unit: "$ (full-reprice PnL)",
+    n_cells: 8,
+    has_holes: true,
+    n_holes: 1,
   },
 };
 
@@ -35,6 +58,8 @@ const SCENARIOS_EMPTY: ScenariosResponse = {
     scenario_version: null,
     unit: "$ (full-reprice PnL)",
     n_cells: 0,
+    has_holes: false,
+    n_holes: 0,
   },
 };
 
@@ -80,6 +105,18 @@ test("renders the PnL surface and heatmap as Plotly traces", async () => {
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
   const heatmap = await screen.findByLabelText(/Stress PnL heatmap/i);
   expect(within(heatmap).getByTestId("plot-types")).toHaveTextContent("heatmap");
+});
+
+test("a missing cell is reported as missing and excluded from the gain/loss stats", async () => {
+  mockEndpoints(SCENARIOS_WITH_HOLE);
+  render(<RiskScenariosPage />);
+  expect(await screen.findByText("Stress summary")).toBeInTheDocument();
+  // The hole is announced beside the cell count…
+  expect(screen.getByText(/8 cells — 1 missing/)).toBeInTheDocument();
+  // …and the stats come from the real cells only: max gain is 1500 (the hole is not a 0
+  // and not a fabricated extreme), max loss is -1200.
+  expect(screen.getByText("+$1,500")).toBeInTheDocument();
+  expect(screen.getByText("-$1,200")).toBeInTheDocument();
 });
 
 test("renders a labeled empty state when no surface is persisted", async () => {

@@ -72,7 +72,9 @@ function ScenarioBoard({ data }: { data: ScenariosResponse }) {
     );
   }
 
-  const flat = surface.scenario_pnl.flat();
+  // A null cell is a labelled hole (no persisted scenario for that shock pair), excluded
+  // from the summary stats; Plotly renders the null as a gap in the heatmap/surface.
+  const flat = surface.scenario_pnl.flat().filter((value): value is number => value !== null);
   const maxGain = Math.max(...flat);
   const maxLoss = Math.min(...flat);
 
@@ -102,7 +104,10 @@ function ScenarioBoard({ data }: { data: ScenariosResponse }) {
             <p className="panel-kicker">{data.portfolio_id ?? "All portfolios"}</p>
             <h2>Stress summary</h2>
           </div>
-          <span className={maxLoss < 0 ? "status negative" : "status"}>{surface.n_cells} cells</span>
+          <span className={maxLoss < 0 ? "status negative" : "status"}>
+            {surface.n_cells} cells
+            {surface.has_holes ? ` — ${surface.n_holes} missing` : ""}
+          </span>
         </div>
         <div className="quote-strip">
           <Metric label="Max gain" value={signedMoney(maxGain)} />

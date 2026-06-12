@@ -3,14 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 // Plotly and lightweight-charts both draw to a canvas jsdom does not implement; swap each
-// wrapper for a DOM stub that exposes the self-label (and trace types / bar count) as text
-// (see src/test/plotMock.tsx and src/test/candleMock.tsx).
+// wrapper for a DOM stub that exposes the self-label and chart inputs as text.
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
+vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
 
 import { MarketPage } from "./Market";
 import {
   ANALYTICS_AAA,
+  ANALYTICS_AAA_MONEYNESS_FALLBACK,
   CONSTITUENTS_TWO,
   PRICE_HISTORY_AAA,
   RECORDED_EMPTY,
@@ -99,10 +100,13 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
   const smile = await screen.findByLabelText(/Smile — 3m/i);
   expect(within(smile).getByTestId("plot-types")).toHaveTextContent("scatter");
 
-  // The dollar-Greeks term structure renders one labeled panel per Greek, each a scatter, with
-  // the $ unit string carried into the panel label (the curve view of the same projected data).
+  // The dollar-Greeks term structure renders one TradingView line panel per Greek, with one
+  // series per delta band and the $ unit string carried into the panel label.
   const deltaPanel = await screen.findByLabelText(/Delta \$ term structure/i);
-  expect(within(deltaPanel).getByTestId("plot-types")).toHaveTextContent("scatter");
+  expect(within(deltaPanel).getByTestId("line-series")).toHaveTextContent("30dp");
+  expect(within(deltaPanel).getByTestId("line-unit")).toHaveTextContent(
+    "$ per $1 of underlying",
+  );
   expect(
     await screen.findByLabelText(/Gamma \$ term structure \(\$ per 1% move\)/i),
   ).toBeInTheDocument();
@@ -115,6 +119,20 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
   expect(within(greeks).getByText("$ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("$ per calendar day")).toBeInTheDocument();
   expect(within(greeks).getByText("$ per 1 vol point")).toBeInTheDocument();
+});
+
+test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {
+  // F-BFF-04: when the BFF serves the surface-grid fallback, the axis announces itself as
+  // moneyness (never "delta"), and the degenerate calibration is visibly flagged.
+  mockEndpoints({ "/api/analytics": ANALYTICS_AAA_MONEYNESS_FALLBACK });
+  render(<MarketPage />);
+
+  const smile = await screen.findByLabelText(/Smile — 0\.250y/i);
+  expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs moneyness \(log\)/i);
+  expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
+
+  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  expect(surface.getAttribute("aria-label")).toMatch(/vol vs moneyness \(log\) vs maturity/i);
 });
 
 test("renders a labeled empty state when no dates are recorded", async () => {

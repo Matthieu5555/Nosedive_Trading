@@ -37,7 +37,9 @@ export const SURFACE_TWO_SLICES: SurfaceResponse = {
       svi_sigma: 0.18,
       expiry_date: "2026-08-31",
       day_count: "ACT/365",
-      diagnostics: { rmse: 0.0009, n_points: 11, arb_free: true },
+      diagnostics: { rmse: 0.0009, n_points: 11, arb_free: true, bound_hits: [], converged: true },
+      degenerate: false,
+      degenerate_reasons: [],
       source_snapshot_ts: "2026-06-01T13:30:00+00:00",
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
@@ -59,7 +61,9 @@ export const SURFACE_TWO_SLICES: SurfaceResponse = {
       svi_sigma: 0.22,
       expiry_date: "2027-03-01",
       day_count: "ACT/365",
-      diagnostics: { rmse: 0.0011, n_points: 9, arb_free: false },
+      diagnostics: { rmse: 0.0011, n_points: 9, arb_free: false, bound_hits: [], converged: true },
+      degenerate: true,
+      degenerate_reasons: ["calendar_arbitrage"],
       source_snapshot_ts: "2026-06-01T13:30:00+00:00",
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
@@ -233,6 +237,7 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
       tenor_label: "3m",
       label: "3m (0.250y)",
       smile: {
+        axis_type: "delta",
         deltas: [-0.3, 0.3],
         implied_vols: [0.27, 0.23],
         log_moneyness: [-0.15, 0.12],
@@ -258,6 +263,53 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
           provenance: PROV,
         },
       ],
+    },
+  ],
+};
+
+// The surface-grid fallback day (no projected analytics yet): the smile axis is moneyness
+// buckets, declared as such (F-BFF-04), and the attached SVI slice is a degenerate
+// calibration (rho railed to its bound, not converged, arb breached — the live shape).
+export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
+  underlying: "AAA",
+  trade_date: "2026-05-29",
+  n_maturities: 1,
+  maturities: [
+    {
+      maturity_years: 0.25,
+      tenor_label: "0.250y",
+      label: "0.250y",
+      smile: {
+        axis_type: "moneyness",
+        moneyness_buckets: [-0.1, 0.0, 0.1],
+        implied_vols: [0.26, 0.24, 0.25],
+        log_moneyness: [-0.1, 0.0, 0.1],
+      },
+      surface_slice: {
+        snapshot_ts: "2026-05-29T21:00:00+00:00",
+        underlying: "AAA",
+        maturity_years: 0.25,
+        model_version: "svi-test",
+        svi_a: 1e-28,
+        svi_b: 0.05,
+        svi_rho: -0.999,
+        svi_m: 0.0,
+        svi_sigma: 0.2,
+        expiry_date: "2026-08-29",
+        day_count: "ACT/365",
+        diagnostics: {
+          rmse: 1e-6,
+          n_points: 5,
+          arb_free: false,
+          bound_hits: ["rho_lower"],
+          converged: false,
+        },
+        degenerate: true,
+        degenerate_reasons: ["param_at_bound:rho_lower", "not_converged", "butterfly_arbitrage"],
+        source_snapshot_ts: "2026-05-29T21:00:00+00:00",
+        provenance: PROV,
+      },
+      points: [],
     },
   ],
 };

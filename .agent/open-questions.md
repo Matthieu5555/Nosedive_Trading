@@ -25,8 +25,9 @@ without searching.
 
 ## Open
 
-_None currently. OQ-1 through OQ-4 were formalised as ADRs on 2026-06-07 by P0 (see Resolved);
-OQ-7 was ruled on 2026-06-06; OQ-1 through OQ-6 were owner-ruled on 2026-06-05._
+| # | Question | Context | Raised |
+|---|----------|---------|--------|
+| OQ-10 | **The `underlying` partition/key is a bare ticker string and is not market-qualified — cross-index symbol collisions.** SPX and SX5E share three constituent tickers naming *different companies*: `DG` (Dollar General vs Vinci), `DTE` (DTE Energy vs Deutsche Telekom), `EL` (Estée Lauder vs EssilorLuxottica). `daily_bar` (and any `underlying`-keyed table) can hold only one of the pair; today the SPX (USD) name wins (`history_requests_for` dedups by symbol across indices, SPX first), so the SX5E view renders the US homonym's candles for those three names. Needs an owner ruling on market-qualified keying (e.g. `SYM.MIC`, or a per-market symbol column) — touches partitioning, membership join, and the front's symbol display; not a quick patch. | Found during the 2026-06-12 OHLC constituent backfill (the conid-resolution audit); the other 66 divergences were resolution bugs, fixed in `7c7a202`. | 2026-06-12, backfill lane |
 
 ## Resolved
 

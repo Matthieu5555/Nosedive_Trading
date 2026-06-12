@@ -4,6 +4,12 @@ Parquet is the canonical raw layer; this codec exists for small, committed, redi
 samples (a real market-data slice or a synthetic fixture) that must reconstruct offline, with no
 broker connection and no Parquet partition on disk. Decimals round-trip exactly via a ``__dec__``
 wrapper; timestamps are ISO-8601. The decoded events feed ``reconstruct_day`` like any other source.
+
+A pydantic ``TypeAdapter`` over :class:`CollectorEvent` owns the field structure on both
+sides (so a new event field never needs a hand-edited field list here); the two bespoke
+wire rules stay explicit because they *are* the persisted format: the ``__dec__`` Decimal
+wrapper, and the read-side ``provider`` default (the dataclass default, applied by
+validation when an old sample predates the provider field).
 """
 
 from __future__ import annotations
@@ -13,11 +19,20 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
+from pydantic import TypeAdapter
+
 from .events import CollectorEvent
 
+_EVENT_LIST: TypeAdapter[list[CollectorEvent]] = TypeAdapter(list[CollectorEvent])
 
-def _encode_value(value: Decimal | str | None) -> object:
-    return {"__dec__": str(value)} if isinstance(value, Decimal) else value
+
+def _encode_wire_value(value: object) -> object:
+    """The pinned byte form of the non-JSON-native types on the wire."""
+    if isinstance(value, Decimal):
+        return {"__dec__": str(value)}
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"unexpected value {value!r} in a collector-event sample")
 
 
 def _decode_value(value: object) -> Decimal | str | None:
@@ -30,40 +45,13 @@ def _decode_value(value: object) -> Decimal | str | None:
 
 def events_to_json(events: Sequence[CollectorEvent]) -> str:
     """Serialize raw events to a stable JSON array (exact Decimals, ISO timestamps)."""
-    rows = [
-        {
-            "collector_session_id": e.collector_session_id,
-            "event_id": e.event_id,
-            "receipt_ts": e.receipt_ts.isoformat(),
-            "instrument_key": e.instrument_key,
-            "field_name": e.field_name,
-            "field_value": _encode_value(e.field_value),
-            "underlying": e.underlying,
-            "provider": e.provider,
-            "exchange_ts": e.exchange_ts.isoformat() if e.exchange_ts else None,
-            "contract_id_broker": e.contract_id_broker,
-        }
-        for e in events
-    ]
-    return json.dumps(rows, indent=2, sort_keys=True)
+    rows = _EVENT_LIST.dump_python(list(events))
+    return json.dumps(rows, indent=2, sort_keys=True, default=_encode_wire_value)
 
 
 def events_from_json(text: str) -> list[CollectorEvent]:
     """Parse the array written by :func:`events_to_json` back into ``CollectorEvent`` instances."""
-    return [
-        CollectorEvent(
-            collector_session_id=row["collector_session_id"],
-            event_id=row["event_id"],
-            receipt_ts=datetime.fromisoformat(row["receipt_ts"]),
-            instrument_key=row["instrument_key"],
-            field_name=row["field_name"],
-            field_value=_decode_value(row["field_value"]),
-            underlying=row["underlying"],
-            provider=row.get("provider", "DERIBIT"),
-            exchange_ts=(
-                datetime.fromisoformat(row["exchange_ts"]) if row.get("exchange_ts") else None
-            ),
-            contract_id_broker=row.get("contract_id_broker"),
-        )
-        for row in json.loads(text)
-    ]
+    rows = json.loads(text)
+    for row in rows:
+        row["field_value"] = _decode_value(row["field_value"])
+    return _EVENT_LIST.validate_python(rows)

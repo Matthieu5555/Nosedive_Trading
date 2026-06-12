@@ -40,6 +40,15 @@ request routed through M0, because every field ripples to the other workstreams.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).
+  The positivity/non-negativity/tz-aware rules run on strict pydantic
+  `TypeAdapter`s (`Gt`/`Ge`/`AwareDatetime`) mapped back onto
+  `ContractValidationError`; the numeric type-identity check (exactly Python
+  `int`/`float`, bools and numpy scalars rejected) stays hand-rolled because
+  pydantic's strict numbers accept anything implementing the number protocol.
+  The write door's exact accept/reject behavior — including its
+  numeric-fields-only scope — is pinned by
+  `tests/test_contracts_plane_golden.py` (the sanctioned-unfreeze gate for this
+  M0 seam, owner-ruled 2026-06-12).
 - **The frozen storage protocol** — `StorageRepository` (`ports.py`): the storage seam.
   Table-keyed read/write/list over the contract dataclasses, with the
   versioned-restatement semantics (`version=None` = live; `version=<V>` = one

@@ -1,0 +1,342 @@
+{
+  "non_utc_provenance_column": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"487600f528979a744f1c3a08798031af6f139d122f425d9bebfb743e4dc3a43e\"}",
+  "rows": {
+    "baskets": {
+      "basket_id": "rr-aapl-1m",
+      "legs": "[{\"delta_band\":\"30dc\",\"instrument_kind\":\"option\",\"quantity\":1.0,\"side\":\"long\",\"tenor_label\":\"1m\",\"underlying\":\"AAPL\"},{\"delta_band\":\"30dp\",\"instrument_kind\":\"option\",\"quantity\":-1.0,\"side\":\"short\",\"tenor_label\":\"1m\",\"underlying\":\"AAPL\"},{\"delta_band\":null,\"instrument_kind\":\"stock\",\"quantity\":25.0,\"side\":\"long\",\"tenor_label\":null,\"underlying\":\"AAPL\"}]",
+      "provider": "IBKR",
+      "trade_date": {
+        "$date": "2026-05-29"
+      },
+      "underlying": "AAPL"
+    },
+    "book_greeks": {
+      "book_id": "book-1",
+      "composition_version": "book-1",
+      "dollar_delta": 950.0,
+      "dollar_delta_unit": "per $1 underlying move",
+      "dollar_gamma": 36.3,
+      "dollar_gamma_unit": "per 1% underlying move",
+      "dollar_rho": 3.0,
+      "dollar_rho_unit": "per 1% rate move",
+      "dollar_theta": -10.0,
+      "dollar_theta_unit": "per calendar day",
+      "dollar_vega": 100.0,
+      "dollar_vega_unit": "per 1 vol point",
+      "layer_index": 0,
+      "layer_label": "risk-reversal",
+      "level": "layer",
+      "net_delta": 5.0,
+      "net_gamma": 0.2,
+      "net_theta": -0.1,
+      "net_vega": 1.0,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "valuation_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      }
+    },
+    "daily_bar": {
+      "bar_type": "1d-TRADES",
+      "close": 190.5,
+      "high": 191.5,
+      "low": 188.5,
+      "open": 189.0,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provider": "IBKR",
+      "source": "cp-rest-history",
+      "trade_date": {
+        "$date": "2026-05-29"
+      },
+      "underlying": "AAPL",
+      "volume": 1000000.0
+    },
+    "forward_curve": {
+      "day_count": "ACT/365",
+      "diagnostics": "{\"candidate_count\":5,\"method\":\"parity\",\"quality_label\":\"good\",\"residual_mad\":0.01}",
+      "expiry_date": {
+        "$date": "2026-06-19"
+      },
+      "forward_price": 191.0,
+      "maturity_years": 0.25,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "underlying": "AAPL"
+    },
+    "index_constituents": {
+      "constituent": "AAPL",
+      "effective_add_date": {
+        "$date": "2020-03-23"
+      },
+      "effective_remove_date": null,
+      "index": "SPX",
+      "knowledge_date": {
+        "$date": "2026-05-29"
+      },
+      "vendor": "siblis",
+      "weight": 0.061
+    },
+    "instrument_master": {
+      "as_of_date": {
+        "$date": "2026-05-29"
+      },
+      "instrument": "{\"broker_contract_id\":\"u-AAPL\",\"currency\":\"USD\",\"exchange\":\"SMART\",\"expiry\":null,\"multiplier\":1.0,\"option_right\":null,\"security_type\":\"STK\",\"strike\":null,\"underlying_symbol\":\"AAPL\"}",
+      "instrument_key": "AAPL|STK|SMART|USD|1|u-AAPL|||",
+      "raw_broker_payload": "{\"conId\": 265598, \"symbol\": \"AAPL\"}"
+    },
+    "iv_points": {
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "diagnostics": "{\"converged\":true,\"iterations\":4,\"residual\":1e-09,\"status\":\"converged\"}",
+      "implied_vol": 0.2,
+      "log_moneyness": 0.0,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "solver_version": "iv-1",
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "total_variance": 0.01
+    },
+    "market_state_snapshots": {
+      "ask": 190.6,
+      "bid": 190.4,
+      "completeness": 1.0,
+      "flags": "[\"open\"]",
+      "instrument_key": "AAPL|STK|SMART|USD|1|u-AAPL|||",
+      "last": 190.5,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "reference_spot": 190.5,
+      "reference_type": "mid",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "spread_pct": 0.001,
+      "trade_date": {
+        "$date": "2026-05-29"
+      },
+      "underlying": "AAPL"
+    },
+    "positions": {
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "portfolio_id": "pf-1",
+      "quantity": 10.0,
+      "source": "record",
+      "valuation_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      }
+    },
+    "pricing_results": {
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "delta": 0.5,
+      "dollar_delta": 50.0,
+      "dollar_gamma": 2.0,
+      "dollar_rho": null,
+      "dollar_theta": null,
+      "dollar_vega": 10.0,
+      "gamma": 0.02,
+      "price": 5.0,
+      "pricer_version": "px-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "rho": 0.03,
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "theta": -0.01,
+      "vega": 0.1
+    },
+    "projected_option_analytics": {
+      "delta": 0.3,
+      "delta_band": "30dc",
+      "dollar_delta": 5730.0,
+      "dollar_delta_unit": "per $1 underlying move",
+      "dollar_gamma": 109.7,
+      "dollar_gamma_unit": "per 1% underlying move",
+      "dollar_rho": 1.0,
+      "dollar_rho_unit": "per 1% rate move",
+      "dollar_theta": -2.0,
+      "dollar_theta_unit": "per calendar day",
+      "dollar_vega": 12.0,
+      "dollar_vega_unit": "per 1 vol point",
+      "forward_price": 191.0,
+      "gamma": 0.03,
+      "implied_vol": 0.22,
+      "log_moneyness": 0.05,
+      "maturity_years": 0.0833,
+      "model_version": "svi-1",
+      "price": 1.25,
+      "pricer_version": "px-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provider": "IBKR",
+      "rho": 0.01,
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "strike": 200.0,
+      "target_delta": 0.3,
+      "tenor_label": "1m",
+      "theta": -0.02,
+      "total_variance": 0.004,
+      "underlying": "AAPL",
+      "vega": 0.12
+    },
+    "qc_results": {
+      "check_name": "forward_stability",
+      "context": "{\"note\": \"within tolerance\"}",
+      "measured_value": 0.001,
+      "qc_status": "pass",
+      "run_id": "run-1",
+      "run_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "severity": "info",
+      "target_key": "AAPL:0.25",
+      "threshold_version": "qc-1"
+    },
+    "raw_market_events": {
+      "canonical_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "event_id": "evt-1",
+      "exchange_ts": {
+        "$datetime": "2026-05-29T15:29:59+00:00"
+      },
+      "field_name": "bid",
+      "instrument_key": "AAPL|STK|SMART|USD|1|u-AAPL|||",
+      "receipt_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "session_id": "sess-1",
+      "trade_date": {
+        "$date": "2026-05-29"
+      },
+      "underlying": "AAPL",
+      "value": 190.5
+    },
+    "risk_aggregates": {
+      "group_key": "AAPL",
+      "net_delta": 5.0,
+      "net_gamma": 0.2,
+      "net_theta": -0.1,
+      "net_vega": 1.0,
+      "portfolio_id": "pf-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "valuation_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      }
+    },
+    "scenario_attributions": {
+      "approx_pnl": -24.0,
+      "attribution_version": "attr-1",
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "delta_pnl": -20.0,
+      "full_reprice_pnl": -25.0,
+      "gamma_pnl": -4.0,
+      "level": "position",
+      "portfolio_id": "pf-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "residual": -1.0,
+      "residual_abs_tol": 2.0,
+      "residual_rel_tol": 0.1,
+      "scenario_id": "spot-down-5",
+      "scenario_version": "scn-1",
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "spot_shock": -0.05,
+      "theta_pnl": 0.0,
+      "time_shock": 0.0,
+      "valuation_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "vega_pnl": 0.0,
+      "vol_shock": 0.0,
+      "within_tolerance": true
+    },
+    "scenario_results": {
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "portfolio_id": "pf-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "scenario_id": "spot-down-5",
+      "scenario_pnl": -25.0,
+      "scenario_version": "scn-1",
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "spot_shock": -0.05,
+      "time_shock": 0.0,
+      "valuation_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "vol_shock": 0.0
+    },
+    "surface_grid": {
+      "maturity_years": 0.25,
+      "model_version": "svi-1",
+      "moneyness_bucket": 0.0,
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "total_variance": 0.01,
+      "underlying": "AAPL"
+    },
+    "surface_parameters": {
+      "day_count": "ACT/365",
+      "diagnostics": "{\"arb_free\":true,\"bound_hits\":null,\"converged\":null,\"n_points\":5,\"rmse\":0.001}",
+      "expiry_date": {
+        "$date": "2026-06-19"
+      },
+      "maturity_years": 0.25,
+      "model_version": "svi-1",
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "svi_a": 0.04,
+      "svi_b": 0.1,
+      "svi_m": 0.0,
+      "svi_rho": -0.3,
+      "svi_sigma": 0.2,
+      "underlying": "AAPL"
+    },
+    "triage_records": {
+      "detail": "forward 0.25y moved 2.1% vs previous snapshot",
+      "name": "forward_stability",
+      "reason_code": "FORWARD_JUMP",
+      "run_id": "run-1",
+      "run_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "severity": "warn",
+      "source": "qc",
+      "status": "fail",
+      "target_key": "AAPL:0.25",
+      "threshold_version": "qc-1",
+      "underlying": "AAPL"
+    }
+  }
+}

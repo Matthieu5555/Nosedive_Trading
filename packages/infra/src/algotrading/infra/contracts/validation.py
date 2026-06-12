@@ -10,13 +10,25 @@ The checks, in order: primary-key fields present; numerics are real finite
 numbers (not strings, not NaN/inf, not bools); positivity/non-negativity where the
 registry requires it; datetimes timezone-aware; derived records carry a
 ``source_snapshot_ts`` back-reference and a well-formed provenance stamp.
+
+The positivity, non-negativity, and timezone-aware rules are enforced by strict
+pydantic ``TypeAdapter``s (``Gt``/``Ge``/``AwareDatetime``), mapped back onto the
+contract-layer error so the rejection contract is unchanged. The numeric
+type-identity rule stays hand-rolled on purpose: it admits exactly Python
+``int``/``float`` (bools excluded), while pydantic's strict numbers also accept
+anything implementing the number protocol (measured: ``np.int64`` and ``np.bool_``
+pass strict ``float`` validation), which would silently widen the write door.
 """
 
 from __future__ import annotations
 
 import math
+from datetime import datetime
+from typing import Annotated
 
 from algotrading.core.provenance import ProvenanceValidationError, validate_stamp
+from annotated_types import Ge, Gt
+from pydantic import AwareDatetime, ConfigDict, TypeAdapter, ValidationError
 
 from .errors import ContractValidationError
 from .registry import (
@@ -26,6 +38,13 @@ from .registry import (
     spec_for_table,
     table_for_contract,
 )
+
+# Strict mode pins the *type* part of each rule (no string/bool coercion); the
+# annotations pin the value part. Module-level so the core schemas build once.
+_STRICT = ConfigDict(strict=True)
+_POSITIVE_NUMBER: TypeAdapter[float] = TypeAdapter(Annotated[float, Gt(0)], config=_STRICT)
+_NON_NEGATIVE_NUMBER: TypeAdapter[float] = TypeAdapter(Annotated[float, Ge(0)], config=_STRICT)
+_AWARE_DATETIME: TypeAdapter[datetime] = TypeAdapter(AwareDatetime, config=_STRICT)
 
 
 def _check_numeric(table: str, name: str, value: object) -> None:
@@ -82,22 +101,30 @@ def validate_record(table: str, record: object) -> None:
 
     for name in spec.positive_fields:
         value = getattr(record, name)
-        if not (isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0):
-            raise ContractValidationError(table, name, value, "must be strictly positive")
+        try:
+            _POSITIVE_NUMBER.validate_python(value)
+        except ValidationError:
+            raise ContractValidationError(
+                table, name, value, "must be strictly positive"
+            ) from None
 
     for name in spec.non_negative_fields:
         value = getattr(record, name)
-        if not (isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0):
-            raise ContractValidationError(table, name, value, "must be non-negative")
+        try:
+            _NON_NEGATIVE_NUMBER.validate_python(value)
+        except ValidationError:
+            raise ContractValidationError(table, name, value, "must be non-negative") from None
 
     for name in datetime_field_names(spec.contract):
         value = getattr(record, name)
         if value is None:
             continue
-        if value.tzinfo is None:
+        try:
+            _AWARE_DATETIME.validate_python(value)
+        except ValidationError:
             raise ContractValidationError(
                 table, name, value, "datetime must be timezone-aware, not naive"
-            )
+            ) from None
 
     if spec.requires_source_snapshot_ts and getattr(record, "source_snapshot_ts", None) is None:
         raise ContractValidationError(

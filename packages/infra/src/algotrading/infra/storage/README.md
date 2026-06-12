@@ -42,6 +42,12 @@ through that port — no module reaches into Parquet or DuckDB directly.
   table, derived from the contract's type hints (so live and replay land in identical
   schemas). A new column must be optional; a required column read back absent raises
   `SchemaCompatibilityError` rather than building an invalid contract instance.
+  The row codec's structural work (nested dataclasses, tuples, the nested half of the
+  additive-nullable rule) runs on pydantic `TypeAdapter`s; the persisted bytes are
+  unchanged and pinned by `tests/test_contracts_plane_golden.py` — compact sorted-key
+  JSON columns, nested datetimes normalized to UTC ISO-8601. The raw-event JSON
+  sidecar (`json_io.py`) rides the same adapters with its bespoke `__dec__` Decimal
+  wire wrapper kept explicit, its exact text pinned by the same golden suite.
 - **Lineage:** `source_records_for` / `raw_events_for` resolve a derived record's
   provenance stamp back to the exact source rows by full primary key. For a
   provider-partitioned source (`daily_bar`) `provider` is part of that key, so lineage is

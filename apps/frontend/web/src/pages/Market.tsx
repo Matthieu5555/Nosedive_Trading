@@ -327,6 +327,34 @@ function SelectedComponentHistory({
   );
 }
 
+// One batch preload per (asOf, basket) per browser session: the whole-basket scan costs
+// ~1 min on the live store, and navigating away does NOT stop it server-side — so re-firing
+// it on every return to this page stacked concurrent scans until the disk saturated and the
+// whole UX lagged. The promise itself is cached, so a remount while the first preload is
+// still in flight reuses it; a failed preload is evicted so the next mount retries.
+const constituentHistoryBatchCache = new Map<string, Promise<PriceHistoryBatchResponse>>();
+
+export function resetConstituentHistoryBatchCacheForTests(): void {
+  constituentHistoryBatchCache.clear();
+}
+
+function fetchConstituentHistoryBatch(
+  symbolsKey: string,
+  asOf: string,
+): Promise<PriceHistoryBatchResponse> {
+  const key = `${asOf}\u001f${symbolsKey}`;
+  let promise = constituentHistoryBatchCache.get(key);
+  if (promise === undefined) {
+    promise = postJson<PriceHistoryBatchResponse>("/api/price-history/batch", {
+      underlyings: symbolsKey.split("\u001f"),
+      end: asOf,
+    });
+    promise.catch(() => constituentHistoryBatchCache.delete(key));
+    constituentHistoryBatchCache.set(key, promise);
+  }
+  return promise;
+}
+
 function useConstituentHistoryBatch(
   symbols: string[],
   asOf: string,
@@ -341,8 +369,7 @@ function useConstituentHistoryBatch(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const underlyings = symbolsKey === "" ? [] : symbolsKey.split("\u001f");
-    if (underlyings.length === 0) {
+    if (symbolsKey === "") {
       setData(null);
       setError(null);
       setLoading(false);
@@ -351,10 +378,7 @@ function useConstituentHistoryBatch(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void postJson<PriceHistoryBatchResponse>("/api/price-history/batch", {
-      underlyings,
-      end: asOf,
-    })
+    void fetchConstituentHistoryBatch(symbolsKey, asOf)
       .then((payload) => {
         if (!cancelled) setData(payload);
       })

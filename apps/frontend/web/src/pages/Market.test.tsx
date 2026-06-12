@@ -8,7 +8,7 @@ vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
 vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
 
-import { MarketPage } from "./Market";
+import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
 import {
   ANALYTICS_AAA,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
@@ -21,6 +21,7 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  resetConstituentHistoryBatchCacheForTests();
 });
 
 // Route the stubbed fetch by method + URL path so each endpoint returns its own fixture. The
@@ -129,10 +130,10 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
 });
 
 test("the selected component's candlestick renders without waiting for the batch preload", async () => {
-  // The mock table deliberately has NO /api/price-history/batch entry (the preload fails):
-  // the detail panel must still fill through the single-ticker endpoint — on the live store
-  // the batch takes ~1 min and a page reload restarts it, so a batch-gated detail never shows.
-  mockEndpoints();
+  // The batch preload is forced to FAIL: the detail panel must still fill through the
+  // single-ticker endpoint — on the live store the batch takes ~1 min and a page reload
+  // restarts it, so a batch-gated detail never shows.
+  mockEndpoints({ "POST /api/price-history/batch": undefined });
   const user = userEvent.setup();
   render(<MarketPage />);
 
@@ -141,6 +142,27 @@ test("the selected component's candlestick renders without waiting for the batch
   await waitFor(() => {
     expect(within(detail).getByTestId("candle-bars")).toHaveTextContent("2");
   });
+});
+
+test("returning to the page does not re-fire the whole-basket batch preload", async () => {
+  // The batch costs ~1 min live and keeps running server-side after unmount: page switches
+  // must reuse the session-cached preload, never stack a new scan per visit.
+  mockEndpoints();
+  const first = render(<MarketPage />);
+  await screen.findByLabelText("Price history for AAA");
+  first.unmount();
+  render(<MarketPage />);
+  await screen.findByLabelText("Price history for AAA");
+
+  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+  const batchCalls = fetchMock.mock.calls.filter(([input, init]) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method =
+      (init as RequestInit | undefined)?.method ??
+      (input instanceof Request ? input.method : "GET");
+    return method === "POST" && url.includes("/api/price-history/batch");
+  });
+  expect(batchCalls.length).toBe(1);
 });
 
 test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {

@@ -2,7 +2,9 @@
 
 Provides two surfaces:
 - ``DeribitTransport.get`` — synchronous REST call via httpx (discovery, instrument lookup).
-- ``DeribitTransport.subscribe_ws`` — async WebSocket subscription via websockets (live ticks).
+- ``DeribitTransport.ws_listener`` — a started-on-demand ``WebSocketListener`` (owned thread,
+  stop event, reconnect with backoff) that subscribes to channels and pushes each parsed
+  notification frame to a callback (live ticks).
 
 Both surfaces use only public endpoints; no authentication is required for market data.
 ``DeribitSession`` is a thin context manager that owns the transport lifecycle and exposes
@@ -20,6 +22,8 @@ from typing import Any
 
 import httpx
 from algotrading.core.log import get_logger
+
+from .ws_listener import WebSocketListener
 
 _log = get_logger(__name__)
 
@@ -63,20 +67,22 @@ class DeribitTransport:
             raise RuntimeError(f"Deribit API error: {body['error']}")
         return body.get("result", body)
 
-    async def subscribe_ws(
+    def ws_listener(
         self,
         channels: list[str],
         on_message: Callable[[dict[str, Any]], None],
-    ) -> None:
-        """Subscribe to Deribit WebSocket channels and call ``on_message`` for each update.
+        *,
+        on_fault: Callable[[str], None] | None = None,
+    ) -> WebSocketListener:
+        """Build a (not yet started) reconnecting listener for the given Deribit channels.
 
-        Runs until cancelled (asyncio). Each ``on_message`` call receives the parsed
-        JSON payload of one notification frame. Subscription errors are logged and
-        re-raised so callers can decide whether to reconnect.
+        The caller owns the lifecycle: ``listener.start()`` spawns the owned thread,
+        ``listener.stop()`` joins it. On every (re)connect the subscribe message is resent,
+        so a dropped connection resumes the same channels. Each ``on_message`` call receives
+        the parsed JSON payload of one notification frame; subscription confirmations
+        (frames without ``method``) are skipped. ``on_fault`` receives a reason string for
+        each connection loss or fatal error (the listener keeps reconnecting).
         """
-        # Import here so the sync path (REST-only) never requires websockets installed.
-        import websockets
-
         subscribe_msg = json.dumps(
             {
                 "jsonrpc": "2.0",
@@ -85,15 +91,31 @@ class DeribitTransport:
                 "params": {"channels": channels},
             }
         )
-        _log.info("deribit_ws_connect", extra={"url": self._ws_base, "channels": channels})
-        async with websockets.connect(self._ws_base) as ws:
+
+        def _connect_factory() -> object:
+            # Import here so the sync path (REST-only) never requires websockets installed.
+            import websockets
+
+            _log.info("deribit_ws_connect", extra={"url": self._ws_base, "channels": channels})
+            return websockets.connect(self._ws_base)
+
+        async def _send_subscribe(ws: Any) -> None:
             await ws.send(subscribe_msg)
-            async for raw in ws:
-                frame: dict[str, Any] = json.loads(raw)
-                # Deribit sends subscription confirmations on id=1; skip them.
-                if "method" not in frame:
-                    continue
-                on_message(frame)
+
+        def _on_frame(raw: bytes | str) -> None:
+            frame: dict[str, Any] = json.loads(raw)
+            # Deribit sends subscription confirmations on id=1; skip them.
+            if "method" not in frame:
+                return
+            on_message(frame)
+
+        return WebSocketListener(
+            connect_factory=_connect_factory,
+            on_frame=_on_frame,
+            on_connect=_send_subscribe,
+            on_fault=on_fault,
+            name="deribit-ws-listener",
+        )
 
     def close(self) -> None:
         """Release the underlying HTTP client."""

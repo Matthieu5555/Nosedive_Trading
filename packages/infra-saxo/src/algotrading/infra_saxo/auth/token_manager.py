@@ -1,11 +1,15 @@
-"""Saxo Bank OAuth2 token lifecycle: automatic refresh, rotation, and expiry guard.
+"""Saxo Bank OAuth2 token lifecycle: proactive refresh scheduling, rotation, expiry guard.
 
-Access tokens expire after 20 minutes (expires_in=1200). Refresh tokens expire after
+The OAuth2 wire protocol (the refresh-token grant) is Authlib's job — see
+``TokenManager.from_token_endpoint``. What this module owns is the genuinely Saxo-specific
+part: access tokens expire after 20 minutes (expires_in=1200), refresh tokens after
 40 minutes (expires_in=2400) and are rotated on every use — each refresh call returns a
-new refresh token that invalidates the previous one. A background thread triggers a new
-refresh when the access token has less than TOKEN_REFRESH_MARGIN_S seconds remaining,
-providing a safety window for the network round-trip. If the window is missed entirely,
-TokenExpiredError is raised on the next get_token() call.
+new refresh token that invalidates the previous one, so a *proactive* background refresh
+(not Authlib's refresh-at-request-time) is required to keep an idle session alive. The
+background thread triggers a refresh when the access token has less than
+TOKEN_REFRESH_MARGIN_S seconds remaining, providing a safety window for the network
+round-trip. If the window is missed entirely, TokenExpiredError is raised on the next
+get_token() call.
 """
 
 from __future__ import annotations
@@ -42,7 +46,7 @@ class TokenManager:
     Bearer token for use in HTTP headers.
 
     ``refresh_fn`` is injected for testability — in production it delegates to the
-    OAuth2 token endpoint via httpx.
+    OAuth2 token endpoint via Authlib (see ``from_token_endpoint``).
     """
 
     def __init__(
@@ -200,28 +204,39 @@ class TokenManager:
         access_expires_in: int = 1200,
         refresh_expires_in: int = 2400,
         on_refresh: Callable[[str, str], None] | None = None,
+        transport: object | None = None,
     ) -> TokenManager:
-        """Factory that wires the refresh_fn to the live Saxo token endpoint via httpx."""
-        import httpx  # local import — only needed in the live path
+        """Factory wiring ``refresh_fn`` to the live Saxo token endpoint via Authlib.
+
+        Authlib owns the OAuth2 refresh-token grant on the wire (request shape, error
+        handling); this manager keeps only the bespoke part — Saxo's proactive refresh
+        scheduling and rotation persistence. Saxo expects the client credentials in the
+        request body, hence ``client_secret_post``. ``transport`` is an optional ``httpx``
+        transport (test seam — e.g. ``httpx.MockTransport``).
+        """
+        # Local import — only needed in the live path. Authlib ships no type stubs
+        # (types-Authlib is not a project dep), hence the import-untyped ignore.
+        from authlib.integrations.httpx_client import (  # type: ignore[import-untyped]  # noqa: PLC0415
+            OAuth2Client,
+        )
+
+        client_kwargs: dict[str, object] = {"timeout": 15.0}
+        if transport is not None:
+            client_kwargs["transport"] = transport
 
         def _refresh(refresh_token: str) -> tuple[str, str, int, int]:
-            resp = httpx.post(
-                token_url,
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_token,
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                },
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            body = resp.json()
+            with OAuth2Client(
+                client_id=client_id,
+                client_secret=client_secret,
+                token_endpoint_auth_method="client_secret_post",
+                **client_kwargs,
+            ) as client:
+                token = client.refresh_token(token_url, refresh_token=refresh_token)
             return (
-                body["access_token"],
-                body["refresh_token"],
-                int(body.get("expires_in", 1200)),
-                int(body.get("refresh_token_expires_in", 2400)),
+                token["access_token"],
+                token["refresh_token"],
+                int(token.get("expires_in", 1200)),
+                int(token.get("refresh_token_expires_in", 2400)),
             )
 
         return TokenManager(

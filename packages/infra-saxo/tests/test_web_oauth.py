@@ -1,12 +1,14 @@
-"""Tests for the Saxo web-app OAuth helper (authorize URL + code exchange)."""
+"""Tests for the Saxo web-app OAuth helper (authorize URL + code exchange, via Authlib)."""
 
 from __future__ import annotations
 
 import urllib.parse
-from unittest.mock import MagicMock, patch
 
+import httpx
+import pytest
 from algotrading.infra_saxo.auth import build_authorize_url, exchange_code_for_tokens
 from algotrading.infra_saxo.config import authorize_url_for, token_url_for
+from authlib.integrations.base_client.errors import OAuthError
 
 
 def _host(url: str) -> str:
@@ -39,23 +41,53 @@ def test_authorize_host_matches_requested_env() -> None:
     assert _host(sim) != _host(live)
 
 
-def test_exchange_posts_to_token_endpoint_and_returns_body() -> None:
-    token_resp = MagicMock()
-    token_resp.json.return_value = {"access_token": "AT", "refresh_token": "RT", "expires_in": 1200}
-    token_resp.raise_for_status = MagicMock()
+def test_exchange_posts_authorization_code_grant_to_token_endpoint() -> None:
+    captured: dict = {}
 
-    with patch("httpx.post", return_value=token_resp) as post:
-        body = exchange_code_for_tokens(
-            code="CODE",
-            redirect_uri="https://app/cb",
-            env="live",
-            client_id="CID",
-            client_secret="SECRET",
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["form"] = dict(urllib.parse.parse_qsl(request.content.decode()))
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "AT",
+                "refresh_token": "RT",
+                "expires_in": 1200,
+                "token_type": "Bearer",
+            },
         )
 
+    body = exchange_code_for_tokens(
+        code="CODE",
+        redirect_uri="https://app/cb",
+        env="live",
+        client_id="CID",
+        client_secret="SECRET",
+        transport=httpx.MockTransport(handler),
+    )
+
     assert body["access_token"] == "AT"
-    called_url = post.call_args[0][0]
-    assert called_url == token_url_for("live")
-    sent = post.call_args[1]["data"]
-    assert sent["grant_type"] == "authorization_code"
-    assert sent["code"] == "CODE"
+    assert body["refresh_token"] == "RT"
+    assert captured["url"] == token_url_for("live")
+    # The RFC 6749 authorization_code grant shape, with the client credentials in the
+    # body (client_secret_post) — exactly what Saxo expects and what was sent before.
+    assert captured["form"]["grant_type"] == "authorization_code"
+    assert captured["form"]["code"] == "CODE"
+    assert captured["form"]["redirect_uri"] == "https://app/cb"
+    assert captured["form"]["client_id"] == "CID"
+    assert captured["form"]["client_secret"] == "SECRET"
+
+
+def test_exchange_error_response_raises_oauth_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": "invalid_grant", "error_description": "bad"})
+
+    with pytest.raises(OAuthError, match="invalid_grant"):
+        exchange_code_for_tokens(
+            code="EXPIRED",
+            redirect_uri="https://app/cb",
+            env="sim",
+            client_id="CID",
+            client_secret="SECRET",
+            transport=httpx.MockTransport(handler),
+        )

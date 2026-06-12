@@ -5,20 +5,29 @@ Saxo Bank OpenAPI leaf adapter. Owner: **M5 — broker adapters**. Imports `algo
 
 ## What it does
 
-- `auth/` — the full OAuth2 lifecycle: `web_oauth` (authorize URL + code exchange), `TokenManager`
-  (background refresh, refresh-token rotation, expiry guard), `token_persist`/`env_tokens`
-  (restart-resilient `.env` upsert). **Secrets never enter git** — tokens live in `$HOME`/`.env`.
-- `connectivity/saxo_transport.py` — `SaxoTransport`: stateless REST (httpx) + streaming-WS URL
-  builder; a caller-supplied `token_fn` keeps auth out of the wire layer.
+- `auth/` — the Saxo OAuth2 lifecycle on Authlib: `web_oauth` (authorize URL + code exchange via
+  `OAuth2Client`, credentials in the body as Saxo expects), `TokenManager` (the bespoke part —
+  proactive background refresh against Saxo's 20/40-minute token lifetimes, rotation hook, expiry
+  guard; the wire grant itself is Authlib's), `token_persist` (restart-resilient `.env` upsert via
+  python-dotenv `set_key`; a missing `.env` is a logged no-op, never created). **Secrets never
+  enter git** — tokens live in `$HOME`/`.env`.
+- `connectivity/saxo_transport.py` — `SaxoTransport`: stateless REST (httpx, one `_request` core
+  for all verbs) + streaming-WS URL builder; a caller-supplied `token_fn` keeps auth out of the
+  wire layer.
+- `connectivity/ws_listener.py` — `WebSocketListener`: the shared WS lifecycle (owned thread,
+  stop event, reconnect with backoff, fault callback). Byte-identical twin in `infra-deribit`
+  (sibling leaves may not import each other); intended home: `algotrading.infra.collectors`.
 - `collectors/saxo_discovery.py` — symbol → `OptionContract` list via `contractoptionspaces`.
 - `collectors/saxo_adapter.py` — options-chain streaming snapshot/delta frames → `BrokerTick` EAV
-  (binary frame parser + Index-map delta routing + ATM-centred expiry windows).
+  (binary frame parser, exact per-expiry strike routing via the canonical key parser, Index-map
+  delta routing, ATM-centred expiry windows).
 - `collectors/saxo_underlying.py` — low-frequency InfoPrices spot probe for the reference spot.
 
 ## Dependencies
 
-`httpx` (REST) is a hard dep; `websockets` is imported lazily only when streaming is active. No
-broker SDK and no secret is needed to import the package or run the test suite.
+`httpx` (REST) and `authlib` (OAuth2) are hard deps; `websockets` is imported lazily only when
+streaming is active. No broker SDK and no secret is needed to import the package or run the test
+suite.
 
 ## Status / caveats
 

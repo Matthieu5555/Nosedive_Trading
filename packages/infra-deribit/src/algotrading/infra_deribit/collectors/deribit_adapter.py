@@ -16,7 +16,6 @@ dimensionless and needs no conversion.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -30,6 +29,7 @@ from algotrading.infra.universe.contracts import (
 )
 
 from ..connectivity.deribit_transport import DeribitTransport
+from ..connectivity.ws_listener import WebSocketListener
 
 _log = get_logger(__name__)
 
@@ -205,7 +205,7 @@ class DeribitMarketDataAdapter:
         self._subscribed: dict[str, tuple[str, str]] = {}
         # Index prices fetched at subscribe time, keyed by underlying symbol.
         self._index_prices: dict[str, float | None] = {}
-        self._ws_task: asyncio.Task | None = None
+        self._listener: WebSocketListener | None = None
 
     def set_tick_callback(self, callback: Callable[[BrokerTick], None]) -> None:
         self._tick_cb = callback
@@ -217,7 +217,7 @@ class DeribitMarketDataAdapter:
         """Open WebSocket subscriptions for each canonical instrument key.
 
         Fetches the USD index price for each unique underlying once via REST, then builds
-        the channel list and launches the async listener task.
+        the channel list and starts the owned reconnecting WS listener thread.
         """
         channels: list[str] = []
         for key in instrument_keys:
@@ -239,18 +239,28 @@ class DeribitMarketDataAdapter:
         if not channels:
             _log.warning("deribit_subscribe_empty")
             return
-        loop = asyncio.get_event_loop()
-        self._ws_task = loop.create_task(
-            self._transport.subscribe_ws(channels, self._on_ws_message)
+        # The transport builds a reconnecting listener (owned thread + stop event); the old
+        # path scheduled an asyncio task on a loop that was never running, so no tick ever
+        # flowed unless a caller happened to own a loop.
+        self._listener = self._transport.ws_listener(
+            channels, self._on_ws_message, on_fault=self._emit_fault
         )
+        self._listener.start()
 
     def unsubscribe_all(self) -> None:
-        """Cancel the WebSocket listener task."""
-        if self._ws_task is not None and not self._ws_task.done():
-            self._ws_task.cancel()
-        self._ws_task = None
+        """Stop the WebSocket listener thread and forget all subscriptions."""
+        if self._listener is not None:
+            self._listener.stop()
+            self._listener = None
         self._subscribed.clear()
         self._index_prices.clear()
+
+    def _emit_fault(self, reason: str) -> None:
+        """Surface a WS connection fault to the collector (or log it when unwired)."""
+        if self._fault_cb is not None:
+            self._fault_cb(FeedFault(kind="other", code=None, message=reason, instrument_key=None))
+        else:
+            _log.warning("deribit_feed_fault_no_callback", extra={"reason": reason})
 
     def _on_ws_message(self, frame: dict[str, Any]) -> None:
         """Handle one Deribit notification frame."""

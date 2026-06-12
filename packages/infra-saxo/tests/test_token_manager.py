@@ -154,6 +154,50 @@ def test_on_refresh_callback_invoked_with_rotated_tokens() -> None:
     assert persisted == [("tok2", "ref2")]
 
 
+def test_from_token_endpoint_refreshes_via_authlib_form_post() -> None:
+    """The live factory speaks the RFC 6749 refresh_token grant (credentials in the body)."""
+    import urllib.parse
+
+    import httpx
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["form"] = dict(urllib.parse.parse_qsl(request.content.decode()))
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "AT1",
+                "refresh_token": "RT1",
+                "expires_in": 1200,
+                "refresh_token_expires_in": 2400,
+                "token_type": "Bearer",
+            },
+        )
+
+    rotations: list[tuple[str, str]] = []
+    mgr = TokenManager.from_token_endpoint(
+        token_url="https://sim.logonvalidation.net/token",
+        client_id="CID",
+        client_secret="SECRET",
+        access_token="stale",
+        refresh_token="R0",
+        access_expires_in=0,  # pessimistic seed: force the prime to refresh
+        on_refresh=lambda a, r: rotations.append((a, r)),
+        transport=httpx.MockTransport(handler),
+    )
+    assert mgr.refresh_now() is True
+    assert mgr.get_token() == "AT1"
+    assert mgr.current_refresh_token() == "RT1"
+    assert rotations == [("AT1", "RT1")]
+    assert captured["url"] == "https://sim.logonvalidation.net/token"
+    assert captured["form"]["grant_type"] == "refresh_token"
+    assert captured["form"]["refresh_token"] == "R0"
+    assert captured["form"]["client_id"] == "CID"
+    assert captured["form"]["client_secret"] == "SECRET"
+
+
 def test_on_refresh_failure_does_not_break_refresh() -> None:
     """A persistence failure in on_refresh is swallowed (logged) — the token still updates."""
 

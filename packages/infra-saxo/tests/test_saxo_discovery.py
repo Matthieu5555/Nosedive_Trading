@@ -117,6 +117,37 @@ def test_fetch_option_space_parses_all_contracts(
     assert Decimal("535") in strikes
 
 
+def test_fetch_overrides_broker_contract_id_with_underlying_uic(
+    sample_instruments_response, sample_option_space_response
+) -> None:
+    """The adapter subscribes the chain by the UNDERLYING Uic (9999 in the fixture), so every
+    contract's broker_contract_id must carry it; the strike's own Uic moves into raw."""
+    discovery = _make_discovery(sample_instruments_response, sample_option_space_response)
+    contracts = discovery.fetch("SPY")
+    assert all(c.broker_contract_id == "9999" for c in contracts)
+    by_id = {c.raw["strike_uic"] for c in contracts}
+    assert by_id == {11111111, 11111112, 11111113, 11111114}  # per-strike Uics from the fixture
+    # The real exchange (OPRA in the fixture) is preserved in raw; the parser's own raw
+    # fields (saxo_uic, put_call) survive the merge.
+    assert all(c.raw["exchange"] == "OPRA" for c in contracts)
+    assert all("saxo_uic" in c.raw and "put_call" in c.raw for c in contracts)
+
+
+def test_fetch_builds_new_contracts_without_mutating_frozen_dataclass(
+    sample_instruments_response, sample_option_space_response
+) -> None:
+    """Identity fields are untouched (canonical key byte-identical: exchange SAXO_<uic>),
+    and the contracts pass frozen-dataclass validation — no object.__setattr__ backdoor."""
+    discovery = _make_discovery(sample_instruments_response, sample_option_space_response)
+    contracts = discovery.fetch("SPY")
+    call_530 = next(c for c in contracts if c.right == Right.CALL and c.strike == Decimal("530.0"))
+    # Derived by hand from the canonical key format TYPE:SYMBOL:SEC:EXPIRY:RIGHT:STRIKE:MULT:EXCH:CCY
+    assert instrument_key(call_530) == "OPT:SPY:OPT:20250627:C:530:100:SAXO_9999:USD"
+    # The instance is genuinely frozen — assignment must raise, proving no thawed copy leaks out.
+    with pytest.raises(AttributeError):
+        call_530.broker_contract_id = "tampered"  # type: ignore[misc]
+
+
 def test_fetch_option_space_bad_expiry_raises(sample_instruments_response) -> None:
     bad_resp = {"OptionSpace": [{"DisplayExpiry": "not-a-date", "SpecificOptions": []}]}
     transport = MagicMock()

@@ -7,25 +7,38 @@ and translates each snapshot/delta frame into a sequence of ``BrokerTick`` event
 
 Streaming model: Saxo pushes a full snapshot, then partial deltas. Snapshot strikes carry
 ``Strike`` (price) and a positional ``Index`` within their Expiry; deltas carry only that
-``Index`` plus the changed fields. The adapter builds an ``Index -> (call_key, put_key)``
-map from the snapshot and resolves each delta by its Index. The strike budget per session is
-config-driven (``collection.max_strikes_per_session``); PATCH pagination of wider windows is
-deferred (moving the window remaps the Index basis). The ``mark_iv`` field is
-read from ``Greeks.MidVolatility`` (already a decimal vol).
+``Index`` plus the changed fields. Each subscribed canonical key is parsed once at
+``subscribe()`` into an exact ``(expiry, strike, right) -> key`` table; a snapshot strike
+resolves through it (per expiry — never by substring-matching key text), and the resulting
+``(expiry_index, strike_index) -> keys`` map routes the Index-only deltas. The strike budget
+per session is config-driven (``collection.max_strikes_per_session``); PATCH pagination of
+wider windows is deferred (moving the window remaps the Index basis). The ``mark_iv`` field
+is read from ``Greeks.MidVolatility`` (already a decimal vol).
+
+The WS listener runs on the shared ``WebSocketListener`` runner (owned thread, stop event,
+reconnect with backoff); a reconnect restores the socket, and Saxo's
+``_resetsubscriptions``/``_disconnect`` control messages still surface as feed faults so the
+caller can rebuild the chain subscription when Saxo invalidates it.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
-import threading
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 
 from algotrading.core.log import get_logger
 from algotrading.infra.collectors.collector import FeedFault
 from algotrading.infra.collectors.normalize import BrokerTick
+from algotrading.infra.universe.contracts import (
+    InstrumentKeyError,
+    OptionContract,
+    Right,
+    parse_instrument_key,
+)
 from algotrading.infra_saxo.connectivity.saxo_transport import SaxoTransport
+from algotrading.infra_saxo.connectivity.ws_listener import WebSocketListener
 
 _log = get_logger(__name__)
 
@@ -244,13 +257,20 @@ class SaxoMarketDataAdapter:
         self._fault_cb: Callable[[FeedFault], None] | None = None
         self._reference_id: str = "chain1"
         self._subscribed_keys: list[str] = []
+        # Exact routing tables, built once per subscribe() by parsing each canonical key with
+        # the canonical parser. A snapshot strike is resolved by (expiry, strike, right) — never
+        # by substring-matching the key text, which misrouted strikes across expiries and
+        # false-matched the multiplier segment (e.g. ':100:' hit every multiplier-100 key).
+        self._keys_by_contract: dict[tuple[date, Decimal, Right], str] = {}
+        # Saxo's per-window Expiry Index i maps to our i-th *sorted* subscribed expiry — the
+        # same nearest-first ordering assumption _expiry_windows builds the subscription with.
+        self._expiry_order: list[date] = []
         # (expiry_index, strike_index) -> (call_key, put_key), built from snapshot strikes so that
         # later partial deltas (which identify a strike only by its positional Index) can be routed.
         self._index_map: dict[tuple[int, int], tuple[str, str]] = {}
         self._unknown_indices: set[tuple[int, int]] = set()
         self._snapshot_no_index: set[tuple[int, str]] = set()
-        self._ws_thread: threading.Thread | None = None
-        self._stop_event = threading.Event()
+        self._listener: WebSocketListener | None = None
 
     def set_reference_spot(self, spot: float) -> None:
         """Set the underlying spot so expiry windows are ATM-centred (call before ``subscribe``)."""
@@ -268,15 +288,13 @@ class SaxoMarketDataAdapter:
         per_expiry = max(1, self._max_strikes_per_session // self._n_expiries)
         if self._reference_spot is None:
             return [{"Index": i, "StrikeStartIndex": 0} for i in range(self._n_expiries)]
-        strikes_by_expiry: dict[str, set[float]] = {}
-        for key in self._subscribed_keys:
-            parts = key.split(":")
-            if len(parts) >= 6 and parts[0] == "OPT":
-                strikes_by_expiry.setdefault(parts[3], set()).add(float(parts[5]))
+        strikes_by_expiry: dict[date, set[Decimal]] = {}
+        for expiry, strike, _right in self._keys_by_contract:
+            strikes_by_expiry.setdefault(expiry, set()).add(strike)
         expiries_sorted = sorted(strikes_by_expiry)[: self._n_expiries]
         windows: list[dict] = []
         for i, expiry in enumerate(expiries_sorted):
-            strikes = sorted(strikes_by_expiry[expiry])
+            strikes = sorted(float(s) for s in strikes_by_expiry[expiry])
             start = _atm_start_index(strikes, self._reference_spot, per_expiry)
             windows.append({"Index": i, "StrikeStartIndex": start})
         # Cover the remaining requested windows (no strikes discovered) from 0.
@@ -297,6 +315,7 @@ class SaxoMarketDataAdapter:
         Saxo's options-chain subscription is per-underlying, not per-strike.
         """
         self._subscribed_keys = list(instrument_keys)
+        self._rebuild_key_lookup()
         self._index_map.clear()
         self._unknown_indices.clear()
         self._snapshot_no_index.clear()
@@ -344,9 +363,9 @@ class SaxoMarketDataAdapter:
 
     def unsubscribe_all(self) -> None:
         """Cancel the active streaming subscription and stop the WS listener thread."""
-        self._stop_event.set()
-        if self._ws_thread:
-            self._ws_thread.join(timeout=5.0)
+        if self._listener is not None:
+            self._listener.stop()
+            self._listener = None
         try:
             self._transport.delete(
                 f"/trade/v1/optionschain/subscriptions/{_CONTEXT_ID}/{self._reference_id}"
@@ -354,6 +373,8 @@ class SaxoMarketDataAdapter:
         except Exception:  # noqa: BLE001 — SaxoTransportError and network errors are heterogeneous
             _log.exception("Error cancelling Saxo subscription")
         self._subscribed_keys = []
+        self._keys_by_contract.clear()
+        self._expiry_order = []
         self._index_map.clear()
         self._unknown_indices.clear()
         self._snapshot_no_index.clear()
@@ -364,47 +385,57 @@ class SaxoMarketDataAdapter:
 
     @staticmethod
     def _extract_uic(instrument_key: str) -> int:
-        """Extract the Saxo Uic from a canonical instrument key's exchange segment (SAXO_<uic>)."""
-        parts = instrument_key.split(":")
-        if len(parts) >= 8:
-            exchange_seg = parts[7]
-            if exchange_seg.startswith("SAXO_"):
-                try:
-                    return int(exchange_seg[5:])
-                except ValueError:
-                    pass
+        """Extract the Saxo Uic from a canonical instrument key's exchange segment (SAXO_<uic>).
+
+        Uses the canonical key parser (``parse_instrument_key``); its ``InstrumentKeyError`` is a
+        ``ValueError``, so malformed keys raise the same class as a missing ``SAXO_`` segment.
+        """
+        contract = parse_instrument_key(instrument_key)
+        if contract.exchange.startswith("SAXO_"):
+            try:
+                return int(contract.exchange[5:])
+            except ValueError:
+                pass
         raise ValueError(f"Cannot extract Saxo Uic from instrument key: {instrument_key!r}")
 
+    def _rebuild_key_lookup(self) -> None:
+        """Parse each subscribed key once into the exact ``(expiry, strike, right) -> key`` table.
+
+        A key that is not a parseable canonical option key cannot be routed and is skipped with a
+        warning (it would previously have been substring-matched, which is how strikes leaked
+        across expiries and multipliers).
+        """
+        self._keys_by_contract.clear()
+        for key in self._subscribed_keys:
+            try:
+                contract = parse_instrument_key(key)
+            except InstrumentKeyError:
+                _log.warning("Subscribed key %r is not a canonical option key; skipping.", key)
+                continue
+            if not isinstance(contract, OptionContract):
+                _log.warning("Subscribed key %r is not an option key; skipping.", key)
+                continue
+            self._keys_by_contract[(contract.expiry, contract.strike, contract.right)] = key
+        self._expiry_order = sorted({expiry for expiry, _, _ in self._keys_by_contract})
+
     def _start_ws_listener(self) -> None:
-        self._stop_event.clear()
-        self._ws_thread = threading.Thread(
-            target=self._run_ws_loop,
-            daemon=True,
+        def _connect_factory() -> object:
+            # Imported lazily — only needed when streaming is active. The factory runs per
+            # (re)start, so the handshake always carries the *current* Bearer token.
+            import websockets
+
+            return websockets.connect(
+                self._transport.streaming_url(_CONTEXT_ID),
+                additional_headers=self._transport.auth_header(),
+            )
+
+        self._listener = WebSocketListener(
+            connect_factory=_connect_factory,
+            on_frame=self._handle_frame,
+            on_fault=self._emit_fault,
             name="saxo-ws-listener",
         )
-        self._ws_thread.start()
-
-    def _run_ws_loop(self) -> None:
-        try:
-            asyncio.run(self._ws_loop())
-        except Exception:  # noqa: BLE001 — asyncio/websockets surfaces heterogeneous errors
-            _log.exception("Saxo WebSocket loop terminated with error")
-
-    async def _ws_loop(self) -> None:
-        import websockets  # optional dep — only needed when streaming is active
-
-        url = self._transport.streaming_url(_CONTEXT_ID)
-        headers = self._transport.auth_header()
-        async with websockets.connect(url, additional_headers=headers) as ws:
-            while not self._stop_event.is_set():
-                try:
-                    raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                    self._handle_frame(raw)
-                except TimeoutError:
-                    continue
-                except Exception:  # noqa: BLE001 — websockets recv surfaces heterogeneous errors
-                    _log.exception("Saxo WS recv error")
-                    break
+        self._listener.start()
 
     def _handle_frame(self, raw: bytes | str) -> None:
         """Decode a Saxo binary streaming frame and emit BrokerTick events.
@@ -469,7 +500,7 @@ class SaxoMarketDataAdapter:
         strike_price = strike.get("Strike")
         if strike_price is not None:
             try:
-                keys = self._keys_for_strike(strike_price, strike)
+                keys = self._keys_for_strike(expiry_index, strike_price)
             except ValueError:
                 # Strike outside our subscribed key set — expected filtering. The map write below
                 # is skipped, so no delta is expected for this strike either.
@@ -521,19 +552,26 @@ class SaxoMarketDataAdapter:
             expiry_index,
         )
 
-    def _keys_for_strike(self, strike_price: float, strike: dict) -> tuple[str, str]:
-        """Look up the canonical keys for this strike from the subscribed key list."""
-        strike_str = (
-            str(int(strike_price)) if strike_price == int(strike_price) else str(strike_price)
-        )
-        call_key = next(
-            (k for k in self._subscribed_keys if ":C:" in k and f":{strike_str}:" in k), None
-        )
-        put_key = next(
-            (k for k in self._subscribed_keys if ":P:" in k and f":{strike_str}:" in k), None
-        )
+    def _keys_for_strike(self, expiry_index: int, strike_price: float) -> tuple[str, str]:
+        """Exact lookup of the (call_key, put_key) for one strike *within its expiry*.
+
+        ``expiry_index`` is Saxo's positional Expiry Index, mapped to the expiry date through
+        ``_expiry_order`` (the same sorted-ascending order ``_expiry_windows`` built the
+        subscription with). The strike is compared as a ``Decimal``, so ``530.0`` matches a key
+        carrying canonical strike ``530`` — and never matches a multiplier or another expiry's
+        strike, which the old substring scan did.
+        """
+        if not 0 <= expiry_index < len(self._expiry_order):
+            raise ValueError(f"Expiry index {expiry_index} outside the subscribed expiries")
+        expiry = self._expiry_order[expiry_index]
+        try:
+            strike = Decimal(str(strike_price))
+        except InvalidOperation as exc:
+            raise ValueError(f"Unparseable strike {strike_price!r}") from exc
+        call_key = self._keys_by_contract.get((expiry, strike, Right.CALL))
+        put_key = self._keys_by_contract.get((expiry, strike, Right.PUT))
         if call_key is None or put_key is None:
-            raise ValueError(f"No keys found for strike {strike_price}")
+            raise ValueError(f"No keys found for strike {strike_price} in expiry {expiry}")
         return call_key, put_key
 
     def _emit_fault(self, reason: str) -> None:

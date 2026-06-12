@@ -13,7 +13,7 @@ unit testing without a transport.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
@@ -132,32 +132,29 @@ class SaxoDiscovery:
                 raise DiscoveryError(f"Cannot parse expiry {raw_expiry!r}") from exc
 
             for specific in space.get("SpecificOptions", []):
-                contract = parse_saxo_option(
+                parsed = parse_saxo_option(
                     specific,
                     symbol=underlying.symbol,
                     expiry=expiry,
                     currency=underlying.currency,
                     exchange=f"SAXO_{underlying.uic}",
                 )
-                # Override broker_contract_id with the underlying UIC
-                # (the adapter needs it for the chain subscription).
-                # Store real exchange and strike UIC in raw field for completeness.
-                object.__setattr__(contract, "broker_contract_id", str(underlying.uic))
-                if contract.raw:
-                    raw_dict = dict(contract.raw)
-                    raw_dict["exchange"] = underlying.exchange
-                    raw_dict["strike_uic"] = int(specific.get("Uic", 0))
-                    object.__setattr__(contract, "raw", raw_dict)
-                else:
-                    object.__setattr__(
-                        contract,
-                        "raw",
-                        {
+                # Build a NEW contract via dataclasses.replace — never mutate the frozen
+                # dataclass. broker_contract_id becomes the underlying UIC (the adapter needs
+                # it for the chain subscription); the real exchange and the strike's own UIC
+                # move into raw for completeness. Both fields are compare=False metadata, so
+                # identity (and the canonical instrument key) is unchanged.
+                contracts.append(
+                    replace(
+                        parsed,
+                        broker_contract_id=str(underlying.uic),
+                        raw={
+                            **dict(parsed.raw or {}),
                             "exchange": underlying.exchange,
                             "strike_uic": int(specific.get("Uic", 0)),
                         },
                     )
-                contracts.append(contract)
+                )
         return contracts
 
     def fetch(self, symbol: str, asset_type: str = "EtfOption") -> list[OptionContract]:

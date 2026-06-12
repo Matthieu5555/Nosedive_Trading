@@ -21,6 +21,20 @@ _CALL_KEY = "OPT:SPY:OPT:20250627:C:530:100:SAXO_11111111:USD"
 _PUT_KEY = "OPT:SPY:OPT:20250627:P:530:100:SAXO_11111112:USD"
 
 
+def _subscribed_adapter(keys: list[str], **adapter_kwargs) -> SaxoMarketDataAdapter:
+    """Adapter subscribed through the public surface, with no real WS thread or network.
+
+    Routing tables are built by ``subscribe()`` (exact per-expiry key lookup), so tests must go
+    through it rather than poking ``_subscribed_keys`` directly.
+    """
+    transport = MagicMock()
+    transport.post.return_value = {}  # no inline Snapshot in the subscription response
+    adapter = SaxoMarketDataAdapter(transport, **adapter_kwargs)
+    adapter._start_ws_listener = lambda: None  # type: ignore[method-assign]
+    adapter.subscribe(keys)
+    return adapter
+
+
 def _make_frame(ref_id: str, payload: bytes, fmt: int = 0) -> bytes:
     """Build one Saxo binary streaming message: header + ascii ref id + payload."""
     ref = ref_id.encode("ascii")
@@ -167,9 +181,7 @@ def test_handle_frame_malformed_json_emits_fault() -> None:
 def test_handle_frame_valid_emits_ticks() -> None:
     import json
 
-    transport = MagicMock()
-    adapter = SaxoMarketDataAdapter(transport)
-    adapter._subscribed_keys = [_CALL_KEY, _PUT_KEY]
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])
     ticks: list[BrokerTick] = []
     adapter.set_tick_callback(ticks.append)
 
@@ -181,9 +193,7 @@ def test_handle_frame_valid_emits_ticks() -> None:
 def test_handle_frame_wrong_reference_id_is_ignored() -> None:
     import json
 
-    transport = MagicMock()
-    adapter = SaxoMarketDataAdapter(transport)
-    adapter._subscribed_keys = [_CALL_KEY, _PUT_KEY]
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])
     ticks: list[BrokerTick] = []
     adapter.set_tick_callback(ticks.append)
 
@@ -397,8 +407,7 @@ def _adapter_with_snapshot() -> tuple[SaxoMarketDataAdapter, list[BrokerTick]]:
 
     Returns the adapter (Index map populated) and the list collecting emitted ticks.
     """
-    adapter = SaxoMarketDataAdapter(MagicMock())
-    adapter._subscribed_keys = [_CALL_KEY, _PUT_KEY]
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])
     ticks: list[BrokerTick] = []
     adapter.set_tick_callback(ticks.append)
     adapter._handle_payload(_SNAPSHOT_NESTED)
@@ -460,8 +469,7 @@ def test_exchange_ts_from_last_updated() -> None:
 def test_snapshot_strike_missing_index_warns_and_skips_map(monkeypatch) -> None:
     import algotrading.infra_saxo.collectors.saxo_adapter as mod
 
-    adapter = SaxoMarketDataAdapter(MagicMock())
-    adapter._subscribed_keys = [_CALL_KEY, _PUT_KEY]
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])
     ticks: list[BrokerTick] = []
     adapter.set_tick_callback(ticks.append)
     warn = MagicMock()
@@ -477,8 +485,7 @@ def test_snapshot_strike_missing_index_warns_and_skips_map(monkeypatch) -> None:
 
 def test_payload_with_both_expiries_and_flat_strikes_no_double_emit() -> None:
     # When Expiries is present, the flat top-level Strikes is ignored (Expiries is authoritative).
-    adapter = SaxoMarketDataAdapter(MagicMock())
-    adapter._subscribed_keys = [_CALL_KEY, _PUT_KEY]
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])
     ticks: list[BrokerTick] = []
     adapter.set_tick_callback(ticks.append)
     strike = {"Index": 0, "Strike": 530.0, "Call": {"Bid": 6.30}, "Put": {"Bid": 5.80}}
@@ -496,8 +503,9 @@ def test_subscribe_warns_on_strike_truncation(monkeypatch) -> None:
     warn = MagicMock()
     monkeypatch.setattr(mod._log, "warning", warn)
     # 101 Call + 101 Put pairs = 202 keys > _MAX_STRIKES_PER_SESSION * 2 (200).
-    calls = [f"OPT:SPY:OPT:20250627:C:{i}:100:SAXO_{i}:USD" for i in range(101)]
-    puts = [f"OPT:SPY:OPT:20250627:P:{i}:100:SAXO_{1000 + i}:USD" for i in range(101)]
+    # Strikes start at 1: the canonical key parser (rightly) rejects a 0 strike.
+    calls = [f"OPT:SPY:OPT:20250627:C:{i}:100:SAXO_{i}:USD" for i in range(1, 102)]
+    puts = [f"OPT:SPY:OPT:20250627:P:{i}:100:SAXO_{1000 + i}:USD" for i in range(1, 102)]
     adapter.subscribe(calls + puts)
     warn.assert_called_once()
     assert "window capped" in warn.call_args.args[0]
@@ -509,3 +517,122 @@ def test_subscribe_resets_index_map(monkeypatch) -> None:
     monkeypatch.setattr(adapter, "_start_ws_listener", lambda: None)
     adapter.subscribe([_CALL_KEY])
     assert adapter._index_map == {}
+
+
+# ---------------------------------------------------------------------------
+# M13 — exact per-expiry strike routing (the substring-match misroute fix)
+# ---------------------------------------------------------------------------
+
+# Two expiries carrying the SAME strike (100): under the old substring lookup
+# (":C:" + ":100:"), expiry 2's strike 100 resolved to expiry 1's key, so every
+# expiry-2 tick was emitted under expiry 1's instrument.
+_E1_CALL = "OPT:SPY:OPT:20250620:C:100:100:SAXO_1:USD"
+_E1_PUT = "OPT:SPY:OPT:20250620:P:100:100:SAXO_2:USD"
+_E2_CALL = "OPT:SPY:OPT:20250718:C:100:100:SAXO_3:USD"
+_E2_PUT = "OPT:SPY:OPT:20250718:P:100:100:SAXO_4:USD"
+_TWO_EXPIRY_KEYS = [_E1_CALL, _E1_PUT, _E2_CALL, _E2_PUT]
+
+
+def _two_expiry_adapter() -> tuple[SaxoMarketDataAdapter, list[BrokerTick]]:
+    adapter = _subscribed_adapter(_TWO_EXPIRY_KEYS, n_expiries=2)
+    ticks: list[BrokerTick] = []
+    adapter.set_tick_callback(ticks.append)
+    return adapter, ticks
+
+
+def test_same_strike_routes_to_its_own_expiry() -> None:
+    """Reproduces the misroute scenario: strike 100 exists in both expiry windows.
+
+    Saxo's Expiry Index i maps to our i-th nearest expiry (20250620, then 20250718). Bids are
+    distinct per expiry, so a misroute is observable as the wrong bid on a key.
+    """
+    adapter, ticks = _two_expiry_adapter()
+    snapshot = {
+        "Expiries": [
+            {
+                "Index": 0,
+                "Strikes": [{"Index": 0, "Strike": 100.0, "Call": {"Bid": 1.0}, "Put": {"Bid": 2.0}}],
+            },
+            {
+                "Index": 1,
+                "Strikes": [{"Index": 0, "Strike": 100.0, "Call": {"Bid": 3.0}, "Put": {"Bid": 4.0}}],
+            },
+        ]
+    }
+    adapter._handle_payload(snapshot)
+    bids = {t.instrument_key: t.value for t in ticks if t.field_name == "bid"}
+    # Old behavior: all four bids landed on the 20250620 keys (first substring match).
+    assert bids == {
+        _E1_CALL: pytest.approx(1.0),
+        _E1_PUT: pytest.approx(2.0),
+        _E2_CALL: pytest.approx(3.0),
+        _E2_PUT: pytest.approx(4.0),
+    }
+
+
+def test_deltas_route_per_expiry_after_snapshot() -> None:
+    """Index-only deltas resolve through the per-(expiry, Index) map built by the snapshot."""
+    adapter, ticks = _two_expiry_adapter()
+    snapshot = {
+        "Expiries": [
+            {"Index": 0, "Strikes": [{"Index": 0, "Strike": 100.0, "Call": {"Bid": 1.0}}]},
+            {"Index": 1, "Strikes": [{"Index": 0, "Strike": 100.0, "Call": {"Bid": 3.0}}]},
+        ]
+    }
+    adapter._handle_payload(snapshot)
+    ticks.clear()
+    delta = {"Expiries": [{"Index": 1, "Strikes": [{"Index": 0, "Call": {"Bid": 3.5}}]}]}
+    adapter._handle_payload(delta)
+    assert [(t.instrument_key, t.value) for t in ticks if t.field_name == "bid"] == [
+        (_E2_CALL, pytest.approx(3.5))
+    ]
+
+
+def test_strike_matching_multiplier_segment_is_not_misrouted() -> None:
+    """The key format ends ...:STRIKE:MULT:EXCH:CCY, so ':100:' also matched every
+    multiplier-100 key under the old substring scan. A snapshot strike 100 with only
+    strike 530 subscribed must be dropped, not routed onto the 530 keys."""
+    adapter = _subscribed_adapter([_CALL_KEY, _PUT_KEY])  # strike 530, multiplier 100
+    ticks: list[BrokerTick] = []
+    adapter.set_tick_callback(ticks.append)
+    snapshot = {
+        "Expiries": [
+            {"Index": 0, "Strikes": [{"Index": 7, "Strike": 100.0, "Call": {"Bid": 9.9}}]}
+        ]
+    }
+    adapter._handle_payload(snapshot)
+    assert ticks == []  # old behavior: a bid=9.9 tick on the strike-530 call key
+    assert adapter._index_map == {}  # and no delta routing entry for the foreign strike
+
+
+def test_expiry_index_beyond_subscribed_expiries_is_dropped() -> None:
+    """A strike in an expiry window we never subscribed cannot borrow another expiry's key."""
+    adapter, ticks = _two_expiry_adapter()
+    snapshot = {
+        "Expiries": [
+            {"Index": 5, "Strikes": [{"Index": 0, "Strike": 100.0, "Call": {"Bid": 1.0}}]}
+        ]
+    }
+    adapter._handle_payload(snapshot)
+    assert ticks == []
+    assert adapter._index_map == {}
+
+
+def test_fractional_strike_resolves_exactly() -> None:
+    """Decimal comparison: payload 2.5 matches the canonical '2.5' strike segment exactly."""
+    call_key = "OPT:SPY:OPT:20250620:C:2.5:100:SAXO_1:USD"
+    put_key = "OPT:SPY:OPT:20250620:P:2.5:100:SAXO_2:USD"
+    adapter = _subscribed_adapter([call_key, put_key])
+    ticks: list[BrokerTick] = []
+    adapter.set_tick_callback(ticks.append)
+    snapshot = {
+        "Expiries": [{"Index": 0, "Strikes": [{"Index": 0, "Strike": 2.5, "Call": {"Bid": 0.1}}]}]
+    }
+    adapter._handle_payload(snapshot)
+    assert [(t.instrument_key, t.value) for t in ticks] == [(call_key, pytest.approx(0.1))]
+
+
+def test_integer_valued_float_strike_matches_integer_key_segment() -> None:
+    """Payload 530.0 (float) must match the canonical strike segment '530' (no trailing .0)."""
+    adapter, ticks = _adapter_with_snapshot()  # snapshot carries Strike: 530.0 against key ':530:'
+    assert any(t.instrument_key == _CALL_KEY for t in ticks)

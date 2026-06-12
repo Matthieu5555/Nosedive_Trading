@@ -61,67 +61,52 @@ class SaxoTransport:
 
         Raises SaxoTransportError on non-2xx HTTP status or network failure.
         """
-        url = f"{self._base_url}/{path.lstrip('/')}"
-        headers = {"Authorization": f"Bearer {self._token_fn()}"}
-        try:
-            resp = self._client.get(url, params=params or {}, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPStatusError as exc:
-            raise SaxoTransportError(
-                f"Saxo REST {exc.response.status_code} for {path}: {exc.response.text[:200]}"
-            ) from exc
-        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
-            raise SaxoTransportError(f"Saxo REST call failed for {path}: {exc}") from exc
+        return self._request("GET", path, params=params or {})
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST JSON ``body`` to ``path``; return the parsed JSON body."""
+        return self._request("POST", path, body=body)
+
+    def patch(self, path: str, body: dict[str, Any]) -> None:
+        """PATCH ``body`` to ``path`` (e.g. to update a streaming subscription window)."""
+        self._request("PATCH", path, body=body)
+
+    def delete(self, path: str) -> None:
+        """DELETE ``path`` (e.g. to remove a streaming subscription)."""
+        self._request("DELETE", path)
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """One request core for every verb: URL join, fresh Bearer header, JSON, error wrap.
+
+        The Bearer header is rebuilt from ``token_fn`` per request so token rotation applies
+        immediately. An empty response body (e.g. PATCH/DELETE 204) returns ``{}``.
+        """
         url = f"{self._base_url}/{path.lstrip('/')}"
-        headers = {
-            "Authorization": f"Bearer {self._token_fn()}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {self._token_fn()}"}
+        content: str | None = None
+        if body is not None:
+            headers["Content-Type"] = "application/json"
+            content = json.dumps(body)
         try:
-            resp = self._client.post(url, content=json.dumps(body), headers=headers)
+            resp = self._client.request(
+                method, url, params=params, content=content, headers=headers
+            )
             resp.raise_for_status()
             return resp.json() if resp.content else {}
         except httpx.HTTPStatusError as exc:
             raise SaxoTransportError(
-                f"Saxo REST POST {exc.response.status_code} for {path}: {exc.response.text[:200]}"
+                f"Saxo REST {method} {exc.response.status_code} for {path}: "
+                f"{exc.response.text[:200]}"
             ) from exc
         except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
-            raise SaxoTransportError(f"Saxo REST POST failed for {path}: {exc}") from exc
-
-    def patch(self, path: str, body: dict[str, Any]) -> None:
-        """PATCH ``body`` to ``path`` (e.g. to update a streaming subscription window)."""
-        url = f"{self._base_url}/{path.lstrip('/')}"
-        headers = {
-            "Authorization": f"Bearer {self._token_fn()}",
-            "Content-Type": "application/json",
-        }
-        try:
-            resp = self._client.patch(url, content=json.dumps(body), headers=headers)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise SaxoTransportError(
-                f"Saxo REST PATCH {exc.response.status_code} for {path}: {exc.response.text[:200]}"
-            ) from exc
-        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
-            raise SaxoTransportError(f"Saxo REST PATCH failed for {path}: {exc}") from exc
-
-    def delete(self, path: str) -> None:
-        """DELETE ``path`` (e.g. to remove a streaming subscription)."""
-        url = f"{self._base_url}/{path.lstrip('/')}"
-        headers = {"Authorization": f"Bearer {self._token_fn()}"}
-        try:
-            resp = self._client.delete(url, headers=headers)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise SaxoTransportError(
-                f"Saxo REST DELETE {exc.response.status_code} for {path}: {exc.response.text[:200]}"
-            ) from exc
-        except Exception as exc:  # noqa: BLE001 — httpx/network errors are heterogeneous; wrapped into the typed SaxoTransportError
-            raise SaxoTransportError(f"Saxo REST DELETE failed for {path}: {exc}") from exc
+            raise SaxoTransportError(f"Saxo REST {method} failed for {path}: {exc}") from exc
 
     # ------------------------------------------------------------------
     # WebSocket (synchronous wrapper via asyncio — called from the adapter)

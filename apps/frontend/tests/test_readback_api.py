@@ -15,16 +15,21 @@ cell) so each assertion pins a single contract field crossing the BFF<->infra se
 
 from __future__ import annotations
 
+import asyncio
+import json
 import math
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
 from algotrading.frontend import runner
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
+from algotrading.frontend.routers import price_history as price_history_router
 from algotrading.infra.contracts import tables
 from algotrading.infra.contracts.bundles import SurfaceFitDiagnostics
 from algotrading.infra.contracts.instrument_key import InstrumentKey
@@ -36,6 +41,8 @@ from algotrading.infra.orchestration.run_state import (
     record_stage,
 )
 from algotrading.infra.storage import ParquetStore
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -434,6 +441,40 @@ def _seed_legacy_store(store: ParquetStore) -> None:
             )
         ],
     )
+
+
+class _JsonRequest:
+    """Minimal Request shape for directly exercising JSON-only route handlers."""
+
+    def __init__(self, ctx: AppContext, body: object) -> None:
+        self.app = SimpleNamespace(state=SimpleNamespace(ctx=ctx))
+        self._body = body
+
+    async def json(self) -> object:
+        return self._body
+
+
+def _seeded_context(root: Path) -> AppContext:
+    _seed_store(root)
+    return AppContext(
+        store_root=root,
+        configs_dir=root.parent / "configs",
+        store=ParquetStore(root),
+        default_underlying=UNDERLYING,
+    )
+
+
+def _post_price_history_batch(root: Path, body: object) -> JSONResponse:
+    request = _JsonRequest(_seeded_context(root), body)
+    return asyncio.run(
+        price_history_router.post_price_history_batch(cast(Request, request))
+    )
+
+
+def _json_response_payload(response: JSONResponse) -> dict[str, object]:
+    payload = json.loads(response.body.decode())
+    assert isinstance(payload, dict)
+    return payload
 
 
 @pytest.fixture
@@ -837,6 +878,57 @@ def test_price_history_bad_date_is_labeled_400(seeded_client: TestClient) -> Non
     )
     assert response.status_code == 400
     assert response.json()["error"] == "bad_date"
+
+
+def test_price_history_batch_reads_all_requested_underlyings(tmp_path: Path) -> None:
+    response = _post_price_history_batch(
+        tmp_path / "data",
+        {
+            "underlyings": [MEMBER_AAA, MEMBER_BBB, MEMBER_AAA],
+            "end": TRADE_DATE.isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    payload = _json_response_payload(response)
+    # Duplicates are de-duped in first-seen order. Start omitted means the BOUNDED default
+    # window (end - 365d), never "all available" — an unbounded batch walked the per-name
+    # partition tree at minutes per basket on the live store (the front-empty incident).
+    assert payload["underlyings"] == [MEMBER_AAA, MEMBER_BBB]
+    assert payload["start"] == (TRADE_DATE - timedelta(days=365)).isoformat()
+    assert payload["end"] == TRADE_DATE.isoformat()
+    assert payload["n_underlyings"] == 2
+    assert payload["n_loaded"] == 2
+    assert payload["n_empty"] == 0
+    assert payload["n_bars"] == len(AAA_BARS) + len(BBB_BARS)
+
+    histories = {item["underlying"]: item for item in payload["histories"]}
+    aaa_last = histories[MEMBER_AAA]["bars"][-1]
+    bbb_last = histories[MEMBER_BBB]["bars"][-1]
+    assert aaa_last["close"] == pytest.approx(AAA_29_CLOSE)
+    assert bbb_last["close"] == pytest.approx(45.5)
+
+
+def test_price_history_batch_unknown_member_is_labeled_empty(tmp_path: Path) -> None:
+    response = _post_price_history_batch(
+        tmp_path / "data",
+        {"underlyings": [MEMBER_AAA, "NOPE"], "end": TRADE_DATE.isoformat()},
+    )
+    assert response.status_code == 200
+    payload = _json_response_payload(response)
+    assert payload["n_underlyings"] == 2
+    assert payload["n_loaded"] == 1
+    assert payload["n_empty"] == 1
+    nope = next(item for item in payload["histories"] if item["underlying"] == "NOPE")
+    assert nope["bars"] == []
+
+
+def test_price_history_batch_bad_date_is_labeled_400(tmp_path: Path) -> None:
+    response = _post_price_history_batch(
+        tmp_path / "data",
+        {"underlyings": [MEMBER_AAA], "end": "not-a-date"},
+    )
+    assert response.status_code == 400
+    assert _json_response_payload(response)["error"] == "bad_date"
 
 
 def test_constituents_reads_back_as_of_basket(seeded_client: TestClient) -> None:

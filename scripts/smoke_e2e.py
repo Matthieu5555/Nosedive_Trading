@@ -18,9 +18,12 @@ exit code:
 * Stage 5 -- invariants: provenance + per-bundle ``config_hashes`` (ADR 0028), and
   byte-identical replay (run stages 1-2 twice, same derived stamp hashes).
 
-Exit codes mirror ``scripts/ibkr_bootstrap.py``: ``0`` healthy (every required stage PASS,
-SKIPs allowed), ``1`` hard failure (the spine is broken), ``2`` soft failure (the spine is
-alive but a non-blocking stage degraded -- a SKIP or a soft failure). ASCII-only output.
+Exit codes (the operator scripts' 0/1/2 convention): ``0`` healthy (every required stage
+PASS, SKIPs allowed), ``1`` hard failure (the spine is broken), ``2`` soft failure (the
+spine is alive but a non-blocking stage degraded -- a SKIP or a soft failure). With
+``--strict`` the verdict collapses to CI's binary contract: ``1`` only when the spine is
+broken, else ``0`` (expected SKIPs -- e.g. ``--skip-web`` -- no longer need exit-code
+special-casing in the workflow). ASCII-only output.
 """
 
 from __future__ import annotations
@@ -37,7 +40,9 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-# --- exit codes (the ibkr_bootstrap.py convention) ---------------------------
+from algotrading.core.paths import repo_root
+
+# --- exit codes (the operator scripts' 0/1/2 convention) ----------------------
 EXIT_OK = 0
 EXIT_HARD = 1
 EXIT_SOFT = 2
@@ -46,8 +51,6 @@ EXIT_SOFT = 2
 PASS = "PASS"
 FAIL = "FAIL"
 SKIP = "SKIP"
-
-_ROOT_MARKER = "AGENTS.md"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +83,27 @@ def compute_exit_code(results: Sequence[StageResult]) -> int:
     return EXIT_OK
 
 
+def strict_exit_code(code: int) -> int:
+    """Collapse the 0/1/2 verdict to CI's binary contract: hard failure stays 1, else 0.
+
+    Exit 2 means "alive but degraded" -- an expected SKIP (e.g. ``--skip-web``, or the
+    known 1F-grid SKIP on the reconstruct_day path) or a soft failure. CI treats that as
+    green and only a broken spine as red; folding it here means the workflow step needs
+    no exit-code special-casing.
+    """
+    return EXIT_HARD if code == EXIT_HARD else EXIT_OK
+
+
 def find_repo_root(start: Path) -> Path:
-    """Walk up from ``start`` to the directory holding the root marker (``AGENTS.md``)."""
-    for candidate in [start, *start.parents]:
-        if (candidate / _ROOT_MARKER).exists():
-            return candidate
-    raise RuntimeError(f"could not locate repo root from {start} (no {_ROOT_MARKER})")
+    """The workspace root, from the one anchor seam (``algotrading.core.paths``).
+
+    ``start`` is unused: the root is anchored by the editable-installed workspace
+    package, not discovered by walking. The parameter survives for the driver-honesty
+    tests (``packages/infra/tests/test_smoke_e2e.py``) that call this with a path; fold
+    this alias away once that call site uses ``core.paths.repo_root`` directly.
+    """
+    del start
+    return repo_root()
 
 
 # --- Stage 1 + 2: offline day production and analytics -----------------------
@@ -275,13 +293,19 @@ def _derived_stamp_hashes(store: Any) -> dict[str, list[str]]:
 
 
 # --- the driver --------------------------------------------------------------
-def _print_summary(results: Sequence[StageResult], code: int, as_json: bool) -> None:
+def _print_summary(
+    results: Sequence[StageResult], code: int, as_json: bool, *, exit_code: int | None = None
+) -> None:
+    """Print the per-stage lines + verdict. ``code`` names the 0/1/2 verdict; ``exit_code``
+    is what the process actually returns (defaults to ``code``; they differ only under
+    ``--strict``)."""
+    exit_code = code if exit_code is None else exit_code
     if as_json:
         payload = {
             "stages": [
                 {"name": r.name, "status": r.status, "detail": r.detail} for r in results
             ],
-            "exit_code": code,
+            "exit_code": exit_code,
             "verdict": {EXIT_OK: "healthy", EXIT_HARD: "broken", EXIT_SOFT: "degraded"}[code],
         }
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -291,13 +315,18 @@ def _print_summary(results: Sequence[StageResult], code: int, as_json: bool) -> 
     for result in results:
         print(result.line())
     verdict = {EXIT_OK: "HEALTHY", EXIT_HARD: "BROKEN (spine down)", EXIT_SOFT: "DEGRADED"}[code]
-    print(f"verdict: {verdict} (exit {code})")
+    print(f"verdict: {verdict} (exit {exit_code})")
+    if exit_code != code:
+        print(f"strict: degraded verdict (2) accepted -> exit {exit_code}")
 
 
 def run_smoke(argv: Sequence[str] | None = None) -> int:
-    """Run the smoke and return the 0/1/2 exit code. The single public entrypoint."""
+    """Run the smoke and return the exit code (0/1/2, or 0/1 under ``--strict``).
+
+    The single public entrypoint.
+    """
     args = _parse_args(argv)
-    repo_root = find_repo_root(Path(__file__).resolve())
+    workspace_root = repo_root()
     results: list[StageResult] = []
 
     owns_data_root = args.data_root is None
@@ -305,14 +334,15 @@ def run_smoke(argv: Sequence[str] | None = None) -> int:
         Path(args.data_root) if args.data_root else Path(tempfile.mkdtemp(prefix="smoke-e2e-"))
     )
     try:
-        results.extend(_run_stages(args, repo_root, data_root))
+        results.extend(_run_stages(args, workspace_root, data_root))
     finally:
         if owns_data_root:
             shutil.rmtree(data_root, ignore_errors=True)
 
     code = compute_exit_code(results)
-    _print_summary(results, code, args.json)
-    return code
+    exit_code = strict_exit_code(code) if args.strict else code
+    _print_summary(results, code, args.json, exit_code=exit_code)
+    return exit_code
 
 
 def _run_stages(args: argparse.Namespace, repo_root: Path, data_root: Path) -> list[StageResult]:
@@ -483,6 +513,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--date", default=None, help="trade date for a real captured day (1C)")
     parser.add_argument("--skip-web", action="store_true", help="skip the npm build/test stage")
     parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="binary exit contract for CI: exit 1 only when the spine is broken, "
+        "else 0 (folds the degraded-by-SKIP exit 2 to 0)",
+    )
     return parser.parse_args(argv)
 
 

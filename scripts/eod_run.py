@@ -30,9 +30,8 @@ Usage:
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from algotrading.infra.connectivity import load_env_file
+from algotrading.core.paths import load_env_file
+from algotrading.infra.observability import configure_logging
 from algotrading.infra.orchestration.eod_runner import (
     BasketSource,
     RunnerDeps,
@@ -40,11 +39,6 @@ from algotrading.infra.orchestration.eod_runner import (
     main,
 )
 from algotrading.infra_ibkr.live_capture import gateway_basket_source, live_basket_source
-
-# The repo-root .env holds the IBKR_CP_* credentials the live capture keys on (neither `uv run`
-# nor the systemd unit loads it). Load it here, at the one entrypoint, before any deps are built —
-# the real environment still wins over the file, so an EnvironmentFile / shell export is honoured.
-_DOTENV = Path(__file__).resolve().parents[1] / ".env"
 
 
 def _select_basket_source() -> BasketSource | None:
@@ -71,5 +65,10 @@ def _deps_factory() -> RunnerDeps:
 
 
 if __name__ == "__main__":
-    load_env_file(_DOTENV)
+    # The repo-root .env holds the IBKR_CP_* credentials the live capture keys on (neither
+    # `uv run` nor the systemd unit loads it). Load it here, at the one entrypoint, before any
+    # deps are built — the real environment still wins over the file, so an EnvironmentFile /
+    # shell export is honoured (`core.paths.load_env_file`, override=False).
+    load_env_file()
+    configure_logging()
     raise SystemExit(main(deps_factory=_deps_factory))

@@ -48,13 +48,12 @@ notebooks = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-# `ruff check .` lints only the workspace (packages/ + apps/). The read-only
-# reference checkout, notebooks, operator scripts, and scratch dirs are out of
-# this gate. `scripts/` is operator CLI tooling, not a workspace member — same
-# status as `notebooks/` (see scripts/README.md); run it manually with `uv run`.
+# `ruff check .` lints the workspace (packages/ + apps/) plus `scripts/` — the
+# operator CLI tooling, in the gate since the 2026-06 maintainability audit (M24):
+# it holds the production EOD entrypoint the systemd timer fires. The read-only
+# reference checkout, notebooks, and scratch dirs stay out.
 extend-exclude = [
     "notebooks",
-    "scripts",
     "Vincent's Code",
     "Test Lenny",
     "ThomasHossen",
@@ -85,16 +84,16 @@ warn_redundant_casts = true
 no_implicit_optional = true
 strict_equality = true
 # Workspace packages are installed editable by `uv sync`; import them by name.
-files = ["packages", "apps"]
+# `scripts/` (operator CLI tooling, incl. the production EOD entrypoint) is in the
+# gate since the 2026-06 maintainability audit (M24).
+files = ["packages", "apps", "scripts"]
 # `mypy .` must not wander into the read-only reference checkout, scratch dirs,
-# operator scripts, or per-package test dirs (which share the name `tests` and
-# would collide under the workspace). Tests run under pytest, not mypy; `scripts/`
-# is out-of-gate operator tooling (see scripts/README.md), like `notebooks/`.
+# or per-package test dirs (which share the name `tests` and would collide under
+# the workspace). Tests run under pytest, not mypy; `notebooks/` stays out.
 exclude = [
     "Vincent's Code/",
     "Test Lenny/",
     "ThomasHossen/",
-    "scripts/",
     "notebooks/",
     "/tests/",
 ]
@@ -118,9 +117,12 @@ ignore_missing_imports = true
 module = ["exchange_calendars.*"]
 ignore_missing_imports = true
 
-# Broker SDKs are optional extras, absent from the gate env, imported lazily.
+# TWS socket SDK (`nautilus-ibapi`, pulled in by the nautilus spine): installed but
+# ships no py.typed/stubs; imported lazily by `infra_ibkr.connectivity.nautilus_ibkr`.
+# (`ib_async.*` left this list when the last importer — scripts/ibkr_bootstrap.py and
+# the hand-rolled transport modules — was deleted, 2026-06 audit wave 1 + M24.)
 [[tool.mypy.overrides]]
-module = ["ib_async.*", "ibapi.*"]
+module = ["ibapi.*"]
 ignore_missing_imports = true
 
 # Postgres driver is an optional extra (`postgres`), absent from the gate env and
@@ -134,6 +136,19 @@ ignore_missing_imports = true
 # them — treat the package as untyped at the import boundary; our own code stays typed.
 [[tool.mypy.overrides]]
 module = ["nautilus_trader.*"]
+ignore_missing_imports = true
+
+# Tooling the operator scripts pull in ephemerally or via the `notebooks` dependency
+# group (scripts/README.md) — absent from the gate env, so mypy cannot resolve it.
+[[tool.mypy.overrides]]
+module = ["mistune.*", "nbformat.*", "plotly.*", "selenium.*"]
+ignore_missing_imports = true
+
+# The committed offline chain fixtures (packages/infra/tests/fixtures) are imported by
+# name after a sys.path insert (scripts/smoke_e2e.py; pytest gets them via `pythonpath`).
+# mypy excludes /tests/, so it cannot resolve that package.
+[[tool.mypy.overrides]]
+module = ["fixtures.*"]
 ignore_missing_imports = true
 
 # --- Layering enforcement (import-linter) ---------------------------------

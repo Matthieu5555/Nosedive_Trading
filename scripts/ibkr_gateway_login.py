@@ -12,7 +12,8 @@ Run it (Selenium is NOT a project dep — pull it in ephemerally; Selenium Manag
 auto-fetches the geckodriver for the installed Firefox):
 
     # 1. send the SMS + stand the session open, waiting for the code in a file:
-    uv run --with selenium python scripts/ibkr_gateway_login.py --mode live --wait-code-file /tmp/sms_code.txt
+    uv run --with selenium python scripts/ibkr_gateway_login.py --mode live \
+        --wait-code-file /tmp/sms_code.txt
     # 2. in another shell, drop the 6-digit SMS code in:
     printf '658661' > /tmp/sms_code.txt
     # ...the script enters it, submits, and verifies authenticated:true.
@@ -29,11 +30,14 @@ account with account-level 2FA, *both* tabs still trigger the same SMS challenge
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+from algotrading.core.paths import load_env_file
+
 _GATEWAY = "https://localhost:5000"
 
 # Field/selector map of the CP Gateway login page (captured 2026-06-08). The 2FA inputs
@@ -50,18 +54,14 @@ _CODE_FIELDS = (  # tried in order; the visible one is the active 2FA method
 
 
 def _load_creds() -> tuple[str, str]:
-    from algotrading.infra.connectivity.dotenv import load_env_file
-
-    load_env_file(_REPO_ROOT / ".env")
-    import os
-
+    load_env_file()  # the repo-root .env; already-exported variables win
     user, pw = os.environ.get("TWS_USERID"), os.environ.get("TWS_PASSWORD")
     if not user or not pw or user.startswith("your_"):
         sys.exit("TWS_USERID / TWS_PASSWORD missing or placeholder in .env — fill them first.")
     return user, pw
 
 
-def _new_driver():
+def _new_driver() -> Any:
     try:
         from selenium import webdriver
         from selenium.webdriver.firefox.options import Options
@@ -73,7 +73,7 @@ def _new_driver():
     return webdriver.Firefox(options=opts)
 
 
-def _get_code(args) -> str:
+def _get_code(args: argparse.Namespace) -> str:
     if args.code:
         return args.code.strip()
     if args.wait_code_file:
@@ -99,7 +99,11 @@ def main() -> int:
 
     user, pw = _load_creds()
     d = _new_driver()
-    visible = lambda fid: (e := d.find_elements(By.ID, fid)) and e[0].is_displayed()  # noqa: E731
+
+    def visible(field_id: str) -> bool:
+        elements = d.find_elements(By.ID, field_id)
+        return bool(elements and elements[0].is_displayed())
+
     try:
         d.set_page_load_timeout(45)
         d.get(_GATEWAY)

@@ -29,13 +29,15 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
+from algotrading.core.paths import repo_root
 from algotrading.infra.storage import events_from_json, events_to_json
-from algotrading.infra.universe import parse_instrument_key
+from algotrading.infra.universe import OptionContract, parse_instrument_key
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_SAMPLE = _REPO_ROOT / "packages" / "infra-saxo" / "samples" / "asml_real_2026-06-04.json"
+_DEFAULT_SAMPLE = repo_root() / "packages" / "infra-saxo" / "samples" / "asml_real_2026-06-04.json"
 
 
 def main() -> int:
@@ -68,10 +70,11 @@ def main() -> int:
     fields = sorted({e.field_name for e in events})
     option_keys = sorted({e.instrument_key for e in events if e.instrument_key.startswith("OPT:")})
 
-    by_expiry: dict[object, set[object]] = defaultdict(set)
+    by_expiry: dict[date, set[Decimal]] = defaultdict(set)
     for key in option_keys:
         parsed = parse_instrument_key(key)
-        by_expiry[parsed.expiry].add(parsed.strike)
+        if isinstance(parsed, OptionContract):  # every OPT: key parses to a contract
+            by_expiry[parsed.expiry].add(parsed.strike)
 
     if args.symbol and args.symbol.upper() not in underlyings:
         print(f"WARNING: --symbol {args.symbol!r} not in sample underlyings {underlyings}")

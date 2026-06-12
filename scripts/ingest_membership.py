@@ -19,6 +19,7 @@ import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from algotrading.core.paths import data_root
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import (
     CsvFileSource,
@@ -42,8 +43,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--store-root",
         type=Path,
-        default=Path("data"),
-        help="ParquetStore root (default: ./data).",
+        default=None,
+        help="ParquetStore root (default: $ALGOTRADING_DATA_ROOT, else <repo>/data).",
     )
     parser.add_argument(
         "--knowledge-date",
@@ -115,11 +116,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[FAIL] source returned no constituents for {index}", file=sys.stderr)
         return 1
 
-    store = ParquetStore(args.store_root)
+    store_root = args.store_root if args.store_root is not None else data_root()
+    store = ParquetStore(store_root)
     written = ingest_membership_changes(store, changes)
     print(
         f"[OK] {index}: {len(changes)} constituents fetched, "
-        f"{len(written)} rows resolved into {args.store_root}/ (index_constituents)"
+        f"{len(written)} rows resolved into {store_root}/ (index_constituents)"
     )
     return 0
 

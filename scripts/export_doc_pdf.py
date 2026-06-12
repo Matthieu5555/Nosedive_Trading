@@ -24,9 +24,9 @@ import sys
 import tempfile
 
 import mistune
+from algotrading.core.paths import repo_root
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-DEFAULT_MD = _REPO_ROOT / "documentation" / "vol-surface" / "vol_surface_pedagogique.md"
+DEFAULT_MD = repo_root() / "documentation" / "vol-surface" / "vol_surface_pedagogique.md"
 
 BROWSER_CANDIDATES = [
     "/usr/bin/google-chrome",
@@ -86,6 +86,8 @@ def render_html(md_path: pathlib.Path) -> str:
     body = mistune.create_markdown(plugins=["table"], escape=False)(
         md_path.read_text(encoding="utf-8")
     )
+    if not isinstance(body, str):  # the default html renderer returns str, never tokens
+        raise SystemExit(f"mistune returned {type(body).__name__}, not HTML")
 
     def inline(match: re.Match[str]) -> str:
         src = match.group(1)

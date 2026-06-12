@@ -3,9 +3,10 @@
 Replays one stored raw day (provider/underlying/date) through the *exact* actor pipeline that runs
 live — the canonical :func:`orchestration.build_surface` over a :class:`collectors.ReplaySource`
 push adapter — and plots the reconstructed surface grid (IV vs days-to-expiry vs log-moneyness) with
-the solved raw IV points overlaid. The canonical ``data/`` store is read **read-only**; the
-re-derivation runs in a throwaway temp store, so nothing is ever written back to ``data/``. No
-network. Open the resulting HTML in a browser.
+the solved raw IV points overlaid. The store root honors ``$ALGOTRADING_DATA_ROOT`` (the same
+override the EOD runner and BFF use), defaulting to ``<repo>/data``; it is read **read-only** — the
+re-derivation runs in a throwaway temp store, so nothing is ever written back. No network. Open the
+resulting HTML in a browser.
 
 Usage:
     uv run --group notebooks python scripts/plot_live_surface.py --symbol AAPL --date 2026-05-29
@@ -22,16 +23,15 @@ from tempfile import TemporaryDirectory
 
 import numpy as np
 import plotly.graph_objects as go
-from algotrading.core.config import config_hash, load_platform_config
+from algotrading.core.config import config_hashes, load_platform_config
+from algotrading.core.paths import data_root, repo_root
 from algotrading.infra.actor.outputs import ActorOutputs
 from algotrading.infra.collectors import ReplaySource, replay_day
 from algotrading.infra.connectivity import ManualClock
 from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
 from algotrading.infra.storage import ParquetStore
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_DATA_ROOT = _REPO_ROOT / "data"
-_CONFIGS_DIR = _REPO_ROOT / "configs"
+_CONFIGS_DIR = repo_root() / "configs"
 # Market-data type the replayed session records on its status (3 = delayed/last).
 _MARKET_DATA_TYPE = 3
 
@@ -52,7 +52,7 @@ def _reconstruct(store: ParquetStore, symbol: str, day: date) -> ActorOutputs:
         raise SystemExit(f"No events for {symbol} on {day} in {store!r}.")
     masters = list(store.read("instrument_master", trade_date=day, underlying=symbol))
     config = load_platform_config(_CONFIGS_DIR)
-    cfg_hash = config_hash(config)
+    cfg_hashes = config_hashes(config)
     # Value as-of the last quote in the day — no look-ahead, reproducible from the events.
     as_of = max(event.canonical_ts for event in events)
     replay_source = ReplaySource(events)
@@ -70,7 +70,7 @@ def _reconstruct(store: ParquetStore, symbol: str, day: date) -> ActorOutputs:
             ),
             store=temp_store,
             config=config,
-            config_hash=cfg_hash,
+            config_hashes=cfg_hashes,
             adapter=replay_source,
             masters=masters,
             drive=lambda _collector: replay_source.pump(),
@@ -100,10 +100,12 @@ def _figure(outputs: ActorOutputs, symbol: str, day: date) -> go.Figure:
     iv_pct = np.sqrt(np.clip(w, 0.0, None) / t_years[:, None]) * 100.0
     dte = t_years * 365.0
 
-    solved = [p for p in outputs.iv_points if p.iv is not None and p.iv > 0.0]
+    # Every persisted IvPoint is a converged solve (iv/solver.py: a labeled failure is
+    # never emitted); keep the strictly-positive ones so the iv^2 division below is safe.
+    solved = [p for p in outputs.iv_points if p.implied_vol > 0.0]
     spot = float(outputs.snapshots[0].reference_spot) if outputs.snapshots else float("nan")
     # Days-to-expiry per IV point: total_variance = iv^2 * T, so T = w / iv^2 (no key parsing).
-    point_dte = [(p.total_variance / (p.iv * p.iv)) * 365.0 for p in solved]
+    point_dte = [(p.total_variance / (p.implied_vol * p.implied_vol)) * 365.0 for p in solved]
 
     fig = go.Figure()
     fig.add_trace(
@@ -119,9 +121,9 @@ def _figure(outputs: ActorOutputs, symbol: str, day: date) -> go.Figure:
     )
     fig.add_trace(
         go.Scatter3d(
-            x=[p.k for p in solved],
+            x=[p.log_moneyness for p in solved],
             y=point_dte,
-            z=[p.iv * 100.0 for p in solved],
+            z=[p.implied_vol * 100.0 for p in solved],
             mode="markers",
             marker={"size": 2.5, "color": "crimson"},
             name="solved IV points",
@@ -151,13 +153,15 @@ def main() -> int:
         "--date", default=None, help="trade date YYYY-MM-DD (default: latest stored day)"
     )
     parser.add_argument(
-        "--store-root", default=None, help=f"raw store root (default: {_DATA_ROOT})"
+        "--store-root",
+        default=None,
+        help="raw store root (default: $ALGOTRADING_DATA_ROOT, else <repo>/data)",
     )
     parser.add_argument("--out", default=None, help="output HTML path (never under data/)")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    store = ParquetStore(Path(args.store_root) if args.store_root else _DATA_ROOT)
+    store = ParquetStore(Path(args.store_root) if args.store_root else data_root())
     day = date.fromisoformat(args.date) if args.date else _latest_day(store, symbol)
     if day is None:
         print(f"No stored day for {symbol} in {store!r}.")
@@ -166,11 +170,14 @@ def main() -> int:
     outputs = _reconstruct(store, symbol, day)
     fig = _figure(outputs, symbol, day)
 
-    out = Path(args.out) if args.out else _REPO_ROOT / f"live_surface_{symbol}_{day}.html"
+    out = Path(args.out) if args.out else repo_root() / f"live_surface_{symbol}_{day}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.write_html(str(out))
-    solved = sum(1 for p in outputs.iv_points if p.iv is not None)
-    print(f"wrote {out}  ({len(outputs.surface_grid)} grid rows, {solved} solved IV pts)")
+    # Every persisted IvPoint is a converged solve, so the count is the solved count.
+    print(
+        f"wrote {out}  "
+        f"({len(outputs.surface_grid)} grid rows, {len(outputs.iv_points)} solved IV pts)"
+    )
     return 0
 
 

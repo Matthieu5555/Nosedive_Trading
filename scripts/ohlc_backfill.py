@@ -33,14 +33,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
-from pathlib import Path
 
 import structlog
 from algotrading.core.config.loader import load_platform_config
-from algotrading.infra.connectivity import load_env_file
+from algotrading.core.paths import data_root, load_env_file, repo_root
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import index_registry_from_config
 from algotrading.infra_ibkr.config import load_ibkr_history_config
@@ -56,9 +54,7 @@ from algotrading.infra_ibkr.session_factory import (
 
 _LOGGER = structlog.get_logger("ibkr.ohlc_backfill")
 
-# This file: scripts/ohlc_backfill.py — its parent is the repo root that holds configs/ and data/.
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_CONFIGS_DIR = _REPO_ROOT / "configs"
+_CONFIGS_DIR = repo_root() / "configs"
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -112,7 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     # Load the repo-root .env (IBKR_CP_* / IBKR_CP_GATEWAY) before the session is built; neither
     # `uv run` nor the caller's shell does it. The real environment still wins over the file.
-    load_env_file(_REPO_ROOT / ".env")
+    load_env_file()
     as_of = date.fromisoformat(args.as_of) if args.as_of else datetime.now(UTC).date()
     calc_ts = datetime.now(UTC)
 
@@ -120,8 +116,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     registry = index_registry_from_config(config)
     history_config = load_ibkr_history_config()
     period = args.period or history_config.default_period
-    data_root = Path(os.environ.get("ALGOTRADING_DATA_ROOT", str(_REPO_ROOT / "data")))
-    store = ParquetStore(data_root)
+    store = ParquetStore(data_root())
 
     # Session selection mirrors scripts/eod_run.py: the operator opts into the local CP Gateway
     # cookie path with IBKR_CP_GATEWAY (no OAuth enrolment — the path that sidesteps the broken

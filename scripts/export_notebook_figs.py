@@ -10,14 +10,12 @@ Usage:
     uv run --group notebooks python scripts/export_notebook_figs.py
 """
 
-import pathlib
-
 import nbformat
 import plotly.graph_objects as go
+from algotrading.core.paths import repo_root
 
-_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-NOTEBOOK = _REPO_ROOT / "notebooks" / "vol_surface_pedagogique.ipynb"
-OUT = _REPO_ROOT / "documentation" / "vol-surface" / "assets"
+NOTEBOOK = repo_root() / "notebooks" / "vol_surface_pedagogique.ipynb"
+OUT = repo_root() / "documentation" / "vol-surface" / "assets"
 
 # Figures in order of appearance (one Figure.show() per plotting cell).
 SLUGS = [
@@ -30,7 +28,7 @@ SLUGS = [
 _seen = {"n": 0}
 
 
-def _save(self, *args, **kwargs):
+def _save(self: go.Figure, *args: object, **kwargs: object) -> None:
     i = _seen["n"]
     slug = SLUGS[i] if i < len(SLUGS) else f"extra_{i}"
     grid = getattr(self, "_grid_ref", None)

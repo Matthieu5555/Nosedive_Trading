@@ -23,13 +23,11 @@ import argparse
 from datetime import date
 from pathlib import Path
 
+from algotrading.core.paths import data_root
 from algotrading.infra.collectors import replay_day
 from algotrading.infra.contracts import RawMarketEvent
 from algotrading.infra.storage import ParquetStore, events_to_json
 from algotrading.infra.universe import contracts_to_events
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_DATA_ROOT = _REPO_ROOT / "data"
 
 
 def _latest_day(store: ParquetStore, symbol: str) -> date | None:
@@ -49,13 +47,15 @@ def main() -> int:
         "--provider", default="IBKR", help="source label stamped on the sample (OQ-A)"
     )
     parser.add_argument(
-        "--store-root", default=None, help=f"raw store root (default: {_DATA_ROOT})"
+        "--store-root",
+        default=None,
+        help="raw store root (default: $ALGOTRADING_DATA_ROOT, else <repo>/data)",
     )
     parser.add_argument("--out", required=True, help="output JSON sample path")
     args = parser.parse_args()
 
     symbol = args.symbol.upper()
-    store = ParquetStore(Path(args.store_root) if args.store_root else _DATA_ROOT)
+    store = ParquetStore(Path(args.store_root) if args.store_root else data_root())
     day = date.fromisoformat(args.date) if args.date else _latest_day(store, symbol)
     if day is None:
         print(f"No stored day for {symbol} in {store!r}.")

@@ -44,11 +44,12 @@ import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from algotrading.core.paths import repo_root
 from algotrading.infra_ibkr.connectivity.cp_rest_session import CpRestSession
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
 from algotrading.infra_ibkr.session_factory import build_gateway_session
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = repo_root()
 _CAPTURE_LAG_MIN = 20  # fire this many minutes after the close, so closing prints have settled
 _TICKLE_SECONDS = 60  # well under the idle timeout
 _HEARTBEAT_EVERY = 10  # log a positive heartbeat every Nth cycle (~10 min), not every tickle

@@ -42,21 +42,11 @@ jobs:
       - name: smoke_e2e (offline; no network, no broker, no credentials)
         # Replays the committed synthetic_known_answer chain into a temp store and
         # asserts provenance + byte-identical replay. The web stage is skipped here
-        # because the `web` job below covers it. Exit-code contract (measured,
-        # scripts/smoke_e2e.py): 0 = healthy, 1 = spine broken (hard failure),
-        # 2 = degraded-by-SKIP — and --skip-web itself is a SKIP, as is the known
-        # 1F-grid stage on the reconstruct_day path, so a green run exits 2 here.
-        # Accept 0 and 2; fail only on 1.
-        run: |
-          set +e
-          uv run python scripts/smoke_e2e.py --skip-web
-          code=$?
-          set -e
-          if [ "$code" -eq 1 ]; then
-            echo "smoke_e2e: hard failure (exit 1) — the spine is broken"
-            exit 1
-          fi
-          echo "smoke_e2e: exit $code accepted (0 = healthy, 2 = expected SKIPs only)"
+        # because the `web` job below covers it. --strict collapses the operator
+        # 0/1/2 contract to CI's binary one inside the script: exit 1 only when the
+        # spine is broken; expected SKIPs (--skip-web, the known 1F-grid stage on
+        # the reconstruct_day path) exit 0. No exit-code special-casing needed.
+        run: uv run python scripts/smoke_e2e.py --skip-web --strict
 
   web:
     name: web app lint + tests

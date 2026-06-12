@@ -24,6 +24,10 @@ def main() -> None:
         port=8000,
         reload=True,
         reload_dirs=_RELOAD_DIRS,
+        # Bound the drain on reload: the default waits FOREVER for in-flight/keep-alive
+        # connections, so a source edit while a browser holds a connection wedges the
+        # restart and the API goes dark (observed live 2026-06-12, twice).
+        timeout_graceful_shutdown=10,
     )
 
 

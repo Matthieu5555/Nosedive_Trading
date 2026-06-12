@@ -40,13 +40,12 @@ installed distribution a producer should stamp onto its outputs.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from importlib import metadata
 
+from .hashing import canonical_dumps, sha256_hex
 from .log import get_logger
 
 _log = get_logger(__name__)
@@ -170,7 +169,7 @@ def _ref_payload(ref: SourceRecordRef) -> dict[str, object]:
 
 def _ref_sort_key(ref: SourceRecordRef) -> str:
     """A total, deterministic ordering key for references (their canonical JSON)."""
-    return json.dumps(_ref_payload(ref), sort_keys=True, separators=(",", ":"))
+    return canonical_dumps(_ref_payload(ref))
 
 
 def _sorted_sources(
@@ -206,8 +205,7 @@ def _canonical_stamp_hash(
         "source_records": [_ref_payload(ref) for ref in source_records],
         "source_timestamps": [_as_utc_iso(ts) for ts in source_timestamps],
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return sha256_hex(canonical_dumps(payload))
 
 
 def stamp(
@@ -242,6 +240,32 @@ def stamp(
         source_records=sorted_records,
         source_timestamps=sorted_ts,
         stamp_hash=stamp_hash,
+    )
+
+
+def snapshot_stamp(
+    *,
+    calc_ts: datetime,
+    code_version: str,
+    config_hashes: Mapping[str, str],
+    source_snapshot_ts: datetime,
+    source_records: tuple[SourceRecordRef, ...],
+) -> ProvenanceStamp:
+    """Build a stamp for a record derived from **one snapshot**: every source shares one ts.
+
+    The common emission shape across the analytics chain (IV points, surface slices,
+    the projection grid, forward curve points): a derived record names many source rows,
+    all observed at the same snapshot timestamp. This helper pairs that single timestamp
+    with every reference and delegates to :func:`stamp`, so the result — including
+    ``stamp_hash`` — is byte-identical to hand-building the repeated timestamp tuple
+    (``stamp`` sorts its inputs either way; golden-pinned at the call sites).
+    """
+    return stamp(
+        calc_ts=calc_ts,
+        code_version=code_version,
+        config_hashes=config_hashes,
+        source_records=source_records,
+        source_timestamps=tuple(source_snapshot_ts for _ in source_records),
     )
 
 

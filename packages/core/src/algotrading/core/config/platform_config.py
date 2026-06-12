@@ -33,7 +33,6 @@ they are environment, not economics, and must not change the reproducibility has
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 from collections.abc import Mapping
 from types import MappingProxyType
@@ -47,6 +46,8 @@ from pydantic import (
     ValidationError,
     model_validator,
 )
+
+from ..hashing import canonical_dumps, sha256_hex
 
 
 class ConfigFieldError(Exception):
@@ -721,13 +722,21 @@ def canonical_json(value: Any) -> str:
     return json.dumps(_canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+def object_config_hash(value: Any) -> str:
+    """SHA-256 over the canonical JSON of any config-shaped object.
+
+    The one hash for a frozen config object outside :class:`PlatformConfig` — e.g.
+    infra's ``ProjectionConfig`` or a ``MonetizationConfig`` hashed standalone (M14).
+    Uses :func:`canonical_json` (the typed-config convention: ``-0.0`` collapsed,
+    NaN/Inf rejected) and :func:`~algotrading.core.hashing.sha256_hex`, so it is
+    byte-identical to the inlined ``sha256(canonical_json(...))`` copies it replaced.
+    """
+    return sha256_hex(canonical_json(value))
 
 
 def config_hash(config: PlatformConfig) -> str:
     """Hash the whole config. Moves when any economic field in any section moves."""
-    return _sha256(canonical_json(config))
+    return object_config_hash(config)
 
 
 def section_hash(config: PlatformConfig, section: str) -> str:
@@ -738,7 +747,7 @@ def section_hash(config: PlatformConfig, section: str) -> str:
     """
     if section not in SECTION_NAMES:
         raise KeyError(section)
-    return _sha256(canonical_json(getattr(config, section)))
+    return object_config_hash(getattr(config, section))
 
 
 def section_versions(config: PlatformConfig) -> dict[str, str]:
@@ -779,7 +788,7 @@ def config_hashes(config: PlatformConfig) -> dict[str, str]:
     bundle changed, and a folded ``config_hash`` is at most a derived convenience.
     """
     return {
-        bundle: _sha256(canonical_json({name: getattr(config, name) for name in names}))
+        bundle: object_config_hash({name: getattr(config, name) for name in names})
         for bundle, names in _BUNDLE_SECTIONS.items()
     }
 
@@ -794,7 +803,4 @@ def composite_config_hash(parts: Mapping[str, str]) -> str:
     changes, so two distinct input sets can never collide on the same key. The
     per-component breakdown stays available separately (the manifest) for diagnostics.
     """
-    canonical = json.dumps(
-        {str(k): str(v) for k, v in parts.items()}, sort_keys=True, separators=(",", ":")
-    )
-    return _sha256(canonical)
+    return sha256_hex(canonical_dumps({str(k): str(v) for k, v in parts.items()}))

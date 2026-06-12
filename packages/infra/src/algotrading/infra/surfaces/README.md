@@ -112,7 +112,10 @@ state):
   solved strike (no mismatch). A target outside the fitted strike span is a labeled gap
   (`reason_code="delta_out_of_band"`), not a guess.
 
-**Discount factors (F-SURF-01).** The curve in `SnapshotMarketState.discount_factors` is
+**Discount factors (F-SURF-01).** `SnapshotMarketState` — the per-underlying snapshot
+market state plus its discount-curve resolver — lives in its own module,
+`market_state.py` (M30: curve logic apart from regrid logic; import it from
+`algotrading.infra.surfaces` as before). The curve in `SnapshotMarketState.discount_factors` is
 keyed by the *listed-expiry* maturities the forward estimates priced, which rarely coincide
 with the pinned-tenor years — so a cell's factor is **resolved, never exact-matched**:
 a `discount_factors_by_tenor` label hit wins outright (the join that cannot drift through

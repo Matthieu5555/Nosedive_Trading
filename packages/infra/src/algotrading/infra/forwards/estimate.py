@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from algotrading.core.config import ForwardConfig
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, snapshot_stamp, source_ref
 from algotrading.infra.contracts import ForwardCurvePoint, ForwardDiagnostics
 from algotrading.infra.utils.robust import (
     median_absolute_deviation,
@@ -491,12 +491,12 @@ def forward_curve_point(
     for point in used:
         refs.append(source_ref("market_state_snapshots", source_snapshot_ts, point.call_key))
         refs.append(source_ref("market_state_snapshots", source_snapshot_ts, point.put_key))
-    provenance: ProvenanceStamp = stamp(
+    provenance: ProvenanceStamp = snapshot_stamp(
         calc_ts=calc_ts,
         code_version=FORWARD_VERSION,
         config_hashes=config_hashes,
+        source_snapshot_ts=source_snapshot_ts,
         source_records=tuple(refs),
-        source_timestamps=tuple(source_snapshot_ts for _ in refs),
     )
     diagnostics = ForwardDiagnostics(
         method=estimate.method,

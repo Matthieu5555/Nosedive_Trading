@@ -40,6 +40,7 @@ from .platform_config import (
     config_hash,
     config_hashes,
     config_snapshot,
+    object_config_hash,
     section_hash,
     section_versions,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "load_platform_config",
     "load_yaml_config",
     "mapping_config_hash",
+    "object_config_hash",
     "section_hash",
     "section_versions",
 ]

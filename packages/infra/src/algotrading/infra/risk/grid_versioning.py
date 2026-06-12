@@ -15,17 +15,17 @@ the format every persisted ``effective_*_version`` string already carries; byte-
 to the inlined copies this module replaced). The payloads themselves stay at the call
 sites: this module owns the *encoding*, each grid owns *what* identifies it.
 
-Boundary note: ``core`` is growing a shared hashing module (M25) with the same
-canonical-JSON-SHA256 primitive; when it lands, the body of
-:func:`short_construction_hash` should delegate to it (same bytes, gated by the
-version-string pins in ``test_scenario.py`` / ``test_risk_surface.py``).
+Boundary note: the encoding + digest live in ``core.hashing`` (M25) — this module
+delegates to those primitives (same bytes, gated by the version-string pins in
+``test_scenario.py`` / ``test_risk_surface.py``) and owns only the truncation
+convention the persisted ``effective_*_version`` strings carry.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
+
+from algotrading.core.hashing import canonical_dumps, sha256_hex
 
 # The persisted version strings carry a 12-hex-char construction-hash suffix; this is the
 # format constant, not a tunable (changing it would move every effective_*_version).
@@ -60,5 +60,4 @@ def short_construction_hash(
     everything that identifies its grid construction (policy version, axis rules, …);
     any change to that payload moves the persisted version automatically.
     """
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:length]
+    return sha256_hex(canonical_dumps(payload))[:length]

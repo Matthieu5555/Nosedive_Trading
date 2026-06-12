@@ -11,7 +11,8 @@ import-linter enforces that this is the bottom of the stack.
   `PlatformConfig`; `ConfigError`), `platform_config.py` (the typed `PlatformConfig` and
   its domain sub-configs: `QcThresholdConfig` (with its nested `GridQcConfig` grid-QC
   cut-offs, WS 1H), `ScenarioConfig`, `SolverConfig`, `UniverseConfig`, …), and the hashes
-  (`config_hash`, `composite_config_hash`). The
+  (`config_hash`, `object_config_hash`, `composite_config_hash` — digests via
+  `core.hashing`). The
   config standard this implements is
   [ADR 0028](../../.agent/decisions/0028-configuration-and-reproducibility-standard.md) /
   `documentation/configuration-and-reproducibility.md`; the application work
@@ -22,14 +23,26 @@ import-linter enforces that this is the bottom of the stack.
   which owns the `exchange_calendars` dependency core stays blind to). The loader
   special-cases that one nested-map field via `build_dataclass`'s `caller_supplied` escape
   hatch — every flat economic field still goes through the no-silent-default reflective seam.
+- **`hashing.py`** — the canonical-JSON + SHA-256 primitives every content hash is built
+  from (M25): `canonical_dumps` (the *bare* convention — sorted keys, compact separators,
+  values verbatim) and `sha256_hex`. The repo deliberately keeps three named canonical-JSON
+  conventions because they feed persisted hashes (see the module docstring); the encoding
+  and digest now have one reviewed home, gated by golden-hash pins in the test suites.
 - **`provenance.py`** — the `ProvenanceStamp` every derived record carries (which inputs,
-  which code version, which config hash) and the stamp helpers. This is the mechanism
-  behind the platform's determinism and reproducibility guarantees.
+  which code version, which config hash) and the stamp helpers, including `snapshot_stamp`
+  for the common one-snapshot emission shape (every source row shares one observation
+  timestamp). This is the mechanism behind the platform's determinism and reproducibility
+  guarantees.
 - **`manifest.py`** — the run manifest (the per-run record that makes a run reproducible).
 - **`log.py`** — structured (JSON) logging on stdlib `logging`: `get_logger(name)` returns
   a logger whose handler renders each record as one-line JSON via a custom `JsonFormatter`
-  (it lifts any non-reserved `extra=` keys into the payload). No `structlog` dependency and
-  no correlation-id binding today.
+  (it lifts any non-reserved `extra=` keys into the payload). No `structlog` dependency in
+  core itself — but it is cooperative: when a process entrypoint has run
+  `algotrading.infra.observability.configure_logging()` (the platform-wide structlog
+  configuration, which marks its root handler with `log.HANDLER_MARKER`), `get_logger`
+  attaches no per-logger handler and lets records propagate into that one root JSON
+  stream, so a process never emits two formats. Standalone behavior is unchanged when
+  nothing configured the root.
 
 ## Why it's separate
 

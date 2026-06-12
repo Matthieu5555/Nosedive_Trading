@@ -50,6 +50,7 @@ from algotrading.infra.surfaces import (
     SnapshotMarketState,
     fit_slice,
     interpolate_total_variance,
+    merged_config_hashes,
     project_grid,
     tenor_years,
 )
@@ -835,3 +836,38 @@ def test_projection_config_hash_is_stable_across_processes() -> None:
     plus_zero = ProjectionConfig(version="proj-test", band_labels=("atm",), band_targets=(0.0,))
     assert minus_zero.config_hash() == plus_zero.config_hash()
     assert "NaN" not in canonical_json(ProjectionConfig(version="proj-test"))
+
+
+def test_projection_config_hashes_match_the_pinned_golden_digests() -> None:
+    # Golden-hash pins (M14/M25): captured from the committed pre-refactor code
+    # (audit-fixes-batch1, 2026-06-12), before the inline sha256(canonical_json(...))
+    # copies were routed through core.config.object_config_hash. They freeze the bytes
+    # of the `projection` and `scenarios` bundle hashes that enter every cell's
+    # provenance config_hashes. If one moves, revert — never regenerate.
+    pinned = ProjectionConfig(version="proj-pin-1")
+    assert pinned.config_hash() == (
+        "9f0ebf55ee12c42c62845363fb298d1b5550cb9c6789b107957ef1636bf64b74"
+    )
+    merged = merged_config_hashes(
+        {"universe": "u"},
+        projection=pinned,
+        monetization=MonetizationConfig(version="mon-pin-1"),
+    )
+    assert merged == {
+        "universe": "u",
+        "projection": "9f0ebf55ee12c42c62845363fb298d1b5550cb9c6789b107957ef1636bf64b74",
+        "scenarios": "7fc8935ae8ddc4be16c0fabaaedc1ebde6e7baa260a0583e994d36d3bf4a1327",
+    }
+
+
+def test_pricer_version_has_one_home_in_the_pricing_engine() -> None:
+    # M14: projection.py used to re-declare PRICER_VERSION as a string literal that
+    # merely "mirrored" pricing.engine's — a double-edit hazard (the black76-crr misnomer
+    # correction would today have to hit two files). The projection must now carry the
+    # very same object the engine exports, and the persisted value is pinned to the
+    # string every existing ProjectedOptionAnalytics row carries.
+    from algotrading.infra.pricing import PRICER_VERSION as engine_version
+    from algotrading.infra.surfaces import projection as projection_module
+
+    assert projection_module.PRICER_VERSION is engine_version
+    assert engine_version == "black76-lr-1.0.0"

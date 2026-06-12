@@ -33,6 +33,7 @@ from .fit import (
     surface_grid_cells,
     surface_parameters,
 )
+from .market_state import SnapshotMarketState
 from .projection import (
     PINNED_TENORS,
     PROJECTION_VERSION,
@@ -40,7 +41,6 @@ from .projection import (
     ProjectionConfigError,
     ProjectionGap,
     ProjectionResult,
-    SnapshotMarketState,
     merged_config_hashes,
     project_grid,
     tenor_years,

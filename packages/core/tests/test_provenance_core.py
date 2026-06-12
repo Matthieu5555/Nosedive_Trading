@@ -128,3 +128,75 @@ def test_stamp_hash_is_stable_across_processes() -> None:
             env={**os.environ, "PYTHONHASHSEED": seed},
         )
         assert out.stdout.strip() == expected, f"hash drifted under PYTHONHASHSEED={seed}"
+
+
+def test_stamp_hash_matches_the_pinned_golden_digest() -> None:
+    # Golden-hash pin (M25): this exact digest was captured from the committed
+    # pre-`core.hashing` code (audit-fixes-batch1, 2026-06-12) over these fixed inputs.
+    # It freezes the canonical-JSON + SHA-256 bytes of the stamp hash, so routing the
+    # encoding through `core.hashing` is provably hash-neutral. If this moves, every
+    # persisted ProvenanceStamp would stop validating — revert, never regenerate.
+    calc = datetime(2026, 6, 1, 16, 30, tzinfo=UTC)
+    src = datetime(2026, 6, 1, 16, 0, tzinfo=UTC)
+    refs = (
+        source_ref("iv_points", src, "ESM6 C5300"),
+        source_ref("iv_points", src, "ESM6 P5300"),
+    )
+    pinned = stamp(
+        calc_ts=calc,
+        code_version="pin-1.0.0",
+        config_hashes={"pricing": "abc123", "qc": "def456"},
+        source_records=refs,
+        source_timestamps=(src, src),
+    )
+    assert pinned.stamp_hash == (
+        "2d228ad44515e67cbe6006c4a80f835f5d14c90d7aa7ad5e8d9913630a40e9e0"
+    )
+
+
+def test_snapshot_stamp_equals_stamp_with_the_timestamp_repeated_per_source() -> None:
+    # snapshot_stamp is sugar for the one-snapshot emission shape (M31): every source
+    # shares one observation timestamp. The independent expectation is stamp() itself,
+    # called with the repeated-timestamp tuple written out by hand — the two must be
+    # equal field for field, including the byte-pinned stamp_hash.
+    from algotrading.core import snapshot_stamp
+
+    src = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)
+    refs = (
+        source_ref("iv_points", src, "k-2"),
+        source_ref("iv_points", src, "k-1"),
+    )
+    via_helper = snapshot_stamp(
+        calc_ts=_CALC,
+        code_version="algotrading-infra-0.1.0",
+        config_hashes={"cfg": "cfg-abc"},
+        source_snapshot_ts=src,
+        source_records=refs,
+    )
+    by_hand = stamp(
+        calc_ts=_CALC,
+        code_version="algotrading-infra-0.1.0",
+        config_hashes={"cfg": "cfg-abc"},
+        source_records=refs,
+        source_timestamps=(src, src),
+    )
+    assert via_helper == by_hand
+    assert via_helper.stamp_hash == by_hand.stamp_hash
+    validate_stamp(via_helper)
+
+
+def test_snapshot_stamp_with_no_sources_carries_no_timestamps() -> None:
+    # Degenerate emission (a record derived from zero source rows): the timestamp
+    # tuple must be empty, mirroring what every hand-rolled call site produced.
+    from algotrading.core import snapshot_stamp
+
+    src = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)
+    empty = snapshot_stamp(
+        calc_ts=_CALC,
+        code_version="v",
+        config_hashes={"cfg": "h"},
+        source_snapshot_ts=src,
+        source_records=(),
+    )
+    assert empty.source_records == ()
+    assert empty.source_timestamps == ()

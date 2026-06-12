@@ -196,6 +196,51 @@ def test_composite_config_hash_is_order_independent_and_sensitive() -> None:
     assert composite_config_hash({"qc": "h1", "forward": "CHANGED"}) != a
 
 
+def test_object_config_hash_is_sha256_of_the_canonical_json() -> None:
+    # The single config-object hasher (M14): independently recomputed here as
+    # hashlib-over-canonical_json, and it must agree with config_hash on a whole
+    # PlatformConfig (config_hash is the same operation, typed narrower).
+    import hashlib as _hashlib
+
+    from algotrading.core.config import canonical_json, object_config_hash
+
+    config = _config()
+    expected = _hashlib.sha256(canonical_json(config).encode("utf-8")).hexdigest()
+    assert object_config_hash(config) == expected
+    assert object_config_hash(config) == config_hash(config)
+    assert object_config_hash(config.solver) == section_hash(config, "solver")
+
+
+def test_composite_config_hash_matches_the_pinned_golden_digest() -> None:
+    # Golden-hash pin (M25): captured from the committed pre-`core.hashing` code
+    # (audit-fixes-batch1, 2026-06-12). Freezes the bare canonical-JSON + SHA-256
+    # convention this helper uses, so routing it through `core.hashing` is provably
+    # hash-neutral. If this moves, revert — never regenerate.
+    assert composite_config_hash({"qc": "h1", "forward": "h2"}) == (
+        "606ebfa0c420f68c9b67af4e8c71fc0fd4883d5ee6e3f33c13c8f880cf00b294"
+    )
+
+
+def test_mapping_config_hash_matches_the_pinned_golden_digests() -> None:
+    # Golden-hash pins (M25): captured from the committed pre-`core.hashing` code
+    # (audit-fixes-batch1, 2026-06-12). They freeze the *yaml-loader* convention —
+    # stringified keys, ``default=str``, ``allow_nan=False`` — which deliberately
+    # differs from the bare convention (`core.hashing.canonical_dumps`) and from the
+    # typed-config convention (`canonical_json`). If one moves, revert.
+    from pathlib import Path as _Path
+
+    from algotrading.core.config import mapping_config_hash
+
+    sample = {"b": [1, 2.5], "a": {"nested": True, "z": None}, "7": "seven", "neg": -0.0}
+    assert mapping_config_hash(sample) == (
+        "115ab1d4c9a08156a187e06bec3f63e14b8536b24d75198dc7a31791bb033bca"
+    )
+    # default=str: a non-JSON value (a Path) is stringified, not a crash.
+    assert mapping_config_hash({"path": _Path("/tmp/x"), "vals": (1, 2)}) == (
+        "9dd57e323e263da3bac4928842134e78d12e9379012bcc665682069134aa51d5"
+    )
+
+
 def test_config_hash_is_stable_across_processes() -> None:
     # No PYTHONHASHSEED dependence (TESTING.md cross-process requirement).
     expected = config_hash(_config())

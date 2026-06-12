@@ -13,7 +13,6 @@ tables, per-broker settings) where inheritance is the point.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -23,6 +22,7 @@ from typing import Any
 
 import yaml
 
+from ..hashing import sha256_hex
 from ..log import get_logger
 
 _log = get_logger(__name__)
@@ -65,12 +65,16 @@ def mapping_config_hash(data: Mapping[str, Any]) -> str:
     ``-0.0`` is collapsed onto ``0.0`` and ``allow_nan=False`` rejects NaN/Inf, so the
     hash is well-formed and never splits on a signed zero. The typed-config equivalent is
     ``config.config_hash`` over a ``PlatformConfig``.
+
+    This is the *yaml-loader* canonical-JSON convention (``default=str`` on top of the
+    stringified-keys pre-pass) — deliberately distinct from the bare and typed-config
+    conventions; see ``core.hashing``. Golden-pinned, so it must not be "unified".
     """
     normalized = _stringify_keys(data)
     canonical = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
     )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return sha256_hex(canonical)
 
 
 def _deep_merge(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:

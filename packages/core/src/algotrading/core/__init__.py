@@ -28,8 +28,10 @@ from .config import (
     section_hash,
     section_versions,
 )
+from .hashing import canonical_dumps, sha256_hex
 from .log import get_logger
 from .manifest import Manifest, ManifestValidationError, validate_manifest
+from .paths import data_root, load_env_file, repo_root
 from .provenance import (
     ProvenanceError,
     ProvenanceStamp,
@@ -38,12 +40,16 @@ from .provenance import (
     canonical_primary_key,
     code_identity,
     code_version,
+    snapshot_stamp,
     source_ref,
     stamp,
     validate_stamp,
 )
 
 __all__ = [
+    "data_root",
+    "load_env_file",
+    "repo_root",
     "ForwardConfig",
     "LoadedConfig",
     "Manifest",
@@ -60,6 +66,7 @@ __all__ = [
     "StressSurfaceConfig",
     "SurfaceConfig",
     "UniverseConfig",
+    "canonical_dumps",
     "canonical_primary_key",
     "code_identity",
     "code_version",
@@ -73,6 +80,8 @@ __all__ = [
     "load_yaml_config",
     "section_hash",
     "section_versions",
+    "sha256_hex",
+    "snapshot_stamp",
     "source_ref",
     "stamp",
     "validate_manifest",

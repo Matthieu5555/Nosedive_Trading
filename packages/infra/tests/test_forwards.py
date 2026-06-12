@@ -418,6 +418,13 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
     assert point.diagnostics.quality_label == "good"
     # Lineage names both legs of every used strike (5 strikes -> 10 source records).
     assert len(point.provenance.source_records) == 10
+    # Golden-hash pin (M31): captured from the committed pre-`snapshot_stamp` code
+    # (audit-fixes-batch1, 2026-06-12) over this fixed synthetic fixture. Freezes the
+    # emitted stamp bytes so swapping the hand-rolled refs-then-stamp block for the
+    # core helper is provably hash-neutral. If this moves, revert — never regenerate.
+    assert point.provenance.stamp_hash == (
+        "15d18389881d129812d0500be89a58a774747ede196dee576ea8b58f69000088"
+    )
 
 
 def test_forward_curve_point_refuses_an_unusable_estimate() -> None:

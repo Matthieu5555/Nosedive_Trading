@@ -98,15 +98,22 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # (universe / pricing / scenarios) are byte-identical to the pre-expansion oracle, which
     # is the section-isolation guarantee. The qc/full values below are regenerated over the
     # expanded `qc` bundle.
+    #
+    # T-delta-window (2026-06-12, ADR 0028): `StrikeSelectionConfig.discovery_working_vol` joined
+    # the hashed `universe` bundle (the conservative vol that sizes the discovery strike window;
+    # it lives in config, not a `.py` literal). The `universe` bundle hash — and so the folded
+    # whole-config hash — moved BY DESIGN; `qc`/`pricing`/`scenarios` stay byte-identical (section
+    # isolation). The universe/full values below are regenerated over the expanded `universe`
+    # bundle. This is a pre-capture dev change: no banked historical record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "9a924a8780b7e24289578deb541b51bf8708e571411647db0525689e0fbdd4cf"
+        "cc19d3dc8bb594af464527fb0d5d29ac33f576ca37fbd314b2a951cd2ba07955"
     )
     assert config_hashes(config) == {
         "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
         "qc": "47652138530ab77b3ae3f42efbaf6f60ffea9cff2a9fd60161867a826fc8d9ed",
         "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
-        "universe": "50c147c465108024db571cdd3c6f41415e8e12e486093ad60a9e256a79fe5490",
+        "universe": "d41c8d2d840f7f6de4267018cc1bc451692891055dc5e5513e6c37aab4e2e70c",
     }
 
 

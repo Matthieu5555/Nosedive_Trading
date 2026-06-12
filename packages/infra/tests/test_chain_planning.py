@@ -27,6 +27,8 @@ import pytest
 from algotrading.core.config import StrikeSelectionConfig, load_platform_config
 from algotrading.infra.universe import (
     StrikeSelectionError,
+    discovery_delta_bound,
+    select_discovery_strikes,
     select_strikes,
     select_strikes_delta_band,
 )
@@ -380,3 +382,158 @@ def test_percent_of_spot_policy_is_distinct_and_unchanged() -> None:
     assert pct != band
     assert set(band).issubset(set(strikes))
     assert set(pct).issubset(set(strikes))
+
+
+# --- T-delta-window: the discovery window must CONTAIN the 30Δ band, not clip it -------------
+#
+# Independent oracle, same discipline as the band tests above: the economic 30Δ boundary strikes
+# are computed by inverting the normal CDF (``delta_band_boundary_strike`` → scipy ``norm.ppf``),
+# a *different* code path from the pricing engine the selection reads. The discovery window is
+# built from the engine (it reuses ``select_strikes_delta_band``), so a passing "contains" check
+# is genuine agreement between two implementations, never a round-trip.
+
+
+def test_discovery_delta_bound_widens_and_clamps() -> None:
+    """The discovery bound is strictly looser than the economic bound, and stays in (0, bound).
+
+    Discovery must qualify a strict *superset* of the economic band, so its delta bound is the
+    economic bound minus a margin (a lower cut keeps strikes further out → a wider band). For a
+    tiny economic bound the margin is clamped so the discovery bound is still valid and still
+    strictly below the economic one.
+    """
+    assert discovery_delta_bound(0.30) == pytest.approx(0.20)  # 0.30 − 0.10 margin
+    # Always strictly inside (0, economic_bound), even for a tiny bound the margin would overrun.
+    for economic in (0.30, 0.20, 0.10, 0.05, 0.01):
+        disc = discovery_delta_bound(economic)
+        assert 0.0 < disc < economic
+
+
+def test_discovery_window_contains_30d_band_beyond_a_fixed_count() -> None:
+    """The spec's core: at a long tenor the 30Δ band sits well beyond a fixed strike count, the
+    discovery window contains it, and the economic selection over the window is byte-identical to
+    the economic selection over the full ladder — proving discovery is a true superset that does
+    not clip the band (the bug ``_DISCOVERY_STRIKES_PER_SIDE = 16`` caused).
+    """
+    forward, maturity = 7400.0, 2.0
+    fitted_vol = 0.15  # the (downstream) fitted vol the economic 30Δ band is read against
+    working_vol = 0.40  # the conservative discovery seed (> fitted, so it over-qualifies)
+    economic = _cfg(delta_bound=0.30, min_strikes_per_side=1)
+    # A wide SPX-like 25-pt ladder spanning far beyond both the band and the discovery window.
+    ladder = tuple(float(k) for k in range(3000, 16001, 25))
+
+    # Independent oracle: the 30Δ put/call strikes at the fitted vol (scipy norm.ppf path).
+    call_30 = delta_band_boundary_strike(
+        forward=forward, maturity_years=maturity, volatility=fitted_vol, target_call_nd1=0.30
+    )
+    put_30 = delta_band_boundary_strike(
+        forward=forward, maturity_years=maturity, volatility=fitted_vol, target_call_nd1=0.70
+    )
+    # The 30Δ band is provably beyond a ±16-strike (±400-pt) count on BOTH sides — the clip.
+    assert call_30 > forward + 16 * 25
+    assert put_30 < forward - 16 * 25
+
+    # The delta-driven discovery window contains both 30Δ boundary strikes (the oracle check).
+    window = select_discovery_strikes(
+        ladder, forward=forward, maturity_years=maturity,
+        working_vol=working_vol, selection=economic,
+    )
+    assert min(window) <= put_30
+    assert max(window) >= call_30
+
+    # The killer: the economic 30Δ selection over the discovery window == over the full ladder.
+    # If discovery had clipped the band, the left side would be truncated.
+    band_over_full = select_strikes_delta_band(
+        ladder, forward=forward, maturity_years=maturity, discount_factor=1.0,
+        volatility=fitted_vol, selection=economic,
+    )
+    band_over_window = select_strikes_delta_band(
+        window, forward=forward, maturity_years=maturity, discount_factor=1.0,
+        volatility=fitted_vol, selection=economic,
+    )
+    assert band_over_window == band_over_full
+
+    # And the regression it fixes: the old fixed ±16 count WOULD have clipped this band.
+    nearest_32 = tuple(sorted(sorted(ladder, key=lambda k: abs(k - forward))[:32]))
+    band_over_count = select_strikes_delta_band(
+        nearest_32, forward=forward, maturity_years=maturity, discount_factor=1.0,
+        volatility=fitted_vol, selection=economic,
+    )
+    assert set(band_over_count) < set(band_over_full)  # strict subset → the count clipped the band
+
+
+def test_discovery_window_widens_with_tenor() -> None:
+    """The window's strike reach grows with √T — the property a fixed count cannot have.
+
+    Same forward, vol, and ladder; only the maturity differs. The long-tenor window must reach
+    strictly further OTM on the call side than the short-tenor window (more total variance), so
+    discovery is genuinely tenor-aware, not a flat block reused at every expiry.
+    """
+    forward = 7400.0
+    ladder = tuple(float(k) for k in range(3000, 16001, 25))
+    near = select_discovery_strikes(
+        ladder, forward=forward, maturity_years=0.05, working_vol=0.40,
+        selection=_cfg(min_strikes_per_side=1),
+    )
+    far = select_discovery_strikes(
+        ladder, forward=forward, maturity_years=3.0, working_vol=0.40,
+        selection=_cfg(min_strikes_per_side=1),
+    )
+    assert max(far) > max(near)
+    assert min(far) < min(near)
+
+
+def test_discovery_window_short_tenor_stays_tight() -> None:
+    """At a short tenor the window contains the (narrow) 30Δ band yet does not balloon.
+
+    The 10d window must reach past the 30Δ boundaries (so the band is contained) but stay far
+    inside the full ladder — a fixed-count or a %-of-spot window would not scale down here.
+    """
+    forward, maturity = 7400.0, 10.0 / 365.0
+    fitted_vol = 0.15
+    ladder = tuple(float(k) for k in range(3000, 16001, 25))
+    window = select_discovery_strikes(
+        ladder, forward=forward, maturity_years=maturity, working_vol=0.40,
+        selection=_cfg(min_strikes_per_side=1),
+    )
+    call_30 = delta_band_boundary_strike(
+        forward=forward, maturity_years=maturity, volatility=fitted_vol, target_call_nd1=0.30
+    )
+    put_30 = delta_band_boundary_strike(
+        forward=forward, maturity_years=maturity, volatility=fitted_vol, target_call_nd1=0.70
+    )
+    assert min(window) <= put_30 and max(window) >= call_30  # contains the narrow band
+    # Did not balloon: the window is a small fraction of the full ladder, well inside ±20% of spot.
+    assert max(window) < forward * 1.20
+    assert min(window) > forward * 0.80
+    assert len(window) < len(ladder) // 4
+
+
+def test_discovery_window_garbage_working_vol_raises_labeled() -> None:
+    """A missing/garbage working vol raises a *labeled* StrikeSelectionError, never a silent set.
+
+    The window is sized from the working vol; a zero/non-finite seed is a config error, surfaced
+    loudly (the field is named) rather than quietly producing a degenerate ATM-only window.
+    """
+    ladder = tuple(float(k) for k in range(7000, 7801, 25))
+    for bad in (0.0, -0.20, float("nan"), float("inf")):
+        with pytest.raises(StrikeSelectionError) as exc:
+            select_discovery_strikes(
+                ladder, forward=7400.0, maturity_years=1.0, working_vol=bad,
+                selection=_cfg(min_strikes_per_side=1),
+            )
+        assert exc.value.field == "volatility"
+
+
+def test_discovery_window_is_deterministic_and_reorder_invariant() -> None:
+    """Same inputs → same window; shuffling the listed strikes does not change it (ADR 0027)."""
+    forward = 7400.0
+    ladder = tuple(float(k) for k in range(3000, 16001, 25))
+    once = select_discovery_strikes(
+        ladder, forward=forward, maturity_years=1.5, working_vol=0.40,
+        selection=_cfg(min_strikes_per_side=1),
+    )
+    again = select_discovery_strikes(
+        tuple(reversed(ladder)), forward=forward, maturity_years=1.5, working_vol=0.40,
+        selection=_cfg(min_strikes_per_side=1),
+    )
+    assert once == again

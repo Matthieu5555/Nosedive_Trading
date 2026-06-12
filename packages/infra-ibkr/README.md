@@ -101,7 +101,13 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   `IndexBasket` `run_analytics` consumes. Every event is stamped at the index's own
   `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
   (`test_cp_rest_close_capture.py`). The economic 30Δ delta-band selection runs downstream in the
-  analytics over the captured set.
+  analytics over the captured set. **Discovery strike qualification is delta-driven and
+  tenor-aware** (T-delta-window): per expiry it qualifies the listed strikes that *contain* the
+  30Δ band at that tenor (`universe.select_discovery_strikes`, sized from the index spot and the
+  conservative `strike_selection.discovery_working_vol`), so the band — whose strike width grows
+  with √T — is delivered in full instead of clipped to ~ATM±1% by a fixed strike count. There is
+  no strike cap (a cap would be the same intent-vs-delivery bound the fix removed); the only
+  backstop is a fail-loud runaway valve (`DiscoveryRunawayError`) set far above any real listing.
 - `live_capture.py` — `live_basket_source`: the explicit, logged live-vs-empty selection. A
   credentialed environment acquires an LST, builds the OAuth-signed transport, opens the
   brokerage session, and returns a `collect_live`-backed `BasketSource`; a non-credentialed one

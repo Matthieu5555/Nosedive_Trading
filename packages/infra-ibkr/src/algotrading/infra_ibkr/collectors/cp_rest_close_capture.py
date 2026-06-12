@@ -50,7 +50,7 @@ from datetime import date, datetime
 from typing import Any, Protocol
 
 import structlog
-from algotrading.core.config import PlatformConfig
+from algotrading.core.config import PlatformConfig, StrikeSelectionConfig
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, RawMarketEvent
 from algotrading.infra.surfaces import tenor_years as tenor_year_fraction
@@ -61,6 +61,7 @@ from algotrading.infra.universe import (
     bracket_dates,
     plan_chain,
     select_capture_keys,
+    select_discovery_strikes,
     tenor_target_dates,
 )
 
@@ -82,6 +83,21 @@ class CloseCaptureError(Exception):
     than silently landing an empty day that only an audit would later notice.
     """
 
+
+class DiscoveryRunawayError(CloseCaptureError):
+    """Discovery qualified an implausibly large strike window for one expiry — fail loud.
+
+    The delta-driven discovery window is full-30Δ by policy (no strike cap — a cap would be the
+    same intent-vs-delivery bound T-delta-window removed). Its only backstop is this runaway
+    valve: if a single expiry's qualified strike count exceeds
+    :data:`_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY` — far above any real index listing — the window
+    is pathological (a degenerate listing, or a garbage spot/working vol) and the capture raises
+    rather than streaming a runaway number of paced calls. It *raises*, never silently trims, so
+    the failure is loud (the runner exits non-zero, ``OnFailure=`` alerts) instead of quietly
+    capturing a malformed, oversized chain. A normal SPX/SX5E expiry lists ~100–135 strikes, so
+    this never fires in normal operation.
+    """
+
 # The index itself is a non-option underlying; its security type in our key space. The option
 # multiplier IBKR lists is a string ("100"); the index leg carries a multiplier of 1.0 (it is
 # not a contract with a lot size in our key space, only the options are).
@@ -89,16 +105,38 @@ _INDEX_SECURITY_TYPE = "IND"
 _INDEX_MULTIPLIER = 1.0
 _OPTION_SECURITY_TYPE = "OPT"
 
-# Discovery request-shaping bound (broker-side, not economic): how many near-the-money strikes
-# per side to *qualify* per expiry. Conid resolution costs one `/iserver/secdef/info` call per
-# (strike, right) — IBKR rejects a batch `info` with no strike ("strike is required") — so a dense
-# index ladder (ESTX50 lists ~300 strikes/expiry in 25-pt steps) would otherwise mean thousands of
-# serial paced calls. We qualify only the nearest-the-money block, a superset of the 30Δ band the
-# analytics stage selects downstream; the far wings it would drop anyway are never qualified. This
-# is the same category as `ChainSelection.strike_window_pct` (a request-shaping heuristic that
-# "lives in code"), tightened to a strike *count* because a %-of-spot window does not bound a
-# dense ladder. Keep it a clear superset of the downstream band — see chain_planning.select_strikes.
-_DISCOVERY_STRIKES_PER_SIDE = 16
+# Discovery strike qualification is delta-driven and tenor-aware (T-delta-window): per expiry we
+# qualify the listed strikes that *contain* the 30Δ band at that tenor, computed from the index
+# spot and a conservative working vol via `select_discovery_strikes`. This REPLACED a fixed
+# near-the-money strike count (`_DISCOVERY_STRIKES_PER_SIDE = 16`, ±~1%): the count silently
+# clipped the 30Δ band, whose strike width grows with √T — at 3y the 30Δ call sat ~+18% out while
+# ±16 reached only ±1%, so `delta_band_completeness` QC failed and the band was never delivered.
+# A flat count cannot bound a band whose width scales with maturity, so it is gone, not retuned.
+#
+# Pacing: conid resolution costs one paced `/iserver/secdef/info` call per (strike, right), so a
+# wider window is more paced calls. Per the owner ruling (2026-06-12) we DO NOT cap the band — a
+# generous strike cap is the very intent-vs-delivery bound this task removed, just relabelled, and
+# would re-clip the 30Δ. Instead the window is full-30Δ (a true superset), bounded in practice by
+# the broker's listed strikes (coarse spacing at the long end → tens of strikes, not hundreds),
+# with a fail-LOUD runaway guard far above any real index listing as the only backstop.
+#
+# The runaway guard is a pathology valve, NOT a cap: it raises rather than silently trimming, and
+# is set so far above a real SPX/SX5E expiry (~135 listed strikes at the long end) that it never
+# fires in normal operation — it only catches a degenerate listing or a garbage spot/vol that
+# would otherwise qualify a runaway number of contracts.
+_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY = 1000
+
+# Fallback only: with no usable index spot there is no forward to delta-bound against, so the
+# delta-driven window cannot be computed. We then keep a bounded near-the-money block centred on
+# the median listed strike (deterministic, just not centred on the true forward) so discovery
+# still yields a fittable, paced-safe slice rather than the whole ladder. This is a degraded path
+# (the spot snapshot failed), logged as such — never the normal qualification.
+_DISCOVERY_FALLBACK_STRIKES_PER_SIDE = 16
+
+# Floor on the discovery tenor: a month token's representative date can land on or before the
+# trade date (a near-front month), which would make the working-vol window collapse to ~ATM. One
+# day keeps the band non-degenerate and `select_strikes_delta_band`'s maturity validation happy.
+_MIN_DISCOVERY_TENOR_DAYS = 1
 
 
 class _SupportsGet(Protocol):
@@ -312,12 +350,14 @@ def _nearest_strikes(
 ) -> list[float]:
     """The nearest-the-money block to qualify: up to ``per_side`` strikes either side of spot.
 
-    Bounds the per-(strike, right) ``/secdef/info`` qualification cost on a dense ladder (see
-    ``_DISCOVERY_STRIKES_PER_SIDE``). Strikes are ranked by absolute distance to the centre and the
-    nearest ``2 * per_side`` are kept, then returned ascending. The centre is the snapshot ``spot``
-    when usable; with no spot it falls back to the median listed strike — bounded and deterministic,
-    just not centred on the true forward — mirroring ``chain_planning._strikes_by_moneyness``. A
-    sparse name with fewer than ``2 * per_side`` listed strikes simply qualifies all of them.
+    The **fallback** qualification path, used only when there is no usable index spot (the spot
+    snapshot failed) so the delta-driven window (:func:`select_discovery_strikes`) cannot be
+    computed — see ``_DISCOVERY_FALLBACK_STRIKES_PER_SIDE``. Strikes are ranked by absolute
+    distance to the centre and the nearest ``2 * per_side`` are kept, then returned ascending. The
+    centre is the snapshot ``spot`` when usable; with no spot it falls back to the median listed
+    strike — bounded and deterministic, just not centred on the true forward — mirroring
+    ``chain_planning._strikes_by_moneyness``. A sparse name with fewer than ``2 * per_side`` listed
+    strikes simply qualifies all of them.
     """
     positive = sorted({float(strike) for strike in strikes if float(strike) > 0.0})
     if not positive:
@@ -379,6 +419,68 @@ def _select_discovery_months(months: Sequence[str], selection: ChainSelection) -
     return tuple(token for parsed_date, token in sorted(parsed) if parsed_date in kept)
 
 
+def _qualify_strikes_for_expiry(
+    listed: set[float],
+    *,
+    month: str,
+    spot: float | None,
+    as_of: date,
+    strike_selection: StrikeSelectionConfig,
+    log: Any,
+) -> list[float]:
+    """The listed strikes discovery qualifies for ONE month token — the delta-driven window.
+
+    The normal path computes the tenor (the month token's mid-month representative date minus
+    the trade date, ACT/365, floored to a non-degenerate minimum) and qualifies the listed
+    strikes that *contain* the 30Δ band at that tenor via :func:`select_discovery_strikes` — a
+    conservative-working-vol superset, full-30Δ with no cap, so the downstream economic
+    selection reaches the true 30Δ put and call (the T-delta-window fix). It falls back to a
+    bounded near-the-money block (:func:`_nearest_strikes`), logged as a degraded path, only when
+    there is no usable spot (no forward to delta-bound against) or the month token does not parse
+    to a tenor. Raises :class:`DiscoveryRunawayError` when the qualified window is implausibly
+    large — the fail-loud pacing valve, never a silent trim.
+    """
+    rep_date = _parse_month_token(month)
+    if rep_date is not None and spot is not None and math.isfinite(spot) and spot > 0.0:
+        days = max((rep_date - as_of).days, _MIN_DISCOVERY_TENOR_DAYS)
+        maturity_years = days / 365.0
+        kept = list(
+            select_discovery_strikes(
+                listed,
+                forward=spot,
+                maturity_years=maturity_years,
+                working_vol=strike_selection.discovery_working_vol,
+                selection=strike_selection,
+            )
+        )
+        log.info(
+            "ibkr.close_capture.discovery_window",
+            month=month,
+            maturity_years=round(maturity_years, 4),
+            working_vol=strike_selection.discovery_working_vol,
+            listed=len(listed),
+            kept=len(kept),
+            strike_min=min(kept) if kept else None,
+            strike_max=max(kept) if kept else None,
+        )
+    else:
+        kept = _nearest_strikes(listed, spot, _DISCOVERY_FALLBACK_STRIKES_PER_SIDE)
+        log.info(
+            "ibkr.close_capture.discovery_window_fallback",
+            month=month,
+            reason="unparseable month token" if rep_date is None else "no usable spot",
+            listed=len(listed),
+            kept=len(kept),
+        )
+    if len(kept) > _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY:
+        raise DiscoveryRunawayError(
+            f"discovery qualified {len(kept)} strikes for {month} "
+            f"(> {_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY}) — pathological listing or a bad "
+            f"spot/working-vol; refusing to stream a runaway chain"
+        )
+    return kept
+
+
 def _discover_chain(
     discovery: CpRestDiscovery,
     *,
@@ -387,6 +489,8 @@ def _discover_chain(
     months: Sequence[str],
     selection: ChainSelection,
     spot: float | None,
+    as_of: date,
+    strike_selection: StrikeSelectionConfig,
 ) -> tuple[AvailableChain, dict[str, str]]:
     """Discover the listed chain for the index and build the broker-neutral ``AvailableChain``.
 
@@ -395,12 +499,14 @@ def _discover_chain(
     ``(expiry,strike,right) -> conid`` map so the capture stage can snapshot exactly the
     selected contracts by their resolved conid.
 
-    Per expiry, only the nearest-the-money block (:func:`_nearest_strikes`, ±
-    ``_DISCOVERY_STRIKES_PER_SIDE``) is qualified: ``info`` costs one paced call per
-    (strike, right), so qualifying a dense ladder's full width is thousands of serial calls.
-    The kept block is a superset of the downstream 30Δ band; the far wings it would drop are
-    never qualified.
+    Per expiry the qualified strike window is **delta-driven and tenor-aware**
+    (:func:`_qualify_strikes_for_expiry` → :func:`select_discovery_strikes`): it contains the
+    30Δ band at that tenor (the band's strike width grows with √T), so the downstream economic
+    selection can reach the true 30Δ strikes — never the ~ATM±1% sliver a fixed strike count
+    delivered. ``info`` costs one paced call per (strike, right); the window is full-30Δ (no cap)
+    but bounded in practice by the listed strikes, with the runaway valve as the only backstop.
     """
+    log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
     expirations: list[str] = []
     strikes: set[float] = set()
     conid_by_contract: dict[str, str] = {}
@@ -408,7 +514,15 @@ def _discover_chain(
     for month in _select_discovery_months(months, selection):
         calls, puts = discovery.strikes(conid, month=month)
         listed = set(calls) | set(puts)
-        for strike in _nearest_strikes(listed, spot, _DISCOVERY_STRIKES_PER_SIDE):
+        qualified = _qualify_strikes_for_expiry(
+            listed,
+            month=month,
+            spot=spot,
+            as_of=as_of,
+            strike_selection=strike_selection,
+            log=log,
+        )
+        for strike in qualified:
             for right in ("C", "P"):
                 for contract in discovery.contracts(
                     conid, symbol=index.ibkr_search_symbol, month=month, strike=strike, right=right
@@ -594,6 +708,8 @@ def collect_live_basket(
         months=resolved.option_months,
         selection=selection,
         spot=spot,
+        as_of=as_of.date(),
+        strike_selection=config.universe.strike_selection,
     )
     if not conid_by_contract:
         log.info("ibkr.close_capture.no_options", reason="index lists no qualifiable options")

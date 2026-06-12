@@ -488,6 +488,79 @@ def select_strikes_delta_band(
     return tuple(sorted(set(kept_below) | set(kept_above)))
 
 
+# How much looser than the economic delta bound discovery qualifies: a request-shaping margin
+# (the same category as ``ChainSelection.strike_window_pct``, which "lives in code"), so a 0.30
+# economic band is discovered as a ~0.20 (20Δ) band. The margin sits ON TOP of the conservative
+# working vol: two independent cushions so vol- and forward-estimation error at discovery never
+# clip the downstream 30Δ band. It is NOT economic — it only widens the *superset* discovery
+# qualifies; the band itself is selected downstream with the fitted vol at the true bound.
+_DISCOVERY_DELTA_MARGIN = 0.10
+
+
+def discovery_delta_bound(
+    economic_bound: float, *, margin: float = _DISCOVERY_DELTA_MARGIN
+) -> float:
+    """The looser delta bound discovery qualifies to: the economic bound minus a margin.
+
+    Discovery must qualify a strict **superset** of the economic band so the downstream
+    economic selection (:func:`select_strikes_delta_band`) can actually reach the true 30Δ
+    strikes — a fixed strike count cannot, because the band's strike width grows with ``√T``.
+    Lowering the bound (``0.30 → 0.20``) widens the band (a lower delta cut keeps strikes
+    further out), adding a delta-space cushion on top of the conservative working vol. The
+    result is clamped strictly inside ``(0, economic_bound)`` so the discovery band is always
+    valid and always strictly wider than the economic one, even for a tiny configured bound.
+    """
+    floor = 1e-3
+    widened = economic_bound - margin
+    # Strictly inside (0, economic_bound): never collapse onto or past the economic bound (that
+    # would stop discovery being a superset), never go non-positive (select_strikes_delta_band
+    # requires a bound in (0, 1)).
+    return max(floor, min(widened, economic_bound - floor))
+
+
+def select_discovery_strikes(
+    strikes: Iterable[float],
+    *,
+    forward: float,
+    maturity_years: float,
+    working_vol: float,
+    selection: StrikeSelectionConfig,
+) -> tuple[float, ...]:
+    """The listed strikes discovery must qualify at one tenor to *contain* the 30Δ band.
+
+    The delta-driven, tenor-aware replacement for a fixed nearest-N strike count (the count
+    clipped the long end to ~ATM±1%, because the 30Δ band's strike width grows with ``√T``
+    while a count does not — the T-delta-window bug). It reuses the economic
+    :func:`select_strikes_delta_band` — the **same single delta source**, the pricing engine —
+    at a looser bound (:func:`discovery_delta_bound`) and a conservative config ``working_vol``,
+    so the qualified set is a guaranteed superset of the downstream economic 30Δ band: it
+    over-qualifies, it never clips. Because it walks the *listed* strikes by delta and stops at
+    the (looser) bound, the window is adaptive to the real listing — coarse and bounded at the
+    long end, tight at the front — rather than a raw ``vol·√T`` interval swept over a dense
+    ladder.
+
+    ``forward`` is the discovery forward proxy (the index spot — there is no carry curve at
+    discovery; over-qualifying with a conservative vol absorbs the small spot/forward gap).
+    ``maturity_years`` is the tenor of the expiry being qualified. ``working_vol`` only *sizes*
+    the window; it is never the economic selection (that reads the fitted vol downstream — the
+    "one delta source" rule). The discount factor is pinned to ``1.0`` (carry == 0, the
+    undiscounted forward delta), which is the widest of the two delta conventions, so the
+    window bounds the band under either configured convention. Deterministic and wall-clock-
+    free: every input is as-of the date being planned for (no look-ahead).
+    """
+    discovery_selection = selection.model_copy(
+        update={"delta_bound": discovery_delta_bound(selection.delta_bound)}
+    )
+    return select_strikes_delta_band(
+        strikes,
+        forward=forward,
+        maturity_years=maturity_years,
+        discount_factor=1.0,
+        volatility=working_vol,
+        selection=discovery_selection,
+    )
+
+
 def _plan_strikes(
     *,
     chosen: AvailableChain,

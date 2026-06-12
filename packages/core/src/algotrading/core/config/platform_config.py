@@ -157,6 +157,21 @@ class StrikeSelectionConfig(_ConfigModel):
       nearest-the-money strikes below and above the forward even when the listing is so
       thin (or the band so tight) that fewer fall inside the delta window, so a sparse
       tenor still yields a fittable slice rather than an empty silent result.
+    - ``discovery_working_vol`` — the conservative per-index working volatility that *sizes
+      the discovery strike window* (T-delta-window). The fitted vol that the economic 30Δ
+      band reads is only known downstream, so discovery cannot use it; it qualifies a
+      delta-driven, tenor-aware **superset** of the band using this seed vol (the band edges
+      grow with ``√T``), wide enough that the downstream :func:`select_strikes_delta_band`
+      can always reach the true 30Δ put and call instead of being clipped to ~ATM±1% by a
+      fixed strike count. It is a request-shaping *sizing* seed, **not** an economic band
+      selector — the band is chosen downstream with the fitted vol, never this value — so it
+      is deliberately set conservative-HIGH (over-qualify, never under: under-sizing it
+      re-creates the clip the task killed). It lives here as auditable hashed config rather
+      than a ``.py`` literal (ADR 0028 / C7), and because under-sizing it *can* change which
+      strikes are captured it is reproducibility-relevant and folds into the universe hash.
+      One value, not per-index: adding an index stays "conid + enabled" with nothing to
+      hand-tune; if a genuinely more volatile index ever clips, ``delta_band_completeness``
+      QC turns red and an override is added then, data-driven, never speculatively.
     """
 
     model_config = _SECTION_CONFIG
@@ -165,6 +180,7 @@ class StrikeSelectionConfig(_ConfigModel):
     delta_bound: float = Field(default=0.30, gt=0.0, lt=1.0)
     delta_convention: Literal["forward_undiscounted", "spot_discounted"] = "forward_undiscounted"
     min_strikes_per_side: int = Field(default=2, ge=1)
+    discovery_working_vol: float = Field(default=0.40, gt=0.0)
 
 
 class UniverseConfig(_ConfigModel):

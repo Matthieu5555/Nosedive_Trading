@@ -24,11 +24,20 @@ exchange: SMART
 #   - min_strikes_per_side: the per-tenor floor — keep at least this many nearest-the-money
 #     strikes each side of the forward even when fewer fall inside the delta window, so a
 #     thin tenor still yields a fittable slice (a labeled floor, not an empty silent result).
+#   - discovery_working_vol: the conservative working vol that SIZES the discovery strike window
+#     (T-delta-window). The fitted vol the economic 30Δ band uses is only known downstream, so
+#     discovery sizes a delta-driven, tenor-aware SUPERSET of the band with this seed vol (the
+#     band edges grow with √T). It is a request-shaping sizing seed, NOT an economic band
+#     selector — the band is chosen downstream with the fitted vol — set conservative-HIGH so we
+#     over-qualify, never clip (under-sizing re-creates the ±~1% clip this fix killed). One value,
+#     not per-index: adding an index stays "conid + enabled". If a genuinely more volatile index
+#     ever clips, delta_band_completeness QC turns red and an override is added then, data-driven.
 strike_selection:
-  version: "2026.06.07"
+  version: "2026.06.12"
   delta_bound: 0.30
   delta_convention: forward_undiscounted
   min_strikes_per_side: 2
+  discovery_working_vol: 0.40
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
 # the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary

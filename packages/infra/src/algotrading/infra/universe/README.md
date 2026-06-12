@@ -117,6 +117,16 @@ policy surface, not one per broker or per script:
   forward, vol, maturity, or an out-of-range discount factor) raise a labeled
   `StrikeSelectionError`, never a bare `NaN` strike.
 
+`select_discovery_strikes` (T-delta-window) is the **discovery** sibling of the delta band:
+it qualifies the listed strikes a broker capture must resolve so the economic 30Δ selection
+above can later reach the true band. It reuses `select_strikes_delta_band` — the same single
+delta source, the pricing engine — at a *looser* bound (`discovery_delta_bound`, the economic
+bound minus a ~20Δ margin) and a conservative `discovery_working_vol` seed (the fitted vol is
+only known downstream), so the qualified set is a guaranteed superset of the 30Δ band that
+scales with √T. It replaced a fixed strike count that clipped the band's long end to ~ATM±1%;
+it has no cap (a cap would re-create that clip), the broker's listed strikes being the natural
+bound.
+
 ```python
 from algotrading.core.config import load_platform_config
 from algotrading.infra.universe import select_strikes_delta_band

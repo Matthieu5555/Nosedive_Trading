@@ -17,6 +17,7 @@ a capture that keeps zero events after that guard fails loud rather than landing
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -33,8 +34,9 @@ from algotrading.infra.actor import IndexBasket
 from algotrading.infra.universe import ChainSelection, IbkrRef, IndexEntry
 from algotrading.infra_ibkr.collectors import cp_rest_close_capture
 from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
-    _DISCOVERY_STRIKES_PER_SIDE,
+    _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY,
     CloseCaptureError,
+    DiscoveryRunawayError,
     _nearest_strikes,
     collect_live_basket,
 )
@@ -402,12 +404,32 @@ class _DenseLadderGateway(_FakeGateway):
         return 3.0  # a flat mark for any qualified contract — this test pins discovery, not marks
 
 
-def test_discovery_qualifies_only_the_near_the_money_block_on_a_dense_ladder() -> None:
-    """Conid qualification is bounded to ±``_DISCOVERY_STRIKES_PER_SIDE`` strikes per expiry.
+def _delta_band_boundary_strike(
+    *, forward: float, maturity_years: float, volatility: float, target_call_nd1: float
+) -> float:
+    """Independent oracle: the strike whose undiscounted call delta ``N(d1)`` equals the target.
 
-    The gateway lists 200 strikes per month; the capture must call ``/secdef/info`` only for the 32
-    nearest-the-money strikes (both rights) on each of the two kept maturities, and for no wing
-    strike. Asserted on the recorded calls — the qualification cost, not the basket contents.
+    Inverts the normal CDF with scipy ``norm.ppf`` — a *different* path from the pricing engine
+    the discovery window reads — so a "contains the band" assertion is genuine agreement, not a
+    round-trip. (Same derivation as ``fixtures.synthetic.delta_band_boundary_strike``, inlined so
+    this collector test carries its own oracle.)
+    """
+    from scipy.stats import norm
+
+    d1 = float(norm.ppf(target_call_nd1))
+    ln_fk = d1 * volatility * math.sqrt(maturity_years) - 0.5 * volatility**2 * maturity_years
+    return forward / math.exp(ln_fk)
+
+
+def test_discovery_window_is_delta_driven_and_tenor_aware_on_a_dense_ladder() -> None:
+    """Discovery qualifies the delta-driven, tenor-aware window — NOT a fixed strike count.
+
+    The T-delta-window fix: the gateway lists 200 strikes per month; the capture must qualify
+    the strikes that *contain* the 30Δ band at each tenor (a band whose strike width grows with
+    √T), so the longer maturity reaches strictly further out than the nearer one and the window
+    extends past the old ±16 (±~1%) block that clipped the band. Asserted on the recorded
+    ``/secdef/info`` calls — the qualification itself — with an independent ``norm.ppf`` oracle
+    for the band edges.
     """
     gateway = _DenseLadderGateway()
     basket = collect_live_basket(
@@ -416,16 +438,85 @@ def test_discovery_qualifies_only_the_near_the_money_block_on_a_dense_ladder() -
     )
     assert basket is not None
 
-    info_strikes = {
-        float(params["strike"]) for path, params in gateway.calls if path == "/iserver/secdef/info"
-    }
-    expected_block = {float(strike) for strike in range(84, 116)}  # the 32 nearest to spot 100
-    assert info_strikes == expected_block
-    # No wing strike was ever qualified (the far ladder is never paid for).
-    assert not info_strikes & {1.0, 40.0, 160.0, 200.0}
-    # One info call per (strike, right) over both kept months — bounded, not 200-wide.
-    info_calls = [path for path, _ in gateway.calls if path == "/iserver/secdef/info"]
-    assert len(info_calls) == 2 * (2 * _DISCOVERY_STRIKES_PER_SIDE) * 2  # months × strikes × rights
+    info_by_month: dict[str, set[float]] = {}
+    for path, params in gateway.calls:
+        if path == "/iserver/secdef/info":
+            info_by_month.setdefault(str(params["month"]), set()).add(float(params["strike"]))
+    jun, sep = info_by_month["JUN26"], info_by_month["SEP26"]
+
+    # Tenor-aware: the longer (SEP) maturity reaches strictly further OTM on BOTH sides than the
+    # nearer (JUN) one — a property a fixed strike count cannot have.
+    assert max(sep) > max(jun)
+    assert min(sep) < min(jun)
+    # The clip is gone: the window reaches past the old ±16-strike block ([84, 116] at spot 100).
+    assert max(sep) > 116.0 and min(sep) < 84.0
+
+    # Independent oracle: the SEP discovery 20Δ band edges (discovery widens 0.30 → 0.20) at the
+    # working vol the capture used (config default 0.40), via scipy norm.ppf. The capture sizes
+    # the tenor from the month token's mid-month representative date (day 15), so match that.
+    t_sep = (date(2026, 9, 15) - CLOSE.date()).days / 365.0
+    low_edge = _delta_band_boundary_strike(
+        forward=_SPOT, maturity_years=t_sep, volatility=0.40, target_call_nd1=0.80
+    )
+    high_edge = _delta_band_boundary_strike(
+        forward=_SPOT, maturity_years=t_sep, volatility=0.40, target_call_nd1=0.20
+    )
+    # Every listed integer strike comfortably inside the band was qualified...
+    inside = {float(k) for k in range(1, 201) if low_edge + 1.0 <= k <= high_edge - 1.0}
+    assert inside <= sep
+    # ...and nothing far outside it was (the window contains the band, it does not balloon).
+    assert all(low_edge - 2.0 <= strike <= high_edge + 2.0 for strike in sep)
+
+
+def test_discovery_runaway_window_fails_loud() -> None:
+    """A pathological listing whose band engulfs > the runaway threshold of strikes fails LOUD.
+
+    Full-30Δ has no cap (a cap would be the intent-vs-delivery bound this task removed). The only
+    backstop is the runaway valve: a single expiry qualifying an implausible number of strikes
+    raises :class:`DiscoveryRunawayError` — it never silently trims. Built with a finely-spaced
+    ladder that lies entirely inside the (moderate-vol) delta band, so the qualified count exceeds
+    the threshold.
+    """
+    # 0.05-spaced strikes across [80, 150) — ~1400 points, all inside the 20Δ band at vol 0.40,
+    # T≈1y (band ≈ [77.3, 152.0] for forward 100), so the qualified count clears the threshold.
+    fine_ladder = {round(80.0 + 0.05 * i, 2) for i in range(1400)}
+    assert len(fine_ladder) > _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY
+    strike_selection = StrikeSelectionConfig(
+        version="ss-runaway", delta_bound=0.30, min_strikes_per_side=1, discovery_working_vol=0.40
+    )
+    with pytest.raises(DiscoveryRunawayError):
+        cp_rest_close_capture._qualify_strikes_for_expiry(
+            fine_ladder,
+            month="MAR27",  # ~1y out from the 2026-03-12 close → a non-degenerate tenor
+            spot=100.0,
+            as_of=CLOSE.date(),
+            strike_selection=strike_selection,
+            log=cp_rest_close_capture._LOGGER,
+        )
+
+
+def test_discovery_falls_back_to_a_bounded_block_with_no_spot() -> None:
+    """With no usable spot there is no forward to delta-bound against → bounded count fallback.
+
+    The delta window cannot be computed without a forward, so discovery degrades to the
+    near-the-money count block (centred on the median listed strike) rather than the whole ladder
+    — bounded and paced-safe, logged as the degraded path it is.
+    """
+    ladder = {float(k) for k in range(1, 201)}
+    strike_selection = StrikeSelectionConfig(
+        version="ss-nospot", delta_bound=0.30, min_strikes_per_side=1, discovery_working_vol=0.40
+    )
+    kept = cp_rest_close_capture._qualify_strikes_for_expiry(
+        ladder,
+        month="SEP26",
+        spot=None,
+        as_of=CLOSE.date(),
+        strike_selection=strike_selection,
+        log=cp_rest_close_capture._LOGGER,
+    )
+    # The fallback keeps a bounded block, never the full 200-strike ladder.
+    assert 0 < len(kept) <= 2 * cp_rest_close_capture._DISCOVERY_FALLBACK_STRIKES_PER_SIDE
+    assert set(kept) < ladder
 
 
 def test_a_name_with_no_listed_options_is_a_clean_no_capture() -> None:

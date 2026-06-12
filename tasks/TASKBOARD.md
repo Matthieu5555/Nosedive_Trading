@@ -14,6 +14,11 @@ finished task specs move to [`tasks/archive/`](archive/).
 
 ## Current phase: build the index options-analytics pipeline
 
+> **▶ The destination: [`TARGET.md`](../TARGET.md)** — the owner's end-state capability map
+> (position/risk, P&L attribution incl. Rho/Vanna/Volga + residual, surface engine, stress,
+> execution/OMS, portfolio analytics, backtesting, strategy allocation) and the current
+> end-of-week goal. New work is designed by diffing TARGET against this board.
+
 > **▶ START HERE: [`documentation/roadmap-index-analytics.md`](../documentation/roadmap-index-analytics.md)
 > is the plan of record for what we build next.** It sequences the work Phase 0 → Phase 3:
 > index → point-in-time constituents → delta-band option chain → IV / surface / Greeks
@@ -73,8 +78,7 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 > `orchestration/eod_planning.py`, `universe/calendar_resolver.py`) waits until that hotfix lands.**
 
 | Who | Area / files | Claimed | Note |
-|-----|--------------|---------|------|
-| — ✅ cleared 2026-06-11 | **Landed & verified, rows retired:** server-deploy slice-A scripts (`68d2c1f`/`91abdd7`); REP3/9/10 specs written; **V1** smoke driver (`e742bb2`); **QA-FIX** `fix/live-spine-wiring` now **merged**; **2A** (`b2b6a06`), **2B** (`d7a18f8`→`b947a63`), **1A** membership (`abdfd36`/`c019513`), **1F** — specs archived. Plus prior week: T-bridge (`28ab59c`), front fallback (`780ba85`), ingestion ADRs 0039/0040/0041, 429 backoff (`0c255ba`), data-root (`a2707e8`). | 2026-06-11 | see commits/ADRs |
+|-----|--------------|---------|------|| — ✅ cleared 2026-06-11 | **Landed & verified, rows retired:** server-deploy slice-A scripts (`68d2c1f`/`91abdd7`); REP3/9/10 specs written; **V1** smoke driver (`e742bb2`); **QA-FIX** `fix/live-spine-wiring` now **merged**; **2A** (`b2b6a06`), **2B** (`d7a18f8`→`b947a63`), **1A** membership (`abdfd36`/`c019513`), **1F** — specs archived. Plus prior week: T-bridge (`28ab59c`), front fallback (`780ba85`), ingestion ADRs 0039/0040/0041, 429 backoff (`0c255ba`), data-root (`a2707e8`). | 2026-06-11 | see commits/ADRs |
 | ✅ SPX hotfix LANDED | `hotfix/spx-post-close-guard` `07c892d` — session-bounded post-close guard + loud drop-100% (+ F-UNI-01 leap-day). Cherry-pick `07c892d` for a clean PR. | 2026-06-11 | **Deploy before tonight's 22:45 XNYS fire.** Unblocks the XEUR timer shift → `clock-timer-coherence.md`. |
 | ✅ Audit lanes LANDED | `audit-fixes-batch1`: STORAGE F-STORE-01/03 (`445d1ac`), RISK F-RISK-01/02/03 (`ba9dd26`), BFF F-BFF-01/02 (`059a9e8`). Gate 983/0/16. **REP1 = won't-fix** (content-hash). | 2026-06-11 | merge/cherry-pick the 3 to main |
 | ✅ vol-surface correctness LANDED | `audit-fixes-batch1`: F-SURF-01 (DF flat-forward interpolation at the pinned tenor + `discount_factors_by_tenor` label binding, `PROJECTION_VERSION` 1.1.0, golden regen), SVI degeneracy propagated (`bound_hits`/`converged` → contract + BFF + a visible smile flag, `degeneracy_reasons` policy = flag-not-reject), F-BFF-03 (null holes + `has_holes`), F-BFF-04 (`axis_type` + `moneyness_buckets`). Spec [`T-vol-surface-correctness`](T-vol-surface-correctness.md). Gate 1371/0/16 + web 34/0, look-ahead clean. **Downstream half only** — 1m…3y stay labeled gaps until [T-tenor-selection](T-tenor-selection.md) + re-capture. | 2026-06-12 | merge with the batch |

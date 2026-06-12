@@ -4,6 +4,10 @@ Plain-language summary of the Volatility Infrastructure roadmap (the ThomasOssen
 document, `ThomasOssen/1780037915_industrial_roadmap_volatility_infrastructure_v4.pdf`),
 plus how we intend to build it with the least code.
 
+Where this is all going — the end-state capability map and the current end-of-week
+goal — lives in [`TARGET.md`](TARGET.md). This file is the *how-we-build* companion to
+that *what-done-looks-like*.
+
 ## What we're building
 
 The document is a build manual, not a strategy. It tells us how to build the

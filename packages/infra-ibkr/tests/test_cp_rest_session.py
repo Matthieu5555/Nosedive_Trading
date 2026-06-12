@@ -38,6 +38,14 @@ def test_authenticated_parses_flat_status() -> None:
     assert CpRestSession(_FakeTransport(status=_COMPETING)).authenticated() is False
 
 
+def test_reauthenticate_posts_the_revive_endpoint() -> None:
+    # The self-heal seam the keepalive scripts ride: a lapsed brokerage session (SSO cookie still
+    # valid) is revived by POSTing /iserver/reauthenticate — fire-and-forget, no return contract.
+    transport = _FakeTransport(tickle_sequence=[{"message": "triggered"}])
+    CpRestSession(transport).reauthenticate()
+    assert transport.posts == ["/iserver/reauthenticate"]
+
+
 def test_tickle_parses_nested_status() -> None:
     alive = CpRestSession(_FakeTransport(tickle_sequence=[_TICKLE_ALIVE]))
     assert alive.tickle() is True

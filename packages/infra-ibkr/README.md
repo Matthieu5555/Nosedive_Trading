@@ -18,18 +18,31 @@ A custom adapter over IBKR's Client Portal Web API (the Saxo/Deribit pattern —
 real deps):
 
 - `connectivity/cp_rest_transport.py` — `CpRestTransport`: REST verbs + the WS URL over the local
-  CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests.
+  CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests. Also
+  the **one canonical transport-seam protocol** (`SupportsRestGet` / `SupportsRest`) every
+  collector types its injected transport with — no more per-module `_SupportsGet` copies.
 - `connectivity/cp_rest_session.py` — `CpRestSession`: the brokerage-session lifecycle TWS hid —
   `/iserver/auth/status` + a daemon-thread `/tickle` keepalive (~60 s; the session dies after ~5 min
-  of silence). A dropped session fires `on_drop`, the engine's reconnect signal.
-- `collectors/cp_rest_normalize.py` — `snapshot_to_events`: CP market-data field tags
-  (`84`→bid, `86`→ask, `88`/`85`→sizes, `31`→last, `7059`→last size) → `RawMarketEvent`, dropping
-  the `-1` sentinel; one normalizer serves both the REST snapshot and the WS frame.
+  of silence). A dropped session fires `on_drop`, the engine's reconnect signal;
+  `reauthenticate()` (POST `/iserver/reauthenticate`) revives a lapsed brokerage session without
+  a fresh login — the self-heal `scripts/eod_babysitter.py` rides.
+- `collectors/cp_rest_wire.py` — the typed CP wire shapes (pydantic v2, `extra="ignore"`): one
+  model per payload (`SnapshotRow`, `SecdefSearchRow`, `StrikesPayload`, `SecdefInfoRow`,
+  `HistoryBarRow`) with the bespoke broker-scalar coercers moved **verbatim** into
+  `BeforeValidator` types (`parse_field_value` is hash-gated — it feeds persisted events), so
+  every collector consumes one validated shape instead of `isinstance`-spelunking `Any`.
+- `collectors/cp_rest_normalize.py` — `snapshot_to_events`: a validated `SnapshotRow` (CP field
+  tags `84`→bid, `86`→ask, `88`/`85`→sizes, `31`→last, `7059`→last size; the `-1` sentinel
+  dropped) → `RawMarketEvent`; one normalizer serves both the REST snapshot and the WS frame.
+- `collectors/cp_rest_snapshot.py` — the shared snapshot engine: URI-safe conid batching (the
+  HTTP-414 fix) + cold-snapshot warm-up polling, used by **both** the live adapter and the EOD
+  close capture, so neither path re-rolls a bare single-shot request.
 - `collectors/cp_rest_discovery.py` — `CpRestDiscovery`: the mandatory `secdef/search → strikes →
   info` sequence (the `name` field **omitted** on search, or strikes are suppressed).
-- `collectors/cp_rest_adapter.py` — `CpRestMarketDataAdapter`: REST `snapshot()` + WS frame
-  handling → `RawMarketEvent`. **Read-only** — only `/iserver/marketdata/*` is ever touched, never
-  an order endpoint (asserted in `test_cp_rest_adapter.py`).
+- `collectors/cp_rest_adapter.py` — `CpRestMarketDataAdapter`: REST `snapshot()` (through the
+  shared snapshot engine — batched, warm-up polled) + WS frame handling → `RawMarketEvent`.
+  **Read-only** — only `/iserver/marketdata/*` is ever touched, never an order endpoint (asserted
+  in `test_cp_rest_adapter.py`).
 
 ### Historical daily-OHLC backfill (ADR 0031) — unattended, OAuth 1.0a
 
@@ -73,8 +86,10 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   **dedicated second IBKR username** so the backfill never knocks out the live feed (one username =
   one brokerage session).
 - `config.py` + `configs/ibkr_history.yaml` — the no-hardcode connectivity config (base URL,
-  timeouts, the cap, established-wait, retry/backoff). Secrets (consumer key/secret, the Live
-  Session Token) stay in `.env`, never here (C7 discipline).
+  timeouts, the cap, established-wait, retry/backoff), validated through frozen, strict pydantic
+  models (the REP6 config seam); a rejected field raises a labeled `IbkrHistoryConfigError`.
+  Secrets (consumer key/secret, the Live Session Token) stay in `.env`, never here (C7
+  discipline).
 
 ### Live EOD close capture — `collect_live` (WS 1C, ADR 0024/0031)
 
@@ -95,19 +110,23 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   (`secType=IND`, matched to the routing exchange CBOE/EUREX). The live path resolves the conid
   itself, so the registry's `conid: 0` placeholder is **unused** on the live path
   (`test_cp_rest_index.py`).
-- `collectors/cp_rest_close_capture.py` — `collect_live_basket`: the real capture. Resolve conid
-  → snapshot the index spot → discover + `plan_chain` the option chain → cap with
+- `collectors/cp_rest_close_capture.py` — `collect_live_basket`: the capture **orchestration**.
+  Resolve conid → snapshot the index spot → discover + `plan_chain` the option chain → cap with
   `select_capture_keys` → snapshot the selected contracts at the close → assemble the
   `IndexBasket` `run_analytics` consumes. Every event is stamped at the index's own
   `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
   (`test_cp_rest_close_capture.py`). The economic 30Δ delta-band selection runs downstream in the
-  analytics over the captured set. **Discovery strike qualification is delta-driven and
-  tenor-aware** (T-delta-window): per expiry it qualifies the listed strikes that *contain* the
-  30Δ band at that tenor (`universe.select_discovery_strikes`, sized from the index spot and the
-  conservative `strike_selection.discovery_working_vol`), so the band — whose strike width grows
-  with √T — is delivered in full instead of clipped to ~ATM±1% by a fixed strike count. There is
-  no strike cap (a cap would be the same intent-vs-delivery bound the fix removed); the only
-  backstop is a fail-loud runaway valve (`DiscoveryRunawayError`) set far above any real listing.
+  analytics over the captured set. The snapshot mechanics live in `cp_rest_snapshot.py` (above);
+  the window policy lives in `cp_rest_chain_window.py` (below).
+- `collectors/cp_rest_chain_window.py` — the discovery-window policy: `MMMYY` month-token
+  parsing/bracketing (tenor-targeted discovery reaching the 2y/3y long end) and the
+  **delta-driven, tenor-aware strike qualification** (T-delta-window): per expiry it qualifies
+  the listed strikes that *contain* the 30Δ band at that tenor
+  (`universe.select_discovery_strikes`, sized from the index spot and the conservative
+  `strike_selection.discovery_working_vol`), so the band — whose strike width grows with √T — is
+  delivered in full instead of clipped to ~ATM±1% by a fixed strike count. There is no strike cap
+  (a cap would be the same intent-vs-delivery bound the fix removed); the only backstop is a
+  fail-loud runaway valve (`DiscoveryRunawayError`) set far above any real listing.
 - `live_capture.py` — `live_basket_source`: the explicit, logged live-vs-empty selection. A
   credentialed environment acquires an LST, builds the OAuth-signed transport, opens the
   brokerage session, and returns a `collect_live`-backed `BasketSource`; a non-credentialed one
@@ -149,13 +168,13 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
 - Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the
   Nautilus-TWS path with `uv sync --extra ibkr`; the REST path needs the CP Gateway running locally.
 
-## Superseded
+## Superseded (deleted)
 
 The hand-rolled `ib_async` modules (`connectivity/ibkr_transport.py`,
-`collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) are
-**superseded** by the two live transports (CP-REST + Nautilus-TWS, ADR 0023/0024). They are
-**not** wired into `select_ibkr_transport` and are not surfaced from the package `__init__` —
-reached only by direct import, and their tests `importorskip("ib_async")`. They are retained
-only as dead reference for now; deleting them is a loose cleanup (it was *not* part of C5, which
-retired the flat `backend/` tree, only). Real captured samples for the gate's SDK-free replay
-test: `samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.
+`collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) were
+superseded by the two live transports (CP-REST + Nautilus-TWS, ADR 0023/0024) and have been
+**deleted** along with their `importorskip("ib_async")` tests (2026-06 maintainability audit,
+M21). The cross-broker shape test (`infra-deribit/tests/test_broker_agnostic.py`) now exercises
+IBKR through the SDK-free `snapshot_to_events`, so it runs unconditionally in the gate. Real
+captured samples for the gate's SDK-free replay test:
+`samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.

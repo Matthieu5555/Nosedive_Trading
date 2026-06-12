@@ -14,14 +14,15 @@ The Client Portal history payload shape (per the CP Web API docs):
     ]}
 
 Each ``data`` row is one bar: ``t`` is the bar's start time in epoch **milliseconds** (UTC),
-``o/h/l/c`` the OHLC prices, ``v`` the volume. The ``t`` → ``trade_date`` mapping is the
-load-bearing, look-ahead-sensitive step: a bar is stamped with **its own** trade date, never
-a later one, so a backfill never writes a future-dated value onto a past bar.
+``o/h/l/c`` the OHLC prices, ``v`` the volume — the typed shape is
+:class:`~.cp_rest_wire.HistoryBarRow`. The ``t`` → ``trade_date`` mapping is the load-bearing,
+look-ahead-sensitive step: a bar is stamped with **its own** trade date, never a later one, so a
+backfill never writes a future-dated value onto a past bar.
 
-A row that cannot be turned into an honest bar (missing field, non-finite, ``high < low``,
-open/close outside ``[low, high]``) is rejected with a labeled error rather than coerced —
-the same write-ahead discipline storage enforces, applied at the normalize door so a bad
-fetch fails before it reaches disk.
+A row that cannot be turned into an honest bar (missing field, non-numeric, non-finite,
+``high < low``, open/close outside ``[low, high]``) is rejected with a labeled error rather than
+coerced — the same write-ahead discipline storage enforces, applied at the normalize door so a
+bad fetch fails before it reaches disk.
 """
 
 from __future__ import annotations
@@ -32,30 +33,17 @@ from datetime import UTC, date, datetime
 
 from algotrading.core.provenance import ProvenanceStamp
 from algotrading.infra.contracts import DailyBar
+from pydantic import ValidationError
 
-# CP history row field codes → meaning. ``t`` epoch-ms (UTC), ``o/h/l/c`` prices, ``v`` volume.
+from .cp_rest_wire import HistoryBarRow
+
+# The bar's timestamp field code (``t``, epoch-ms UTC) — read ahead of full validation because
+# the per-bar provenance stamp is keyed on the trade date.
 _TIME_MS = "t"
-_OPEN = "o"
-_HIGH = "h"
-_LOW = "l"
-_CLOSE = "c"
-_VOLUME = "v"
 
 
 class HistoryNormalizeError(Exception):
     """A history payload/row could not be turned into an honest ``DailyBar`` — labeled."""
-
-
-def _require_number(row: Mapping[str, object], key: str) -> float:
-    if key not in row:
-        raise HistoryNormalizeError(f"history bar missing field {key!r}: {row!r}")
-    value = row[key]
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise HistoryNormalizeError(f"history bar field {key!r} must be numeric, got {value!r}")
-    number = float(value)
-    if not math.isfinite(number):
-        raise HistoryNormalizeError(f"history bar field {key!r} is not finite: {value!r}")
-    return number
 
 
 def trade_date_of_bar(epoch_ms: object) -> date:
@@ -72,6 +60,21 @@ def trade_date_of_bar(epoch_ms: object) -> date:
     return datetime.fromtimestamp(float(epoch_ms) / 1000.0, tz=UTC).date()
 
 
+def _bar_rejection(exc: ValidationError, row: Mapping[str, object]) -> HistoryNormalizeError:
+    """A pydantic rejection of one bar row → the labeled error naming the offending field.
+
+    Reports the first validation error by its wire field code (the alias — ``o/h/l/c/v/t``),
+    preserving the "missing field" / "must be numeric" / "is not finite" wording callers and
+    tests rely on.
+    """
+    error = exc.errors()[0]
+    location = error.get("loc", ())
+    field = str(location[0]) if location else "<row>"
+    if error.get("type") == "missing":
+        return HistoryNormalizeError(f"history bar missing field {field!r}: {row!r}")
+    return HistoryNormalizeError(f"history bar field {field!r} {error.get('msg', '')}: {row!r}")
+
+
 def _row_to_bar(
     row: Mapping[str, object],
     *,
@@ -81,33 +84,31 @@ def _row_to_bar(
     source: str,
     provenance: ProvenanceStamp,
 ) -> DailyBar:
-    if _TIME_MS not in row:
-        raise HistoryNormalizeError(f"history bar missing timestamp {_TIME_MS!r}: {row!r}")
-    high = _require_number(row, _HIGH)
-    low = _require_number(row, _LOW)
-    open_ = _require_number(row, _OPEN)
-    close = _require_number(row, _CLOSE)
-    volume = _require_number(row, _VOLUME)
+    try:
+        bar = HistoryBarRow.model_validate(row)
+    except ValidationError as exc:
+        raise _bar_rejection(exc, row) from exc
     # Reject inconsistent OHLC at the normalize door (mirrors storage's write-ahead check),
     # so a corrupt fetch fails here with the offending field named rather than at the write.
-    if high < low:
-        raise HistoryNormalizeError(f"history bar high {high!r} < low {low!r}: {row!r}")
-    for name, value in (("open", open_), ("close", close)):
-        if not (low <= value <= high):
+    if bar.high < bar.low:
+        raise HistoryNormalizeError(f"history bar high {bar.high!r} < low {bar.low!r}: {row!r}")
+    for name, value in (("open", bar.open_price), ("close", bar.close)):
+        if not (bar.low <= value <= bar.high):
             raise HistoryNormalizeError(
-                f"history bar {name} {value!r} outside [low={low!r}, high={high!r}]: {row!r}"
+                f"history bar {name} {value!r} outside [low={bar.low!r}, high={bar.high!r}]: "
+                f"{row!r}"
             )
-    if volume < 0:
-        raise HistoryNormalizeError(f"history bar volume must be non-negative: {volume!r}")
+    if bar.volume < 0:
+        raise HistoryNormalizeError(f"history bar volume must be non-negative: {bar.volume!r}")
     return DailyBar(
         provider=provider,
         underlying=underlying,
-        trade_date=trade_date_of_bar(row[_TIME_MS]),
-        open=open_,
-        high=high,
-        low=low,
-        close=close,
-        volume=volume,
+        trade_date=trade_date_of_bar(bar.time_ms),
+        open=bar.open_price,
+        high=bar.high,
+        low=bar.low,
+        close=bar.close,
+        volume=bar.volume,
         bar_type=bar_type,
         source=source,
         provenance=provenance,

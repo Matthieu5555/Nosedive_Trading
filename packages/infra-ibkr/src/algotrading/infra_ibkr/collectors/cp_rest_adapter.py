@@ -4,8 +4,10 @@ The adapter binds a set of subscribed instruments (our instrument key ↔ IBKR c
 Client Portal market data into our immutable ``RawMarketEvent`` rows via :mod:`.cp_rest_normalize`.
 Two ingestion modes share that one normalizer:
 
-* :meth:`snapshot` — a REST pull (``GET /iserver/marketdata/snapshot``). Fully exercised in CI
-  against a fake transport; this is the verifiable REST market-data path.
+* :meth:`snapshot` — a REST pull through the shared snapshot engine (:mod:`.cp_rest_snapshot`),
+  inheriting its URI-safe conid batching (the HTTP-414 fix) and its cold-snapshot warm-up, so a
+  freshly-subscribed line returns marks instead of metadata. Fully exercised in CI against a fake
+  transport; this is the verifiable REST market-data path.
 * :meth:`subscribe` / :meth:`_handle_frame` — the live WebSocket stream (``smd+conid``). The frame
   parsing is unit-tested; the socket itself runs only on a machine with a live CP Gateway.
 
@@ -16,22 +18,21 @@ fake transport.
 
 import json
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Protocol
 
 from algotrading.infra.contracts import RawMarketEvent
 
+from ..connectivity.cp_rest_transport import SupportsRestGet
 from .cp_rest_normalize import REQUEST_FIELD_TAGS, snapshot_to_events
+from .cp_rest_snapshot import snapshot_with_warmup
+from .cp_rest_wire import SnapshotRow
 from .market_fields import to_datetime
 
 # The market-data field tags the adapter subscribes/snapshots — the ones the normalizer maps.
 _REQUEST_FIELDS: tuple[str, ...] = REQUEST_FIELD_TAGS
-
-
-class _SupportsGet(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -57,29 +58,23 @@ def unsubscribe_message(conid: int) -> str:
     return f"umd+{conid}+{{}}"
 
 
-def _exchange_ts(row: Mapping[str, object], fallback: datetime) -> datetime:
-    """The row's update time from CP ``_updated`` (ms epoch), or ``fallback`` if absent."""
-    updated = row.get("_updated")
-    if isinstance(updated, (int, float)):
-        return to_datetime(int(updated) * 1_000_000)  # ms → ns
-    return fallback
-
-
 class CpRestMarketDataAdapter:
     """Bind subscribed instruments and normalize CP market data into ``RawMarketEvent`` rows."""
 
     def __init__(
         self,
-        transport: _SupportsGet,
+        transport: SupportsRestGet,
         instruments: Sequence[CpInstrument],
         *,
         session_id: str,
         now_fn: Callable[[], datetime] = _now_utc,
+        _sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._transport = transport
         self._by_conid = {instrument.conid: instrument for instrument in instruments}
         self._session_id = session_id
         self._now_fn = now_fn
+        self._sleep = _sleep
         self._sequence = 0
         self._tick_cb: Callable[[RawMarketEvent], None] | None = None
         self._fault_cb: Callable[[str], None] | None = None
@@ -92,32 +87,37 @@ class CpRestMarketDataAdapter:
         self._fault_cb = callback
 
     def snapshot(self) -> tuple[RawMarketEvent, ...]:
-        """REST pull of the current quote for every subscribed instrument → events."""
-        conids = ",".join(str(conid) for conid in self._by_conid)
-        rows = self._transport.get(
-            "/iserver/marketdata/snapshot",
-            params={"conids": conids, "fields": ",".join(_REQUEST_FIELDS)},
+        """REST pull of the current quote for every subscribed instrument → events.
+
+        Rides the shared snapshot engine: the request is split into URI-safe conid batches and
+        each batch is warm-up polled, so a cold first snapshot does not come back metadata-only
+        (the 414/cold-snapshot fixes the close capture proved live). ``_sleep`` is the injected
+        warm-up sleep — tests poll with no real waiting.
+        """
+        rows = snapshot_with_warmup(
+            self._transport, conids=tuple(self._by_conid), sleep=self._sleep
         )
         events: list[RawMarketEvent] = []
-        if isinstance(rows, Sequence):
-            for row in rows:
-                if isinstance(row, Mapping):
-                    events.extend(self._row_to_events(row))
+        for row in rows:
+            events.extend(self._row_to_events(row, receipt_ts=self._now_fn()))
         return tuple(events)
 
-    def _row_to_events(self, row: Mapping[str, object]) -> tuple[RawMarketEvent, ...]:
-        conid = row.get("conid")
-        instrument = self._by_conid.get(int(conid)) if isinstance(conid, (int, str)) else None
+    def _row_to_events(
+        self, row: SnapshotRow, *, receipt_ts: datetime
+    ) -> tuple[RawMarketEvent, ...]:
+        instrument = self._by_conid.get(row.conid) if row.conid is not None else None
         if instrument is None:
             return ()
-        receipt_ts = self._now_fn()
+        exchange_ts = (
+            to_datetime(row.updated_ms * 1_000_000) if row.updated_ms is not None else receipt_ts
+        )
         events = snapshot_to_events(
             row,
             instrument_key=instrument.instrument_key,
             underlying=instrument.underlying,
             session_id=self._session_id,
             sequence=self._sequence,
-            exchange_ts=_exchange_ts(row, receipt_ts),
+            exchange_ts=exchange_ts,
             receipt_ts=receipt_ts,
         )
         self._sequence += 1
@@ -134,7 +134,8 @@ class CpRestMarketDataAdapter:
         topic = message.get("topic")
         if not (isinstance(topic, str) and topic.startswith("smd+")):
             return  # control frames (heartbeats, system) are not observations
-        for event in self._row_to_events(message):
+        row = SnapshotRow.model_validate(message)
+        for event in self._row_to_events(row, receipt_ts=self._now_fn()):
             if self._tick_cb is not None:
                 self._tick_cb(event)
 

@@ -7,6 +7,14 @@ OAuth-signed :class:`CpRestTransport` and a fired index, it captures the index's
 and returns the populated :class:`IndexBasket` the downstream analytics / ``project_grid`` /
 persist stages already consume.
 
+This module is the *orchestration* only; its mechanics live in three focused seams:
+
+* :mod:`.cp_rest_snapshot` — the snapshot engine (URI-safe conid batching + cold-snapshot
+  warm-up), shared with the live adapter;
+* :mod:`.cp_rest_chain_window` — the discovery-window policy (month-token bracketing + the
+  delta-driven, tenor-aware T-delta-window strike qualification) and its failure modes;
+* :mod:`.cp_rest_wire` — the typed CP wire shapes and the verbatim broker-scalar coercions.
+
 The capture is the two-stage chain-selection policy the platform fixes once
 (:mod:`algotrading.infra.universe.chain_planning`), driven over CP REST:
 
@@ -43,11 +51,8 @@ capture against a fake gateway with no network and no secrets.
 
 from __future__ import annotations
 
-import math
-import time
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Any, Protocol
 
 import structlog
 from algotrading.core.config import PlatformConfig, StrikeSelectionConfig
@@ -58,45 +63,30 @@ from algotrading.infra.universe import (
     AvailableChain,
     ChainSelection,
     IndexEntry,
-    bracket_dates,
     plan_chain,
     select_capture_keys,
-    select_discovery_strikes,
-    tenor_target_dates,
 )
 
+from ..connectivity.cp_rest_transport import SupportsRestGet
+from .cp_rest_chain_window import (
+    CloseCaptureError,
+    DiscoveryRunawayError,
+    qualify_strikes_for_expiry,
+    select_discovery_months,
+)
 from .cp_rest_discovery import CpRestDiscovery
 from .cp_rest_index import resolve_index
-from .cp_rest_normalize import REQUEST_FIELD_TAGS, snapshot_to_events
+from .cp_rest_normalize import snapshot_to_events
+from .cp_rest_snapshot import snapshot_index_spot, snapshot_with_warmup
+from .cp_rest_wire import SnapshotRow, coerce_int_or_none
+
+__all__ = [
+    "CloseCaptureError",
+    "DiscoveryRunawayError",
+    "collect_live_basket",
+]
 
 _LOGGER = structlog.get_logger("ibkr.close_capture")
-
-
-class CloseCaptureError(Exception):
-    """A close capture that fetched contracts but kept none — a loud, non-silent failure.
-
-    Raised when the snapshot returned option rows but every one was dropped (all post-``next_open``,
-    i.e. a wrong-day capture), so the basket would land *zero* events. That is an anomaly, not a
-    clean no-capture day: a genuinely optionless index returns ``None`` from
-    :func:`collect_live_basket` upstream of any snapshot (a labeled no-op). Surfacing this as a
-    raised error makes the runner exit non-zero so the systemd ``OnFailure=`` alert fires, rather
-    than silently landing an empty day that only an audit would later notice.
-    """
-
-
-class DiscoveryRunawayError(CloseCaptureError):
-    """Discovery qualified an implausibly large strike window for one expiry — fail loud.
-
-    The delta-driven discovery window is full-30Δ by policy (no strike cap — a cap would be the
-    same intent-vs-delivery bound T-delta-window removed). Its only backstop is this runaway
-    valve: if a single expiry's qualified strike count exceeds
-    :data:`_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY` — far above any real index listing — the window
-    is pathological (a degenerate listing, or a garbage spot/working vol) and the capture raises
-    rather than streaming a runaway number of paced calls. It *raises*, never silently trims, so
-    the failure is loud (the runner exits non-zero, ``OnFailure=`` alerts) instead of quietly
-    capturing a malformed, oversized chain. A normal SPX/SX5E expiry lists ~100–135 strikes, so
-    this never fires in normal operation.
-    """
 
 # The index itself is a non-option underlying; its security type in our key space. The option
 # multiplier IBKR lists is a string ("100"); the index leg carries a multiplier of 1.0 (it is
@@ -104,166 +94,6 @@ class DiscoveryRunawayError(CloseCaptureError):
 _INDEX_SECURITY_TYPE = "IND"
 _INDEX_MULTIPLIER = 1.0
 _OPTION_SECURITY_TYPE = "OPT"
-
-# Discovery strike qualification is delta-driven and tenor-aware (T-delta-window): per expiry we
-# qualify the listed strikes that *contain* the 30Δ band at that tenor, computed from the index
-# spot and a conservative working vol via `select_discovery_strikes`. This REPLACED a fixed
-# near-the-money strike count (`_DISCOVERY_STRIKES_PER_SIDE = 16`, ±~1%): the count silently
-# clipped the 30Δ band, whose strike width grows with √T — at 3y the 30Δ call sat ~+18% out while
-# ±16 reached only ±1%, so `delta_band_completeness` QC failed and the band was never delivered.
-# A flat count cannot bound a band whose width scales with maturity, so it is gone, not retuned.
-#
-# Pacing: conid resolution costs one paced `/iserver/secdef/info` call per (strike, right), so a
-# wider window is more paced calls. Per the owner ruling (2026-06-12) we DO NOT cap the band — a
-# generous strike cap is the very intent-vs-delivery bound this task removed, just relabelled, and
-# would re-clip the 30Δ. Instead the window is full-30Δ (a true superset), bounded in practice by
-# the broker's listed strikes (coarse spacing at the long end → tens of strikes, not hundreds),
-# with a fail-LOUD runaway guard far above any real index listing as the only backstop.
-#
-# The runaway guard is a pathology valve, NOT a cap: it raises rather than silently trimming, and
-# is set so far above a real SPX/SX5E expiry (~135 listed strikes at the long end) that it never
-# fires in normal operation — it only catches a degenerate listing or a garbage spot/vol that
-# would otherwise qualify a runaway number of contracts.
-_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY = 1000
-
-# Fallback only: with no usable index spot there is no forward to delta-bound against, so the
-# delta-driven window cannot be computed. We then keep a bounded near-the-money block centred on
-# the median listed strike (deterministic, just not centred on the true forward) so discovery
-# still yields a fittable, paced-safe slice rather than the whole ladder. This is a degraded path
-# (the spot snapshot failed), logged as such — never the normal qualification.
-_DISCOVERY_FALLBACK_STRIKES_PER_SIDE = 16
-
-# Floor on the discovery tenor: a month token's representative date can land on or before the
-# trade date (a near-front month), which would make the working-vol window collapse to ~ATM. One
-# day keeps the band non-degenerate and `select_strikes_delta_band`'s maturity validation happy.
-_MIN_DISCOVERY_TENOR_DAYS = 1
-
-
-class _SupportsGet(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
-
-
-def _as_int_or_none(value: object) -> int | None:
-    """Coerce a broker-supplied scalar to ``int``, or ``None`` when it is not coercible.
-
-    The broker's conid / ``_updated`` fields are nominally integers but ride an untyped JSON
-    payload, so an unexpected shape (``None``, a non-numeric string, a dict) must degrade to a
-    structured skip at the call site rather than raise a bare ``ValueError`` and abort the whole
-    capture — mirroring the guarded ``float()`` parsing of the mark fields. ``bool`` is rejected
-    because a JSON ``true``/``false`` is never a valid conid or millisecond timestamp.
-    """
-    if value is None or isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value) if math.isfinite(value) else None
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
-# IBKR's `/iserver/marketdata/snapshot` returns only field *metadata* (server ids, request echo)
-# on the first call(s) for a freshly-subscribed conid; the requested value tags (last/bid/ask/…)
-# populate only once the server-side market-data line warms — typically a second or two later. A
-# single un-retried call is exactly why a cold capture saw `spot=None` and then selected zero
-# options. So we poll the same request until the values appear. Bounded by `_..._ATTEMPTS` so an
-# illiquid contract that never prints cannot hang the fire, and the loop stops early once the
-# populated set stops growing (converged) — the dead wings won't print, no point waiting on them.
-_SNAPSHOT_WARMUP_ATTEMPTS = 8
-_SNAPSHOT_WARMUP_SLEEP_S = 1.0
-
-# IBKR's snapshot is a GET carrying the conids in the query string. A full index chain is hundreds
-# of contracts, and that many conids overflow the gateway's request-URI length limit (HTTP 414 —
-# the failure a real ESTX50 capture hit once spot resolved and the whole chain was discovered). So
-# the request is split into URI-safe batches and the rows concatenated; each batch is independently
-# warm-up polled. 50 conids ≈ a 600-char URL, comfortably under the limit and well within IBKR's
-# documented per-request conid cap.
-_SNAPSHOT_MAX_CONIDS = 50
-
-
-def _row_has_value(row: Mapping[str, object]) -> bool:
-    """True when a snapshot row carries at least one parseable market-data value tag.
-
-    The warm/cold discriminator: a cold row carries only metadata (``conid``, ``server_id``,
-    field-availability flags), no value tag; a warm row carries last/bid/ask/size. A tag counts as
-    present when it parses to a float (after stripping a leading status flag like ``C``/``H``),
-    mirroring the normalizer's own parse so "populated" here means "will yield an event".
-    """
-    for tag in REQUEST_FIELD_TAGS:
-        value = row.get(tag)
-        if value is None:
-            continue
-        try:
-            float(str(value).lstrip("CHch").strip())
-        except ValueError:
-            continue
-        return True
-    return False
-
-
-def _populated_conids(rows: object, requested: frozenset[int]) -> set[int]:
-    """The subset of ``requested`` conids whose snapshot row carries a parseable value tag."""
-    populated: set[int] = set()
-    if not isinstance(rows, Sequence):
-        return populated
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        conid = _as_int_or_none(row.get("conid"))
-        if conid is None or conid not in requested:
-            continue
-        if _row_has_value(row):
-            populated.add(conid)
-    return populated
-
-
-def _warmup_poll_batch(transport: _SupportsGet, batch: Sequence[int]) -> list[Any]:
-    """Warm-up poll ONE URI-safe batch of conids; return its snapshot rows (possibly empty).
-
-    Issues the same ``/iserver/marketdata/snapshot`` request up to ``_SNAPSHOT_WARMUP_ATTEMPTS``
-    times, returning as soon as every conid in the batch carries a value tag (fully warm) or the
-    populated set stops growing between two polls (converged — the rest are illiquid and won't
-    print). On a gateway that already returns values on the first call this returns immediately
-    with a single request and no sleep; on a cold subscription it pays a few short polls so the
-    capture sees real marks instead of an empty first response.
-    """
-    requested = frozenset(batch)
-    params = {
-        "conids": ",".join(str(conid) for conid in sorted(requested)),
-        "fields": ",".join(REQUEST_FIELD_TAGS),
-    }
-    rows = transport.get("/iserver/marketdata/snapshot", params=params)
-    populated = _populated_conids(rows, requested)
-    for _attempt in range(_SNAPSHOT_WARMUP_ATTEMPTS - 1):
-        if populated == requested:
-            break  # every requested conid is warm — nothing left to wait for
-        time.sleep(_SNAPSHOT_WARMUP_SLEEP_S)
-        rows = transport.get("/iserver/marketdata/snapshot", params=params)
-        next_populated = _populated_conids(rows, requested)
-        if next_populated and next_populated <= populated:
-            break  # no new conid warmed since the last poll — converged, stop polling
-        populated = next_populated
-    if isinstance(rows, Sequence) and not isinstance(rows, (str, bytes)):
-        return list(rows)
-    return []
-
-
-def _snapshot_with_warmup(transport: _SupportsGet, *, conids: Sequence[int]) -> list[Any]:
-    """Snapshot the conids in URI-safe batches (each warm-up polled) and concatenate the rows.
-
-    A full chain's conids overflow the snapshot GET's URI length (HTTP 414), so the request is
-    split into ``_SNAPSHOT_MAX_CONIDS``-sized batches; :func:`_warmup_poll_batch` handles the
-    cold-snapshot warm-up per batch. Deterministic order: conids are sorted, then batched.
-    """
-    ordered = sorted(frozenset(conids))
-    rows: list[Any] = []
-    for start in range(0, len(ordered), _SNAPSHOT_MAX_CONIDS):
-        rows.extend(_warmup_poll_batch(transport, ordered[start : start + _SNAPSHOT_MAX_CONIDS]))
-    return rows
 
 
 def _index_key(index: IndexEntry, conid: int) -> InstrumentKey:
@@ -305,182 +135,6 @@ def _master(instrument: InstrumentKey, as_of: datetime) -> InstrumentMaster:
     )
 
 
-def _spot_from_snapshot(
-    rows: object, *, conid: int
-) -> float | None:
-    """Pull the index level (last, else bid/ask mid) from a snapshot response for one conid.
-
-    Used only to centre the discovery strike window — a request-shaping number, not an
-    observation persisted anywhere. ``None`` when the row is absent or unparseable, in which
-    case :func:`plan_chain` falls back to its spot-less (median-strike) window.
-    """
-    if not isinstance(rows, Sequence):
-        return None
-    for row in rows:
-        if not isinstance(row, Mapping):
-            continue
-        row_conid = _as_int_or_none(row.get("conid"))
-        if row_conid is None or row_conid != conid:
-            continue
-        for tag in ("31", "84", "86"):  # last, bid, ask
-            value = row.get(tag)
-            if value is None:
-                continue
-            try:
-                parsed = float(str(value).lstrip("CHch").strip())
-            except ValueError:
-                continue
-            if parsed > 0.0:
-                return parsed
-    return None
-
-
-def _snapshot_index_spot(transport: _SupportsGet, conid: int) -> float | None:
-    """REST snapshot the index level to centre the chain window (request-shaping only).
-
-    Warm-up polled (:func:`_snapshot_with_warmup`): the index's first cold snapshot carries no
-    value tag, so a single call would return ``spot=None`` and collapse the downstream selection.
-    """
-    rows = _snapshot_with_warmup(transport, conids=(conid,))
-    return _spot_from_snapshot(rows, conid=conid)
-
-
-def _nearest_strikes(
-    strikes: set[float], spot: float | None, per_side: int
-) -> list[float]:
-    """The nearest-the-money block to qualify: up to ``per_side`` strikes either side of spot.
-
-    The **fallback** qualification path, used only when there is no usable index spot (the spot
-    snapshot failed) so the delta-driven window (:func:`select_discovery_strikes`) cannot be
-    computed — see ``_DISCOVERY_FALLBACK_STRIKES_PER_SIDE``. Strikes are ranked by absolute
-    distance to the centre and the nearest ``2 * per_side`` are kept, then returned ascending. The
-    centre is the snapshot ``spot`` when usable; with no spot it falls back to the median listed
-    strike — bounded and deterministic, just not centred on the true forward — mirroring
-    ``chain_planning._strikes_by_moneyness``. A sparse name with fewer than ``2 * per_side`` listed
-    strikes simply qualifies all of them.
-    """
-    positive = sorted({float(strike) for strike in strikes if float(strike) > 0.0})
-    if not positive:
-        return []
-    if spot is not None and math.isfinite(spot) and spot > 0.0:
-        centre = spot
-    else:
-        centre = positive[len(positive) // 2]
-    nearest = sorted(positive, key=lambda strike: (abs(strike - centre), strike))[: 2 * per_side]
-    return sorted(nearest)
-
-
-_MONTH_TOKEN_ABBR: dict[str, int] = {
-    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
-    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
-}
-
-
-def _parse_month_token(token: str) -> date | None:
-    """An IBKR ``MMMYY`` option-month token (e.g. ``DEC28``) → a mid-month representative date.
-
-    The CP ``secdef/search`` lists option months as ``JUN26;JUL26;DEC28`` tokens; one token
-    deflates to several concrete expiries downstream via ``secdef/info``. Mid-month (day 15) is
-    the representative used to *bracket* tokens around a tenor target; the precise per-tenor
-    bracket is refined on the concrete expiries by :func:`select_expiries_bracketing`. Returns
-    ``None`` for an unparseable token (skipped, never guessed).
-    """
-    cleaned = token.strip().upper()
-    if len(cleaned) != 5:
-        return None
-    month = _MONTH_TOKEN_ABBR.get(cleaned[:3])
-    year = cleaned[3:]
-    if month is None or not year.isdigit():
-        return None
-    return date(2000 + int(year), month, 15)
-
-
-def _select_discovery_months(months: Sequence[str], selection: ChainSelection) -> tuple[str, ...]:
-    """Which listed month tokens to qualify into the chain.
-
-    Legacy (no tenor targeting): the nearest ``max_expiries`` tokens in listed order — the old
-    front-loaded slice. Tenor-targeted: the month tokens **straddling each pinned tenor's target
-    date** (:func:`bracket_dates` over the tokens' representative dates), so discovery reaches the
-    long end (2y/3y) the nearest-N slice silently dropped. Tokens that do not parse fall back to
-    the legacy slice rather than being dropped, so a wire-shape surprise degrades safely.
-    """
-    if not selection.targets_tenors:
-        return tuple(months[: selection.max_expiries])
-    assert selection.as_of is not None  # targets_tenors guarantees this; pin it for the type
-    parsed = [
-        (parsed_date, token)
-        for token in months
-        if (parsed_date := _parse_month_token(token)) is not None
-    ]
-    if not parsed:
-        return tuple(months[: selection.max_expiries])
-    targets = tenor_target_dates(selection.as_of, selection.tenor_years)
-    kept = set(bracket_dates([parsed_date for parsed_date, _ in parsed], targets))
-    return tuple(token for parsed_date, token in sorted(parsed) if parsed_date in kept)
-
-
-def _qualify_strikes_for_expiry(
-    listed: set[float],
-    *,
-    month: str,
-    spot: float | None,
-    as_of: date,
-    strike_selection: StrikeSelectionConfig,
-    log: Any,
-) -> list[float]:
-    """The listed strikes discovery qualifies for ONE month token — the delta-driven window.
-
-    The normal path computes the tenor (the month token's mid-month representative date minus
-    the trade date, ACT/365, floored to a non-degenerate minimum) and qualifies the listed
-    strikes that *contain* the 30Δ band at that tenor via :func:`select_discovery_strikes` — a
-    conservative-working-vol superset, full-30Δ with no cap, so the downstream economic
-    selection reaches the true 30Δ put and call (the T-delta-window fix). It falls back to a
-    bounded near-the-money block (:func:`_nearest_strikes`), logged as a degraded path, only when
-    there is no usable spot (no forward to delta-bound against) or the month token does not parse
-    to a tenor. Raises :class:`DiscoveryRunawayError` when the qualified window is implausibly
-    large — the fail-loud pacing valve, never a silent trim.
-    """
-    rep_date = _parse_month_token(month)
-    if rep_date is not None and spot is not None and math.isfinite(spot) and spot > 0.0:
-        days = max((rep_date - as_of).days, _MIN_DISCOVERY_TENOR_DAYS)
-        maturity_years = days / 365.0
-        kept = list(
-            select_discovery_strikes(
-                listed,
-                forward=spot,
-                maturity_years=maturity_years,
-                working_vol=strike_selection.discovery_working_vol,
-                selection=strike_selection,
-            )
-        )
-        log.info(
-            "ibkr.close_capture.discovery_window",
-            month=month,
-            maturity_years=round(maturity_years, 4),
-            working_vol=strike_selection.discovery_working_vol,
-            listed=len(listed),
-            kept=len(kept),
-            strike_min=min(kept) if kept else None,
-            strike_max=max(kept) if kept else None,
-        )
-    else:
-        kept = _nearest_strikes(listed, spot, _DISCOVERY_FALLBACK_STRIKES_PER_SIDE)
-        log.info(
-            "ibkr.close_capture.discovery_window_fallback",
-            month=month,
-            reason="unparseable month token" if rep_date is None else "no usable spot",
-            listed=len(listed),
-            kept=len(kept),
-        )
-    if len(kept) > _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY:
-        raise DiscoveryRunawayError(
-            f"discovery qualified {len(kept)} strikes for {month} "
-            f"(> {_DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY}) — pathological listing or a bad "
-            f"spot/working-vol; refusing to stream a runaway chain"
-        )
-    return kept
-
-
 def _discover_chain(
     discovery: CpRestDiscovery,
     *,
@@ -500,7 +154,7 @@ def _discover_chain(
     selected contracts by their resolved conid.
 
     Per expiry the qualified strike window is **delta-driven and tenor-aware**
-    (:func:`_qualify_strikes_for_expiry` → :func:`select_discovery_strikes`): it contains the
+    (:func:`qualify_strikes_for_expiry` → ``select_discovery_strikes``): it contains the
     30Δ band at that tenor (the band's strike width grows with √T), so the downstream economic
     selection can reach the true 30Δ strikes — never the ~ATM±1% sliver a fixed strike count
     delivered. ``info`` costs one paced call per (strike, right); the window is full-30Δ (no cap)
@@ -511,10 +165,10 @@ def _discover_chain(
     strikes: set[float] = set()
     conid_by_contract: dict[str, str] = {}
     multiplier = "100"
-    for month in _select_discovery_months(months, selection):
+    for month in select_discovery_months(months, selection):
         calls, puts = discovery.strikes(conid, month=month)
         listed = set(calls) | set(puts)
-        qualified = _qualify_strikes_for_expiry(
+        qualified = qualify_strikes_for_expiry(
             listed,
             month=month,
             spot=spot,
@@ -589,7 +243,7 @@ def _planned_option_keys(
 
 
 def _snapshot_events(
-    transport: _SupportsGet,
+    transport: SupportsRestGet,
     *,
     keys_by_conid: Mapping[int, InstrumentKey],
     underlying: str,
@@ -611,38 +265,32 @@ def _snapshot_events(
     key), NOT from the broker's response row order: a re-fire / retry that returns the same
     contracts in a different order must yield identical content-addressed event ids, so the
     append-only store dedupes the re-capture instead of keeping a second copy. Broker-supplied
-    ``conid`` / ``_updated`` scalars are coerced through :func:`_as_int_or_none`, so an unexpected
-    payload shape skips the row with a structured log rather than raising a bare ``ValueError``.
+    ``conid`` / ``_updated`` scalars coerce through the wire model's validators, so an unexpected
+    payload shape skips the row rather than raising a bare ``ValueError``.
     """
     if not keys_by_conid:
         return []
     # Warm-up polled like the spot snapshot: a cold first call returns metadata-only rows (no
     # marks), which would yield a basket of contracts with no quotes — IV/Greeks could not price.
-    rows = _snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
+    rows = snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
     next_open_ms = int(next_open.timestamp() * 1000)
-    if not isinstance(rows, Sequence):
-        return []
     # First pass: keep the admitted (instrument, row) pairs, dropping unrequested conids, malformed
     # payloads, and post-close prints. Sequence is NOT assigned here — row order is not trusted.
-    kept: list[tuple[InstrumentKey, Mapping[str, object]]] = []
+    kept: list[tuple[InstrumentKey, SnapshotRow]] = []
     for row in rows:
-        if not isinstance(row, Mapping):
+        if row.conid is None:
             continue
-        row_conid = _as_int_or_none(row.get("conid"))
-        if row_conid is None:
-            continue
-        instrument = keys_by_conid.get(row_conid)
+        instrument = keys_by_conid.get(row.conid)
         if instrument is None:
             continue
-        updated = _as_int_or_none(row.get("_updated"))
-        if updated is not None and updated >= next_open_ms:
+        if row.updated_ms is not None and row.updated_ms >= next_open_ms:
             # A row updated at/after the next session's open belongs to a later session (a
             # wrong-day catch-up snapshot) — never in this close basket. A row updated in the
             # settlement window after the close but before the next open is kept (it is the close).
             _LOGGER.info(
                 "ibkr.close_capture.drop_later_session",
-                conid=row_conid,
-                updated_ms=updated,
+                conid=row.conid,
+                updated_ms=row.updated_ms,
                 next_open_ms=next_open_ms,
             )
             continue
@@ -667,7 +315,7 @@ def _snapshot_events(
 
 
 def collect_live_basket(
-    transport: _SupportsGet,
+    transport: SupportsRestGet,
     *,
     index: IndexEntry,
     as_of: datetime,
@@ -700,7 +348,7 @@ def collect_live_basket(
     discovery = CpRestDiscovery(
         transport, exchange=index.ibkr.exchange, currency=index.currency
     )
-    spot = _snapshot_index_spot(transport, conid)
+    spot = snapshot_index_spot(transport, conid)
     chain, conid_by_contract = _discover_chain(
         discovery,
         index=index,
@@ -744,7 +392,7 @@ def collect_live_basket(
     kept_options = [key for key in option_keys if key.canonical() in captured]
     keys_by_conid: dict[int, InstrumentKey] = {conid: index_key}
     for key in kept_options:
-        option_conid = _as_int_or_none(key.broker_contract_id)
+        option_conid = coerce_int_or_none(key.broker_contract_id)
         if option_conid is None:
             # A broker-supplied contract id that will not coerce to an int cannot be snapshotted by
             # conid; skip it with a structured log rather than aborting the whole capture.

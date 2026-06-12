@@ -59,7 +59,7 @@ def test_zero_concurrency_is_rejected(tmp_path: Path) -> None:
         "bar: '1d'\n"
         "default_period: '1y'\n"
     )
-    with pytest.raises(IbkrHistoryConfigError, match="max_concurrent_requests must be >= 1"):
+    with pytest.raises(IbkrHistoryConfigError, match="max_concurrent_requests.*greater than or equal to 1"):
         load_ibkr_history_config(bad)
 
 
@@ -76,7 +76,7 @@ def test_non_numeric_timeout_is_rejected(tmp_path: Path) -> None:
         "bar: '1d'\n"
         "default_period: '1y'\n"
     )
-    with pytest.raises(IbkrHistoryConfigError, match="must be a number"):
+    with pytest.raises(IbkrHistoryConfigError, match="request_timeout_seconds.*valid number"):
         load_ibkr_history_config(bad)
 
 

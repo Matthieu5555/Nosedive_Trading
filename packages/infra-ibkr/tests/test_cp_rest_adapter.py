@@ -39,8 +39,11 @@ class _FakeTransport:
 
 
 def _adapter(transport: _FakeTransport) -> CpRestMarketDataAdapter:
+    # _sleep injected as a no-op: a transport whose rows never warm must not stall the test on
+    # the snapshot engine's real warm-up sleeps.
     return CpRestMarketDataAdapter(
-        transport, [_INSTRUMENT], session_id="ibkr-cp", now_fn=lambda: _RECEIPT
+        transport, [_INSTRUMENT], session_id="ibkr-cp", now_fn=lambda: _RECEIPT,
+        _sleep=lambda _seconds: None,
     )
 
 
@@ -61,6 +64,33 @@ def test_snapshot_normalizes_rows_to_events() -> None:
 def test_snapshot_ignores_unknown_conid() -> None:
     transport = _FakeTransport([{"conid": 999999, "84": "9.27"}])
     assert _adapter(transport).snapshot() == ()
+
+
+def test_snapshot_warms_up_a_cold_first_response() -> None:
+    """A metadata-only first snapshot (the cold-subscription quirk) is polled until marks appear.
+
+    The adapter rides the shared snapshot engine, so it inherits the warm-up the close capture
+    proved live: the first response carries no value tag, the second carries the quote — the
+    adapter must emit the warmed quote, not an empty tuple.
+    """
+
+    class _ColdThenWarm(_FakeTransport):
+        def __init__(self) -> None:
+            super().__init__([])
+            self._calls = 0
+
+        def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+            self.get_paths.append(path)
+            self._calls += 1
+            if self._calls == 1:
+                return [{"conid": _CONID, "server_id": "q0"}]  # cold: metadata only
+            return [{"conid": _CONID, "84": "9.27"}]
+
+    transport = _ColdThenWarm()
+    events = _adapter(transport).snapshot()
+    assert [e.field_name for e in events] == ["bid"]
+    assert events[0].value == 9.27
+    assert len(transport.get_paths) == 2  # one cold call, one warm retry — then it stopped
 
 
 def test_snapshot_is_read_only() -> None:

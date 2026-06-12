@@ -4,8 +4,9 @@ The unattended backfill needs hosts/URLs, timeouts, the 5-concurrent cap, the es
 session wait, and the maintenance-window retry/backoff. None of those are economic (they do
 not change *what* is computed), so they are not a hashed bundle — but they are still config,
 not ``.py`` literals (the C7 discipline the 1C spec carries forward). The canonical defaults
-live in the versioned ``configs/ibkr_history.yaml`` beside the package; this module loads and
-validates them into a frozen :class:`IbkrHistoryConfig`.
+live in the versioned ``configs/ibkr_history.yaml`` beside the package; this module validates
+them into a frozen :class:`IbkrHistoryConfig` through pydantic (the REP6 config seam — strict
+types, no lossy coercion), re-raising any rejection as a labeled :class:`IbkrHistoryConfigError`.
 
 Secrets never pass through here: the OAuth consumer key/secret and the Live Session Token are
 read from ``.env`` by the caller and handed to the signer; this object carries only the
@@ -14,10 +15,18 @@ non-secret connectivity knobs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Annotated, NoReturn
 
 from algotrading.core.config import LoadedConfig, load_yaml_config
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+)
 
 # configs/ibkr_history.yaml sits beside src/: src/algotrading/infra_ibkr/config.py
 # parents[3] == packages/infra-ibkr
@@ -28,17 +37,51 @@ class IbkrHistoryConfigError(Exception):
     """A field in the IBKR history config is missing or malformed — labeled, never silent."""
 
 
-@dataclass(frozen=True, slots=True)
-class EstablishedWaitConfig:
+def _raise_history_config_error(exc: ValidationError) -> NoReturn:
+    """Map a pydantic rejection onto the labeled :class:`IbkrHistoryConfigError`.
+
+    Takes the first reported error and names the offending field (dotted for a nested one,
+    e.g. ``retry.factor``), preserving the "missing required field" wording and carrying
+    pydantic's reason for everything else — a bad config names exactly what was wrong.
+    """
+    error = exc.errors()[0]
+    location = error.get("loc", ())
+    field = ".".join(str(part) for part in location) if location else "<root>"
+    if error.get("type") == "missing":
+        raise IbkrHistoryConfigError(f"missing required field {field!r}") from exc
+    raise IbkrHistoryConfigError(
+        f"{field!r}: {error.get('msg', '')} (got {error.get('input')!r})"
+    ) from exc
+
+
+def _require_non_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must be a non-empty string")
+    return value
+
+
+# A required string that is not empty/whitespace (URLs, bar size, period).
+_NonBlankStr = Annotated[str, AfterValidator(_require_non_blank)]
+
+# Frozen (immutable, hashable), unknown YAML keys ignored (the file carries e.g. `version`),
+# and strict scalar typing — no lossy coercion (`"5"`/`5.5` → int and bool → number rejected;
+# an int is still a valid float, as YAML writes `15` for `15.0`).
+_HISTORY_MODEL_CONFIG = ConfigDict(frozen=True, extra="ignore", strict=True)
+
+
+class EstablishedWaitConfig(BaseModel):
     """How long to wait for the brokerage session to report ``established: true``."""
+
+    model_config = _HISTORY_MODEL_CONFIG
 
     max_polls: int
     poll_seconds: float
 
 
-@dataclass(frozen=True, slots=True)
-class RetryConfig:
+class RetryConfig(BaseModel):
     """Exponential-with-cap retry around IBKR maintenance windows (ADR 0031 §5)."""
+
+    model_config = _HISTORY_MODEL_CONFIG
 
     max_attempts: int
     base_seconds: float
@@ -52,91 +95,34 @@ class RetryConfig:
         return min(self.cap_seconds, self.base_seconds * self.factor**attempt)
 
 
-@dataclass(frozen=True, slots=True)
-class IbkrHistoryConfig:
+class IbkrHistoryConfig(BaseModel):
     """Resolved, validated IBKR historical-fetch connectivity config."""
 
-    base_url: str
+    model_config = _HISTORY_MODEL_CONFIG
+
+    base_url: _NonBlankStr
     request_timeout_seconds: float
-    max_concurrent_requests: int
+    max_concurrent_requests: int = Field(ge=1)
     warmup_required: bool
     established_wait: EstablishedWaitConfig
     retry: RetryConfig
-    bar: str
-    default_period: str
+    bar: _NonBlankStr
+    default_period: _NonBlankStr
     config_hash: str
 
     @classmethod
     def from_config(cls, loaded: LoadedConfig) -> IbkrHistoryConfig:
-        data = loaded.data
-        wait = _require_mapping(data, "established_wait")
-        retry = _require_mapping(data, "retry")
-        max_concurrent = _require_int(data, "max_concurrent_requests")
-        if max_concurrent < 1:
-            raise IbkrHistoryConfigError("max_concurrent_requests must be >= 1")
-        return cls(
-            base_url=_require_str(data, "base_url"),
-            request_timeout_seconds=_require_float(data, "request_timeout_seconds"),
-            max_concurrent_requests=max_concurrent,
-            warmup_required=_require_bool(data, "warmup_required"),
-            established_wait=EstablishedWaitConfig(
-                max_polls=_require_int(wait, "max_polls"),
-                poll_seconds=_require_float(wait, "poll_seconds"),
-            ),
-            retry=RetryConfig(
-                max_attempts=_require_int(retry, "max_attempts"),
-                base_seconds=_require_float(retry, "base_seconds"),
-                factor=_require_float(retry, "factor"),
-                cap_seconds=_require_float(retry, "cap_seconds"),
-            ),
-            bar=_require_str(data, "bar"),
-            default_period=_require_str(data, "default_period"),
-            config_hash=loaded.config_hash,
-        )
-
-
-def _require_str(data: object, key: str) -> str:
-    value = _require(data, key)
-    if not isinstance(value, str) or not value.strip():
-        raise IbkrHistoryConfigError(f"{key!r} must be a non-empty string, got {value!r}")
-    return value
-
-
-def _require_float(data: object, key: str) -> float:
-    value = _require(data, key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise IbkrHistoryConfigError(f"{key!r} must be a number, got {value!r}")
-    return float(value)
-
-
-def _require_int(data: object, key: str) -> int:
-    value = _require(data, key)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise IbkrHistoryConfigError(f"{key!r} must be an integer, got {value!r}")
-    return value
-
-
-def _require_bool(data: object, key: str) -> bool:
-    value = _require(data, key)
-    if not isinstance(value, bool):
-        raise IbkrHistoryConfigError(f"{key!r} must be a boolean, got {value!r}")
-    return value
-
-
-def _require_mapping(data: object, key: str) -> object:
-    value = _require(data, key)
-    if not hasattr(value, "get") or not hasattr(value, "__getitem__"):
-        raise IbkrHistoryConfigError(f"{key!r} must be a mapping, got {value!r}")
-    return value
-
-
-def _require(data: object, key: str) -> object:
-    if not hasattr(data, "get"):
-        raise IbkrHistoryConfigError(f"expected a mapping to read {key!r} from, got {data!r}")
-    value = data.get(key)
-    if value is None:
-        raise IbkrHistoryConfigError(f"missing required field {key!r}")
-    return value
+        # LoadedConfig freezes its sections as mapping proxies; strict validation wants real
+        # dicts for the nested models, so thaw one level (the file is flat-plus-two-blocks).
+        data: dict[str, object] = {
+            key: dict(value) if isinstance(value, Mapping) else value
+            for key, value in loaded.data.items()
+        }
+        data["config_hash"] = loaded.config_hash
+        try:
+            return cls.model_validate(data)
+        except ValidationError as exc:
+            _raise_history_config_error(exc)
 
 
 def load_ibkr_history_config(path: str | Path | None = None) -> IbkrHistoryConfig:

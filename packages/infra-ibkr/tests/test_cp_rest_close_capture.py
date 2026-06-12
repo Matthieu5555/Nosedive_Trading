@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
+import structlog
 from algotrading.core.config import (
     PlatformConfig,
     QcThresholdConfig,
@@ -32,15 +33,30 @@ from algotrading.core.config import (
 )
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.universe import ChainSelection, IbkrRef, IndexEntry
-from algotrading.infra_ibkr.collectors import cp_rest_close_capture
+from algotrading.infra_ibkr.collectors import cp_rest_snapshot
+from algotrading.infra_ibkr.collectors.cp_rest_chain_window import (
+    DISCOVERY_FALLBACK_STRIKES_PER_SIDE,
+    DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY,
+    nearest_strikes,
+    qualify_strikes_for_expiry,
+)
 from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
-    _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY,
     CloseCaptureError,
     DiscoveryRunawayError,
-    _nearest_strikes,
     collect_live_basket,
 )
+from algotrading.infra_ibkr.collectors.cp_rest_snapshot import (
+    SNAPSHOT_MAX_CONIDS,
+    snapshot_index_spot,
+    snapshot_with_warmup,
+)
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
+
+
+def _test_logger() -> object:
+    """A structured logger for direct policy-function calls (the capture binds its own)."""
+    return structlog.get_logger("test.chain_window")
+
 
 # The fired index and its own session close (the as-of every captured event is stamped at).
 SPX = IndexEntry("SPX", "S&P 500", "XNYS", "USD", IbkrRef(0, "IND", "CBOE"), True)
@@ -368,18 +384,18 @@ def test_nearest_strikes_keeps_the_money_block_around_spot() -> None:
     out. That is the contiguous block 84..115.
     """
     ladder = {float(strike) for strike in range(1, 201)}
-    kept = _nearest_strikes(ladder, spot=100.0, per_side=16)
+    kept = nearest_strikes(ladder, spot=100.0, per_side=16)
     assert kept == [float(strike) for strike in range(84, 116)]  # 32 strikes, 84..115
     assert 116.0 not in kept and 83.0 not in kept  # the distance-16 boundary: lower kept, upper out
 
 
 def test_nearest_strikes_degrades_for_a_sparse_ladder_and_missing_spot() -> None:
     # Fewer than 2*per_side listed strikes: qualify them all (a sparse name is not over-trimmed).
-    assert _nearest_strikes({95.0, 100.0, 105.0}, spot=100.0, per_side=16) == [95.0, 100.0, 105.0]
+    assert nearest_strikes({95.0, 100.0, 105.0}, spot=100.0, per_side=16) == [95.0, 100.0, 105.0]
     # No usable spot: centre on the median listed strike (deterministic, just not the true forward).
     # Median of 1..9 is 5; nearest 4 by (|s-5|, s) are {3,4,5,6,7} minus the farther of the ties ->
     # 3,4,5,6 (distance-2 ties 3 and 7 break toward 3).
-    assert _nearest_strikes({float(s) for s in range(1, 10)}, spot=None, per_side=2) == [
+    assert nearest_strikes({float(s) for s in range(1, 10)}, spot=None, per_side=2) == [
         3.0, 4.0, 5.0, 6.0,
     ]
 
@@ -480,18 +496,18 @@ def test_discovery_runaway_window_fails_loud() -> None:
     # 0.05-spaced strikes across [80, 150) — ~1400 points, all inside the 20Δ band at vol 0.40,
     # T≈1y (band ≈ [77.3, 152.0] for forward 100), so the qualified count clears the threshold.
     fine_ladder = {round(80.0 + 0.05 * i, 2) for i in range(1400)}
-    assert len(fine_ladder) > _DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY
+    assert len(fine_ladder) > DISCOVERY_RUNAWAY_STRIKES_PER_EXPIRY
     strike_selection = StrikeSelectionConfig(
         version="ss-runaway", delta_bound=0.30, min_strikes_per_side=1, discovery_working_vol=0.40
     )
     with pytest.raises(DiscoveryRunawayError):
-        cp_rest_close_capture._qualify_strikes_for_expiry(
+        qualify_strikes_for_expiry(
             fine_ladder,
             month="MAR27",  # ~1y out from the 2026-03-12 close → a non-degenerate tenor
             spot=100.0,
             as_of=CLOSE.date(),
             strike_selection=strike_selection,
-            log=cp_rest_close_capture._LOGGER,
+            log=_test_logger(),
         )
 
 
@@ -506,16 +522,16 @@ def test_discovery_falls_back_to_a_bounded_block_with_no_spot() -> None:
     strike_selection = StrikeSelectionConfig(
         version="ss-nospot", delta_bound=0.30, min_strikes_per_side=1, discovery_working_vol=0.40
     )
-    kept = cp_rest_close_capture._qualify_strikes_for_expiry(
+    kept = qualify_strikes_for_expiry(
         ladder,
         month="SEP26",
         spot=None,
         as_of=CLOSE.date(),
         strike_selection=strike_selection,
-        log=cp_rest_close_capture._LOGGER,
+        log=_test_logger(),
     )
     # The fallback keeps a bounded block, never the full 200-strike ladder.
-    assert 0 < len(kept) <= 2 * cp_rest_close_capture._DISCOVERY_FALLBACK_STRIKES_PER_SIDE
+    assert 0 < len(kept) <= 2 * DISCOVERY_FALLBACK_STRIKES_PER_SIDE
     assert set(kept) < ladder
 
 
@@ -568,7 +584,7 @@ def test_snapshot_warms_up_before_reading_marks(monkeypatch: Any) -> None:
     is stubbed so the test pays no wall-clock cost.
     """
     sleeps: list[float] = []
-    monkeypatch.setattr(cp_rest_close_capture.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(cp_rest_snapshot.time, "sleep", lambda seconds: sleeps.append(seconds))
 
     basket = collect_live_basket(
         _ColdThenWarmGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
@@ -609,7 +625,7 @@ def test_warm_first_snapshot_does_not_poll() -> None:
             calls.append((path, params))
             return rows
 
-    spot = cp_rest_close_capture._snapshot_index_spot(_OneShot(), INDEX_CONID)
+    spot = snapshot_index_spot(_OneShot(), INDEX_CONID)
     assert spot == 100.0
     assert len(calls) == 1  # a single snapshot request — no warm-up poll on an already-warm gateway
 
@@ -632,12 +648,12 @@ def test_snapshot_batches_conids_to_stay_under_the_uri_limit() -> None:
             # Warm on the first call: echo each conid back with a value tag so no poll is needed.
             return [{"conid": conid, "31": "1.0"} for conid in conids]
 
-    rows = cp_rest_close_capture._snapshot_with_warmup(_BatchRecorder(), conids=requested)
+    rows = snapshot_with_warmup(_BatchRecorder(), conids=requested)
 
     # Batched 50 / 50 / 20 — no batch exceeds the cap.
     assert [len(b) for b in batches] == [50, 50, 20]
-    assert all(len(b) <= cp_rest_close_capture._SNAPSHOT_MAX_CONIDS for b in batches)
+    assert all(len(b) <= SNAPSHOT_MAX_CONIDS for b in batches)
     # Every requested conid was snapshotted exactly once, and all rows came back concatenated.
     flattened = [conid for batch in batches for conid in batch]
     assert sorted(flattened) == requested
-    assert {int(row["conid"]) for row in rows} == set(requested)
+    assert {row.conid for row in rows} == set(requested)

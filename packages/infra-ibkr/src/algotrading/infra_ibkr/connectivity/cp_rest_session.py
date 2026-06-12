@@ -14,7 +14,8 @@ pure-ish wrappers over the transport and are unit-tested directly.
 import threading
 import time
 from collections.abc import Callable, Mapping
-from typing import Any, Protocol
+
+from .cp_rest_transport import SupportsRest
 
 _DEFAULT_KEEPALIVE_S = 60.0
 _JOIN_TIMEOUT_S = 5.0
@@ -23,6 +24,11 @@ _JOIN_TIMEOUT_S = 5.0
 # session reports `established: true` before any history request.
 _SSODH_INIT_PATH = "/iserver/auth/ssodh/init"
 
+# Brokerage-session revive endpoint: when the SSO cookie is still valid but the brokerage
+# session lapsed (`authenticated: true, connected: false`), POSTing this re-opens it without
+# a fresh interactive login (no new SMS).
+_REAUTHENTICATE_PATH = "/iserver/reauthenticate"
+
 
 class SessionNotEstablishedError(Exception):
     """The brokerage session never reported ``established: true`` within the wait budget.
@@ -30,11 +36,6 @@ class SessionNotEstablishedError(Exception):
     A labeled error (never a silent proceed): a history request fired into a not-yet-
     established session is exactly the failure the established-wait guards against.
     """
-
-
-class _SupportsRest(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
-    def post(self, path: str, body: dict[str, Any] | None = None) -> Any: ...
 
 
 def _auth_status_alive(payload: object) -> bool:
@@ -76,7 +77,7 @@ class CpRestSession:
 
     def __init__(
         self,
-        transport: _SupportsRest,
+        transport: SupportsRest,
         *,
         keepalive_seconds: float = _DEFAULT_KEEPALIVE_S,
         on_drop: Callable[[], None] | None = None,
@@ -96,6 +97,18 @@ class CpRestSession:
     def tickle(self) -> bool:
         """POST ``/tickle`` to keep the session alive; return whether it is still live."""
         return _auth_status_alive(self._transport.post("/tickle"))
+
+    def reauthenticate(self) -> None:
+        """POST ``/iserver/reauthenticate`` to revive a lapsed brokerage session — no new login.
+
+        The Gateway's SSO cookie outlives the brokerage session: when the status reads
+        authenticated-but-disconnected, this re-opens the brokerage side without a fresh
+        interactive login (no SMS). Fire-and-forget: the response carries only a trigger
+        message, so callers re-check liveness via :meth:`authenticated` / :meth:`established`
+        after a short grace. A fully-expired SSO cookie is *not* revivable this way — that
+        needs a fresh browser login.
+        """
+        self._transport.post(_REAUTHENTICATE_PATH)
 
     def open_brokerage_session(self) -> bool:
         """POST ``ssodh/init`` to open the brokerage session; return whether it is established.

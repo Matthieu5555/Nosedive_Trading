@@ -7,26 +7,31 @@ The Client Portal chain lookup is a **mandatory three-step sequence**, with a do
 2. ``GET /iserver/secdef/strikes`` returns the call/put strikes for one month;
 3. ``GET /iserver/secdef/info`` returns the per-contract conid for one (month, strike, right).
 
-Each step has a pure ``parse_*`` so the wire-shape handling is unit-tested without a live Gateway.
-Output is the kept fork ``OptionContract`` model (the Saxo/Deribit universe), carrying the IBKR
-conid as ``broker_contract_id`` so the adapter can map our instrument key ↔ conid. Selection
+Each step has a pure ``parse_*`` over the typed wire models (:mod:`.cp_rest_wire`), so the
+wire-shape handling is unit-tested without a live Gateway. Output is the kept fork
+``OptionContract`` model (the Saxo/Deribit universe), carrying the IBKR conid as
+``broker_contract_id`` so the adapter can map our instrument key ↔ conid. Selection
 (``ChainSelection``: nearest months, spot-windowed strikes) is applied by the caller at wiring.
 """
 
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import Decimal
-from typing import Any, Protocol
 
 from algotrading.infra.universe import OptionContract, Right
+from pydantic import ValidationError
+
+from ..connectivity.cp_rest_transport import SupportsRestGet
+from .cp_rest_wire import (
+    SecdefInfoRow,
+    SecdefSearchRow,
+    StrikesPayload,
+    parse_secdef_search_rows,
+)
 
 
 class DiscoveryError(Exception):
     """A Client Portal contract-discovery response could not be resolved."""
-
-
-class _SupportsGet(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
 
 # IBKR exchange codes by listing currency — the venue-consistency preference for resolving a
@@ -45,22 +50,16 @@ _VENUES_BY_CURRENCY: dict[str, frozenset[str]] = {
 _DEAD_VENUE = "VALUE"
 
 
-def _is_stock_row(item: Mapping[str, Any]) -> bool:
+def _is_stock_row(row: SecdefSearchRow) -> bool:
     """Whether a ``/secdef/search`` row is an equity listing.
 
     On the live wire the top-level ``secType`` is ``null``; the instrument kinds are in
     ``sections[].secType``. Both shapes are accepted (older fixtures carry a top-level
     ``secType`` and no sections).
     """
-    if str(item.get("secType") or "").upper() == "STK":
+    if row.sec_type.upper() == "STK":
         return True
-    sections = item.get("sections")
-    if not isinstance(sections, Sequence):
-        return False
-    return any(
-        isinstance(section, Mapping) and str(section.get("secType") or "").upper() == "STK"
-        for section in sections
-    )
+    return any(section.sec_type.upper() == "STK" for section in row.sections)
 
 
 def parse_search_conid(results: object, symbol: str, *, currency: str | None = None) -> int:
@@ -76,24 +75,22 @@ def parse_search_conid(results: object, symbol: str, *, currency: str | None = N
     if not isinstance(results, Sequence):
         raise DiscoveryError(f"search for {symbol!r} returned no list")
     matches = [
-        item
-        for item in results
-        if isinstance(item, Mapping)
-        and str(item.get("symbol", "")).upper() == symbol.upper()
-        and item.get("conid") is not None
+        row
+        for row in parse_secdef_search_rows(results)
+        if row.symbol.upper() == symbol.upper() and row.conid is not None
     ]
-    stock_rows = [item for item in matches if _is_stock_row(item)]
+    stock_rows = [row for row in matches if _is_stock_row(row)]
     venues = _VENUES_BY_CURRENCY.get((currency or "").upper(), frozenset())
-    for item in stock_rows:
-        if str(item.get("description") or "").upper() in venues:
-            return int(item["conid"])
-    for item in stock_rows:
-        if str(item.get("description") or "").upper() != _DEAD_VENUE:
-            return int(item["conid"])
-    if stock_rows:
-        return int(stock_rows[0]["conid"])
-    if matches:
-        return int(matches[0]["conid"])
+    for row in stock_rows:
+        if row.description.upper() in venues and row.conid is not None:
+            return row.conid
+    for row in stock_rows:
+        if row.description.upper() != _DEAD_VENUE and row.conid is not None:
+            return row.conid
+    if stock_rows and stock_rows[0].conid is not None:
+        return stock_rows[0].conid
+    if matches and matches[0].conid is not None:
+        return matches[0].conid
     raise DiscoveryError(f"search for {symbol!r} resolved no conid")
 
 
@@ -101,9 +98,11 @@ def parse_strikes(payload: object) -> tuple[tuple[float, ...], tuple[float, ...]
     """A ``/secdef/strikes`` response → (call strikes, put strikes), each sorted ascending."""
     if not isinstance(payload, Mapping):
         raise DiscoveryError("strikes response is not an object")
-    calls = tuple(sorted(float(s) for s in payload.get("call", ())))
-    puts = tuple(sorted(float(s) for s in payload.get("put", ())))
-    return calls, puts
+    try:
+        parsed = StrikesPayload.model_validate(payload)
+    except ValidationError as exc:
+        raise DiscoveryError(f"malformed /secdef/strikes payload: {payload!r}") from exc
+    return tuple(sorted(parsed.call)), tuple(sorted(parsed.put))
 
 
 def parse_info_contract(
@@ -116,11 +115,12 @@ def parse_info_contract(
 ) -> OptionContract:
     """One ``/secdef/info`` entry → a fork ``OptionContract`` (conid as broker id)."""
     try:
-        maturity = str(item["maturityDate"])  # e.g. "20260116"
+        row = SecdefInfoRow.model_validate(item)
+        maturity = row.maturity_date  # e.g. "20260116"
         expiry = date(int(maturity[0:4]), int(maturity[4:6]), int(maturity[6:8]))
-        strike = Decimal(str(item["strike"]))
-        right = Right.from_raw(str(item["right"]))
-        conid = str(item["conid"])
+        strike = Decimal(row.strike)
+        right = Right.from_raw(row.right)
+        conid = row.conid
     except (KeyError, ValueError, IndexError) as exc:
         raise DiscoveryError(f"malformed /secdef/info entry: {item!r}") from exc
     return OptionContract(
@@ -140,7 +140,7 @@ class CpRestDiscovery:
     """Drive the search → strikes → info sequence over an injected transport."""
 
     def __init__(
-        self, transport: _SupportsGet, *, exchange: str = "SMART", currency: str = "USD"
+        self, transport: SupportsRestGet, *, exchange: str = "SMART", currency: str = "USD"
     ) -> None:
         self._transport = transport
         self._exchange = exchange

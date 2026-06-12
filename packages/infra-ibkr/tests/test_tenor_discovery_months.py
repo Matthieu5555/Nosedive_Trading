@@ -16,9 +16,9 @@ from datetime import date
 
 from algotrading.infra.surfaces import tenor_years
 from algotrading.infra.universe import ChainSelection
-from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
-    _parse_month_token,
-    _select_discovery_months,
+from algotrading.infra_ibkr.collectors.cp_rest_chain_window import (
+    parse_month_token,
+    select_discovery_months,
 )
 
 _AS_OF = date(2026, 6, 11)
@@ -33,12 +33,12 @@ def _targeted_selection() -> ChainSelection:
 
 def test_parse_month_token() -> None:
     """``MMMYY`` → a mid-month representative date; junk → ``None`` (skipped, never guessed)."""
-    assert _parse_month_token("DEC28") == date(2028, 12, 15)
-    assert _parse_month_token("jun26") == date(2026, 6, 15)  # case-insensitive
-    assert _parse_month_token("XXX99") is None               # bad month
-    assert _parse_month_token("JUN261") is None              # wrong length
-    assert _parse_month_token("JUN2") is None
-    assert _parse_month_token("") is None
+    assert parse_month_token("DEC28") == date(2028, 12, 15)
+    assert parse_month_token("jun26") == date(2026, 6, 15)  # case-insensitive
+    assert parse_month_token("XXX99") is None               # bad month
+    assert parse_month_token("JUN261") is None              # wrong length
+    assert parse_month_token("JUN2") is None
+    assert parse_month_token("") is None
 
 
 def test_discovery_months_bracket_to_the_long_end() -> None:
@@ -51,7 +51,7 @@ def test_discovery_months_bracket_to_the_long_end() -> None:
         "JUN26", "JUL26", "SEP26", "DEC26", "JUN27", "SEP27", "DEC27",
         "DEC28", "DEC29", "DEC30", "DEC31",
     )
-    got = _select_discovery_months(months, _targeted_selection())
+    got = select_discovery_months(months, _targeted_selection())
     assert got == (
         "JUN26", "JUL26", "SEP26", "DEC26", "JUN27", "SEP27", "DEC27", "DEC28", "DEC29",
     )
@@ -61,12 +61,12 @@ def test_discovery_months_bracket_to_the_long_end() -> None:
 def test_discovery_months_legacy_slice_when_untargeted() -> None:
     """With no tenor targeting, the old nearest-N token slice is preserved verbatim."""
     months = ("JUN26", "JUL26", "SEP26", "DEC26", "MAR27")
-    got = _select_discovery_months(months, ChainSelection(max_expiries=3))
+    got = select_discovery_months(months, ChainSelection(max_expiries=3))
     assert got == ("JUN26", "JUL26", "SEP26")
 
 
 def test_discovery_months_unparseable_falls_back_to_legacy() -> None:
     """If no token parses (a wire-shape surprise), degrade to the legacy slice, not an empty chain."""
     months = ("garbage", "still-bad")
-    got = _select_discovery_months(months, _targeted_selection())
+    got = select_discovery_months(months, _targeted_selection())
     assert got == ("garbage", "still-bad")  # max_expiries == len(grid) == 8, so all kept

@@ -9,12 +9,32 @@ The CP Gateway serves a self-signed cert on localhost, hence ``verify_tls`` defa
 
 import time
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
 _DEFAULT_BASE_URL = "https://localhost:5000/v1/api"
 _DEFAULT_TIMEOUT_S = 15.0
+
+
+@runtime_checkable
+class SupportsRestGet(Protocol):
+    """The read-only CP REST transport seam: anything with the transport's ``get``.
+
+    The one canonical definition of the protocol every collector used to copy-paste
+    (discovery, index, history, adapter, close capture). :class:`CpRestTransport` satisfies
+    it; tests satisfy it with a fake. ``runtime_checkable`` so wiring code can assert an
+    injected transport structurally instead of duck-checking ``getattr``.
+    """
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
+
+
+@runtime_checkable
+class SupportsRest(SupportsRestGet, Protocol):
+    """The read/write CP REST transport seam: ``get`` + ``post`` (the session needs both)."""
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> Any: ...
 
 # The CP Gateway rate-limits a burst of per-contract calls (the option-chain `/secdef/info`
 # qualification fires one request per (month, strike, right)) with HTTP 429; a transient 503 is

@@ -33,13 +33,14 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Protocol
+from typing import Any
 
 import structlog
 from algotrading.infra.contracts import DailyBar
 from algotrading.infra.storage import ParquetStore
 
 from ..config import IbkrHistoryConfig
+from ..connectivity.cp_rest_transport import SupportsRestGet
 from .cp_rest_history_normalize import history_to_daily_bars
 
 _LOGGER = structlog.get_logger("ibkr.history")
@@ -67,10 +68,6 @@ def _window_http_status(exc: BaseException) -> int | None:
 
 class HistoryFetchError(Exception):
     """A history fetch failed after exhausting retries, or a precondition was unmet — labeled."""
-
-
-class _SupportsGet(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +113,7 @@ class CpRestHistoryCollector:
     sleep (no real wait in tests).
     """
 
-    transport: _SupportsGet
+    transport: SupportsRestGet
     store: ParquetStore
     config: IbkrHistoryConfig
     provider: str

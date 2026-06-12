@@ -34,6 +34,7 @@ from algotrading.infra.orchestration.eod_runner import FiredIndex
 from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
+from .connectivity.cp_rest_transport import SupportsRestGet
 from .session_factory import (
     build_credentialed_session,
     build_gateway_session,
@@ -46,10 +47,6 @@ _LOGGER = structlog.get_logger("ibkr.live_capture")
 def _utc_today() -> date:
     """The current UTC calendar day — the default 'now' the no-look-ahead guard compares to."""
     return datetime.now(UTC).date()
-
-
-def _supports_get(obj: object) -> bool:
-    return callable(getattr(obj, "get", None))
 
 
 def live_basket_source(
@@ -92,7 +89,7 @@ def live_basket_source(
             return None
         transport, _session = built
 
-    if not _supports_get(transport):
+    if not isinstance(transport, SupportsRestGet):
         raise TypeError(f"live capture transport must support .get(...), got {transport!r}")
 
     resolved_config = config if config is not None else _load_config()

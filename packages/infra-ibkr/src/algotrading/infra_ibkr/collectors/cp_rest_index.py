@@ -11,15 +11,17 @@ on the index's IBKR routing exchange (CBOE for SPX, EUREX for SX5E — the value
 
 This is the seam that eliminates the ``conid: 0`` problem for the live path: the yaml conids
 become unused, the symbol is resolved to the real contract id each run. Pure ``parse_*`` over
-the wire shape so the selection logic is unit-tested against a fake search response — no live
-Gateway, no network.
+the typed wire rows (:mod:`.cp_rest_wire`) so the selection logic is unit-tested against a fake
+search response — no live Gateway, no network.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+
+from ..connectivity.cp_rest_transport import SupportsRestGet
+from .cp_rest_wire import SecdefSearchRow, parse_secdef_search_rows
 
 
 class IndexConidError(Exception):
@@ -31,25 +33,13 @@ class IndexConidError(Exception):
     """
 
 
-class _SupportsGet(Protocol):
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
-
-
 # IBKR's security type for an index (vs ``STK`` for a stock, ``OPT`` for an option). The search
 # response lists, per matched symbol, the section types the symbol trades under; we keep the
 # entry whose index section routes through the requested exchange.
 _INDEX_SEC_TYPE = "IND"
 
 
-def _sections(item: Mapping[str, object]) -> Sequence[Mapping[str, object]]:
-    """The ``sections`` list of one secdef-search row (each names a secType + its exchanges)."""
-    sections = item.get("sections")
-    if not isinstance(sections, Sequence):
-        return ()
-    return tuple(section for section in sections if isinstance(section, Mapping))
-
-
-def _routes_index_on_exchange(item: Mapping[str, object], exchange: str) -> bool:
+def _routes_index_on_exchange(row: SecdefSearchRow, exchange: str) -> bool:
     """Whether a search row offers an ``IND`` section routed through ``exchange``.
 
     A CP secdef-search row carries a ``sections`` list, each section a ``{secType, exchange}``
@@ -59,10 +49,10 @@ def _routes_index_on_exchange(item: Mapping[str, object], exchange: str) -> bool
     for the index we want.
     """
     wanted = exchange.strip().upper()
-    for section in _sections(item):
-        if str(section.get("secType", "")).upper() != _INDEX_SEC_TYPE:
+    for section in row.sections:
+        if section.sec_type.upper() != _INDEX_SEC_TYPE:
             continue
-        venues = str(section.get("exchange", "")).upper()
+        venues = section.exchange.upper()
         listed = {v.strip() for chunk in venues.split(";") for v in chunk.split(",")}
         if wanted in listed:
             return True
@@ -82,28 +72,25 @@ def parse_index_conid(results: object, *, symbol: str, exchange: str) -> int:
     if not isinstance(results, Sequence):
         raise IndexConidError(f"secdef search for index {symbol!r} returned no list: {results!r}")
     symbol_matches = [
-        item
-        for item in results
-        if isinstance(item, Mapping)
-        and str(item.get("symbol", "")).upper() == symbol.upper()
+        row for row in parse_secdef_search_rows(results) if row.symbol.upper() == symbol.upper()
     ]
     # Prefer a row that explicitly routes the index on the requested exchange.
-    for item in symbol_matches:
-        if _routes_index_on_exchange(item, exchange):
-            conid = item.get("conid")
-            if conid is not None:
-                return int(conid)
+    for row in symbol_matches:
+        if _routes_index_on_exchange(row, exchange) and row.conid is not None:
+            return row.conid
     # Fall back to a single unambiguous symbol match with no sections block to filter on.
-    if len(symbol_matches) == 1 and not _sections(symbol_matches[0]):
-        conid = symbol_matches[0].get("conid")
-        if conid is not None:
-            return int(conid)
+    if (
+        len(symbol_matches) == 1
+        and not symbol_matches[0].sections
+        and symbol_matches[0].conid is not None
+    ):
+        return symbol_matches[0].conid
     raise IndexConidError(
         f"secdef search for index {symbol!r} resolved no IND conid on exchange {exchange!r}"
     )
 
 
-def resolve_index_conid(transport: _SupportsGet, *, symbol: str, exchange: str) -> int:
+def resolve_index_conid(transport: SupportsRestGet, *, symbol: str, exchange: str) -> int:
     """Resolve an index's IBKR conid from its symbol via ``GET /iserver/secdef/search``.
 
     The ``name`` field is deliberately omitted (the documented CP gotcha — including it
@@ -141,19 +128,14 @@ def parse_option_months(results: object, *, symbol: str) -> tuple[str, ...]:
     empty tuple when the symbol lists no option section (a name with no options — the caller
     degrades to a no-capture day, never a crash).
     """
-    if not isinstance(results, Sequence):
-        return ()
-    for item in results:
-        if not isinstance(item, Mapping):
+    for row in parse_secdef_search_rows(results):
+        if row.symbol.upper() != symbol.upper():
             continue
-        if str(item.get("symbol", "")).upper() != symbol.upper():
-            continue
-        for section in _sections(item):
-            if str(section.get("secType", "")).upper() != "OPT":
+        for section in row.sections:
+            if section.sec_type.upper() != "OPT":
                 continue
-            months_raw = str(section.get("months", ""))
             seen: list[str] = []
-            for token in months_raw.replace(",", ";").split(";"):
+            for token in section.months.replace(",", ";").split(";"):
                 month = token.strip()
                 if month and month not in seen:
                     seen.append(month)
@@ -161,7 +143,7 @@ def parse_option_months(results: object, *, symbol: str) -> tuple[str, ...]:
     return ()
 
 
-def resolve_index(transport: _SupportsGet, *, symbol: str, exchange: str) -> ResolvedIndex:
+def resolve_index(transport: SupportsRestGet, *, symbol: str, exchange: str) -> ResolvedIndex:
     """Resolve an index's conid AND its listed option months from one ``/secdef/search`` call.
 
     A single search resolves both the index conid (filtered to the ``IND`` section on the

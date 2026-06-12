@@ -51,7 +51,8 @@ def test_run_launch_returns_202_queued_job(infra_client: TestClient) -> None:
     assert response.status_code == 202
     job = response.json()
     assert job["provider"] == "SAMPLE"
-    assert job["job_id"] in runner.JOB_STORE
+    # The job is registered on the app's runner and pollable straight away.
+    assert infra_client.get(f"/api/jobs/{job['job_id']}").status_code == 200
 
 
 def test_get_job_returns_status(infra_client: TestClient) -> None:
@@ -77,6 +78,44 @@ def test_list_jobs_includes_launched_job(infra_client: TestClient) -> None:
 def test_run_underlyings_includes_context_default(infra_client: TestClient) -> None:
     payload = infra_client.get("/api/run/underlyings").json()
     assert "AAPL" in payload["underlyings"]  # context default from conftest
+
+
+# --------------------------------------------------------------------------- #
+# App-lifetime runner state (audit M41): per-app jobs, lifespan shutdown        #
+# --------------------------------------------------------------------------- #
+
+
+def test_job_stores_are_per_app_not_module_global(ctx: AppContext, tmp_path: Path) -> None:
+    # Two apps in one process must not see each other's jobs (the job store used to be a
+    # module global that tests had to clear between runs).
+    other_root = tmp_path / "other-data"
+    other_ctx = AppContext(
+        store_root=other_root,
+        configs_dir=tmp_path / "other-configs",
+        store=ParquetStore(other_root),
+    )
+    from algotrading.frontend.app import create_app
+
+    with TestClient(create_app(ctx)) as first, TestClient(create_app(other_ctx)) as second:
+        job_id = first.post("/api/run", json={"provider": "SAMPLE"}).json()["job_id"]
+        assert first.get(f"/api/jobs/{job_id}").status_code == 200
+        # The second app never launched anything: the job is invisible there.
+        assert second.get(f"/api/jobs/{job_id}").status_code == 404
+        assert second.get("/api/jobs").json()["jobs"] == []
+
+
+def test_runner_pool_shuts_down_with_the_app_lifespan(ctx: AppContext) -> None:
+    # The lifespan handler releases the worker pool: once the app context exits, the
+    # runner refuses new work (stdlib contract: a shut-down executor raises RuntimeError).
+    from algotrading.frontend.app import create_app
+
+    app = create_app(ctx)
+    with TestClient(app):
+        pass
+    pipeline = app.state.runner
+    job = pipeline.new_job("SAMPLE", "AAPL")
+    with pytest.raises(RuntimeError):
+        pipeline.launch_pipeline(ctx, job)
 
 
 # --------------------------------------------------------------------------- #
@@ -186,8 +225,9 @@ def test_sample_run_builds_a_surface_and_leaves_the_source_store_untouched(
     ctx, trade_date = seeded_ctx
     raw_before = len(replay_day(ctx.store, trade_date, underlying="AAPL"))
 
-    job = runner.new_job("SAMPLE", "AAPL")
-    runner.run_now(ctx, job)
+    pipeline = runner.PipelineRunner()
+    job = pipeline.new_job("SAMPLE", "AAPL")
+    pipeline.run_now(ctx, job)
 
     assert job.state == runner.JobState.DONE, job.message
     assert job.finished_at is not None
@@ -207,8 +247,9 @@ def test_sample_run_builds_a_surface_and_leaves_the_source_store_untouched(
 def test_sample_run_errors_when_the_store_has_no_committed_day(ctx: AppContext) -> None:
     # The default ctx store is empty: a SAMPLE run has nothing to replay, so the job settles
     # to ERROR with a typed "no committed sample day" message — the lifecycle still completes.
-    job = runner.new_job("SAMPLE", ctx.default_underlying)
-    runner.run_now(ctx, job)
+    pipeline = runner.PipelineRunner()
+    job = pipeline.new_job("SAMPLE", ctx.default_underlying)
+    pipeline.run_now(ctx, job)
     assert job.state == runner.JobState.ERROR
     assert "no committed sample day" in job.message
     assert job.finished_at is not None

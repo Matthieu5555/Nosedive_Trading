@@ -20,20 +20,16 @@ from __future__ import annotations
 from datetime import date
 
 from algotrading.infra.orchestration import backlog_stages, read_stage_runs
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import AppContext
+from ..deps import CtxDep
 
 router = APIRouter(prefix="/api/recorded-dates", tags=["recorded-dates"])
 
 
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
 @router.get("")
-def get_recorded_dates(request: Request, index: str | None = None) -> JSONResponse:
+def get_recorded_dates(ctx: CtxDep, index: str | None = None) -> JSONResponse:
     """Return the trade dates the front can show, plus the clean-coverage count.
 
     ``dates``/``count`` are the **qc-clean, gap-free** days (every canonical EOD stage finished
@@ -44,7 +40,6 @@ def get_recorded_dates(request: Request, index: str | None = None) -> JSONRespon
     charges §3.1 QC badge + §5 "show degraded states, don't mask them"). An empty ledger yields
     ``count == 0`` and empty lists.
     """
-    ctx = _context(request)
     resolved_index = index or ctx.default_underlying
     root = ctx.store_root
 

@@ -12,9 +12,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
+from types import ModuleType
 
 import pytest
-from algotrading.frontend import runner
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
 from algotrading.infra.contracts import tables
@@ -55,7 +55,6 @@ def qc_seeded_client(tmp_path: Path) -> Iterator[TestClient]:
         configs_dir=tmp_path / "configs",
         store=store,
     )
-    runner.JOB_STORE.clear()
     with TestClient(create_app(ctx)) as client:
         yield client
 
@@ -71,9 +70,24 @@ def qc_failing_client(tmp_path: Path) -> Iterator[TestClient]:
         configs_dir=tmp_path / "configs",
         store=store,
     )
-    runner.JOB_STORE.clear()
     with TestClient(create_app(ctx)) as client:
         yield client
+
+
+def test_health_reflects_surfaces_and_scenarios_after_persist(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # build_dashboard reads the snapshot, surface, and scenario partitions seeded for
+    # TRADE_DATE. With a raw snapshot present, data is flowing; with a surface partition
+    # covering that underlying, surfaces are building; with a scenario partition present,
+    # scenarios are current. Oracle: infra/orchestration/dashboard.py's flag rules.
+    payload = seeded_client.get(
+        "/api/health", params={"trade_date": seed.TRADE_DATE.isoformat()}
+    ).json()
+    assert payload["trade_date"] == seed.TRADE_DATE.isoformat()
+    assert payload["data_flowing"] == "ok"
+    assert payload["surfaces_building"] == "ok"
+    assert payload["scenarios_current"] == "current"
 
 
 def test_health_reports_unhealthy_no_data_on_empty_store(infra_client: TestClient) -> None:

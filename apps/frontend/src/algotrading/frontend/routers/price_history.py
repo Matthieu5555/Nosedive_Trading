@@ -14,22 +14,14 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, BeforeValidator, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from ..context import AppContext
+from ..deps import BadRequestError, CtxDep, DateWindowDep, parse_json_body
 from ..serializers import daily_bar_to_dict
 
 router = APIRouter(prefix="/api/price-history", tags=["price-history"])
-
-
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
-def _parse_date(value: str | None) -> date | None:
-    if value is None:
-        return None
-    return date.fromisoformat(value)
 
 
 def _dedupe_underlyings(raw: object) -> list[str]:
@@ -50,6 +42,23 @@ def _dedupe_underlyings(raw: object) -> list[str]:
     return result
 
 
+class BatchHistoryIn(BaseModel):
+    """``POST /batch`` body: the symbols plus an optional inclusive ISO-date window.
+
+    ``underlyings`` accepts the same lenient shapes the query variant does (a list, a
+    comma-separated string, non-strings silently dropped) via the shared dedupe; the
+    dates stay raw strings here and are parsed by the handler so a malformed value keeps
+    the historical ``bad_date`` 400 (not FastAPI's 422).
+    """
+
+    underlyings: Annotated[list[str], BeforeValidator(_dedupe_underlyings)] = []
+    start: str | None = None
+    end: str | None = None
+
+
+# Default lookback for the single-ticker endpoint: 2 years keeps rendering and query
+# times low while covering the chart's initial view.
+_SINGLE_DEFAULT_WINDOW_DAYS = 730
 # A batch left unbounded ("all available history") walked the whole per-name partition
 # tree once per ticker — measured 5–8s/name on the live store, i.e. minutes for one
 # basket. The batch therefore defaults to this window when ``start`` is omitted; an
@@ -122,68 +131,50 @@ def _history_payload(
 
 @router.get("/batch")
 def get_price_history_batch(
-    request: Request,
+    ctx: CtxDep,
+    window: DateWindowDep,
     underlyings: Annotated[list[str] | None, Query()] = None,
-    start: str | None = None,
-    end: str | None = None,
 ) -> JSONResponse:
     """Return grouped OHLC histories for the requested underlyings.
 
     Query callers can pass repeated ``underlyings=AAA&underlyings=BBB`` or a comma-separated
-    value. ``start`` omitted means all available history up to ``end``.
+    value. ``start`` omitted means the bounded default window up to ``end``.
     """
-    ctx = _context(request)
-    try:
-        start_date = _parse_date(start)
-        end_date = _parse_date(end) or date.today()
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_date", "start": start, "end": end}, status_code=400
-        )
     return JSONResponse(
         _history_payload(
             ctx,
             _dedupe_underlyings(underlyings),
-            start_date=start_date,
-            end_date=end_date,
+            start_date=window.start,
+            end_date=window.end or date.today(),
         )
     )
 
 
 @router.post("/batch")
-async def post_price_history_batch(request: Request) -> JSONResponse:
+async def post_price_history_batch(ctx: CtxDep, request: Request) -> JSONResponse:
     """POST variant for large baskets whose symbols should not be encoded into a long URL."""
-    ctx = _context(request)
-    try:
-        body = await request.json()
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_batch", "detail": "body is not valid JSON"}, status_code=400
-        )
+    body = await parse_json_body(request, error="bad_batch")
     if not isinstance(body, dict):
-        return JSONResponse(
-            {"error": "bad_batch", "detail": "body must be a JSON object"}, status_code=400
+        raise BadRequestError(
+            {"error": "bad_batch", "detail": "body must be a JSON object"}
         )
-    start = body.get("start")
-    end = body.get("end")
-    if start is not None and not isinstance(start, str):
-        return JSONResponse({"error": "bad_date", "start": start, "end": end}, status_code=400)
-    if end is not None and not isinstance(end, str):
-        return JSONResponse({"error": "bad_date", "start": start, "end": end}, status_code=400)
     try:
-        start_date = _parse_date(start)
-        end_date = _parse_date(end) or date.today()
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_date", "start": start, "end": end}, status_code=400
-        )
+        parsed = BatchHistoryIn.model_validate(body)
+        start_date = date.fromisoformat(parsed.start) if parsed.start is not None else None
+        end_date = date.fromisoformat(parsed.end) if parsed.end is not None else date.today()
+    except (ValidationError, ValueError):
+        # The only model fields that can fail are the dates (the symbol dedupe is total),
+        # so this is the same labelled 400 the date parse always produced.
+        raise BadRequestError(
+            {"error": "bad_date", "start": body.get("start"), "end": body.get("end")}
+        ) from None
     # The store read is blocking I/O over many Parquet files; run it in the threadpool so
     # this async handler never parks the event loop (a loop-blocking batch starved every
     # other endpoint — /healthz included — for minutes, observed live).
     payload = await run_in_threadpool(
         _history_payload,
         ctx,
-        _dedupe_underlyings(body.get("underlyings")),
+        parsed.underlyings,
         start_date=start_date,
         end_date=end_date,
     )
@@ -192,10 +183,7 @@ async def post_price_history_batch(request: Request) -> JSONResponse:
 
 @router.get("")
 def get_price_history(
-    request: Request,
-    underlying: str | None = None,
-    start: str | None = None,
-    end: str | None = None,
+    ctx: CtxDep, window: DateWindowDep, underlying: str | None = None
 ) -> JSONResponse:
     """Return daily OHLC bars for one underlying over an optional ``[start, end]`` window.
 
@@ -203,20 +191,11 @@ def get_price_history(
     malformed date yields a labeled 400 (mirrors the surfaces router's ``bad_trade_date``); an
     unknown ticker or empty window yields an empty ``bars`` list with HTTP 200, never a 500.
     """
-    ctx = _context(request)
     resolved_underlying = underlying or ctx.default_underlying
-    try:
-        start_date = _parse_date(start)
-        end_date = _parse_date(end)
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_date", "start": start, "end": end}, status_code=400
-        )
-
-    # Default window: 2 years lookback to keep rendering and query times low
-    from datetime import timedelta
-    resolved_end = end_date or date.today()
-    resolved_start = start_date or (resolved_end - timedelta(days=730))
+    resolved_end = window.end or date.today()
+    resolved_start = window.start or (
+        resolved_end - timedelta(days=_SINGLE_DEFAULT_WINDOW_DAYS)
+    )
 
     rows = ctx.store.read(
         "daily_bar",

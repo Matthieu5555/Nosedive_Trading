@@ -20,33 +20,23 @@ yields an empty ``maturities`` list with HTTP 200, never a 500.
 from __future__ import annotations
 
 import math
-from datetime import date
 
 from algotrading.infra.contracts import (
     ProjectedOptionAnalytics,
     SurfaceGrid,
     SurfaceParameters,
 )
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import AppContext
+from ..deps import CtxDep, TradeDateDep
 from ..serializers import (
     projected_option_analytics_to_dict,
     surface_parameters_to_dict,
 )
+from ..store_reads import read_for_underlying
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
-
-
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
-def _parse_date(value: str | None) -> date | None:
-    if value is None:
-        return None
-    return date.fromisoformat(value)
 
 
 def _maturity_key(maturity_years: float) -> str:
@@ -159,7 +149,7 @@ def _maturities_from_surface_grid(
 
 @router.get("")
 def get_analytics(
-    request: Request, underlying: str | None = None, trade_date: str | None = None
+    ctx: CtxDep, trade_date: TradeDateDep, underlying: str | None = None
 ) -> JSONResponse:
     """Return the projected (tenor × delta-band) analytics grid for one ticker/day.
 
@@ -167,27 +157,13 @@ def get_analytics(
     every persisted day for the underlying. A malformed ``trade_date`` yields a labeled 400; an
     unknown ticker or empty grid yields an empty ``maturities`` list with HTTP 200.
     """
-    ctx = _context(request)
     resolved_underlying = underlying or ctx.default_underlying
-    try:
-        resolved_date = _parse_date(trade_date)
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_trade_date", "trade_date": trade_date}, status_code=400
-        )
-    # A version-blind read narrows to a single partition only when both trade_date and underlying
-    # are given; with trade_date=None the store returns every partition, so filter by underlying
-    # here in every case (an unknown ticker then resolves to an empty grid, not a 500).
-    cells: list[ProjectedOptionAnalytics] = [
-        row
-        for row in ctx.store.read("projected_option_analytics", trade_date=resolved_date)
-        if row.underlying == resolved_underlying
-    ]
-    slices: list[SurfaceParameters] = [
-        row
-        for row in ctx.store.read("surface_parameters", trade_date=resolved_date)
-        if row.underlying == resolved_underlying
-    ]
+    cells: list[ProjectedOptionAnalytics] = read_for_underlying(
+        ctx.store, "projected_option_analytics", resolved_underlying, trade_date=trade_date
+    )
+    slices: list[SurfaceParameters] = read_for_underlying(
+        ctx.store, "surface_parameters", resolved_underlying, trade_date=trade_date
+    )
     maturities = _group_by_maturity(cells, slices)
     # The rich tenor × delta-band grid is the preferred view. When it is empty for the day (the
     # projection skipped this underlying for lack of a usable spot, while the surface fit still
@@ -196,18 +172,16 @@ def get_analytics(
     # once the projection lands, is transparent — this branch is simply no longer taken.
     source = "projected_option_analytics"
     if not maturities:
-        grid = [
-            row
-            for row in ctx.store.read("surface_grid", trade_date=resolved_date)
-            if row.underlying == resolved_underlying
-        ]
+        grid: list[SurfaceGrid] = read_for_underlying(
+            ctx.store, "surface_grid", resolved_underlying, trade_date=trade_date
+        )
         maturities = _maturities_from_surface_grid(grid, slices)
         if maturities:
             source = "surface_grid"
     return JSONResponse(
         {
             "underlying": resolved_underlying,
-            "trade_date": resolved_date.isoformat() if resolved_date else None,
+            "trade_date": trade_date.isoformat() if trade_date else None,
             "n_maturities": len(maturities),
             "source": source,
             "maturities": maturities,

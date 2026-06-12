@@ -9,34 +9,64 @@ opened read-only (the EOD cron is the sole writer, ADR 0034 §1).
 A leg that references an unpriced cell (or an ambiguous provider, or a missing spot) is a
 **labelled gap** in the payload with HTTP 200 — never a 500. A malformed basket (bad side/sign,
 a non-finite quantity, a bad trade date) is a labelled 400, mirroring the surfaces router's
-``bad_trade_date``. An **empty/missing** ``trade_date`` is the operator default, not an error:
-it resolves to the latest banked analytics day for the underlying (the latest-with-data default
-the health/coverage routers apply). The HTTP shape is the seam: it stays in lockstep with the
-web client.
+``bad_trade_date``: the pydantic :class:`BasketIn` shape errors and the contract's own
+:class:`ContractValidationError` both surface as ``{"error": "bad_basket", "detail": …}`` (the
+latter via the app-level handler in ``create_app``). An **empty/missing** ``trade_date`` is the
+operator default, not an error: it resolves to the latest banked analytics day for the
+underlying (the latest-with-data default the health/coverage routers apply). The HTTP shape is
+the seam: it stays in lockstep with the web client.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 
 from algotrading.core.config import load_platform_config
-from algotrading.infra.contracts import Basket, BasketLeg, ContractValidationError
+from algotrading.infra.contracts import Basket, BasketLeg, ProjectedOptionAnalytics
 from algotrading.infra.risk import basket_risk
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ValidationError
 
 from ..basket_scenarios import basket_stress
 from ..context import AppContext
+from ..deps import BadRequestError, CtxDep, parse_json_body
 from ..serializers import basket_risk_to_dict, basket_scenarios_to_dict
+from ..store_reads import latest_partition_date, read_for_underlying
 
 router = APIRouter(prefix="/api/basket", tags=["basket"])
 
 
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
+class BasketLegIn(BaseModel):
+    """One leg of the composed-basket request body (the WS 2A wire shape)."""
+
+    instrument_kind: str
+    side: str
+    quantity: float
+    underlying: str
+    tenor_label: str | None = None
+    delta_band: str | None = None
 
 
-def _resolve_trade_date(ctx: AppContext, body: dict) -> date:
+class BasketIn(BaseModel):
+    """The composed-basket request body. Field semantics live on :class:`Basket`.
+
+    Only the *shape* is validated here (missing/mistyped fields become a labelled 400
+    naming the field, instead of an opaque ``KeyError`` detail); the domain rules —
+    side/sign agreement, finite quantities, option legs naming their grid cell — stay
+    on the :class:`BasketLeg`/:class:`Basket` contracts, the single home for them.
+    ``trade_date`` stays a raw string: empty/missing means "the latest banked day".
+    """
+
+    basket_id: str
+    underlying: str
+    trade_date: str | None = ""
+    legs: list[BasketLegIn] = []
+    provider: str | None = None
+
+
+def _resolve_trade_date(ctx: AppContext, parsed: BasketIn) -> date:
     """The basket's trade date: an explicit ISO date, or the latest banked analytics day.
 
     The web client sends ``trade_date: ""`` until the operator picks a date, meaning "the latest
@@ -44,92 +74,52 @@ def _resolve_trade_date(ctx: AppContext, body: dict) -> date:
     health/coverage routers apply. An empty date over an underlying with no banked grid is a
     ``ValueError`` the caller turns into a labelled 400 (there is no day to price against).
     """
-    raw = body.get("trade_date")
-    if raw:
-        return date.fromisoformat(str(raw))
-    underlying = body["underlying"]
-    dates = [
-        part_date
-        for part_date, part_underlying in ctx.store.list_partitions("projected_option_analytics")
-        if part_underlying == underlying
-    ]
-    if not dates:
+    if parsed.trade_date:
+        return date.fromisoformat(parsed.trade_date)
+    latest = latest_partition_date(
+        ctx.store.list_partitions("projected_option_analytics"), parsed.underlying
+    )
+    if latest is None:
         raise ValueError(
-            f"trade_date is empty and no analytics are banked for underlying {underlying!r}"
+            "trade_date is empty and no analytics are banked for underlying "
+            f"{parsed.underlying!r}"
         )
-    return max(dates)
+    return latest
 
 
-def _build_basket(ctx: AppContext, body: object) -> Basket:
-    """Build the typed :class:`Basket` from the request body, raising on anything malformed.
+def _build_basket(ctx: AppContext, parsed: BasketIn) -> Basket:
+    """Build the typed :class:`Basket` from the validated body, raising on anything malformed.
 
-    Every shape error (not a dict, missing/!str fields, a bad leg, a side/sign contradiction)
-    surfaces as a ``ValueError``/``ContractValidationError``/``TypeError``/``KeyError`` the caller
-    turns into a labelled 400 — never a silent default. An empty/missing ``trade_date`` is not an
-    error: it resolves to the latest banked analytics day (``_resolve_trade_date``).
+    A bad trade date is a ``ValueError``; a leg violating its contract (a side/sign
+    contradiction, a non-finite quantity) is a ``ContractValidationError`` — both become a
+    labelled 400, never a silent default.
     """
-    if not isinstance(body, dict):
-        raise ValueError("basket body must be a JSON object")
-    raw_legs = body.get("legs", [])
-    if not isinstance(raw_legs, list):
-        raise ValueError("legs must be a list")
     legs = tuple(
         BasketLeg(
-            instrument_kind=leg["instrument_kind"],
-            side=leg["side"],
-            quantity=float(leg["quantity"]),
-            underlying=leg["underlying"],
-            tenor_label=leg.get("tenor_label"),
-            delta_band=leg.get("delta_band"),
+            instrument_kind=leg.instrument_kind,
+            side=leg.side,
+            quantity=leg.quantity,
+            underlying=leg.underlying,
+            tenor_label=leg.tenor_label,
+            delta_band=leg.delta_band,
         )
-        for leg in raw_legs
+        for leg in parsed.legs
     )
     return Basket(
-        basket_id=body["basket_id"],
-        trade_date=_resolve_trade_date(ctx, body),
-        underlying=body["underlying"],
+        basket_id=parsed.basket_id,
+        trade_date=_resolve_trade_date(ctx, parsed),
+        underlying=parsed.underlying,
         legs=legs,
-        provider=body.get("provider"),
+        provider=parsed.provider,
     )
 
 
-@router.post("/risk")
-async def price_basket(request: Request) -> JSONResponse:
-    """Price and risk a composed basket off the stored Tab-1 analytics (read-only).
+def _stock_spots(ctx: AppContext, basket: Basket) -> dict[str, float]:
+    """Stock-leg spots: each named underlying's ``daily_bar`` close on the trade date.
 
-    Reads the WS-1F analytics grid for the basket's ``(trade_date, underlying[, provider])`` and
-    the stock-leg spots from ``daily_bar`` on the same date, then sums the per-leg dollar Greeks.
-    Returns the priced/risked basket with each dollar number carrying its unit string and the
-    per-leg breakdown + labelled gaps (HTTP 200). A malformed basket is a labelled 400.
+    Only read when a stock leg is present, and only for the underlyings those legs name
+    (the read-only source the price-history router uses).
     """
-    ctx = _context(request)
-    try:
-        body = await request.json()
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_basket", "detail": "body is not valid JSON"}, status_code=400
-        )
-    try:
-        basket = _build_basket(ctx, body)
-    except (ContractValidationError, ValueError, TypeError, KeyError) as exc:
-        return JSONResponse({"error": "bad_basket", "detail": str(exc)}, status_code=400)
-
-    # Read-only: the WS-1F grid for this day/underlying. Narrow by underlying so a version-blind
-    # read never bleeds another name's grid in (mirrors the surfaces/price-history routers).
-    analytics_rows = [
-        row
-        for row in ctx.store.read(
-            "projected_option_analytics",
-            trade_date=basket.trade_date,
-            underlying=basket.underlying,
-            provider=basket.provider,
-        )
-        if row.underlying == basket.underlying
-    ]
-
-    # Stock legs need their underlying's spot: the close from ``daily_bar`` on the basket's
-    # trade_date (the read-only source the price-history router uses). Only read it when a stock
-    # leg is present, and only for the underlyings those legs name.
     stock_underlyings = {
         leg.underlying for leg in basket.legs if leg.instrument_kind == "stock"
     }
@@ -141,9 +131,60 @@ async def price_basket(request: Request) -> JSONResponse:
         for bar in bars:
             if bar.underlying in stock_underlyings:
                 spot_by_underlying[bar.underlying] = bar.close
+    return spot_by_underlying
 
+
+@dataclass(frozen=True, slots=True)
+class _BasketInputs:
+    """Everything both POST handlers need: the typed basket plus its store reads."""
+
+    basket: Basket
+    analytics_rows: list[ProjectedOptionAnalytics]
+    spot_by_underlying: dict[str, float]
+
+
+async def _basket_inputs(ctx: AppContext, request: Request) -> _BasketInputs:
+    """Parse, validate, and read back the inputs both basket endpoints share.
+
+    Malformed JSON / shape / dates raise :class:`BadRequestError` with the labelled
+    ``bad_basket`` payload; a leg violating its contract raises
+    ``ContractValidationError``, which the app-level handler emits with the same shape.
+    """
+    body = await parse_json_body(request, error="bad_basket")
+    try:
+        basket = _build_basket(ctx, BasketIn.model_validate(body))
+    except (ValidationError, ValueError) as exc:
+        raise BadRequestError({"error": "bad_basket", "detail": str(exc)}) from exc
+    # Read-only: the WS-1F grid for this day/underlying, never bleeding in another name's
+    # grid (the version-blind belt lives in read_for_underlying).
+    analytics_rows = read_for_underlying(
+        ctx.store,
+        "projected_option_analytics",
+        basket.underlying,
+        trade_date=basket.trade_date,
+        provider=basket.provider,
+    )
+    return _BasketInputs(
+        basket=basket,
+        analytics_rows=analytics_rows,
+        spot_by_underlying=_stock_spots(ctx, basket),
+    )
+
+
+@router.post("/risk")
+async def price_basket(ctx: CtxDep, request: Request) -> JSONResponse:
+    """Price and risk a composed basket off the stored Tab-1 analytics (read-only).
+
+    Reads the WS-1F analytics grid for the basket's ``(trade_date, underlying[, provider])`` and
+    the stock-leg spots from ``daily_bar`` on the same date, then sums the per-leg dollar Greeks.
+    Returns the priced/risked basket with each dollar number carrying its unit string and the
+    per-leg breakdown + labelled gaps (HTTP 200). A malformed basket is a labelled 400.
+    """
+    inputs = await _basket_inputs(ctx, request)
     result = basket_risk(
-        basket, analytics_rows=analytics_rows, spot_by_underlying=spot_by_underlying
+        inputs.basket,
+        analytics_rows=inputs.analytics_rows,
+        spot_by_underlying=inputs.spot_by_underlying,
     )
     return JSONResponse(basket_risk_to_dict(result))
 
@@ -171,7 +212,7 @@ def _option_multiplier_currency(ctx: AppContext, basket: Basket) -> tuple[float 
 
 
 @router.post("/scenarios")
-async def stress_basket(request: Request) -> JSONResponse:
+async def stress_basket(ctx: CtxDep, request: Request) -> JSONResponse:
     """Full-reprice a composed basket over the cartesian (spot x vol) stress grid (WS 2B).
 
     The interactive, no-cron counterpart to ``GET /api/risk/scenarios`` (which reads the cron's
@@ -181,49 +222,15 @@ async def stress_basket(request: Request) -> JSONResponse:
     worst-case cell and labelled per-leg gaps. A malformed basket is a labelled 400; an
     unresolved leg is a labelled gap inside a 200, never a 500.
     """
-    ctx = _context(request)
-    try:
-        body = await request.json()
-    except ValueError:
-        return JSONResponse(
-            {"error": "bad_basket", "detail": "body is not valid JSON"}, status_code=400
-        )
-    try:
-        basket = _build_basket(ctx, body)
-    except (ContractValidationError, ValueError, TypeError, KeyError) as exc:
-        return JSONResponse({"error": "bad_basket", "detail": str(exc)}, status_code=400)
-
-    analytics_rows = [
-        row
-        for row in ctx.store.read(
-            "projected_option_analytics",
-            trade_date=basket.trade_date,
-            underlying=basket.underlying,
-            provider=basket.provider,
-        )
-        if row.underlying == basket.underlying
-    ]
-    multiplier, currency = _option_multiplier_currency(ctx, basket)
-
-    stock_underlyings = {
-        leg.underlying for leg in basket.legs if leg.instrument_kind == "stock"
-    }
-    spot_by_underlying: dict[str, float] = {}
-    if stock_underlyings:
-        bars = ctx.store.read(
-            "daily_bar", trade_date=basket.trade_date, provider=basket.provider
-        )
-        for bar in bars:
-            if bar.underlying in stock_underlyings:
-                spot_by_underlying[bar.underlying] = bar.close
-
+    inputs = await _basket_inputs(ctx, request)
+    multiplier, currency = _option_multiplier_currency(ctx, inputs.basket)
     config = load_platform_config(ctx.configs_dir).scenario
     result = basket_stress(
-        basket,
-        analytics_rows=analytics_rows,
+        inputs.basket,
+        analytics_rows=inputs.analytics_rows,
         multiplier=multiplier,
         currency=currency,
-        spot_by_underlying=spot_by_underlying,
+        spot_by_underlying=inputs.spot_by_underlying,
         config=config,
     )
     return JSONResponse(basket_scenarios_to_dict(result))

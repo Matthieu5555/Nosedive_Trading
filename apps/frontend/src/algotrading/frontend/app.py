@@ -14,6 +14,17 @@ in them. The 1I routers read the real
 ``daily_bar`` / ``index_constituents`` / ``projected_option_analytics`` tables and the 1G run
 ledger back through the read-only store (ADR 0034 §1).
 
+App-lifetime state hangs off ``app.state`` (never module globals): the context (``ctx``),
+the pipeline job runner (``runner`` — its worker pool is shut down by the lifespan
+handler), the OAuth CSRF store (``oauth_states``), and the Saxo OAuth settings
+(``saxo_oauth``, read from the environment here, not at import). Routers reach all of it
+through the dependencies in :mod:`algotrading.frontend.deps`.
+
+Malformed-request errors travel as :class:`~algotrading.frontend.deps.BadRequestError`
+(carrying the exact labelled payload) or :class:`ContractValidationError` (a basket leg
+violating its contract); the two exception handlers below serialize them as the same
+labelled 400s the routers historically emitted inline — the wire contract is unchanged.
+
 The earlier Codex ``market``/``orders`` paper-trading routers were dropped in C4: they
 synthesized ~700 lines of fixture data, had no backend equivalent, and are superseded by
 the store-backed surfaces/risk routers.
@@ -22,12 +33,18 @@ the store-backed surfaces/risk routers.
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from algotrading.infra.contracts import ContractValidationError
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .context import AppContext
+from .deps import BadRequestError
+from .oauth_state import OAuthStateStore
+from .runner import PipelineRunner
 
 # Dev (Vite) and prod origins both come from one env var so CORS is not hard-coded.
 _DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
@@ -42,8 +59,18 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     if ctx is None:
         ctx = AppContext.build()
 
-    app = FastAPI(title="AlgoTrading Dashboard (BFF)", version="0.1.0")
+    runner = PipelineRunner()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        """Release the runner's worker pool when the app shuts down."""
+        yield
+        runner.shutdown()
+
+    app = FastAPI(title="AlgoTrading Dashboard (BFF)", version="0.1.0", lifespan=lifespan)
     app.state.ctx = ctx
+    app.state.runner = runner
+    app.state.oauth_states = OAuthStateStore()
 
     frontend_origin = os.getenv("FRONTEND_BASE_URL", _DEFAULT_FRONTEND_ORIGIN)
     app.add_middleware(
@@ -52,6 +79,18 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(BadRequestError)
+    async def emit_labelled_400(_request: Request, exc: BadRequestError) -> JSONResponse:
+        """Serialize the exact labelled 400 payload a dependency or handler raised."""
+        return JSONResponse(exc.payload, status_code=400)
+
+    @app.exception_handler(ContractValidationError)
+    async def emit_bad_basket(
+        _request: Request, exc: ContractValidationError
+    ) -> JSONResponse:
+        """A request that builds an invalid contract (a malformed basket leg) is a 400."""
+        return JSONResponse({"error": "bad_basket", "detail": str(exc)}, status_code=400)
 
     from .routers import analytics as analytics_router  # noqa: PLC0415
     from .routers import basket as basket_router  # noqa: PLC0415
@@ -65,6 +104,8 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import risk as risk_router  # noqa: PLC0415
     from .routers import run as run_router  # noqa: PLC0415
     from .routers import surfaces as surfaces_router  # noqa: PLC0415
+
+    app.state.saxo_oauth = oauth_router.SaxoOAuthSettings.from_env()
 
     app.include_router(health_router.router)
     app.include_router(surfaces_router.router)

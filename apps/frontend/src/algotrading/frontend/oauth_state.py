@@ -3,6 +3,8 @@
 ``generate()`` mints a cryptographically random state token and records its wall-clock
 expiry; ``consume()`` validates and removes it in one atomic step so a token can never
 be reused. Expired tokens are pruned lazily on every access. Self-contained (stdlib only).
+One store per application — ``create_app`` hangs an instance on ``app.state.oauth_states``
+(never a module singleton), so two apps in one process cannot consume each other's tokens.
 
 This is the verifiable half of the Saxo OAuth flow. The other half — exchanging the
 authorization code for tokens against Saxo and injecting them into a live session —
@@ -45,14 +47,3 @@ class OAuthStateStore:
         now = time.monotonic()
         for token in [t for t, expiry in self._tokens.items() if expiry <= now]:
             del self._tokens[token]
-
-
-_store = OAuthStateStore()
-
-
-def generate_state() -> str:
-    return _store.generate()
-
-
-def consume_state(token: str) -> bool:
-    return _store.consume(token)

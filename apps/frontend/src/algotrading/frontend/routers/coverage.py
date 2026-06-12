@@ -22,32 +22,16 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from algotrading.infra.surfaces import PINNED_TENORS, tenor_years
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import AppContext
+from ..deps import CtxDep, TradeDateDep
+from ..store_reads import QC_FAIL_STATUSES, latest_partition_date
 
 router = APIRouter(prefix="/api/coverage", tags=["coverage"])
 
-# QC statuses that mean a check failed (lower-cased before comparison) — same set as the health
-# router, kept local so the two routers do not couple through a shared private constant.
-_QC_FAIL_STATUSES = frozenset({"fail", "failing", "failed", "reject", "error"})
 _CHECK_TENOR_COVERAGE = "tenor_coverage_floor"
 _CHECK_DELTA_BAND = "delta_band_completeness"
-
-
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
-def _latest_instrument_date(ctx: AppContext, underlying: str) -> date | None:
-    """The most recent ``instrument_master`` partition date for ``underlying`` (or ``None``)."""
-    dates = [
-        part_date
-        for part_date, part_underlying in ctx.store.list_partitions("instrument_master")
-        if part_underlying == underlying
-    ]
-    return max(dates, default=None)
 
 
 def _tenor_targets(trade_date: date) -> list[tuple[str, date]]:
@@ -107,7 +91,7 @@ def _tenor_coverage_rows(
     status = "unknown"
     for row in qc_rows:
         if row.check_name == _CHECK_TENOR_COVERAGE and row.target_key == underlying:
-            status = "fail" if str(row.qc_status).lower() in _QC_FAIL_STATUSES else "pass"
+            status = "fail" if str(row.qc_status).lower() in QC_FAIL_STATUSES else "pass"
             try:
                 context = json.loads(row.context)
             except (TypeError, ValueError):
@@ -151,7 +135,7 @@ def _overall_qc_status(qc_rows: list, underlying: str) -> str:
     ]
     if not related:
         return "unknown"
-    if any(str(row.qc_status).lower() in _QC_FAIL_STATUSES for row in related):
+    if any(str(row.qc_status).lower() in QC_FAIL_STATUSES for row in related):
         return "fail"
     return "pass"
 
@@ -160,28 +144,20 @@ def _check_status(qc_rows: list, check_name: str, underlying: str) -> str:
     """The status of one named check for ``underlying`` (``pass``/``fail``/``unknown``)."""
     for row in qc_rows:
         if row.check_name == check_name and row.target_key == underlying:
-            return "fail" if str(row.qc_status).lower() in _QC_FAIL_STATUSES else "pass"
+            return "fail" if str(row.qc_status).lower() in QC_FAIL_STATUSES else "pass"
     return "unknown"
 
 
 @router.get("")
 def get_coverage(
-    request: Request, underlying: str | None = None, trade_date: str | None = None
+    ctx: CtxDep, trade_date: TradeDateDep, underlying: str | None = None
 ) -> JSONResponse:
     """Return the per-expiry capture + per-tenor QC coverage for one underlying and date."""
-    ctx = _context(request)
     resolved_underlying = underlying or ctx.default_underlying
 
-    resolved_date: date | None
-    if trade_date is not None:
-        try:
-            resolved_date = date.fromisoformat(trade_date)
-        except ValueError:
-            return JSONResponse(
-                {"error": "bad_trade_date", "trade_date": trade_date}, status_code=400
-            )
-    else:
-        resolved_date = _latest_instrument_date(ctx, resolved_underlying)
+    resolved_date = trade_date or latest_partition_date(
+        ctx.store.list_partitions("instrument_master"), resolved_underlying
+    )
 
     if resolved_date is None:
         return JSONResponse(

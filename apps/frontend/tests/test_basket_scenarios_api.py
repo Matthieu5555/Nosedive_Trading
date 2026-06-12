@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 from algotrading.core import source_ref, stamp
-from algotrading.frontend import runner
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
 from algotrading.infra.contracts import ProjectedOptionAnalytics
@@ -73,7 +72,6 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     store = ParquetStore(store_root)
     store.write("projected_option_analytics", [_row()])
     ctx = AppContext(store_root=store_root, configs_dir=_CONFIGS, store=store)
-    runner.JOB_STORE.clear()
     with TestClient(create_app(ctx)) as test_client:
         yield test_client
 

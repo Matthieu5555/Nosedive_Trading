@@ -11,26 +11,16 @@ index or a date before the index's first record yields an empty ``constituents``
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from algotrading.infra.contracts import DailyBar, IndexConstituent
 from algotrading.infra.universe import BasketMember, members
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import AppContext
+from ..deps import AsOfDep, CtxDep
 
 router = APIRouter(prefix="/api/constituents", tags=["constituents"])
-
-
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
-def _parse_date(value: str | None) -> date | None:
-    if value is None:
-        return None
-    return date.fromisoformat(value)
 
 
 def _latest_close_by_underlying(bars: list[DailyBar], as_of: date) -> dict[str, float]:
@@ -73,7 +63,7 @@ def _interval_for(
 
 @router.get("")
 def get_constituents(
-    request: Request, index: str | None = None, as_of: str | None = None
+    ctx: CtxDep, as_of: AsOfDep, index: str | None = None
 ) -> JSONResponse:
     """Return the point-in-time constituent basket for an index, price-first.
 
@@ -82,20 +72,13 @@ def get_constituents(
     defaulted to today for a past date). When ``as_of`` is omitted the basket is resolved as of
     today's reconstruction date for a *current* view only.
     """
-    ctx = _context(request)
     resolved_index = index or ctx.default_underlying
-    try:
-        as_of_date = _parse_date(as_of)
-    except ValueError:
-        return JSONResponse({"error": "bad_as_of", "as_of": as_of}, status_code=400)
-    if as_of_date is None:
-        as_of_date = date.today()
+    as_of_date = as_of if as_of is not None else date.today()
 
     basket: tuple[BasketMember, ...] = members(ctx.store, resolved_index, as_of_date)
     raw_rows: list[IndexConstituent] = [
         row for row in ctx.store.read("index_constituents") if row.index == resolved_index
     ]
-    from datetime import timedelta
     closes = _latest_close_by_underlying(
         ctx.store.read(
             "daily_bar",

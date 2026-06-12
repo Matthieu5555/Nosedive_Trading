@@ -1,8 +1,60 @@
-"""Surfaces router tests: empty store, bad date → typed errors, never a 500."""
+"""Surfaces router tests: seeded read-back, empty store, bad date → typed errors.
+
+The seeded cases persist real ``surface_parameters`` rows through ``ParquetStore.write``
+(the conftest seed) and assert the router surfaces *those* hand-chosen values unchanged —
+the BFF<->infra seam, not numbers copied from BFF output.
+"""
 
 from __future__ import annotations
 
+from types import ModuleType
+
+import pytest
 from fastapi.testclient import TestClient
+
+
+def test_surfaces_router_reads_back_persisted_svi_slice(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    payload = seeded_client.get("/api/surfaces", params={"underlying": seed.UNDERLYING}).json()
+    assert payload["underlying"] == seed.UNDERLYING
+    assert payload["n_slices"] == 1
+    slice_row = payload["slices"][0]
+    assert slice_row["maturity_years"] == pytest.approx(seed.MATURITY_YEARS)
+    assert slice_row["svi_b"] == pytest.approx(seed.SVI_B)
+    assert slice_row["svi_sigma"] == pytest.approx(seed.SVI_SIGMA)
+    # The degeneracy facts travel to the UI: a railed/non-converged/arb-breached slice
+    # is served flagged, never as clean (T-vol-surface-correctness policy).
+    assert slice_row["diagnostics"]["arb_free"] is False
+    assert slice_row["diagnostics"]["bound_hits"] == ["rho_lower"]
+    assert slice_row["diagnostics"]["converged"] is False
+    assert slice_row["degenerate"] is True
+    assert slice_row["degenerate_reasons"] == [
+        "param_at_bound:rho_lower", "not_converged", "butterfly_arbitrage",
+    ]
+    # Provenance carried through to the UI: the stamp we wrote round-trips.
+    assert slice_row["provenance"]["code_version"] == "readback-test"
+    assert slice_row["provenance"]["stamp_hash"]
+
+
+def test_surfaces_router_does_not_flag_a_clean_slice(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    payload = seeded_client.get("/api/surfaces", params={"underlying": seed.MEMBER_AAA}).json()
+    slice_row = payload["slices"][0]
+    assert slice_row["diagnostics"]["bound_hits"] == []
+    assert slice_row["diagnostics"]["converged"] is True
+    assert slice_row["degenerate"] is False
+    assert slice_row["degenerate_reasons"] == []
+
+
+def test_surfaces_underlyings_lists_the_persisted_underlying(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    payload = seeded_client.get("/api/surfaces/underlyings").json()
+    # The seed holds a fitted surface for AAPL (the option-pipeline fixture) and for AAA (the
+    # 1I analytics fixture); both are listed, sorted.
+    assert payload["underlyings"] == [seed.MEMBER_AAA, seed.UNDERLYING]
 
 
 def test_surfaces_empty_for_unknown_underlying(infra_client: TestClient) -> None:

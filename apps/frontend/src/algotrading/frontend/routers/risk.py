@@ -7,10 +7,10 @@ A missing partition or unknown portfolio returns an empty list, never a 500.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..context import AppContext
+from ..deps import CtxDep
 from ..serializers import (
     pricing_result_to_dict,
     risk_aggregate_to_dict,
@@ -21,22 +21,16 @@ from ..serializers import (
 router = APIRouter(prefix="/api/risk", tags=["risk"])
 
 
-def _context(request: Request) -> AppContext:
-    return request.app.state.ctx
-
-
 @router.get("/portfolios")
-def list_portfolios(request: Request) -> JSONResponse:
+def list_portfolios(ctx: CtxDep) -> JSONResponse:
     """List the portfolio ids that have persisted risk aggregates."""
-    ctx = _context(request)
     ids = sorted({row.portfolio_id for row in ctx.store.read("risk_aggregates")})
     return JSONResponse({"portfolios": ids})
 
 
 @router.get("")
-def get_risk(request: Request, portfolio_id: str | None = None) -> JSONResponse:
+def get_risk(ctx: CtxDep, portfolio_id: str | None = None) -> JSONResponse:
     """Return net-sensitivity aggregates, optionally filtered to one portfolio."""
-    ctx = _context(request)
     rows = ctx.store.read("risk_aggregates")
     if portfolio_id is not None:
         rows = [row for row in rows if row.portfolio_id == portfolio_id]
@@ -47,14 +41,13 @@ def get_risk(request: Request, portfolio_id: str | None = None) -> JSONResponse:
 
 
 @router.get("/metrics")
-def get_metrics(request: Request, underlying: str | None = None) -> JSONResponse:
+def get_metrics(ctx: CtxDep, underlying: str | None = None) -> JSONResponse:
     """Return per-contract price/Greeks with the unit-carrying dollar layer.
 
     Each dollar metric is read back with the explicit unit string of the pinned
     convention beside its raw per-unit Greek (the BFF metric contract, ADR 0036), so the
     front never receives a bare float. Optionally filtered to one underlying.
     """
-    ctx = _context(request)
     rows = ctx.store.read("pricing_results")
     if underlying is not None:
         rows = [row for row in rows if row.contract_key.split("|", 1)[0] == underlying]
@@ -63,7 +56,7 @@ def get_metrics(request: Request, underlying: str | None = None) -> JSONResponse
 
 
 @router.get("/scenarios")
-def get_scenarios(request: Request, portfolio_id: str | None = None) -> JSONResponse:
+def get_scenarios(ctx: CtxDep, portfolio_id: str | None = None) -> JSONResponse:
     """Return stress-scenario PnL cells plus the reshaped (spot × vol) surface (WS 2B).
 
     Two additive views over the same persisted ``scenario_results`` rows: ``cells`` (the
@@ -72,7 +65,6 @@ def get_scenarios(request: Request, portfolio_id: str | None = None) -> JSONResp
     missing partition / unknown portfolio yields an empty list and a labelled empty surface,
     never a 500. Serving is read-only — the cron is the sole writer (ADR 0034).
     """
-    ctx = _context(request)
     rows = ctx.store.read("scenario_results")
     if portfolio_id is not None:
         rows = [row for row in rows if row.portfolio_id == portfolio_id]

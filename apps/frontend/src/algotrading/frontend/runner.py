@@ -1,8 +1,11 @@
 """Pipeline runner: launch a surface build as a tracked, async-safe job.
 
-The job infrastructure (``JobState``, ``JobStatus``, ``JOB_STORE``, the queue/poll
-state machine) is fully wired: ``new_job`` registers a job, ``launch_pipeline`` runs it
-off the request thread, and ``GET /api/jobs/{id}`` polls its lifecycle.
+The job infrastructure (``JobState``, ``JobStatus``, :class:`PipelineRunner`) is fully
+wired: ``PipelineRunner.new_job`` registers a job, ``launch_pipeline`` runs it off the
+request thread, and ``GET /api/jobs/{id}`` polls its lifecycle. The runner is
+app-lifetime state: ``create_app`` hangs one instance on ``app.state.runner`` and shuts
+its worker pool down when the app's lifespan ends, so jobs are never shared across app
+instances (and tests no longer clear a module-global store between tests).
 
 The SAMPLE provider builds a real surface by **replaying a committed day** through the
 exact actor pipeline (C6's unified collection seam). It reads the store's most recent
@@ -38,12 +41,16 @@ from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
 from algotrading.infra.storage import ParquetStore
 
 from .context import AppContext
-from .providers import SAMPLE_PROVIDER, is_runnable
+from .providers import SAMPLE_PROVIDER
+from .store_reads import latest_partition_date
 
 _LOGGER = structlog.get_logger("frontend.runner")
 
 # The market-data type a replayed SAMPLE session records on its status (3 = delayed/last).
 _SAMPLE_MARKET_DATA_TYPE = 3
+
+# CPU-bound builds run in a small thread pool off the request thread.
+_MAX_WORKERS = 2
 
 
 class JobState(StrEnum):
@@ -79,18 +86,65 @@ class JobStatus:
         }
 
 
-# Process-wide job store (in-memory; a restart drops history, acceptable for a BFF).
-JOB_STORE: dict[str, JobStatus] = {}
+class PipelineRunner:
+    """App-lifetime job registry + worker pool (one per app, shut down via lifespan).
 
-# CPU-bound builds run in a small thread pool off the request thread.
-_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="frontend-runner")
+    Owns the in-memory job store (a restart drops history, acceptable for a BFF) and
+    the thread pool the builds run on. One instance per application — never a module
+    global — so two apps in one process (tests, embedded smoke runs) cannot see each
+    other's jobs.
+    """
 
+    def __init__(self) -> None:
+        self.jobs: dict[str, JobStatus] = {}
+        self._executor = ThreadPoolExecutor(
+            max_workers=_MAX_WORKERS, thread_name_prefix="frontend-runner"
+        )
 
-def new_job(provider: str, underlying: str) -> JobStatus:
-    """Register a queued job and return it."""
-    job = JobStatus(job_id=uuid.uuid4().hex[:8], provider=provider, underlying=underlying)
-    JOB_STORE[job.job_id] = job
-    return job
+    def new_job(self, provider: str, underlying: str) -> JobStatus:
+        """Register a queued job and return it."""
+        job = JobStatus(
+            job_id=uuid.uuid4().hex[:8], provider=provider, underlying=underlying
+        )
+        self.jobs[job.job_id] = job
+        return job
+
+    def launch_pipeline(self, ctx: AppContext, job: JobStatus) -> None:
+        """Schedule the job on the runner thread pool. Non-blocking.
+
+        Raises ``RuntimeError`` after :meth:`shutdown` (the executor refuses new work),
+        which can only happen once the app's lifespan has already ended.
+        """
+        self._executor.submit(self._run_job, ctx, job.job_id)
+
+    def run_now(self, ctx: AppContext, job: JobStatus) -> None:
+        """Run the job synchronously in the current thread (tests use this for determinism)."""
+        self._run_job(ctx, job.job_id)
+
+    def shutdown(self) -> None:
+        """Stop accepting work and release the worker threads (lifespan exit)."""
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def _run_job(self, ctx: AppContext, job_id: str) -> None:
+        """Synchronous job body executed in a worker thread."""
+        job = self.jobs[job_id]
+        job.state = JobState.RUNNING
+        job.started_at = datetime.now(tz=UTC)
+        try:
+            if job.provider.upper() == SAMPLE_PROVIDER:
+                job.message = "Replaying the latest committed day into a surface…"
+                job.summary = _build_sample_surface(ctx, job)
+                job.state = JobState.DONE
+                job.message = "Pipeline completed successfully"
+            else:
+                job.state = JobState.ERROR
+                job.message = f"provider {job.provider!r} is not runnable in this deployment"
+        except Exception as exc:  # noqa: BLE001 — job boundary: any failure marks ERROR and is logged
+            job.state = JobState.ERROR
+            job.message = str(exc)
+            _LOGGER.exception("run job failed", job_id=job_id, provider=job.provider)
+        finally:
+            job.finished_at = datetime.now(tz=UTC)
 
 
 def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
@@ -98,17 +152,15 @@ def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
 
     Raises if the store holds no committed day for it — a SAMPLE run has nothing to replay.
     """
-    days = [
-        part_date
-        for part_date, part_underlying in ctx.store.list_partitions("raw_market_events")
-        if part_underlying == underlying
-    ]
-    if not days:
+    day = latest_partition_date(
+        ctx.store.list_partitions("raw_market_events"), underlying
+    )
+    if day is None:
         raise RuntimeError(
             f"no committed sample day for {underlying!r} in the store: nothing to replay. "
             "Seed a day into the raw layer (or pick an underlying the store holds)."
         )
-    return max(days)
+    return day
 
 
 def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
@@ -163,40 +215,3 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
         "config_hashes": cfg_hashes,
         "code_version": params[0].provenance.code_version if params else None,
     }
-
-
-def _run_in_thread(ctx: AppContext, job_id: str) -> None:
-    """Synchronous job body executed in a worker thread."""
-    job = JOB_STORE[job_id]
-    job.state = JobState.RUNNING
-    job.started_at = datetime.now(tz=UTC)
-    try:
-        if job.provider.upper() == SAMPLE_PROVIDER:
-            job.message = "Replaying the latest committed day into a surface…"
-            job.summary = _build_sample_surface(ctx, job)
-            job.state = JobState.DONE
-            job.message = "Pipeline completed successfully"
-        else:
-            job.state = JobState.ERROR
-            job.message = f"provider {job.provider!r} is not runnable in this deployment"
-    except Exception as exc:  # noqa: BLE001 — job boundary: any failure marks ERROR and is logged
-        job.state = JobState.ERROR
-        job.message = str(exc)
-        _LOGGER.exception("run job failed", job_id=job_id, provider=job.provider)
-    finally:
-        job.finished_at = datetime.now(tz=UTC)
-
-
-def launch_pipeline(ctx: AppContext, job: JobStatus) -> None:
-    """Schedule the job on the runner thread pool. Non-blocking."""
-    _EXECUTOR.submit(_run_in_thread, ctx, job.job_id)
-
-
-def run_now(ctx: AppContext, job: JobStatus) -> None:
-    """Run the job synchronously in the current thread (used by tests for determinism)."""
-    _run_in_thread(ctx, job.job_id)
-
-
-def is_provider_runnable(provider: str) -> bool:
-    """Re-exported guard so the router validates without importing providers directly."""
-    return is_runnable(provider)

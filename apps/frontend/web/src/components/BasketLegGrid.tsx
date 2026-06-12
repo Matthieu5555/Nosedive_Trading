@@ -112,8 +112,9 @@ export function BasketLegGrid({
   return (
     <section aria-label={label}>
       <h3>{label}</h3>
+      {/* No <caption>: the section's h3 above already titles the grid — the doubled
+          "Basket legs" read as a rendering glitch. The aria-label keeps it named for a11y. */}
       <table aria-label="composed legs">
-        <caption>{label}</caption>
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>

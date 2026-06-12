@@ -5,7 +5,7 @@
 import * as Accordion from "@radix-ui/react-accordion";
 
 import type { AnalyticsMaturity } from "../api";
-import { DollarGreeks } from "./DollarGreeks";
+import { DollarGreeksMatrix } from "./DollarGreeks";
 import { SmileChart } from "./charts";
 
 export function MaturityAccordion({ maturities }: { maturities: AnalyticsMaturity[] }) {
@@ -29,9 +29,7 @@ export function MaturityAccordion({ maturities }: { maturities: AnalyticsMaturit
             </Accordion.Header>
             <Accordion.Content>
               <SmileChart maturity={maturity} />
-              {maturity.points.map((point) => (
-                <DollarGreeks key={point.delta_band} point={point} />
-              ))}
+              <DollarGreeksMatrix points={maturity.points} />
             </Accordion.Content>
           </Accordion.Item>
         ))}

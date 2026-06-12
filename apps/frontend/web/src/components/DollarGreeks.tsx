@@ -49,3 +49,39 @@ export function DollarGreeks({ point }: { point: AnalyticsPoint }) {
     </table>
   );
 }
+
+// The per-maturity compact view: ONE matrix (greeks × delta bands) instead of one stacked
+// table per band — eight band tables per maturity read as a wall of numbers (the "pages pas
+// propres" report). Bands are ordered put → ATM → call (by signed target delta, the smile's
+// reading order); each row carries its unit string once, read verbatim from the payload.
+export function DollarGreeksMatrix({ points }: { points: AnalyticsPoint[] }) {
+  if (points.length === 0) return null;
+  const ordered = [...points].sort((a, b) => a.target_delta - b.target_delta);
+  const unitFor = (name: keyof AnalyticsPoint["metrics"]): string =>
+    ordered.map((p) => p.metrics[name].unit).find((u) => u !== null) ?? "n/a";
+  return (
+    <table aria-label="Dollar Greeks by delta band">
+      <caption>Dollar Greeks by delta band ($ value; unit per row)</caption>
+      <thead>
+        <tr>
+          <th>Greek</th>
+          <th>unit</th>
+          {ordered.map((p) => (
+            <th key={p.delta_band}>{p.delta_band}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {GREEK_ORDER.map((name) => (
+          <tr key={name}>
+            <td>{name}</td>
+            <td>{unitFor(name)}</td>
+            {ordered.map((p) => (
+              <td key={p.delta_band}>{formatDollar(p.metrics[name])}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}

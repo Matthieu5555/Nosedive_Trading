@@ -47,6 +47,15 @@ a usable surface.
   closed-form derivatives; `g(k) < 0` (or non-positive total variance) is a breach.
   A slice's `arb_free` flag is the butterfly verdict; `SurfaceFitDiagnostics.arb_free`
   carries it onto the contract.
+- **Degeneracy:** the optimizer's `bound_hits` (every SVI parameter pinned against a
+  calibration bound, e.g. `rho_lower`) and `converged` verdict travel onto
+  `SurfaceFitDiagnostics` too (additive-nullable: pre-existing rows read back `None` —
+  unknown, not clean). `degeneracy_reasons(diagnostics)` is the one policy home for
+  "is this calibration trustworthy": a railed parameter, a non-converged fit, or an
+  arb breach each yields a machine-readable reason. The policy is **flag, never
+  reject and never silently serve as clean** (T-vol-surface-correctness) — railing is
+  expected on ultra-short truncated captures and clears on its own once real term
+  structure is captured.
 
 ## Cross-maturity interpolation (Eq 22)
 
@@ -103,6 +112,16 @@ state):
   solved strike (no mismatch). A target outside the fitted strike span is a labeled gap
   (`reason_code="delta_out_of_band"`), not a guess.
 
+**Discount factors (F-SURF-01).** The curve in `SnapshotMarketState.discount_factors` is
+keyed by the *listed-expiry* maturities the forward estimates priced, which rarely coincide
+with the pinned-tenor years — so a cell's factor is **resolved, never exact-matched**:
+a `discount_factors_by_tenor` label hit wins outright (the join that cannot drift through
+float re-derivation); otherwise the maturity-keyed curve is read via flat-forward
+interpolation (linear in `-ln DF` between knots, the nearest knot's zero rate held flat
+beyond the span, so `DF(0) → 1`). Only an **empty** curve falls back to
+`default_discount_factor` — the documented, explicitly injected no-curve degradation. The
+old exact-`get` silently priced every projected cell rate-free.
+
 **One dollar-Greek home.** The five `dollar_*` numbers and the two convention forks (gamma
 per 1% vs $1, theta ÷365 vs ÷252) come from `pricing.dollar_greeks` — the projection reuses
 it rather than forking a second formula. The unit strings come from the same `UNIT_STRINGS`.
@@ -121,7 +140,8 @@ deliberately with `F_REGEN_GOLDEN=1 uv run pytest -k golden`.
 ## The rich fit vs the persisted contracts
 
 `SliceFit` keeps more than the contracts persist: the SVI parameters, the fit RMSE,
-the bound-hit flags, the butterfly-violation points, and — crucially — the raw
+the bound-hit flags and convergence verdict (both also persisted via
+`SurfaceFitDiagnostics`), the butterfly-violation points, and — crucially — the raw
 `IvPoint` records, never discarded after calibration, so the fit stays auditable
 against its inputs. `surface_parameters` (SVI only) and `surface_grid_cells` (any
 method with a curve) project the usable part into A's stamped contracts;

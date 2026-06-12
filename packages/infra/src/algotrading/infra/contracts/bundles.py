@@ -34,8 +34,17 @@ class IvDiagnostics:
 
 @dataclass(frozen=True, slots=True)
 class SurfaceFitDiagnostics:
-    """How well an SVI slice fit the observed implied-vol points."""
+    """How well an SVI slice fit the observed implied-vol points.
+
+    ``bound_hits`` and ``converged`` are additive-nullable (rows persisted before they
+    existed read back as ``None`` — unknown, not clean). ``bound_hits`` names every SVI
+    parameter the optimizer pinned against a calibration bound (e.g. ``rho_lower``); a
+    railed parameter with a tiny ``rmse`` is the signature of a degenerate fit, so these
+    travel with the slice rather than being dropped at the persistence seam.
+    """
 
     rmse: float
     n_points: int
     arb_free: bool
+    bound_hits: tuple[str, ...] | None = None
+    converged: bool | None = None

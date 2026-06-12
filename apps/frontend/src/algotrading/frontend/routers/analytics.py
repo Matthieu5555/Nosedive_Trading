@@ -82,6 +82,9 @@ def _group_by_maturity(
                 "tenor_label": tenor_label,
                 "label": f"{tenor_label} ({maturity_cells[0].maturity_years:.3f}y)",
                 "smile": {
+                    # The axis names itself (F-BFF-04): the rich projection's x-axis is
+                    # signed target deltas; the grid fallback's is moneyness buckets.
+                    "axis_type": "delta",
                     "deltas": [cell.target_delta for cell in maturity_cells],
                     "implied_vols": [cell.implied_vol for cell in maturity_cells],
                     "log_moneyness": [cell.log_moneyness for cell in maturity_cells],
@@ -106,10 +109,10 @@ def _maturities_from_surface_grid(
     when ``_build_projected_analytics`` skips an underlying for lack of a usable spot, so
     ``projected_option_analytics`` is empty while a full fitted surface is on disk. Each grid
     node carries ``total_variance`` on a (maturity_years, moneyness_bucket) cell, so the implied
-    vol is ``sqrt(total_variance / maturity_years)``. The 3D ``VolSurface`` and ``SmileChart``
-    read only ``smile.deltas``/``smile.implied_vols``, so the moneyness buckets stand in for the
-    delta axis here (a coarser nappe than the delta-band grid, and labelled as moneyness); the
-    per-cell dollar Greeks (``points``) are not available from the grid and come back empty until
+    vol is ``sqrt(total_variance / maturity_years)``. The smile axis is the grid's moneyness
+    buckets, declared as such (``axis_type: "moneyness"`` + ``moneyness_buckets``, F-BFF-04 —
+    a coarser nappe than the delta-band grid, never mislabelled as deltas); the per-cell
+    dollar Greeks (``points``) are not available from the grid and come back empty until
     the projection lands. Once ``projected_option_analytics`` populates, the caller prefers it and
     this fallback is never reached — the upgrade to the rich grid is transparent to the front.
     """
@@ -137,7 +140,11 @@ def _maturities_from_surface_grid(
                 "tenor_label": label,
                 "label": label,
                 "smile": {
-                    "deltas": buckets,
+                    # F-BFF-04: these are moneyness buckets (in log-moneyness units, the
+                    # k the grid's total variance was read at) — labelled as such, never
+                    # served under a "deltas" key they are not.
+                    "axis_type": "moneyness",
+                    "moneyness_buckets": buckets,
                     "implied_vols": implied_vols,
                     "log_moneyness": buckets,
                 },

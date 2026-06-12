@@ -545,6 +545,145 @@ def test_solver_returns_a_strike_inside_the_span_for_an_in_band_target() -> None
 
 
 # --------------------------------------------------------------------------- #
+# Discount-factor curve resolution (F-SURF-01)                                 #
+# --------------------------------------------------------------------------- #
+def _listed_expiry_market(term: SyntheticTermSurface) -> SnapshotMarketState:
+    """A market state whose DF curve is keyed by the LISTED-EXPIRY maturities.
+
+    This is the shape the live driver builds (``_build_projected_analytics`` keys the
+    curve by ``ForwardEstimate.maturity_years``), which the pinned-tenor queries never
+    hit exactly — the F-SURF-01 regression shape.
+    """
+    return SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=term.forward,
+        discount_factors={
+            round(t, 9): math.exp(-term.rate * t) for t in term.maturities
+        },
+        default_discount_factor=1.0,
+    )
+
+
+def test_discount_factor_exact_key_hit_returns_the_stored_value() -> None:
+    # An exact knot query returns the stored factor bit-for-bit (no log/exp round-trip),
+    # preserving byte-identical behavior for curves already keyed at the query points.
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        discount_factors={0.5: 0.99123456789, 1.0: 0.97},
+    )
+    assert market.discount_factor_at(0.5) == 0.99123456789
+    assert market.discount_factor_at(1.0) == 0.97
+
+
+def test_discount_factor_flat_rate_listed_curve_recovers_the_rate_at_every_tenor() -> None:
+    # Oracle: a flat 2% curve has DF(T) = exp(-0.02·T) at EVERY maturity, by definition.
+    # The curve is keyed by listed expiries (10d, 0.5y, 1y, 2y, 3y); the eight pinned
+    # tenors mostly fall between those knots. Linear interpolation of -ln DF is exact for
+    # a flat rate (collinear knots), so every tenor must recover exp(-0.02·T) — not 1.0.
+    # rel=1e-9, not 1e-12: the driver keys each knot at round(T, 9) while the factor is
+    # computed at the true T, so the curve itself carries an O(1e-10·r) inconsistency.
+    term = build_synthetic_term_surface()
+    market = _listed_expiry_market(term)
+    for label in PINNED_TENORS:
+        maturity = tenor_years(label)
+        assert market.discount_factor_at(maturity) == pytest.approx(
+            math.exp(-term.rate * maturity), rel=1e-9
+        ), label
+
+
+def test_discount_factor_interpolates_log_linearly_between_knots() -> None:
+    # Non-flat curve: knots at (T=1, DF=0.98) and (T=2, DF=0.94). Hand oracle for T=1.25:
+    # y(T) = -ln DF is interpolated linearly: y = y1 + 0.25·(y2 - y1)
+    #      = -ln(0.98) + 0.25·(-ln(0.94) + ln(0.98)); DF = exp(-y).
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        discount_factors={1.0: 0.98, 2.0: 0.94},
+    )
+    y1, y2 = -math.log(0.98), -math.log(0.94)
+    expected = math.exp(-(y1 + 0.25 * (y2 - y1)))
+    assert market.discount_factor_at(1.25) == pytest.approx(expected, rel=1e-12)
+
+
+def test_discount_factor_extrapolates_flat_zero_rate_beyond_the_knot_span() -> None:
+    # Beyond the ends the nearest knot's zero rate is held flat: r = -ln(DF)/T at the
+    # boundary knot, DF(T) = exp(-r·T). Short of the first knot this tends to DF(0) = 1,
+    # never a frozen DF (which would mis-discount a 10d cell with a 1y factor).
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        discount_factors={1.0: 0.98, 2.0: 0.94},
+    )
+    r_short = -math.log(0.98) / 1.0
+    r_long = -math.log(0.94) / 2.0
+    assert market.discount_factor_at(0.25) == pytest.approx(math.exp(-r_short * 0.25), rel=1e-12)
+    assert market.discount_factor_at(3.0) == pytest.approx(math.exp(-r_long * 3.0), rel=1e-12)
+
+
+def test_discount_factor_single_knot_curve_holds_its_zero_rate_flat() -> None:
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        discount_factors={0.5: math.exp(-0.03 * 0.5)},
+    )
+    assert market.discount_factor_at(1.0) == pytest.approx(math.exp(-0.03), rel=1e-12)
+
+
+def test_discount_factor_tenor_label_binding_wins_over_the_curve() -> None:
+    # The label-keyed curve is the join that cannot drift through float re-derivation:
+    # when a tenor-labeled factor is present it is used verbatim, even when the
+    # maturity-keyed curve would interpolate to a different value.
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        discount_factors={1.0: 0.98, 2.0: 0.94},
+        discount_factors_by_tenor={"18m": 0.9123},
+    )
+    assert market.discount_factor_for("18m", tenor_years("18m")) == 0.9123
+    # A label without an entry falls through to the maturity curve.
+    assert market.discount_factor_for("12m", 1.0) == 0.98
+
+
+def test_discount_factor_empty_curve_falls_back_to_the_default() -> None:
+    # The documented no-curve degradation: with no usable forward estimates at all the
+    # explicit default applies. This is the only remaining fallback path.
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0, default_discount_factor=0.97,
+    )
+    assert market.discount_factor_at(1.0) == 0.97
+
+
+def test_projection_prices_with_the_listed_expiry_curve_not_rate_free() -> None:
+    # The end-to-end F-SURF-01 regression: projecting against the listed-expiry-keyed
+    # curve must price each cell with the same discounting as the pinned-keyed curve
+    # (both encode the identical flat 2% rate) — before the fix the listed-keyed run
+    # silently priced every cell at DF=1.0.
+    term = build_synthetic_term_surface()
+    slices = _fit_term_surface(term)
+    kwargs: dict[str, Any] = dict(
+        snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
+        projection=ProjectionConfig(version="proj-test"),
+        monetization=MonetizationConfig(version="mon-test"),
+        config_hashes=CONFIG_HASHES,
+    )
+    listed = project_grid(slices, _listed_expiry_market(term), **kwargs)
+    pinned = project_grid(slices, _market(term), **kwargs)
+    assert listed.cells and len(listed.cells) == len(pinned.cells)
+    rate_free = project_grid(
+        slices,
+        SnapshotMarketState(
+            underlying="AAPL", provider="DERIBIT", spot=term.forward, discount_factors={},
+        ),
+        **kwargs,
+    )
+    for got, want in zip(listed.cells, pinned.cells, strict=True):
+        assert got.price == pytest.approx(want.price, rel=1e-9)
+        assert got.delta == pytest.approx(want.delta, rel=1e-9)
+        assert got.rho == pytest.approx(want.rho, rel=1e-9)
+    # And the discounting is real: the rate-free grid prices the long-dated ATM call higher.
+    atm_3y = next(c for c in listed.cells if c.tenor_label == "3y" and c.delta_band == "atm")
+    atm_3y_free = next(
+        c for c in rate_free.cells if c.tenor_label == "3y" and c.delta_band == "atm"
+    )
+    assert atm_3y.price < atm_3y_free.price
+
+
+# --------------------------------------------------------------------------- #
 # C -> A storage seam                                                          #
 # --------------------------------------------------------------------------- #
 def test_projected_cell_round_trips_through_storage(tmp_path: Path) -> None:

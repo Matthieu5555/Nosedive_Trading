@@ -54,8 +54,10 @@ class SliceFit:
     ``svi`` is set only when ``method == "svi"``. For the nonparametric fallback,
     ``nonparametric_ks``/``nonparametric_ws`` hold the sorted observed points used
     for interpolation. ``arb_free`` is the butterfly verdict for an SVI slice and a
-    positivity check for a nonparametric one. ``raw_points`` are the solved IvPoints,
-    kept so the fit is always auditable against its inputs.
+    positivity check for a nonparametric one. ``converged`` is the SVI optimizer's
+    verdict (``None`` for the non-SVI methods, which have no optimizer — unknown is
+    never dressed up as True). ``raw_points`` are the solved IvPoints, kept so the
+    fit is always auditable against its inputs.
     """
 
     underlying: str
@@ -72,6 +74,7 @@ class SliceFit:
     nonparametric_ks: tuple[float, ...]
     nonparametric_ws: tuple[float, ...]
     raw_points: tuple[IvPoint, ...]
+    converged: bool | None = None
 
     def total_variance(self, k: float) -> float:
         """Total variance at log-moneyness ``k`` from whichever model was fit.
@@ -157,7 +160,7 @@ def fit_slice(
             day_count=day_count, method=METHOD_SVI, svi=svi_fit.params, rmse=svi_fit.rmse,
             n_points=svi_fit.n_points, arb_free=not breaches, bound_hits=svi_fit.bound_hits,
             butterfly_violations=breaches, nonparametric_ks=ks, nonparametric_ws=ws,
-            raw_points=points,
+            raw_points=points, converged=svi_fit.converged,
         )
 
     if len(ks) >= 1:
@@ -285,13 +288,34 @@ def surface_parameters(
         expiry_date=fit.expiry_date,
         day_count=fit.day_count,
         diagnostics=SurfaceFitDiagnostics(
-            rmse=fit.rmse, n_points=fit.n_points, arb_free=fit.arb_free
+            rmse=fit.rmse, n_points=fit.n_points, arb_free=fit.arb_free,
+            bound_hits=fit.bound_hits, converged=fit.converged,
         ),
         source_snapshot_ts=source_snapshot_ts,
         provenance=_slice_stamp(
             fit, source_snapshot_ts=source_snapshot_ts, calc_ts=calc_ts, config_hashes=config_hashes
         ),
     )
+
+
+def degeneracy_reasons(diagnostics: SurfaceFitDiagnostics) -> tuple[str, ...]:
+    """The machine-readable reasons a fitted slice is degenerate, or empty if clean.
+
+    The one policy home for "is this calibration trustworthy" (T-vol-surface-correctness:
+    flag, never silently serve as clean — and never hard-reject, so the flag clears on its
+    own once real term structure is captured). A parameter pinned against a calibration
+    bound, a non-converged optimizer, and a butterfly-arb breach each contribute a reason.
+    ``None`` diagnostics (rows persisted before these fields existed) contribute nothing:
+    unknown is not degenerate.
+    """
+    reasons: list[str] = []
+    for name in diagnostics.bound_hits or ():
+        reasons.append(f"param_at_bound:{name}")
+    if diagnostics.converged is False:
+        reasons.append("not_converged")
+    if not diagnostics.arb_free:
+        reasons.append("butterfly_arbitrage")
+    return tuple(reasons)
 
 
 def surface_grid_cells(

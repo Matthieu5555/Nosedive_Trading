@@ -315,7 +315,9 @@ def _seed_store(root: Path) -> None:
                 svi_sigma=SVI_SIGMA,
                 expiry_date=EXPIRY,
                 day_count="ACT/365",
-                diagnostics=SurfaceFitDiagnostics(rmse=0.0008, n_points=9, arb_free=True),
+                diagnostics=SurfaceFitDiagnostics(
+                    rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True,
+                ),
                 source_snapshot_ts=AS_OF,
                 provenance=_prov("surface:AAA"),
             )
@@ -346,7 +348,12 @@ def _seed_legacy_store(store: ParquetStore) -> None:
                 svi_sigma=SVI_SIGMA,
                 expiry_date=EXPIRY,
                 day_count="ACT/365",
-                diagnostics=SurfaceFitDiagnostics(rmse=0.0009, n_points=11, arb_free=True),
+                # A degenerate calibration in the live SX5E/SPX shape: rho railed to its
+                # bound, optimizer not converged, butterfly breached — the BFF must flag it.
+                diagnostics=SurfaceFitDiagnostics(
+                    rmse=0.0009, n_points=11, arb_free=False,
+                    bound_hits=("rho_lower",), converged=False,
+                ),
                 source_snapshot_ts=AS_OF,
                 provenance=_prov("surface:AAPL"),
             )
@@ -453,10 +460,27 @@ def test_surfaces_router_reads_back_persisted_svi_slice(seeded_client: TestClien
     assert slice_row["maturity_years"] == pytest.approx(MATURITY_YEARS)
     assert slice_row["svi_b"] == pytest.approx(SVI_B)
     assert slice_row["svi_sigma"] == pytest.approx(SVI_SIGMA)
-    assert slice_row["diagnostics"]["arb_free"] is True
+    # The degeneracy facts travel to the UI: a railed/non-converged/arb-breached slice
+    # is served flagged, never as clean (T-vol-surface-correctness policy).
+    assert slice_row["diagnostics"]["arb_free"] is False
+    assert slice_row["diagnostics"]["bound_hits"] == ["rho_lower"]
+    assert slice_row["diagnostics"]["converged"] is False
+    assert slice_row["degenerate"] is True
+    assert slice_row["degenerate_reasons"] == [
+        "param_at_bound:rho_lower", "not_converged", "butterfly_arbitrage",
+    ]
     # Provenance carried through to the UI: the stamp we wrote round-trips.
     assert slice_row["provenance"]["code_version"] == "readback-test"
     assert slice_row["provenance"]["stamp_hash"]
+
+
+def test_surfaces_router_does_not_flag_a_clean_slice(seeded_client: TestClient) -> None:
+    payload = seeded_client.get("/api/surfaces", params={"underlying": MEMBER_AAA}).json()
+    slice_row = payload["slices"][0]
+    assert slice_row["diagnostics"]["bound_hits"] == []
+    assert slice_row["diagnostics"]["converged"] is True
+    assert slice_row["degenerate"] is False
+    assert slice_row["degenerate_reasons"] == []
 
 
 def test_surfaces_underlyings_lists_the_persisted_underlying(seeded_client: TestClient) -> None:
@@ -624,6 +648,37 @@ def test_surface_centre_cell_sums_contracts_to_zero(surface_client: TestClient) 
     ci = SURFACE_SPOT_AXIS.index(0.0)
     cj = SURFACE_VOL_AXIS.index(0.0)
     assert surface["scenario_pnl"][ci][cj] == pytest.approx(0.0)
+
+
+def test_full_surface_carries_no_holes_flag(surface_client: TestClient) -> None:
+    surface = surface_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": SURFACE_PORTFOLIO}
+    ).json()["surface"]
+    assert surface["has_holes"] is False
+    assert surface["n_holes"] == 0
+
+
+def test_missing_surface_cell_is_a_labeled_hole_not_a_zero() -> None:
+    # F-BFF-03: a non-rectangular cell set (one (spot, vol) combination genuinely absent)
+    # must serialize the hole as None + has_holes, never a silent 0.0 — a zero PnL is a
+    # real quote ("this stress costs nothing"), which an absent cell is not.
+    from algotrading.frontend.serializers import scenario_surface_to_dict
+
+    rows = [
+        _surface_cell(s, v, SURFACE_TOTALS[(s, v)], CALL_100.canonical())
+        for s in SURFACE_SPOT_AXIS
+        for v in SURFACE_VOL_AXIS
+        if (s, v) != (-0.5, 0.5)  # the absent cell
+    ]
+    surface = scenario_surface_to_dict(rows)
+    i, j = SURFACE_SPOT_AXIS.index(-0.5), SURFACE_VOL_AXIS.index(0.5)
+    assert surface["scenario_pnl"][i][j] is None
+    assert surface["has_holes"] is True
+    assert surface["n_holes"] == 1
+    # No 0.0 masquerades as the missing quote; the real cells are untouched.
+    assert surface["scenario_pnl"][SURFACE_SPOT_AXIS.index(0.5)][
+        SURFACE_VOL_AXIS.index(0.0)
+    ] == pytest.approx(4000.0)
 
 
 def test_surface_payload_uses_blueprint_field_names(surface_client: TestClient) -> None:
@@ -855,7 +910,9 @@ def test_analytics_reads_back_surface_and_dollar_greeks(seeded_client: TestClien
     assert payload["n_maturities"] == 1
     maturity = payload["maturities"][0]
     assert maturity["maturity_years"] == pytest.approx(0.25)
-    # Smile ordered by delta: the 30Δ put (-0.30) first, the 30Δ call (+0.30) last.
+    # Smile ordered by delta: the 30Δ put (-0.30) first, the 30Δ call (+0.30) last. The
+    # axis says what it is (F-BFF-04): the rich projection's x-axis is signed deltas.
+    assert maturity["smile"]["axis_type"] == "delta"
     assert maturity["smile"]["deltas"] == [pytest.approx(AN_PUT_DELTA), pytest.approx(AN_CALL_DELTA)]
     assert maturity["smile"]["implied_vols"] == [
         pytest.approx(AN_PUT_IV),
@@ -980,9 +1037,16 @@ def test_analytics_falls_back_to_surface_grid_when_projection_empty(tmp_path: Pa
     assert payload["n_maturities"] == 1
     maturity = payload["maturities"][0]
     assert maturity["maturity_years"] == pytest.approx(maturity_years)
-    # Buckets sorted ascending stand in for the delta axis; IV = sqrt(variance / maturity).
+    # F-BFF-04: the fallback x-axis is moneyness buckets and must say so — bucket values
+    # never masquerade under a "deltas" key. The buckets ARE log-moneyness (the grid reads
+    # total variance at k = bucket), so log_moneyness carries the same values legitimately.
     ordered = sorted(grid_rows)
-    assert maturity["smile"]["deltas"] == [pytest.approx(bucket) for bucket, _ in ordered]
+    assert maturity["smile"]["axis_type"] == "moneyness"
+    assert "deltas" not in maturity["smile"]
+    assert maturity["smile"]["moneyness_buckets"] == [
+        pytest.approx(bucket) for bucket, _ in ordered
+    ]
+    assert maturity["smile"]["log_moneyness"] == [pytest.approx(bucket) for bucket, _ in ordered]
     assert maturity["smile"]["implied_vols"] == [
         pytest.approx(math.sqrt(variance / maturity_years)) for _, variance in ordered
     ]

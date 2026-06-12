@@ -39,11 +39,12 @@ Seven pages over `react-router`, wrapped in a shared `AppLayout` (top-bar nav):
 - **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
   (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
   point-in-time, price-first constituent list (TanStack Table), then select a ticker to
-  see its **price-first** detail — the daily **candlestick** (Plotly), the **3D IV
-  surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
-  **dollar Greeks**, each tagged with its P0.2 unit string. Charts are Plotly only
-  (ADR 0030); every panel self-labels. Picking a past date re-resolves the basket and
-  analytics as-of that date (never today-defaulted).
+  see its **price-first** detail — the daily **candlestick** (TradingView Lightweight Charts),
+  the **3D IV surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
+  **dollar Greeks**, each tagged with its P0.2 unit string. TradingView Lightweight Charts
+  renders the daily candlesticks and dollar-Greek term-structure line charts; Plotly remains
+  the 3D/heatmap/non-line chart path (ADR 0030). Every panel self-labels. Picking a past date
+  re-resolves the basket and analytics as-of that date (never today-defaulted).
 - **Health** — the operator dashboard: the four flags (data flowing / surfaces
   building / QC passing / scenarios current), the trade date, and the EOD backlog,
   read from `orchestration.build_dashboard` over the store and the run-state ledger.
@@ -82,7 +83,14 @@ The BFF exposes (all under `/api` except the liveness probe):
   (smile + surface slice + dollar Greeks with unit strings) from `projected_option_analytics`
   (WS 1I). **Index-keyed:** the option chain is captured at the index level, so the web app
   queries this with the *index* symbol (the vol surface is the index's), not the selected
-  constituent — the constituent selection only drives its price candlestick.
+  constituent — the constituent selection only drives its price candlestick. The smile's
+  x-axis declares itself via `axis_type` (F-BFF-04): `"delta"` + `deltas` on the rich
+  projection, `"moneyness"` + `moneyness_buckets` on the surface-grid fallback — bucket
+  values are never relabelled as deltas. Each `surface_slice` carries the full fit
+  diagnostics (`bound_hits`/`converged` beside `rmse`/`n_points`/`arb_free`) plus the
+  derived `degenerate`/`degenerate_reasons` flag, so a railed SVI calibration renders
+  flagged, never as clean. The stress surface (`GET /api/risk/scenarios`) labels missing
+  `(spot, vol)` cells as `null` holes with `has_holes`/`n_holes` (F-BFF-03), never `0.0`.
 - `GET /api/recorded-dates[?index=]` — from the 1G run-state ledger. Returns `dates`/`count`
   (the **qc-clean, gap-free** days — the operator coverage figure) **and** `available`: every
   **viewable** day (whose `analytics` stage produced a surface, **including qc-failing ones**),

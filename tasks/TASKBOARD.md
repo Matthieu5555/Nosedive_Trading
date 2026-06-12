@@ -67,6 +67,8 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 | — ✅ cleared 2026-06-11 | **Landed & verified, rows retired:** server-deploy slice-A scripts (`68d2c1f`/`91abdd7`); REP3/9/10 specs written; **V1** smoke driver (`e742bb2`); **QA-FIX** `fix/live-spine-wiring` now **merged**; **2A** (`b2b6a06`), **2B** (`d7a18f8`→`b947a63`), **1A** membership (`abdfd36`/`c019513`), **1F** — specs archived. Plus prior week: T-bridge (`28ab59c`), front fallback (`780ba85`), ingestion ADRs 0039/0040/0041, 429 backoff (`0c255ba`), data-root (`a2707e8`). | 2026-06-11 | see commits/ADRs |
 | ✅ SPX hotfix LANDED | `hotfix/spx-post-close-guard` `07c892d` — session-bounded post-close guard + loud drop-100% (+ F-UNI-01 leap-day). Cherry-pick `07c892d` for a clean PR. | 2026-06-11 | **Deploy before tonight's 22:45 XNYS fire.** Unblocks the XEUR timer shift → `clock-timer-coherence.md`. |
 | ✅ Audit lanes LANDED | `audit-fixes-batch1`: STORAGE F-STORE-01/03 (`445d1ac`), RISK F-RISK-01/02/03 (`ba9dd26`), BFF F-BFF-01/02 (`059a9e8`). Gate 983/0/16. **REP1 = won't-fix** (content-hash). | 2026-06-11 | merge/cherry-pick the 3 to main |
+| ✅ vol-surface correctness LANDED | `audit-fixes-batch1`: F-SURF-01 (DF flat-forward interpolation at the pinned tenor + `discount_factors_by_tenor` label binding, `PROJECTION_VERSION` 1.1.0, golden regen), SVI degeneracy propagated (`bound_hits`/`converged` → contract + BFF + a visible smile flag, `degeneracy_reasons` policy = flag-not-reject), F-BFF-03 (null holes + `has_holes`), F-BFF-04 (`axis_type` + `moneyness_buckets`). Spec [`T-vol-surface-correctness`](T-vol-surface-correctness.md). Gate 1371/0/16 + web 34/0, look-ahead clean. **Downstream half only** — 1m…3y stay labeled gaps until [T-tenor-selection](T-tenor-selection.md) + re-capture. | 2026-06-12 | merge with the batch |
+| 🟡 **IMPLEMENTED (uncommitted) — capture lane** | **[T-tenor-selection](T-tenor-selection.md)** — tenor-targeted **bracket** expiry selection (replaces nearest-N). `select_expiries_bracketing`/`tenor_target_dates`/`bracket_dates` in `chain_planning.py`; month-token bracket `_select_discovery_months`/`_parse_month_token` + `_selection_from_config(config, as_of)` in `cp_rest_close_capture.py`; both stages (discovery + capture) + `plan_chain` wired; new tests `test_tenor_selection.py` (12) + `test_tenor_discovery_months.py` (4). **Gate green 1371/16.** Files: `infra-ibkr/.../collectors/cp_rest_close_capture.py`, `infra/.../universe/chain_planning.py` (+ `universe/__init__.py`). | 2026-06-12 | **ROOT CAUSE** of F-SURF-01 + SVI degeneracy — fixed at source. Needs a re-capture to bank real 1m…3y. Disjoint files from the vol-surface lane. |
 | HELD (do after deps) | REP6 config (determinism), full REP2 as-of (look-ahead), Web REP3/4/9/10, connectivity bundle, **ADR-0040 mega-fix → [`T-raw-invariant.md`](T-raw-invariant.md)** | — | see [action plan](AUDIT-ACTION-PLAN-2026-06-11.md) waves 3-5 |
 
 
@@ -92,6 +94,14 @@ sequence; **Phase 0 and Phase 1 are now fully specced** (per-workstream files, l
 > page + page-3 start. **Obsolete:** the "clear ledger + partitions before the real close" /
 > intraday-dry-run-purge guidance — ADR 0041 makes the real close **overwrite** an intraday run, so
 > no manual purge is needed any more.
+
+> [!IMPORTANT]
+> **ABSOLUTE PRIORITY FOR TOMORROW'S PROFESSOR REVIEW (Fri 2026-06-12):**
+> 1. **Data Quality & EOD Capture:** Verify that tonight's EOD captures (SX5E/SPX) are 100% clean and fully populated (no 429 drops, no empty derived tables).
+> 2. **BFF/Projection Fixes:** Correct F-BFF-04 (fallback axis moneyness keys) and F-SURF-01 (flat discount factor rates to zero) so that the vol surface / Greeks display correctly.
+> 3. **Constituent Charts:** Launch the [ohlc-constituent-backfill](ohlc-constituent-backfill.md) so constituent candlestick charts are not empty.
+> 4. **CDC Page 1 Reflow:** Complete Page 1 front-end phases 1-3 ([front-page1-cdc-buildout](front-page1-cdc-buildout.md): reading-order reflow, smile side-by-side, 2D heatmap) to look fully compliant with the cahier des charges.
+
 
 Spec rows:
 

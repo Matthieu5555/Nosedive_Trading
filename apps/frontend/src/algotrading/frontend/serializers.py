@@ -23,7 +23,7 @@ from algotrading.infra.contracts import (
 )
 from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.risk import BasketRisk, LegRisk
-from algotrading.infra.surfaces import SlicePlotSeries
+from algotrading.infra.surfaces import SlicePlotSeries, degeneracy_reasons
 
 if TYPE_CHECKING:
     # Used only as the annotation on dashboard_status_to_dict; imported under
@@ -49,7 +49,15 @@ def provenance_to_dict(stamp: ProvenanceStamp) -> dict[str, object]:
 
 
 def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
-    """Serialize one fitted SVI slice (parameters + fit diagnostics + provenance)."""
+    """Serialize one fitted SVI slice (parameters + fit diagnostics + provenance).
+
+    The degeneracy facts travel with the slice: ``bound_hits``/``converged`` are passed
+    through (``None`` for rows persisted before the fields existed — unknown, not clean),
+    and the derived ``degenerate``/``degenerate_reasons`` flag applies the one policy home
+    (:func:`~algotrading.infra.surfaces.degeneracy_reasons`) so a railed or arb-breached
+    calibration is never served as if it were clean.
+    """
+    reasons = degeneracy_reasons(row.diagnostics)
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
         "underlying": row.underlying,
@@ -66,7 +74,15 @@ def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
             "rmse": row.diagnostics.rmse,
             "n_points": row.diagnostics.n_points,
             "arb_free": row.diagnostics.arb_free,
+            "bound_hits": (
+                list(row.diagnostics.bound_hits)
+                if row.diagnostics.bound_hits is not None
+                else None
+            ),
+            "converged": row.diagnostics.converged,
         },
+        "degenerate": bool(reasons),
+        "degenerate_reasons": list(reasons),
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
     }
@@ -164,10 +180,13 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
     Selects the ``surf_``-prefixed cells from ``rows`` (the cartesian grid 2B persists),
     sums ``scenario_pnl`` over contracts per ``(spot_shock, vol_shock)`` to the portfolio
     total, and arranges it as a z-grid aligned to the sorted shock axes — spot-major, so
-    ``scenario_pnl[i][j]`` is the total under ``spot_shock[i]`` / ``vol_shock[j]``. Field names
-    follow ADR 0029 (``spot_shock`` / ``vol_shock`` axes, ``scenario_pnl`` z-grid); the dollar
-    PnL carries its ``unit`` string. An absent surface (no ``surf_`` cells, e.g. an unknown or
-    empty basket) is a labelled empty surface — empty axes, HTTP 200 at the caller, never a 500.
+    ``scenario_pnl[i][j]`` is the total under ``spot_shock[i]`` / ``vol_shock[j]``. A
+    ``(spot, vol)`` combination with no persisted cell is a **labelled hole** — ``None`` in
+    the z-grid plus the ``has_holes``/``n_holes`` flags — never a silent ``0.0``, which would
+    read as a real "this stress costs nothing" quote (F-BFF-03). Field names follow ADR 0029
+    (``spot_shock`` / ``vol_shock`` axes, ``scenario_pnl`` z-grid); the dollar PnL carries its
+    ``unit`` string. An absent surface (no ``surf_`` cells, e.g. an unknown or empty basket)
+    is a labelled empty surface — empty axes, HTTP 200 at the caller, never a 500.
     """
     surface_rows = [row for row in rows if row.scenario_id.startswith(_SURFACE_ID_PREFIX)]
     if not surface_rows:
@@ -178,6 +197,8 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
             "scenario_version": None,
             "unit": SCENARIO_PNL_UNIT,
             "n_cells": 0,
+            "has_holes": False,
+            "n_holes": 0,
         }
     spot_axis = sorted({row.spot_shock for row in surface_rows})
     vol_axis = sorted({row.vol_shock for row in surface_rows})
@@ -185,7 +206,10 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
     for row in surface_rows:
         key = (row.spot_shock, row.vol_shock)
         totals[key] = totals.get(key, 0.0) + row.scenario_pnl
-    pnl_grid = [[totals.get((s, v), 0.0) for v in vol_axis] for s in spot_axis]
+    pnl_grid: list[list[float | None]] = [
+        [totals.get((s, v)) for v in vol_axis] for s in spot_axis
+    ]
+    n_holes = sum(1 for grid_row in pnl_grid for value in grid_row if value is None)
     # One surface is one scenario version; if a stale mix is present, surface the smallest
     # deterministically rather than guessing (the cron rewrites a partition wholesale).
     versions = sorted({row.scenario_version for row in surface_rows})
@@ -196,6 +220,8 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
         "scenario_version": versions[0],
         "unit": SCENARIO_PNL_UNIT,
         "n_cells": len(surface_rows),
+        "has_holes": n_holes > 0,
+        "n_holes": n_holes,
     }
 
 

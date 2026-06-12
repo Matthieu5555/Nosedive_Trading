@@ -473,6 +473,79 @@ def test_surface_parameters_refuses_a_nonparametric_slice() -> None:
         _params(sparse)
 
 
+# --------------------------------------------------------------------------- #
+# Degeneracy diagnostics (bound hits / convergence propagated, never dropped)  #
+# --------------------------------------------------------------------------- #
+def test_fit_slice_records_svi_convergence_and_nonparametric_records_none() -> None:
+    # The SVI path carries the optimizer's verdict; the fallback paths have no optimizer,
+    # so converged is None (unknown), never a fabricated True.
+    assert _fit(_synthetic_points()).converged is True
+    assert _fit(_synthetic_points()[:3]).converged is None
+    assert _fit(()).converged is None
+
+
+def test_surface_parameters_carry_bound_hits_and_converged() -> None:
+    # The persisted diagnostics must carry the degeneracy facts the fit computed —
+    # a slice railed to its bound was previously served as if clean (audit, untracked).
+    fit = _fit(_synthetic_points())
+    diagnostics = _params(fit).diagnostics
+    assert diagnostics.bound_hits == fit.bound_hits == ()
+    assert diagnostics.converged is True
+
+    # A smile generated from rho pinned at the feasible edge (-0.999, the live SX5E/SPX
+    # shape) must flag rho_lower in the persisted diagnostics.
+    ks = (-0.25, -0.1, 0.0, 0.1, 0.25)
+    railed_params = SviParams(a=0.04, b=0.1, rho=-0.999, m=0.0, sigma=0.2)
+    railed_points = tuple(
+        _iv_point(k, railed_params.total_variance(k), f"R{i}") for i, k in enumerate(ks)
+    )
+    railed_diag = _params(_fit(railed_points)).diagnostics
+    assert railed_diag.bound_hits is not None
+    assert "rho_lower" in railed_diag.bound_hits
+
+
+def test_degeneracy_reasons_flag_railed_and_arb_breached_fits_not_clean_ones() -> None:
+    # The one policy home (T-vol-surface-correctness: flag, don't silently serve).
+    from algotrading.infra.contracts import SurfaceFitDiagnostics
+    from algotrading.infra.surfaces import degeneracy_reasons
+
+    clean = SurfaceFitDiagnostics(
+        rmse=1e-6, n_points=9, arb_free=True, bound_hits=(), converged=True
+    )
+    assert degeneracy_reasons(clean) == ()
+
+    railed = SurfaceFitDiagnostics(
+        rmse=1e-6, n_points=5, arb_free=False, bound_hits=("rho_lower",), converged=False
+    )
+    assert degeneracy_reasons(railed) == (
+        "param_at_bound:rho_lower", "not_converged", "butterfly_arbitrage",
+    )
+
+    # Old persisted rows carry None for the additive fields: unknown is not degenerate.
+    legacy = SurfaceFitDiagnostics(rmse=1e-6, n_points=9, arb_free=True)
+    assert degeneracy_reasons(legacy) == ()
+
+
+def test_legacy_surface_parameters_row_reads_back_with_null_degeneracy_fields() -> None:
+    # Back-compat at the storage seam: a row persisted before bound_hits/converged were
+    # added has no such keys in its diagnostics JSON; the additive-nullable rule must
+    # read it back as None, not raise SchemaCompatibilityError.
+    import json as _json
+
+    from algotrading.infra.storage.serialization import from_row, to_row
+
+    row = to_row(SurfaceParameters, _params(_fit(_synthetic_points())))
+    diagnostics = _json.loads(row["diagnostics"])
+    del diagnostics["bound_hits"]
+    del diagnostics["converged"]
+    row["diagnostics"] = _json.dumps(diagnostics)
+    back = from_row(SurfaceParameters, row)
+    assert isinstance(back, SurfaceParameters)
+    assert back.diagnostics.bound_hits is None
+    assert back.diagnostics.converged is None
+    assert back.diagnostics.rmse == pytest.approx(0.0, abs=1e-9)
+
+
 def test_surface_grid_cells_are_valid_and_clamped_nonnegative() -> None:
     fit = _fit(_synthetic_points())
     buckets = (-0.2, -0.1, 0.0, 0.1, 0.2)

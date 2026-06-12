@@ -178,6 +178,7 @@ dependencies = [
     { name = "algotrading-infra" },
     { name = "httpx" },
     { name = "pycryptodome" },
+    { name = "tenacity" },
     { name = "websockets" },
 ]
 
@@ -192,6 +193,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "nautilus-trader", extras = ["ib"], marker = "extra == 'ibkr'" },
     { name = "pycryptodome", specifier = ">=3.20" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "websockets", specifier = ">=12" },
 ]
 provides-extras = ["ibkr"]

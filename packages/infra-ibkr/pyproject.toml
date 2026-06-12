@@ -9,6 +9,7 @@ dependencies = [
     # the gate imports them but opens no live session — tests drive a fake transport.
     "httpx>=0.27",
     "pycryptodome>=3.20",
+    "tenacity>=9.1.4",
     "websockets>=12",
 ]
 

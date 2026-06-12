@@ -74,7 +74,7 @@ This is the **only** gate. `ruff`, `mypy`, `import-linter`, and `pytest` (with
 the layering (`core ← infra ← {infra-<broker>} ← {strategy,execution} ← frontend`, and
 "infra is blind to alpha"): treat a broken contract as a build failure, not a warning.
 Branch coverage on the analytics/risk core is a separate, deliberate step:
-`uv run pytest --cov`. The gate scopes to `packages/` + `apps/`; it deliberately
+`uv run pytest --cov`. The gate scopes to `packages/` + `apps/` + `scripts/` (ruff and mypy cover the operational scripts too); it deliberately
 excludes the read-only reference checkout, notebooks, and scratch dirs.
 
 **frontend/** (Vite/JS): the React/Vite web app under `apps/frontend/web` verifies with

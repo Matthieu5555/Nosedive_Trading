@@ -52,8 +52,8 @@ _CAPABILITIES: tuple[ProviderCapability, ...] = (
         auth_required=False,
         data_latency="delayed",
         status="unavailable",
-        note="Needs the optional 'ib_async' dependency and a running IB gateway "
-        "(packages/infra-ibkr).",
+        note="Live IBKR rides the Client-Portal REST adapter (packages/infra-ibkr); "
+        "needs an authenticated CP gateway.",
     ),
     ProviderCapability(
         provider="SAXO",

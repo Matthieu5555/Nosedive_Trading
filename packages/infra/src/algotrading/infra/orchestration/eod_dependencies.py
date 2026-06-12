@@ -13,6 +13,8 @@ from pathlib import Path
 
 from algotrading.core.config import PlatformConfig
 from algotrading.core.config.loader import load_platform_config
+from algotrading.core.paths import data_root as core_data_root
+from algotrading.core.paths import repo_root
 from algotrading.core.provenance import code_identity as _git_code_identity
 from algotrading.infra.connectivity import Clock, SystemClock
 from algotrading.infra.storage import ParquetStore, RunRegistry
@@ -51,10 +53,7 @@ class RunnerDeps:
 # Production wiring — only reached when no deps are injected (live daily fire). #
 # --------------------------------------------------------------------------- #
 
-# The repo root: this file lives at
-# packages/infra/src/algotrading/infra/orchestration/eod_dependencies.py, so six parents up
-# is the repository root that holds configs/.
-_REPO_ROOT = Path(__file__).resolve().parents[6]
+_REPO_ROOT = repo_root()
 _CONFIGS_DIR = _REPO_ROOT / "configs"
 
 
@@ -71,7 +70,7 @@ class _DefaultEnv:
 def _default_env() -> _DefaultEnv:
     import os
 
-    data_root = Path(os.environ.get("ALGOTRADING_DATA_ROOT", str(_REPO_ROOT / "data")))
+    data_root = core_data_root()
     runs_db = Path(os.environ.get("ALGOTRADING_RUNS_DB", str(data_root / "runs.db")))
     return _DefaultEnv(
         data_root=data_root,

@@ -14,7 +14,6 @@ from __future__ import annotations
 from algotrading.infra.contracts import content_event_id
 
 from .clock import Clock, ManualClock, SystemClock
-from .dotenv import load_env_file
 from .errors import (
     ClientIdError,
     ConnectionFailed,
@@ -65,7 +64,6 @@ __all__ = [
     "assess_market_data",
     "classify_feed_notice",
     "load_broker_config",
-    "load_env_file",
     "content_event_id",
     "market_data_type_name",
 ]

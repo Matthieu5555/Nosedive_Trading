@@ -37,6 +37,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from algotrading.infra.contracts import ContractValidationError
+from algotrading.infra.observability import configure_logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -58,6 +59,9 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     """
     if ctx is None:
         ctx = AppContext.build()
+
+    # One platform-wide logging config (M8); idempotent, so per-test app builds are fine.
+    configure_logging()
 
     runner = PipelineRunner()
 

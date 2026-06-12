@@ -13,6 +13,15 @@ class ConnectivityError(Exception):
     """Base class for all connectivity-layer failures."""
 
 
+class TransportError(ConnectivityError):
+    """A broker transport operation (open / round-trip / request) failed.
+
+    The broker-agnostic failure a concrete transport wraps its vendor errors into, so
+    operator tooling (e.g. ``scripts/ibkr_bootstrap.py``) can catch one typed error
+    instead of each SDK's heterogeneous exceptions.
+    """
+
+
 class SessionDisconnected(ConnectivityError):
     """The broker session dropped mid-use.
 

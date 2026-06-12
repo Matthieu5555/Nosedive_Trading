@@ -3,8 +3,7 @@
 The live market-data path is Nautilus's shipped InteractiveBrokers adapter: build its
 data-client config with :func:`build_data_client_config`, and normalize the
 ``QuoteTick``/``TradeTick`` it delivers into our immutable ``RawMarketEvent`` with the
-``quote_tick_to_events`` / ``trade_tick_to_events`` seam. The hand-rolled ``ib_async``
-modules are superseded and kept only until C5 removes them.
+``quote_tick_to_events`` / ``trade_tick_to_events`` seam.
 """
 
 from algotrading.infra_ibkr.collectors import (

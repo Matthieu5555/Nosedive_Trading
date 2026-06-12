@@ -387,7 +387,6 @@ def test_eod_run_idempotent_refire(tmp_path: Path) -> None:
     assert result is not None
     # Overwrite-by-re-run (ADR 0032 refined): the second fire re-runs every clean stage rather than
     # skipping it. The stage set is unchanged, but fresh ledger rows record the re-run.
-    assert result.skipped == ()
     assert set(result.ran) == clean_after_first
     assert completed_stages(root, CLOCK_DAY) == clean_after_first
     assert len(read_stage_runs(root)) > len(runs_after_first)
@@ -400,7 +399,7 @@ def test_refire_clean_date_reruns_overwriting(tmp_path: Path) -> None:
     n = len(read_stage_runs(root))
     # A second fire for the already-clean date re-runs every stage (overwrite), not a no-op skip.
     res = run_fire(deps, trade_date=CLOCK_DAY, index="SX5E")
-    assert res is not None and set(res.ran) == set(EOD_STAGES) and res.skipped == ()
+    assert res is not None and set(res.ran) == set(EOD_STAGES)
     assert len(read_stage_runs(root)) > n
 
 
@@ -476,7 +475,6 @@ def test_eod_run_midrun_kill_restart_converges(tmp_path: Path) -> None:
     )
     result = run_fire(deps2, trade_date=CLOCK_DAY, index="SX5E")
     assert result is not None
-    assert result.skipped == ()
     assert set(result.ran) == set(EOD_STAGES)
     # Convergence: the day is now gap-free.
     assert backlog_stages(root, CLOCK_DAY) == []

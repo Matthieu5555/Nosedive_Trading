@@ -43,7 +43,8 @@ def test_feeding_only_a_future_close_is_indistinguishable_so_the_caller_must_not
     # The resolver cannot detect a future value (it sees only the number) — which is exactly why
     # the contract puts the as-of guarantee on the caller. This test documents the trap: if a
     # caller wrongly passed FUTURE_CLOSE as prior_close, the resolver WOULD return it. The
-    # close-capture mode avoids this by sourcing the close from the session's own events at the
-    # injected close instant, never a later one (see test_close_capture.py).
+    # live close path (orchestration.eod_stages) avoids this by sourcing the close from the
+    # session's own events at the injected close instant, never a later one (see
+    # test_cp_rest_close_capture.py's no-look-ahead drop).
     leaked = resolve_reference_spot(bid=None, ask=None, last=None, prior_close=FUTURE_CLOSE)
     assert leaked.value == FUTURE_CLOSE  # the resolver trusts the caller; the caller must be honest

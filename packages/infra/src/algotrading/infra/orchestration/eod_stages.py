@@ -282,7 +282,7 @@ def default_stages_builder(
         persist_outputs,
         run_analytics_with_qc,
     )
-    from algotrading.infra.actor.close_capture import DEFAULT_PROVIDER
+    from algotrading.infra.actor.basket import DEFAULT_PROVIDER
     from algotrading.infra.collectors import summarize_session
     from algotrading.infra.qc import thresholds_from_config
 

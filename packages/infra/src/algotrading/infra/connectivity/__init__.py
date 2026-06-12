@@ -1,4 +1,4 @@
-"""Broker-agnostic connectivity: session lifecycle, the backoff supervisor, clocks.
+"""Broker-agnostic connectivity: the backoff supervisor, clocks, typed errors.
 
 The supervisor (:class:`SessionSupervisor`) is the one home for reconnect-with-backoff, the
 client-id convention, and loss-aware :class:`GapInterval` recording — it sits *beneath* the
@@ -20,6 +20,7 @@ from .errors import (
     ConnectionFailed,
     ConnectivityError,
     SessionDisconnected,
+    TransportError,
     UnknownServiceError,
 )
 from .market_data_policy import (
@@ -59,6 +60,7 @@ __all__ = [
     "SessionSupervisor",
     "SupervisedSession",
     "SystemClock",
+    "TransportError",
     "UnknownServiceError",
     "assess_market_data",
     "classify_feed_notice",

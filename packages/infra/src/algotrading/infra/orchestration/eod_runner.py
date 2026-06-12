@@ -134,7 +134,7 @@ def run_fire(
         log.error("orchestration.eod_run.failed")
         raise
     _record_manifest(deps, plan, status=RunStatus.OK)
-    log.info("orchestration.eod_run.done", ran=result.ran, skipped=result.skipped)
+    log.info("orchestration.eod_run.done", ran=result.ran)
     return result
 
 

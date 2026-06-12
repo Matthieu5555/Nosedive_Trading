@@ -5,8 +5,7 @@
 - **Nautilus TWS** (ADR 0025, manual-flip fallback): :func:`build_data_client_config`,
   import-guarded on the ``ibkr`` extra.
 
-:func:`select_ibkr_transport` picks one by config. The hand-rolled ``ib_async`` ``IbkrTransport``
-is **superseded** — retained as dead reference, reached only by direct import, not surfaced here.
+:func:`select_ibkr_transport` picks one by config.
 """
 
 from .cp_rest_credentials import (

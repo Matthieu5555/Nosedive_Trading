@@ -17,10 +17,12 @@ result = run_end_of_day(store, trade_date=day, correlation_id=corr,
 ```
 
 `run_end_of_day` runs five stages in order — universe refresh, collection, incremental
-analytics, EOD reconciliation, QC — skipping any already finished cleanly for the date
-(read from the run-state ledger) so a killed-and-restarted run re-does only the
-unfinished tail. One `correlation_id` threads the whole run (and the actor's own log
-lines), so a session resolves to the jobs it fed.
+analytics, EOD reconciliation, QC. Every fire re-runs **all** stages
+(overwrite-by-re-run, ADR 0032 refined): each stage's writes are idempotent, so a
+killed-and-restarted or re-fired run converges to the same store state; the run-state
+ledger records completions for observability and the dashboard backlog, never as a
+skip gate. One `correlation_id` threads the whole run (and the actor's own log lines),
+so a session resolves to the jobs it fed.
 
 ## What's here
 

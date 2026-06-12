@@ -194,10 +194,11 @@ def latest_by_stage(runs: Sequence[StageRun], trade_date: date) -> dict[str, Sta
 def completed_stages(root: Path, trade_date: date) -> set[str]:
     """The stages that finished cleanly (outcome ok) for a trade date.
 
-    This is the resume key: the pipeline skips any stage already in this set, so a
-    restart after a mid-run kill re-does only the unfinished tail. A stage that
-    recorded a ``failed`` outcome is *not* completed — it is rerun so a fixed input
-    gets a clean result.
+    Observability, not a gate: the pipeline re-runs every stage on a re-fire
+    (overwrite-by-re-run, ADR 0032 refined) and only *logs* this set at start. It is
+    the dashboard's health key — :func:`backlog_stages` and
+    :func:`last_healthy_trade_date` derive from it. A stage whose latest row recorded
+    a ``failed`` outcome is *not* completed.
     """
     latest = latest_by_stage(read_stage_runs(root), trade_date)
     return {stage for stage, run in latest.items() if run.is_ok}

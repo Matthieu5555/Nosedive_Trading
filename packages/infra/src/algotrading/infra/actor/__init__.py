@@ -14,13 +14,7 @@ pure function (:func:`run_analytics`) kept separate from persistence
 
 from __future__ import annotations
 
-from .close_capture import (
-    CloseCaptureResult,
-    IndexBasket,
-    capture_daily_close,
-    capture_index_close,
-    make_close_capture,
-)
+from .basket import DEFAULT_PROVIDER, IndexBasket
 from .driver import (
     DEFAULT_MONEYNESS_BUCKETS,
     AnalyticsRun,
@@ -42,18 +36,15 @@ from .valuation_join import (
 __all__ = [
     "DEFAULT_EXERCISE_STYLE",
     "DEFAULT_MONEYNESS_BUCKETS",
+    "DEFAULT_PROVIDER",
     "ActorOutputs",
     "AnalyticsRun",
-    "CloseCaptureResult",
     "IndexBasket",
     "QcInputs",
     "StampSource",
     "ValuationJoinError",
     "build_stamp",
-    "capture_daily_close",
-    "capture_index_close",
     "default_exercise_style",
-    "make_close_capture",
     "persist_outputs",
     "resolve_valuation_inputs",
     "run_analytics",

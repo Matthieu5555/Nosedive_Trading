@@ -414,7 +414,6 @@ def test_kill_mid_pipeline_then_restart_converges_with_no_duplicate_rows(tmp_pat
     )
     result = run_end_of_day(store, trade_date=TRADE_DATE, correlation_id="corr-restart",
                             clock=clock, stages=healthy)
-    assert result.skipped == ()
     assert set(result.ran) == set(EOD_STAGES)
 
     # The store converged: derived rows are present and equal a single clean run.
@@ -461,7 +460,6 @@ def test_refire_reruns_every_stage_and_reconverges(tmp_path: Path) -> None:
     second = run_end_of_day(store, trade_date=TRADE_DATE, correlation_id="corr-2",
                             clock=clock, stages=stages2)
     assert set(second.ran) == set(EOD_STAGES)
-    assert second.skipped == ()
     # Convergence: the re-run overwrote the derived partitions with byte-identical rows.
     assert store.read("market_state_snapshots") == snapshots_before
     assert store.read("iv_points") == iv_before
@@ -783,7 +781,7 @@ def test_surface_fit_check_fails_and_triage_persists_a_row(tmp_path: Path) -> No
     store = ParquetStore(tmp_path)
     config = _grid_config()
     thresholds = thresholds_from_config(config.qc_threshold)
-    assert thresholds.max_surface_rmse < 0.5  # the failing margin, derived from config not code
+    assert thresholds.fit_tolerance.max_surface_rmse < 0.5  # the failing margin, derived from config not code
 
     qc_inputs = QcInputs(
         slice_fits=(_slice_fit(underlying="SPX", maturity=0.25, rmse=0.5),)

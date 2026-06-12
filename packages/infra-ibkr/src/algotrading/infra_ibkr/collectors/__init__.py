@@ -6,8 +6,7 @@
   :func:`trade_tick_to_events`.
 
 Both build events through the shared ``market_fields`` helper, so they emit identical rows for the
-same observation (ADR 0024's equivalence bar). The hand-rolled ``ib_async`` push adapter/discovery
-are **superseded** — kept as files until C5, reached only by direct import, not surfaced here.
+same observation (ADR 0024's equivalence bar).
 """
 
 from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter

@@ -15,13 +15,14 @@ code runs live and in replay — that identity is the load-bearing invariant of 
 - `stamping.py` — `build_stamp`, the provenance the actor stamps onto pricing/risk/scenario rows.
 - `valuation_join.py` — the math-free join that turns the analytics results into the risk
   engine's per-contract inputs.
-- `close_capture.py` — **the daily close-snapshot mode (WS 1C, Part B).** Runs the same pure
-  `run_analytics` with `session_open=False` and an injected `as_of` = each enabled index's own
-  `session_close(index, trade_date)` (the 1J calendar resolver — Eurex for SX5E, NYSE for SPX,
-  never a single global close), then replace-persists one immutable set per `(provider,
-  trade_date)`. `capture_daily_close` iterates `enabled_indices()` (never a hardcoded list);
-  `make_close_capture` binds the deps into the `(trade_date, baskets) -> results` seam 1G's
-  schedule wires. Reads no wall clock, so the close set is byte-identical on replay.
+- `basket.py` — `IndexBasket` (the per-index close basket of instruments/events/masters/
+  positions, caller-supplied) and `DEFAULT_PROVIDER` (the provider stamp the close grid's
+  partitioned cells carry). **The daily close-snapshot run itself lives in
+  `orchestration.eod_stages`** (the path 1G's schedule actually fires): it resolves each fired
+  index's basket through the injected `BasketSource`, runs the same pure
+  `run_analytics_with_qc` with `session_open=False` at that index's own session close, and
+  replace-persists the outputs. A `close_capture.py` twin of that loop used to live here; it
+  had zero production callers and was deleted (2026-06 maintainability audit, M29).
 - `nautilus_host.py` — **the runtime spine (ADR 0023 / ADR 0025).** A thin Nautilus
   `Actor` (`AnalyticsActor`) that replays a `RawMarketEvent` stream through Nautilus's engine
   on its simulated clock and drives the unchanged `run_analytics`. `RawMarketEventData` +

@@ -7,9 +7,10 @@ from Deribit from IBKR. This drives each broker's pure tick-translation, pushes 
 through the single shared collector, and asserts the persisted records are structurally
 indistinguishable across brokers — one tick type, one collector, one raw shape.
 
-IBKR participates only when its optional ``ib_async`` extra is installed (its adapter imports
-the SDK at module load); Saxo and Deribit always run. The cross-leaf imports here are test-only
-— the source packages stay independent (``infra-saxo`` never imports ``infra-deribit``).
+IBKR participates through its Client Portal REST normalizer (``snapshot_to_events``), which is
+SDK-free and builds the canonical ``RawMarketEvent`` directly, so all three brokers run in the
+gate. The cross-leaf imports here are test-only — the source packages stay independent
+(``infra-saxo`` never imports ``infra-deribit``).
 """
 
 from __future__ import annotations
@@ -19,7 +20,6 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-import pytest
 from algotrading.infra.collectors import BrokerTick, RawCollector, next_sequence
 from algotrading.infra.collectors.normalize import BrokerTick as CollectorBrokerTick
 from algotrading.infra.contracts import RawMarketEvent
@@ -151,25 +151,29 @@ def test_brokertick_seam_is_the_one_shared_tick_type() -> None:
         assert isinstance(tick, CollectorBrokerTick)
 
 
-def test_ibkr_joins_the_same_shape_when_its_extra_is_present(tmp_path: Path) -> None:
-    pytest.importorskip("ib_async")
-    from algotrading.infra_ibkr.collectors.ibkr_adapter import ticker_to_ticks
+def test_ibkr_joins_the_same_shape_via_the_cp_rest_normalizer() -> None:
+    """IBKR's CP-REST path emits the same canonical raw shape Saxo and Deribit converge to.
 
-    class _Ticker:
-        time = _FIXED_TS
-        bid = 1.0
-        ask = 1.2
-        last = 1.1
-        close = 1.05
+    The CP-REST normalizer builds ``RawMarketEvent`` rows directly (through the shared
+    ``market_fields.raw_market_event``), so the broker-agnostic assertion here is on the
+    emitted records themselves: same type, same field layout, canonical field vocabulary.
+    CP field-tag codes per the Client Portal Web API: 84 = bid, 86 = ask, 31 = last.
+    """
+    from algotrading.infra_ibkr.collectors import snapshot_to_events
 
-    ticks = ticker_to_ticks(
-        _Ticker(),
+    events = snapshot_to_events(
+        {"84": "1.0", "86": "1.2", "31": "1.1"},
         instrument_key="OPT:SPY:OPT:20260619:C:500:100:SMART:USD",
         underlying="SPY",
-        contract_id_broker="123",
+        session_id="agnostic-test",
+        sequence=1,
+        exchange_ts=_FIXED_TS,
+        receipt_ts=_FIXED_TS,
     )
-    events = _normalize(ticks, tmp_path / "ibkr")
     _assert_canonical_raw_events(events)
+    # bid, ask and last were all present and parseable, so all three become events.
+    assert sorted(e.field_name for e in events) == ["ask", "bid", "last"]
+    assert {type(e) for e in events} == {RawMarketEvent}
     fields = {f.name for f in dataclasses.fields(RawMarketEvent)}
     for e in events:
         assert {f.name for f in dataclasses.fields(e)} == fields

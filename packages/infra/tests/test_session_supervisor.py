@@ -98,6 +98,15 @@ def test_unknown_service_and_out_of_band_instance_are_refused() -> None:
         _BROKER.client_id_for("collector", 1000)  # one past the band width
 
 
+def test_transport_error_is_a_typed_connectivity_error() -> None:
+    # TransportError was re-homed into connectivity.errors when the dead BrokerSession state
+    # machine was deleted (audit M6); operator tooling catches it from the package seam.
+    from algotrading.infra.connectivity import ConnectivityError, TransportError
+
+    with pytest.raises(ConnectivityError):  # part of the one error hierarchy
+        raise TransportError("synthetic transport failure")
+
+
 def test_broker_config_backoff_comes_from_yaml() -> None:
     # The reconnect backoff is loaded from broker.yaml too, not a code default.
     assert _BROKER.backoff.delay_for(0) == 1.0   # base_seconds

@@ -15,9 +15,8 @@ not define a tick type or a pull loop.
   reconnects, re-subscribes, and returns the `GapInterval` the collector turns into a gap meta-event.
   It manages a minimal `SupervisedSession` (connect / disconnect / is_connected / subscribe /
   request_option_chain) — no `.ticks()`.
-- **`session.py`** — `BrokerSession`, the connection *lifecycle* state machine (open/heartbeat/
-  reconnect over a `BrokerTransport`), used by the IBKR leaf. Distinct from the supervisor: this is
-  transport health, that is reconnect-and-gap policy.
+- **`errors.py`** — the typed connectivity failures (`ConnectivityError` and friends), including
+  `TransportError`, the broker-agnostic error a concrete transport wraps vendor failures into.
 - **`clock.py`** — the injected `Clock` (`ManualClock` for tests, `SystemClock`); nothing here reads
   a wall clock directly.
 - **`market_data_policy.py`** — entitlement/health assessment (`MarketDataStatus`,
@@ -29,7 +28,10 @@ not define a tick type or a pull loop.
 
 The old pull collection seam — `contracts.broker.BrokerTick`, the `BrokerSession.ticks()` consumer
 protocol, the `FakeBrokerSession`/`ReplayBrokerSession` pull sessions, and `SessionSupervisor.stream()`
-— has been retired. Its two genuinely-better parts were harvested first: `sequence`-based
+— has been retired. The `BrokerSession` lifecycle state machine itself (`session.py`) followed in the
+2026-06 maintainability audit (M6): it had zero production constructors and its config schema no
+longer matched `configs/broker.yaml`; `SessionSupervisor` is the single reconnect home. Its
+`TransportError` survives in `errors.py`. Its two genuinely-better parts were harvested first: `sequence`-based
 content-addressed idempotency (now on the one `collectors.BrokerTick`) and `SessionSupervisor` itself,
 kept here as the reconnect home. No broker SDK type crosses this boundary; the live adapters live in
 the `infra-{ibkr,saxo,deribit}` leaves.

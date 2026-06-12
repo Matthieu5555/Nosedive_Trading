@@ -16,9 +16,13 @@ export interface PlotProps {
   layout?: Partial<Layout>;
   // A required, human-readable label that answers "what am I looking at?" for every panel.
   label: string;
+  // Explicit pixel height. Plotly sizes to its container, but `.plot` has no intrinsic height, so
+  // a percentage height collapses to 0 and the chart renders invisible — every Plotly panel must
+  // pass (or inherit) a real height. Default suits the 3D surface / heatmaps.
+  height?: number;
 }
 
-export function Plot({ data, layout, label }: PlotProps) {
+export function Plot({ data, layout, label, height = 440 }: PlotProps) {
   // Plotly's Layout type is intentionally loose here: the object is mutated (`scene`) and merged
   // with caller overrides before reaching the typed prop, so a precise type fights the merge.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,7 +101,7 @@ export function Plot({ data, layout, label }: PlotProps) {
         data={data}
         layout={mergedLayout}
         useResizeHandler
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height }}
         config={{ displaylogo: false, responsive: true }}
       />
     </figure>

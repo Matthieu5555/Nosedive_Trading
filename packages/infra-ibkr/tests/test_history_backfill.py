@@ -133,6 +133,39 @@ def test_requests_resolve_index_and_constituent_conids(tmp_path: Path) -> None:
     assert len(requests) == 3  # no duplicate tickers
 
 
+def test_pinned_constituent_conid_is_resolved_without_a_search(tmp_path: Path) -> None:
+    """A ``constituent_conids`` pin is fetched by its verified conid — never via ``/secdef/search``.
+
+    Sanofi shares ticker SAN with Banco Santander, so a bare-symbol search cannot reach it; the
+    registry pins it under label ``SAN1 -> 29612249``. The resolved requests must carry that exact
+    pinned pair, and the search must never be called for the pinned label (it has no search entry).
+    """
+    store = _seeded_store(tmp_path)
+    registry = parse_index_registry(
+        {
+            "SX5E": {
+                "name": "EURO STOXX 50", "calendar": "XEUR", "currency": "EUR",
+                "ibkr": {
+                    "conid": 0, "secType": "IND", "exchange": "EUREX",
+                    "constituent_conids": {"SAN1": 29612249},
+                },
+                "enabled": True,
+            }
+        }
+    )
+    transport = _FakeTransport()
+    requests = history_requests_for(
+        store=store, registry=registry, transport=transport, period="5y", as_of_date=_AS_OF
+    )
+    by_symbol = {r.underlying: r.conid for r in requests}
+    # The pinned Sanofi conid is present alongside the searched index + constituents, each once.
+    assert by_symbol == {"SX5E": 12345, "ASML": 8001, "SAP": 8002, "SAN1": 29612249}
+    # Proof the pin bypassed the search door: the fake search resolves via `_CONID[symbol]`, which
+    # has no "SAN1" key — so had SAN1 been searched, resolution would have raised KeyError. It did
+    # not, and the conid is the verified-config value, not a search result.
+    assert "SAN1" not in _CONID
+
+
 def test_no_constituents_resolves_index_underlyings_only(tmp_path: Path) -> None:
     """``include_constituents=False`` backfills the index underlyings only (no membership read)."""
     requests = history_requests_for(

@@ -122,12 +122,18 @@ td span {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto minmax(100px, 1fr);
   align-items: center;
   gap: 18px;
-  padding-bottom: 22px;
+  margin: -20px calc(-1 * clamp(20px, 3vw, 48px)) 0;
+  padding: 18px clamp(20px, 3vw, 48px) 16px;
+  background: rgba(14, 16, 14, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px);
 }
 
 .brand,
@@ -162,19 +168,37 @@ td span {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: #121412;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
   min-width: 108px;
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--muted);
   background: transparent;
+  padding: 0 16px;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.nav-button:hover {
+  border-color: rgba(229, 238, 225, 0.2);
+  color: var(--text);
 }
 
 .nav-button.active {
   border-color: var(--border-strong);
   background: var(--panel-soft);
   color: var(--panel-soft-text);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
 }
 
 .session-pill,
@@ -276,6 +300,46 @@ h2 {
   flex: 1;
 }
 
+.underlying-data-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.underlying-data-summary div {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.underlying-data-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.underlying-data-summary strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.underlying-data-summary p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--negative);
+  font-size: 12px;
+}
+
 @media (max-width: 900px) {
   .constituents-row {
     grid-template-columns: 1fr;
@@ -360,8 +424,8 @@ h2 {
   max-height: 470px;
 }
 
-/* Plotly figures (candlestick, 3D surface, smile, scenario heatmap) sit inside a panel
- * with a small uppercase caption — the Plot wrapper renders <figure className="plot">. */
+/* Chart figures sit inside a panel with a small uppercase caption — Plotly and
+ * Lightweight Charts wrappers both render <figure className="plot">. */
 .plot {
   margin: 14px 0 0;
 }
@@ -424,6 +488,12 @@ h2 {
   height: 360px;
 }
 
+.lightweight-line-chart {
+  position: relative;
+  width: 100%;
+  height: 260px;
+}
+
 /* The crosshair read-out: date + O/H(max)/L(min)/C + volume of the hovered bar, top-left over
    the chart. pointer-events:none so it never intercepts the chart's own pan/zoom/crosshair. */
 .candle-legend {
@@ -435,6 +505,21 @@ h2 {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+  white-space: nowrap;
+}
+
+.lightweight-line-legend {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -560,6 +645,11 @@ h2 {
     padding: 12px 12px 24px;
   }
 
+  .topbar {
+    margin: -12px -12px 0;
+    padding: 12px;
+  }
+
   .topbar,
   .market-grid,
   .detail-grid,
@@ -571,6 +661,10 @@ h2 {
   .nav {
     justify-content: start;
     overflow-x: auto;
+  }
+
+  .underlying-data-summary {
+    grid-template-columns: 1fr;
   }
 
   .session-pill {
@@ -585,4 +679,106 @@ h2 {
   .scenario-form {
     flex-wrap: wrap;
   }
+}
+
+/* ── Basket builder + on-demand stress composer (2A / 2B) ──────────────────
+ * The compose controls, templates, leg form, and stress result share the panel
+ * grammar: small uppercase field labels over pill inputs, consistent rhythm. */
+.basket-controls,
+.add-leg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.add-leg {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.basket-controls label,
+.add-leg label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.basket-controls input,
+.basket-controls select,
+.add-leg input,
+.add-leg select {
+  min-width: 124px;
+  color: var(--text);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.basket-templates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.basket-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Even vertical rhythm between the compose panel and the result grid. */
+.stress-composer > * + * {
+  margin-top: 16px;
+}
+
+.page-subheader {
+  margin-top: 28px;
+}
+
+.page-subheader .muted,
+.muted {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--negative);
+  font-size: 12px;
+}
+
+/* Labelled gaps (legs/cells that could not be priced) — a soft amber callout, never hidden. */
+.gaps,
+.scenario-summary p[role="status"] {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.gaps {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--radius);
+  background: rgba(229, 195, 106, 0.06);
+}
+
+.gaps h4 {
+  margin: 0 0 6px;
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gaps ul {
+  margin: 0;
+  padding-left: 18px;
 }

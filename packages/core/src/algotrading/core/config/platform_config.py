@@ -336,12 +336,18 @@ class ForwardEngineQcConfig(_ConfigModel):
     """Forward-stability and parity-residual cut-offs (ADR 0028).
 
     These decide whether a put-call-parity forward and its parity line are stable enough
-    to trust — economic, so hashed config, never ``.py`` literals:
+    to trust — economic, so hashed config, never ``.py`` literals. Both residual cut-offs are
+    **relative to the forward** (a fraction of ``F``), not absolute price points, so the same
+    economic tolerance holds across a 200-pt single-name and a 7400-pt index — an absolute-$
+    cut-off was an always-FAIL false positive on index options (T-qc-residual-units):
 
-    - ``max_residual_mad`` — the largest acceptable parity-line residual MAD; above it the
-      forward is unstable and the curve point is untrustworthy.
+    - ``max_rel_residual_mad`` — the largest acceptable parity-line residual MAD as a fraction
+      of the forward; above it the forward is unstable and the curve point is untrustworthy.
+      Aligned to the forward engine's ``fair_rel_residual`` so the diagnostic self-label and this
+      QC gate share one residual basis (poor label ⇔ QC fail).
     - ``min_forward_confidence`` — the lowest acceptable estimate confidence, in ``[0, 1]``.
-    - ``max_parity_residual`` — the largest acceptable single put-call-parity residual.
+    - ``max_rel_parity_residual`` — the largest acceptable single put-call-parity residual as a
+      fraction of the forward.
 
     Held as a nested model on :class:`QcThresholdConfig` so it folds into
     ``config_hashes["qc"]`` with no separate hash. The default is for in-memory/test
@@ -351,9 +357,9 @@ class ForwardEngineQcConfig(_ConfigModel):
     model_config = _SECTION_CONFIG
 
     version: str = Field(min_length=1)
-    max_residual_mad: float = Field(default=0.05, gt=0.0)
+    max_rel_residual_mad: float = Field(default=0.01, gt=0.0)
     min_forward_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    max_parity_residual: float = Field(default=0.10, gt=0.0)
+    max_rel_parity_residual: float = Field(default=0.02, gt=0.0)
 
 
 class FitToleranceQcConfig(_ConfigModel):

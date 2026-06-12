@@ -1422,3 +1422,44 @@ def test_basket_prices_off_its_own_trade_date_no_look_ahead(tmp_path: Path) -> N
         payload = client.post("/api/basket/risk", json=body).json()
     # Priced at the early date: the early number (58.5), never the later snapshot's 999.0.
     assert payload["metrics"]["delta"]["dollar"] == pytest.approx(58.5)
+
+
+def test_empty_trade_date_resolves_to_latest_banked_day(tmp_path: Path) -> None:
+    # The web client sends trade_date "" until the operator picks a date: the router resolves it
+    # to the LATEST banked analytics partition for the underlying — here 2026-05-30 (the 999.0
+    # cell), never the earlier 2026-05-29 (58.5) — and echoes the resolved date in the payload.
+    store_root = tmp_path / "data"
+    store = ParquetStore(store_root)
+    store.write("projected_option_analytics", [
+        _analytics_cell_on(datetime(2026, 5, 29, 15, 30, tzinfo=UTC), delta_band="30dc", dollar_delta=58.5),
+        _analytics_cell_on(datetime(2026, 5, 30, 15, 30, tzinfo=UTC), delta_band="30dc", dollar_delta=999.0),
+    ])
+    ctx = AppContext(
+        store_root=store_root, configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root), default_underlying=MEMBER_AAA,
+    )
+    with TestClient(create_app(ctx)) as client:
+        body = {
+            "basket_id": "latest", "trade_date": "", "underlying": MEMBER_AAA,
+            "provider": "IBKR",
+            "legs": [{"instrument_kind": "option", "side": "long", "quantity": 1.0,
+                      "underlying": MEMBER_AAA, "tenor_label": "3m", "delta_band": "30dc"}],
+        }
+        response = client.post("/api/basket/risk", json=body)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["trade_date"] == "2026-05-30"
+    assert payload["metrics"]["delta"]["dollar"] == pytest.approx(999.0)
+
+
+def test_empty_trade_date_with_nothing_banked_is_a_labelled_400(seeded_client: TestClient) -> None:
+    # An empty date over an underlying with no banked grid has no day to default to: a labelled
+    # 400 naming the underlying, never a silent guess or a 500.
+    body = _strangle_body()
+    body["trade_date"] = ""
+    body["underlying"] = "ZZZ"
+    response = seeded_client.post("/api/basket/risk", json=body)
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"] == "bad_basket"
+    assert "ZZZ" in payload["detail"]

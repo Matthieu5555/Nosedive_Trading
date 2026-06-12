@@ -148,6 +148,7 @@ def _forward(
     underlying: str = "AAPL",
     maturity: float = 0.25,
     residual_mad: float,
+    forward: float = 100.0,
     confidence: float = 1.0,
     quality_label: str = "good",
     reason_code: str = "ok",
@@ -155,9 +156,9 @@ def _forward(
     return ForwardEstimate(
         underlying=underlying,
         maturity_years=maturity,
-        forward=100.0,
+        forward=forward,
         discount_factor=0.99,
-        spot=100.0,
+        spot=forward,
         implied_rate=0.01,
         implied_carry=0.0,
         implied_dividend=0.0,
@@ -173,12 +174,12 @@ def _forward(
     )
 
 
-def _parity_line(residuals: tuple[float, ...]) -> ParityLine:
+def _parity_line(residuals: tuple[float, ...], *, forward: float = 100.0) -> ParityLine:
     return ParityLine(
         intercept=0.0,
         slope=0.99,
         discount_factor=0.99,
-        forward=100.0,
+        forward=forward,
         residuals=residuals,
     )
 
@@ -445,7 +446,7 @@ def test_chain_coverage_empty_batch_lists_all_missing() -> None:
 # 4. forward stability
 # ================================================================================
 def test_forward_stability_passes_tight_forward() -> None:
-    # residual_mad 0.01 <= max(0.05) and confidence 1.0 >= min(0.5) -> pass.
+    # rel residual 0.01/100 = 1e-4 <= max_rel(0.01) and confidence 1.0 >= min(0.5) -> pass.
     result = check_forward_stability(
         _forward(residual_mad=0.01), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
@@ -453,9 +454,9 @@ def test_forward_stability_passes_tight_forward() -> None:
 
 
 def test_forward_stability_fails_and_names_maturity() -> None:
-    # residual_mad 0.20 > max_residual_mad(0.05) -> fail; names underlying + maturity.
+    # rel residual 2.0/100 = 0.02 > max_rel_residual_mad(0.01) -> fail; names underlying + maturity.
     result = check_forward_stability(
-        _forward(underlying="SX5E", maturity=0.5, residual_mad=0.20),
+        _forward(underlying="SX5E", maturity=0.5, residual_mad=2.0),
         thresholds=THRESHOLDS,
         run_id=RUN_ID,
         run_ts=RUN_TS,
@@ -463,7 +464,8 @@ def test_forward_stability_fails_and_names_maturity() -> None:
     context = _assert_full_shape(
         result, check_name="forward_stability", status=STATUS_FAIL, severity=SEVERITY_WARNING
     )
-    assert result.measured_value == pytest.approx(0.20)
+    # measured value is now the RELATIVE residual (residual_mad / forward).
+    assert result.measured_value == pytest.approx(0.02)
     assert context["underlying"] == "SX5E"
     assert context["failing_maturity"] == 0.5  # the exact failing maturity
     assert result.target_key == "SX5E@0.5"
@@ -481,18 +483,43 @@ def test_forward_stability_fails_on_low_confidence() -> None:
 
 
 def test_forward_stability_boundary_mad_exact_passes() -> None:
-    # residual_mad exactly == max(0.05) is not > max -> pass.
+    # rel residual exactly == max_rel(0.01): 1.0/100 = 0.01 is not > max -> pass.
     result = check_forward_stability(
-        _forward(residual_mad=0.05), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+        _forward(residual_mad=1.0), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
     assert result.qc_status == STATUS_PASS
+
+
+def test_forward_stability_passes_on_index_scale_forward() -> None:
+    # Reconciliation (T-qc-residual-units / An-1): the real 2026-06-11 SPX forward carried
+    # residual_mad 0.159 on a ~7400 forward -> rel 2.1e-5, which the diagnostic labels "good".
+    # The absolute-$ gate FAILed it (0.159 > 0.05); the relative gate agrees with the label.
+    result = check_forward_stability(
+        _forward(residual_mad=0.159, forward=7400.0),
+        thresholds=THRESHOLDS,
+        run_id=RUN_ID,
+        run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+    assert result.measured_value == pytest.approx(0.159 / 7400.0)
+
+
+def test_forward_stability_fails_a_genuinely_bad_index_forward() -> None:
+    # A forward whose MAD is 2.7% of spot is genuinely unstable regardless of index scale.
+    result = check_forward_stability(
+        _forward(residual_mad=200.0, forward=7400.0),
+        thresholds=THRESHOLDS,
+        run_id=RUN_ID,
+        run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
 
 
 # ================================================================================
 # 5. parity residual
 # ================================================================================
 def test_parity_residual_passes_small_residuals() -> None:
-    # worst |residual| 0.03 <= max_parity_residual(0.10) -> pass.
+    # worst |residual| 0.03 on forward 100 -> rel 3e-4 <= max_rel_parity_residual(0.02) -> pass.
     result = check_parity_residual(
         _parity_line((0.01, -0.03, 0.02)),
         "AAPL",
@@ -505,9 +532,9 @@ def test_parity_residual_passes_small_residuals() -> None:
 
 
 def test_parity_residual_fails_and_names_maturity_and_index() -> None:
-    # worst |residual| 0.30 at index 1 > max(0.10) -> fail; names maturity + worst index.
+    # worst |residual| 3.0 at index 1 on forward 100 -> rel 0.03 > max_rel(0.02) -> fail.
     result = check_parity_residual(
-        _parity_line((0.01, -0.30, 0.05)),
+        _parity_line((0.01, -3.0, 0.05)),
         "AAPL",
         0.75,
         thresholds=THRESHOLDS,
@@ -517,9 +544,39 @@ def test_parity_residual_fails_and_names_maturity_and_index() -> None:
     context = _assert_full_shape(
         result, check_name="parity_residual", status=STATUS_FAIL, severity=SEVERITY_WARNING
     )
-    assert result.measured_value == pytest.approx(0.30)
+    # measured value is now the RELATIVE worst residual (|residual| / forward).
+    assert result.measured_value == pytest.approx(0.03)
     assert context["failing_maturity"] == 0.75
     assert context["worst_residual_index"] == 1  # pins the exact offending strike-pair
+
+
+def test_parity_residual_passes_on_index_scale_forward() -> None:
+    # Reconciliation (T-qc-residual-units / An-2): a clean index slice carries worst parity
+    # residual ~2.48 on a ~7400 forward -> rel 3.4e-4. The absolute-$ gate FAILed it (2.48 > 0.10);
+    # the relative gate passes it as the good slice it is.
+    result = check_parity_residual(
+        _parity_line((1.1, -2.48, 0.9), forward=7400.0),
+        "SPX",
+        0.25,
+        thresholds=THRESHOLDS,
+        run_id=RUN_ID,
+        run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+    assert result.measured_value == pytest.approx(2.48 / 7400.0)
+
+
+def test_parity_residual_fails_a_genuinely_broken_index_slice() -> None:
+    # A worst parity residual of ~4% of the forward is genuinely broken regardless of scale.
+    result = check_parity_residual(
+        _parity_line((10.0, -300.0, 5.0), forward=7400.0),
+        "SPX",
+        0.05,
+        thresholds=THRESHOLDS,
+        run_id=RUN_ID,
+        run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
 
 
 def test_parity_residual_empty_residuals_passes() -> None:
@@ -532,9 +589,9 @@ def test_parity_residual_empty_residuals_passes() -> None:
 
 
 def test_parity_residual_boundary_exact_passes() -> None:
-    # |residual| exactly == max(0.10) is not > max -> pass.
+    # rel |residual| exactly == max_rel(0.02): 2.0/100 = 0.02 is not > max -> pass.
     result = check_parity_residual(
-        _parity_line((0.10,)), "AAPL", 0.25, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+        _parity_line((2.0,)), "AAPL", 0.25, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
     )
     assert result.qc_status == STATUS_PASS
 
@@ -902,9 +959,9 @@ def test_supplementary_thresholds_come_from_config() -> None:
             ),
             "forward_engine": QC_CONFIG.forward_engine.model_copy(
                 update={
-                    "max_residual_mad": 0.07,
+                    "max_rel_residual_mad": 0.007,
                     "min_forward_confidence": 0.6,
-                    "max_parity_residual": 0.15,
+                    "max_rel_parity_residual": 0.015,
                 }
             ),
             "fit_tolerance": QC_CONFIG.fit_tolerance.model_copy(
@@ -917,9 +974,9 @@ def test_supplementary_thresholds_come_from_config() -> None:
     assert t.max_gap_count == 9
     assert t.warn_gap_count == 2
     assert t.min_coverage_ratio == pytest.approx(0.80)
-    assert t.max_residual_mad == pytest.approx(0.07)
+    assert t.max_rel_residual_mad == pytest.approx(0.007)
     assert t.min_forward_confidence == pytest.approx(0.6)
-    assert t.max_parity_residual == pytest.approx(0.15)
+    assert t.max_rel_parity_residual == pytest.approx(0.015)
     assert t.max_non_convergence_ratio == pytest.approx(0.20)
     assert t.max_surface_rmse == pytest.approx(0.03)
     assert t.anomaly_mad_multiplier == pytest.approx(7.0)
@@ -932,9 +989,9 @@ def test_default_supplementary_thresholds_match_config_defaults() -> None:
     assert THRESHOLDS.max_gap_count == 5
     assert THRESHOLDS.warn_gap_count == 1
     assert THRESHOLDS.min_coverage_ratio == pytest.approx(0.95)
-    assert THRESHOLDS.max_residual_mad == pytest.approx(0.05)
+    assert THRESHOLDS.max_rel_residual_mad == pytest.approx(0.01)
     assert THRESHOLDS.min_forward_confidence == pytest.approx(0.5)
-    assert THRESHOLDS.max_parity_residual == pytest.approx(0.10)
+    assert THRESHOLDS.max_rel_parity_residual == pytest.approx(0.02)
     assert THRESHOLDS.max_non_convergence_ratio == pytest.approx(0.10)
     assert THRESHOLDS.max_surface_rmse == pytest.approx(0.02)
     assert THRESHOLDS.anomaly_mad_multiplier == pytest.approx(5.0)

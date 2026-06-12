@@ -47,10 +47,16 @@ continuity:
 # Forward-stability + parity-residual cut-offs (C7 increment 2). Economic (they gate which
 # forwards/curve points survive QC), so hashed here, never `.py` literals (ADR 0028).
 forward_engine:
-  version: "2026.05.31"
-  max_residual_mad: 0.05         # largest acceptable parity-line residual MAD
+  version: "2026.06.12"
+  # Residual cut-offs are RELATIVE to the forward (a fraction of F), not absolute price
+  # points: an absolute $ cut-off was an always-FAIL false positive on a 7400-pt index
+  # (T-qc-residual-units). max_rel_residual_mad is aligned to the forward engine's
+  # fair_rel_residual (pricing.yaml) so the diagnostic self-label and this QC gate share one
+  # basis (poor label <=> QC fail). First relative bars — teeth to retune once a real term
+  # structure is banked (ultra-short calendar noise is a separate, tenor-root symptom).
+  max_rel_residual_mad: 0.01     # largest acceptable parity-line residual MAD / forward
   min_forward_confidence: 0.5    # lowest acceptable forward-estimate confidence (0..1)
-  max_parity_residual: 0.10      # largest acceptable single put-call-parity residual
+  max_rel_parity_residual: 0.02  # largest acceptable single |parity residual| / forward
 
 # IV-convergence + surface-fit cut-offs (C7 increment 2). Economic (they gate which smiles
 # and slice fits survive QC), so hashed here, never `.py` literals (ADR 0028).

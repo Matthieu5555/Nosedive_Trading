@@ -85,7 +85,26 @@ indices:
     # IBKR lists Euro Stoxx 50 as ESTX50 (NOT SX5E) — `symbol` is the secdef search override; the
     # registry key SX5E stays the platform-wide vocabulary. conid + symbol VERIFIED live 2026-06-08
     # (secdef/search symbol=ESTX50, secType=IND, exchange=EUREX → conid 4356500).
-    ibkr: { conid: 4356500, secType: IND, exchange: EUREX, symbol: ESTX50 }
+    #
+    # constituent_conids: verified-conid pins for constituents the bare-ticker secdef search cannot
+    # resolve. The Euro Stoxx 50 carries TWO members on ticker "SAN" — Banco Santander (Bolsa de
+    # Madrid) and Sanofi (Euronext Paris). A `symbol=SAN` search returns Santander (BM is a EUR
+    # venue), so Sanofi is shadowed and never captured. IBKR disambiguates Sanofi as "SAN1"; pinning
+    # its conid is the only way to also capture it. VERIFIED live 2026-06-12 (secdef by ISIN
+    # FR0000120578 → conid 29612249, symbol SAN1, /marketdata/history last close ~€76). Sanofi's
+    # bars store under underlying "SAN1".
+    #   Nordea (NDA FI, ISIN FI4000297767 → 335134428 Helsinki / 335033105 Stockholm) is a verified
+    #   member but its daily history returns HTTP 500 / 0 bars over this gateway on BOTH venues — a
+    #   Nordic market-data ENTITLEMENT gap, not a resolution bug. It is deliberately NOT pinned: a
+    #   conid that serves no history is worse than a loud miss (the ticker lands in `failed`, logged).
+    #   Add `NDA FI: <conid>` here once the Nordic market-data subscription is enabled and verifies.
+    ibkr:
+      conid: 4356500
+      secType: IND
+      exchange: EUREX
+      symbol: ESTX50
+      constituent_conids:
+        SAN1: 29612249  # Sanofi (Euronext Paris) — see note above
     enabled: true
   SPX:
     name: "S&P 500"

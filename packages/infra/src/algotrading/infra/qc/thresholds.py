@@ -79,9 +79,9 @@ class QcThresholds:
 
     # --- forward stability + parity (config.forward_engine) ----------------------
     @property
-    def max_residual_mad(self) -> float:
-        """The largest acceptable parity-line residual MAD (from config)."""
-        return self.config.forward_engine.max_residual_mad
+    def max_rel_residual_mad(self) -> float:
+        """Largest acceptable parity-line residual MAD as a fraction of the forward (config)."""
+        return self.config.forward_engine.max_rel_residual_mad
 
     @property
     def min_forward_confidence(self) -> float:
@@ -89,9 +89,9 @@ class QcThresholds:
         return self.config.forward_engine.min_forward_confidence
 
     @property
-    def max_parity_residual(self) -> float:
-        """The largest acceptable single put-call-parity residual (from config)."""
-        return self.config.forward_engine.max_parity_residual
+    def max_rel_parity_residual(self) -> float:
+        """Largest acceptable single put-call-parity residual as a fraction of the forward."""
+        return self.config.forward_engine.max_rel_parity_residual
 
     # --- IV convergence + surface fit (config.fit_tolerance) ---------------------
     @property

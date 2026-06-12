@@ -124,6 +124,15 @@ def history_requests_for(
             seen.add(entry.symbol)
         if not include_constituents:
             continue
+        # Verified conid pins first, so a pinned label wins over a same-label search result. These
+        # are the constituents the `/secdef/search` door cannot resolve unambiguously (a ticker two
+        # listings share, e.g. Euronext-Paris SAN=Sanofi vs BM SAN=Santander) — fetched straight by
+        # their unique conid, no search. The pin's label is the underlying key the bars store under.
+        for label, conid in entry.ibkr.constituent_conids:
+            if label in seen:
+                continue
+            seen.add(label)
+            requests.append(HistoryRequest(label, conid, period))
         discovery = CpRestDiscovery(transport, currency=entry.currency)
         for member in members(store, entry.symbol, as_of_date):
             if member.constituent in seen:

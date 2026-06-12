@@ -243,26 +243,36 @@ def check_forward_stability(
 ) -> QcResult:
     """Is the recovered forward stable: tight parity residuals and enough confidence.
 
-    Measured value is the parity-line residual MAD. It fails when the MAD exceeds
-    ``max_residual_mad`` or the estimate confidence is below
+    Measured value is the parity-line residual MAD **as a fraction of the forward**
+    (``residual_mad / F``), not absolute price points — an absolute cut-off was an
+    always-FAIL false positive on a 7400-pt index. It fails when that relative MAD
+    exceeds ``max_rel_residual_mad`` or the estimate confidence is below
     ``min_forward_confidence``, and names the exact ``underlying`` and
     ``maturity_years`` of the unstable forward, plus the quality label and reason
     code already attached.
     """
     target_key = f"{estimate.underlying}@{estimate.maturity_years:g}"
+    forward = estimate.forward
+    relative_residual_mad = (
+        estimate.residual_mad / forward
+        if forward is not None and forward > 0.0
+        else math.inf
+    )
     unstable = (
-        estimate.residual_mad > thresholds.max_residual_mad
+        relative_residual_mad > thresholds.max_rel_residual_mad
         or estimate.confidence < thresholds.min_forward_confidence
     )
     status = STATUS_FAIL if unstable else STATUS_PASS
     context = {
         "underlying": estimate.underlying,
         "failing_maturity": estimate.maturity_years,
+        "relative_residual_mad": relative_residual_mad,
         "residual_mad": estimate.residual_mad,
+        "forward": forward,
         "confidence": estimate.confidence,
         "quality_label": estimate.quality_label,
         "reason_code": estimate.reason_code,
-        "max_residual_mad": thresholds.max_residual_mad,
+        "max_rel_residual_mad": thresholds.max_rel_residual_mad,
         "min_confidence": thresholds.min_forward_confidence,
     }
     return build_result(
@@ -270,7 +280,7 @@ def check_forward_stability(
         target_key=target_key,
         status=status,
         severity=SEVERITY_WARNING,
-        measured_value=estimate.residual_mad,
+        measured_value=relative_residual_mad,
         threshold_version=thresholds.threshold_version,
         context=context,
         run_id=run_id,
@@ -289,10 +299,13 @@ def check_parity_residual(
 ) -> QcResult:
     """Are the per-strike put-call-parity residuals within tolerance.
 
-    Measured value is the largest absolute parity residual on the line. It fails
-    when that exceeds ``max_parity_residual``, naming the underlying and maturity of
-    the offending fit plus the index of the worst residual, so the operator sees the
-    specific strike-pair that broke parity rather than a blanket "parity off".
+    Measured value is the largest parity residual on the line **as a fraction of the
+    forward** (``|residual| / F``), not absolute price points — an absolute cut-off was
+    an always-FAIL false positive on a 7400-pt index (worst residuals naturally O(1-100)
+    pts there). It fails when that relative residual exceeds ``max_rel_parity_residual``,
+    naming the underlying and maturity of the offending fit plus the index of the worst
+    residual, so the operator sees the specific strike-pair that broke parity rather than
+    a blanket "parity off".
     """
     residuals = line.residuals
     worst_index = -1
@@ -302,21 +315,25 @@ def check_parity_residual(
         if magnitude > worst_abs:
             worst_abs = magnitude
             worst_index = index
-    status = STATUS_PASS if worst_abs <= thresholds.max_parity_residual else STATUS_FAIL
+    forward = line.forward
+    worst_relative = worst_abs / forward if forward > 0.0 else math.inf
+    status = STATUS_PASS if worst_relative <= thresholds.max_rel_parity_residual else STATUS_FAIL
     context = {
         "underlying": underlying,
         "failing_maturity": maturity_years,
+        "worst_relative_residual": worst_relative,
         "worst_residual": worst_abs,
+        "forward": forward,
         "worst_residual_index": worst_index,
         "residual_count": len(residuals),
-        "max_parity_residual": thresholds.max_parity_residual,
+        "max_rel_parity_residual": thresholds.max_rel_parity_residual,
     }
     return build_result(
         check_name=CHECK_PARITY_RESIDUAL,
         target_key=f"{underlying}@{maturity_years:g}",
         status=status,
         severity=SEVERITY_WARNING,
-        measured_value=worst_abs,
+        measured_value=worst_relative,
         threshold_version=thresholds.threshold_version,
         context=context,
         run_id=run_id,

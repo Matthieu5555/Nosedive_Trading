@@ -2,6 +2,8 @@
 // apps/frontend/src/algotrading/frontend/serializers.py; keep them in sync when a
 // serializer changes (the HTTP contract is the seam).
 
+import type { BasketScenariosResponse } from "./stressApi";
+
 export interface Provenance {
   calc_ts: string;
   code_version: string;
@@ -123,6 +125,17 @@ export interface PriceHistoryResponse {
   end: string | null;
   n_bars: number;
   bars: DailyBar[];
+}
+
+export interface PriceHistoryBatchResponse {
+  underlyings: string[];
+  start: string | null;
+  end: string;
+  n_underlyings: number;
+  n_loaded: number;
+  n_empty: number;
+  n_bars: number;
+  histories: PriceHistoryResponse[];
 }
 
 export interface Constituent {
@@ -292,9 +305,25 @@ export interface BasketRiskResponse {
   n_gaps: number;
 }
 
-// One narrow fetch helper: every page goes through here so error handling is uniform.
-export async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+// A request that the BFF never answers must not wedge a panel forever; abort past this.
+export const FETCH_TIMEOUT_MS = 30_000;
+
+// Combine an optional caller signal (cancel-on-unmount) with a timeout, so a fetch is aborted
+// by whichever fires first. AbortSignal.any/timeout are standard in every target runtime; guard
+// for a test/runtime that stubs an older fetch and lacks them rather than throwing.
+function requestSignal(signal?: AbortSignal): AbortSignal | undefined {
+  if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") {
+    return signal;
+  }
+  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  if (!signal) return timeout;
+  return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal;
+}
+
+// One narrow fetch helper: every page goes through here so error handling is uniform. An
+// optional `signal` lets the caller (the data hook) cancel an in-flight request on unmount.
+export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { signal: requestSignal(signal) });
   if (!response.ok) {
     let detail = "";
     try {
@@ -307,11 +336,12 @@ export async function getJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function postJson<T>(path: string, body: unknown): Promise<T> {
+export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: requestSignal(signal),
   });
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`);
@@ -326,6 +356,7 @@ export async function priceBasket(body: BasketRequest): Promise<BasketRiskRespon
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: requestSignal(),
   });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
@@ -336,4 +367,24 @@ export async function priceBasket(body: BasketRequest): Promise<BasketRiskRespon
     throw new Error(`${response.status} ${detail}`);
   }
   return payload as BasketRiskResponse;
+}
+
+// Stress a composed basket on demand: the full-reprice (spot × vol) surface plus the worst-case
+// cell and labelled per-leg gaps. Same 400-detail handling as priceBasket.
+export async function stressBasket(body: BasketRequest): Promise<BasketScenariosResponse> {
+  const response = await fetch("/api/basket/scenarios", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: requestSignal(),
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object" && "detail" in payload
+        ? String((payload as { detail: unknown }).detail)
+        : response.statusText;
+    throw new Error(`${response.status} ${detail}`);
+  }
+  return payload as BasketScenariosResponse;
 }

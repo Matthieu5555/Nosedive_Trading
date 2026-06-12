@@ -202,6 +202,58 @@ def test_ibkr_symbol_override_is_parsed_and_drives_search_symbol() -> None:
     assert spx.ibkr_search_symbol == "SPX"  # no override → the registry key
 
 
+def test_constituent_conid_pins_are_parsed_into_ordered_pairs() -> None:
+    """``ibkr.constituent_conids`` is the verified-conid pin map for unsearchable constituents.
+
+    The Euro Stoxx 50 carries two members on ticker ``SAN`` (Santander/Madrid, Sanofi/Paris) — a
+    bare-symbol search can resolve only one, so the other is pinned by its unique conid under a
+    distinct label. Parsed to ``(label, conid)`` pairs; an entry with no pins defaults to empty.
+    """
+    block = {
+        "SX5E": {
+            "name": "EURO STOXX 50", "calendar": "XEUR", "currency": "EUR",
+            "ibkr": {
+                "conid": 4356500, "secType": "IND", "exchange": "EUREX", "symbol": "ESTX50",
+                "constituent_conids": {"SAN1": 29612249},
+            },
+            "enabled": True,
+        },
+        "SPX": {
+            "name": "S&P 500", "calendar": "XNYS", "currency": "USD",
+            "ibkr": {"conid": 416904, "secType": "IND", "exchange": "CBOE"},  # no pins
+            "enabled": True,
+        },
+    }
+    registry = parse_index_registry(block)
+    assert registry.get("SX5E").ibkr.constituent_conids == (("SAN1", 29612249),)
+    assert registry.get("SPX").ibkr.constituent_conids == ()  # default empty, not a crash
+
+
+def test_bad_constituent_conid_pin_is_rejected_not_coerced() -> None:
+    """A non-int / zero / negative pinned conid is a labeled error — a pin must name a real contract."""
+    for bad in (True, 0, -3, "29612249"):
+        with pytest.raises(IndexRegistryError) as exc:
+            parse_index_registry(
+                _block_with(
+                    "SPX",
+                    ibkr={
+                        "conid": 1, "secType": "IND", "exchange": "CBOE",
+                        "constituent_conids": {"SAN1": bad},
+                    },
+                )
+            )
+        assert exc.value.field == "ibkr.constituent_conids.SAN1", bad
+    # the map itself must be a mapping, not a list
+    with pytest.raises(IndexRegistryError) as exc:
+        parse_index_registry(
+            _block_with(
+                "SPX",
+                ibkr={"conid": 1, "secType": "IND", "exchange": "CBOE", "constituent_conids": ["x"]},
+            )
+        )
+    assert exc.value.field == "ibkr.constituent_conids"
+
+
 def test_blank_ibkr_symbol_override_is_rejected() -> None:
     """A present-but-blank ``ibkr.symbol`` is an operator error, not a clean 'no override'."""
     with pytest.raises(IndexRegistryError) as exc:

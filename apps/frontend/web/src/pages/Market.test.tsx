@@ -103,10 +103,12 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
   expect(within(candles[0]).getByTestId("candle-bars")).toHaveTextContent("2");
 
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
-  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("mesh3d");
+  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
 
   const smile = await screen.findByLabelText(/Smile — 3m/i);
-  expect(within(smile).getByTestId("plot-types")).toHaveTextContent("scatter");
+  // The smile renders in TradingView Lightweight Charts (not Plotly) as two wings: puts / calls.
+  expect(within(smile).getByTestId("line-series")).toHaveTextContent("puts");
+  expect(within(smile).getByTestId("line-series")).toHaveTextContent("calls");
 
   // The dollar-Greeks term structure renders one TradingView line panel per Greek, with one
   // series per delta band and the $ unit string carried into the panel label.
@@ -172,7 +174,9 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
   render(<MarketPage />);
 
   const smile = await screen.findByLabelText(/Smile — 0\.250y/i);
-  expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs moneyness \(log\)/i);
+  // The smile is always plotted on log-moneyness (ATM-centred), for either BFF source; the
+  // degenerate calibration is still visibly flagged.
+  expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs log-moneyness/i);
   expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
 
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);

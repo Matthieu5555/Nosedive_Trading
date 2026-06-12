@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from .american import bjerksund_stensland_price, price_american
 from .black76 import price_european
+from .black76_vectorized import price_european_array
 from .dollar_greeks import (
     UNIT_STRINGS,
     DollarGreeks,
@@ -49,6 +50,7 @@ __all__ = [
     "price",
     "price_american",
     "price_european",
+    "price_european_array",
     "pricing_result",
     "theta_unit_string",
 ]

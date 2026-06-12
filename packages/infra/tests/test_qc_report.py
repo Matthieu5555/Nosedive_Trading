@@ -102,9 +102,9 @@ def _warn_collector() -> QcResult:
 
 
 def _warning_severity_fail() -> QcResult:
-    # forward stability fails with severity "warning".
+    # forward stability fails with severity "warning": rel residual 2.0/100 = 0.02 > max_rel(0.01).
     return check_forward_stability(
-        _forward(underlying="SX5E", maturity=0.5, residual_mad=0.5),
+        _forward(underlying="SX5E", maturity=0.5, residual_mad=2.0),
         thresholds=THRESHOLDS,
         run_id=RUN_ID,
         run_ts=RUN_TS,

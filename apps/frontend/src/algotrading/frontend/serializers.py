@@ -25,6 +25,8 @@ from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.risk import BasketRisk, LegRisk
 from algotrading.infra.surfaces import SlicePlotSeries, degeneracy_reasons
 
+from .basket_scenarios import BasketStressResult
+
 if TYPE_CHECKING:
     # Used only as the annotation on dashboard_status_to_dict; imported under
     # TYPE_CHECKING to keep this module's runtime import surface to the contracts it
@@ -395,6 +397,52 @@ def basket_risk_to_dict(result: BasketRisk) -> dict[str, object]:
             for gap in result.gaps
         ],
         "n_legs": len(result.legs),
+        "n_gaps": len(result.gaps),
+    }
+
+
+def basket_scenarios_to_dict(result: BasketStressResult) -> dict[str, object]:
+    """Serialize an on-demand basket stress surface for the front (WS 2B, interactive).
+
+    The ``surface`` view matches ``scenario_surface_to_dict``'s shape (the seam the
+    ``StressSurface`` web component already renders): sorted shock axes + a spot-major
+    ``scenario_pnl`` z-grid carrying its ``unit`` string. The cartesian reprice is complete, so
+    there are no labelled holes (``has_holes`` is always ``False``). ``worst_case`` is the
+    largest-loss cell; ``gaps`` names every leg that could not be repriced (HTTP 200 at the
+    router, never a 500).
+    """
+    n_cells = len(result.spot_axis) * len(result.vol_axis)
+    return {
+        "basket_id": result.basket_id,
+        "trade_date": result.trade_date.isoformat(),
+        "underlying": result.underlying,
+        "surface": {
+            "spot_shock": list(result.spot_axis),
+            "vol_shock": list(result.vol_axis),
+            "scenario_pnl": [list(row) for row in result.pnl_grid],
+            "scenario_version": result.scenario_version,
+            "unit": SCENARIO_PNL_UNIT,
+            "n_cells": n_cells,
+            "has_holes": False,
+            "n_holes": 0,
+        },
+        "worst_case": {
+            "spot_shock": result.worst_spot_shock,
+            "vol_shock": result.worst_vol_shock,
+            "pnl": result.worst_pnl,
+            "unit": SCENARIO_PNL_UNIT,
+        },
+        "n_legs": result.n_legs,
+        "n_resolved": result.n_resolved,
+        "gaps": [
+            {
+                "underlying": gap.underlying,
+                "tenor_label": gap.tenor_label,
+                "delta_band": gap.delta_band,
+                "reason": gap.reason,
+            }
+            for gap in result.gaps
+        ],
         "n_gaps": len(result.gaps),
     }
 

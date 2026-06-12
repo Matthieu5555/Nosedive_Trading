@@ -27,6 +27,7 @@ Usage:
     uv run python scripts/ohlc_backfill.py --index SX5E --period 5y
     uv run python scripts/ohlc_backfill.py --no-constituents  # index underlyings only
     uv run python scripts/ohlc_backfill.py --as-of 2026-06-01 # basket as it stood on that date
+    uv run python scripts/ohlc_backfill.py --refresh-tail      # roll present tickers to today
 """
 
 from __future__ import annotations
@@ -84,6 +85,13 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--no-constituents",
         action="store_true",
         help="Backfill only the index underlyings, not their constituents.",
+    )
+    parser.add_argument(
+        "--refresh-tail",
+        action="store_true",
+        help="Roll already-present tickers forward: re-fetch only their most-recent window "
+        "(today's bar) instead of skipping them. Without this, a ticker that already has any "
+        "bars on disk is skipped wholesale and never advances to a new session.",
     )
     parser.add_argument(
         "--max-windows",
@@ -155,13 +163,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         index=args.index,
         include_constituents=not args.no_constituents,
     )
-    result = collector.backfill(requests, correlation_id=f"ohlc-backfill-{as_of.isoformat()}")
+    result = collector.backfill(
+        requests,
+        correlation_id=f"ohlc-backfill-{as_of.isoformat()}",
+        refresh_tail=args.refresh_tail,
+    )
     _LOGGER.info(
         "ibkr.ohlc_backfill.done",
         period=period,
         as_of=as_of.isoformat(),
         fetched=len(result.fetched),
+        refreshed=len(result.refreshed),
         skipped=len(result.skipped),
+        failed=len(result.failed),
         bar_count=result.bar_count,
     )
     return 0

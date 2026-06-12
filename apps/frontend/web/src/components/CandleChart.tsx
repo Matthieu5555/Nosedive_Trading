@@ -1,9 +1,8 @@
-// The daily OHLC candlestick, on TradingView's lightweight-charts (this panel only).
+// The daily OHLC candlestick, on TradingView's lightweight-charts.
 //
 // Plotly stays the charting dependency for the 3D IV surface, the smile, and the risk
-// heatmaps — lightweight-charts draws 2D time series only and cannot render those. The
-// candlestick alone moves here because lightweight-charts' native pan/zoom/crosshair is
-// markedly smoother than a Plotly candlestick; the rest of the app is unchanged.
+// heatmaps — lightweight-charts draws compact 2D financial charts only. Candlesticks use
+// it because its native pan/zoom/crosshair is markedly smoother than a Plotly candlestick.
 //
 // A read-out box tracks the crosshair: it shows the hovered bar's date, open / high (max) /
 // low (min) / close and volume, falling back to the latest bar when the cursor is off the chart.

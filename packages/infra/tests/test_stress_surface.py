@@ -265,6 +265,29 @@ def test_single_leg_book_is_a_valid_surface_with_zero_centre() -> None:
     assert surface.pnl_grid[ci][cj] == pytest.approx(0.0, abs=1e-6)
 
 
+def test_mixed_european_and_american_book_matches_full_reprice() -> None:
+    # The vectorized European path and the scalar American (lattice) path add cell-by-cell:
+    # a book holding one of each must still match the independent oracle everywhere. The
+    # oracle reprices both legs through the engine (dispatching on style), sharing no code
+    # with the surface's European/American partition.
+    config = _scenario_config(spot_abs=0.4, vol_abs=0.3, spot_steps=5, vol_steps=3)
+    american_val = dataclasses.replace(
+        RISK_VALUATIONS["AAPL|OPT|C|100"],
+        contract_key="AAPL|OPT|C|100|AM",
+        exercise_style="american",
+    )
+    lines = [
+        position_risk(portfolio_id="mix", quantity=4.0, valuation=RISK_VALUATIONS["AAPL|OPT|C|100"]),
+        position_risk(portfolio_id="mix", quantity=-2.0, valuation=american_val),
+    ]
+    surface = stress_surface(lines, config)
+    for i, s in enumerate(surface.spot_axis):
+        for j, v in enumerate(surface.vol_axis):
+            assert surface.pnl_grid[i][j] == pytest.approx(
+                oracle_cell_pnl(lines, s, v), rel=1e-9, abs=1e-6
+            )
+
+
 def test_degenerate_zero_width_range_is_the_centre_column_only() -> None:
     config = _scenario_config(spot_abs=0.0, vol_abs=0.0, spot_steps=9, vol_steps=9)
     spot_axis, vol_axis = surface_axes(config)

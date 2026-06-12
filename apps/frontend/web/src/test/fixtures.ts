@@ -5,6 +5,7 @@ import type {
   AnalyticsResponse,
   BasketRiskResponse,
   ConstituentsResponse,
+  PriceHistoryBatchResponse,
   HealthResponse,
   PriceHistoryResponse,
   RecordedDatesResponse,
@@ -225,6 +226,52 @@ export const PRICE_HISTORY_AAA: PriceHistoryResponse = {
       provenance: PROV,
     },
   ],
+};
+
+export const PRICE_HISTORY_BBB: PriceHistoryResponse = {
+  underlying: "BBB",
+  start: null,
+  end: "2026-05-29",
+  n_bars: 2,
+  bars: [
+    {
+      provider: "IBKR",
+      underlying: "BBB",
+      trade_date: "2026-05-28",
+      open: 44.0,
+      high: 46.0,
+      low: 43.5,
+      close: 45.0,
+      volume: 500000.0,
+      bar_type: "1d-TRADES",
+      source: "test",
+      provenance: PROV,
+    },
+    {
+      provider: "IBKR",
+      underlying: "BBB",
+      trade_date: "2026-05-29",
+      open: 45.0,
+      high: 46.2,
+      low: 44.8,
+      close: 45.5,
+      volume: 600000.0,
+      bar_type: "1d-TRADES",
+      source: "test",
+      provenance: PROV,
+    },
+  ],
+};
+
+export const PRICE_HISTORY_BATCH_TWO: PriceHistoryBatchResponse = {
+  underlyings: ["AAA", "BBB"],
+  start: null,
+  end: "2026-05-29",
+  n_underlyings: 2,
+  n_loaded: 2,
+  n_empty: 0,
+  n_bars: 4,
+  histories: [PRICE_HISTORY_AAA, PRICE_HISTORY_BBB],
 };
 
 export const ANALYTICS_AAA: AnalyticsResponse = {

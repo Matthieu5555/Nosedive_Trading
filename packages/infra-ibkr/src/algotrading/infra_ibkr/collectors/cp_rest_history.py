@@ -17,10 +17,12 @@ unattended operation per ADR 0031 §5:
   config carries the number for a future parallel driver).
 * **Retry/backoff.** Wraps each fetch in the config's exponential-with-cap retry, for the
   unavoidable overlap with IBKR maintenance windows (the scheduler also runs off-window).
-* **Resumable / idempotent.** :meth:`backfill` skips any ticker whose bar set is already on
-  disk for the requested window, so a backfill killed after K of N tickers re-fetches only
-  the missing tail; the on-disk set is identical to an uninterrupted run (idempotent on
-  ``(provider, underlying, trade_date)`` — storage replaces, never duplicates).
+* **Resumable / idempotent.** :meth:`backfill` skips any ticker already present for the provider
+  (an underlying-level partition scan), so a sweep killed after K of N tickers re-runs only the
+  untouched names; the on-disk set is identical to an uninterrupted run (idempotent on
+  ``(provider, underlying, trade_date)`` — storage replaces, never duplicates). The skip is
+  whole-ticker, not tail-aware: a present ticker is NOT advanced to a new session unless
+  ``refresh_tail`` is set, which re-fetches only its most-recent window (the daily roll-forward).
 
 No clock or sleep is read directly: the warmup/retry sleep is the injected ``sleep`` callable,
 so tests drive the whole path with no real waiting. Secrets never appear here.
@@ -82,21 +84,25 @@ class HistoryRequest:
 
 @dataclass(frozen=True, slots=True)
 class BackfillResult:
-    """What a backfill run did: tickers fetched, skipped (already on disk), or failed.
+    """What a backfill run did: tickers fetched, refreshed, skipped (already on disk), or failed.
 
-    ``failed`` is the resilience seam: in a large constituent sweep a ticker that does not resolve
-    or is not entitled must not abort the rest — its labeled error is logged and it lands here, so
-    the run completes and the operator sees exactly which tickers need attention.
+    ``fetched`` got a full back-paged history (they had no bars on disk); ``refreshed`` got only
+    their most-recent window rolled forward (already present, ``refresh_tail`` on); ``skipped`` were
+    present and left untouched (``refresh_tail`` off). ``failed`` is the resilience seam: in a large
+    constituent sweep a ticker that does not resolve or is not entitled must not abort the rest —
+    its labeled error is logged and it lands here, so the run completes and the operator sees
+    exactly which tickers need attention.
     """
 
     fetched: tuple[str, ...]
     skipped: tuple[str, ...]
     bar_count: int
     failed: tuple[str, ...] = ()
+    refreshed: tuple[str, ...] = ()
 
     @property
     def attempted(self) -> tuple[str, ...]:
-        return tuple(sorted({*self.fetched, *self.skipped, *self.failed}))
+        return tuple(sorted({*self.fetched, *self.refreshed, *self.skipped, *self.failed}))
 
 
 @dataclass
@@ -151,18 +157,23 @@ class CpRestHistoryCollector:
             )
         self._warmed_up = True
 
-    def fetch(self, request: HistoryRequest) -> tuple[DailyBar, ...]:
-        """Fetch a ticker's full available daily history, paging back over the ~999-bar cap.
+    def fetch(self, request: HistoryRequest, *, recent_only: bool = False) -> tuple[DailyBar, ...]:
+        """Fetch a ticker's daily history — full back-paged history, or just the most-recent window.
 
         Refuses to fire unless the brokerage session is established (defers with a labeled
         :class:`HistoryFetchError` otherwise — never a request into a dead session). CP REST caps
-        a single ``/iserver/marketdata/history`` request at ~999 daily bars (~4y), so this pages
-        **backward**: ``startTime`` is the END anchor (verified live — a request returns ``period``
-        of bars *ending* at ``startTime``), so each window re-anchors at the running earliest date
-        and reaches ~999 bars further back, until a window returns no new day (the start of the
-        ticker's listed history) or the safety :attr:`max_history_windows` cap. Each window's GET
-        is wrapped in the config's exponential-with-cap retry. Returns the merged, date-sorted
-        :class:`DailyBar` tuple (empty for a ticker with no history).
+        a single ``/iserver/marketdata/history`` request at ~999 daily bars (~4y), so the full
+        fetch pages **backward**: ``startTime`` is the END anchor (verified live — a request returns
+        ``period`` of bars *ending* at ``startTime``), so each window re-anchors at the running
+        earliest date and reaches ~999 bars further back, until a window returns no new day (the
+        start of the ticker's listed history) or the safety :attr:`max_history_windows` cap.
+
+        ``recent_only`` fetches ONLY the most-recent window (a single GET, no backward paging) — the
+        roll-forward path for a ticker already on disk: its ~999 most recent bars cover today, and
+        storage being idempotent on ``(provider, underlying, trade_date)`` means re-writing the
+        overlap is a no-op while today's new bar lands. Each window's GET is wrapped in the config's
+        exponential-with-cap retry. Returns the merged, date-sorted :class:`DailyBar` tuple (empty
+        for a ticker with no history).
         """
         if not self.is_established():
             raise HistoryFetchError(
@@ -170,7 +181,26 @@ class CpRestHistoryCollector:
                 f"{request.underlying!r}"
             )
         self.warmup()
+        if recent_only:
+            return self._fetch_recent_window(request)
         return self._fetch_all_windows(request)
+
+    def _normalize(self, payload: dict[str, Any], request: HistoryRequest) -> tuple[DailyBar, ...]:
+        """Normalize one history window's payload to :class:`DailyBar` rows for ``request``."""
+        return history_to_daily_bars(
+            payload,
+            provider=self.provider,
+            underlying=request.underlying,
+            bar_type=self.bar_type,
+            source=self.source,
+            provenance_for=lambda d: self.provenance_for(request.underlying, d),
+        )
+
+    def _fetch_recent_window(self, request: HistoryRequest) -> tuple[DailyBar, ...]:
+        """Fetch only the single most-recent window (no backward paging) — the roll-forward tail."""
+        payload = self._get_with_retry(request, start_time=None)
+        bars = self._normalize(payload, request)
+        return tuple(sorted(bars, key=lambda bar: bar.trade_date))
 
     def _fetch_all_windows(self, request: HistoryRequest) -> tuple[DailyBar, ...]:
         """Page backward window by window, deduping by ``trade_date`` (see :meth:`fetch`)."""
@@ -194,14 +224,7 @@ class CpRestHistoryCollector:
                     "returning the history paged so far",
                 )
                 break
-            bars = history_to_daily_bars(
-                payload,
-                provider=self.provider,
-                underlying=request.underlying,
-                bar_type=self.bar_type,
-                source=self.source,
-                provenance_for=lambda d: self.provenance_for(request.underlying, d),
-            )
+            bars = self._normalize(payload, request)
             if not any(bar.trade_date not in by_date for bar in bars):
                 break  # only already-seen days (or none): the start of available history
             by_date.update({bar.trade_date: bar for bar in bars})
@@ -257,38 +280,47 @@ class CpRestHistoryCollector:
         )
 
     def backfill(
-        self, requests: Sequence[HistoryRequest], *, correlation_id: str = ""
+        self,
+        requests: Sequence[HistoryRequest],
+        *,
+        correlation_id: str = "",
+        refresh_tail: bool = False,
     ) -> BackfillResult:
-        """Backfill every requested ticker, skipping those already on disk (resumable).
+        """Backfill every requested ticker; present ones are skipped, or tail-refreshed (resumable).
 
         Iterates the requests (one ticker at a time, honouring the 5-concurrent cap by
-        construction), skips a ticker already present for this provider, fetches + persists the
-        rest, and returns which were fetched vs skipped vs failed. A ticker whose fetch raises a
-        labeled :class:`HistoryFetchError` (does not resolve, not entitled, session dropped) is
-        logged and recorded in ``failed`` — it never aborts the rest of a large sweep. Persisting
-        through ``store.write`` replaces the ``daily_bar`` partitions for a touched
-        ``(provider, underlying, trade_date)`` — idempotent on re-run.
+        construction). A ticker with no bars on disk gets a full back-paged history. A ticker
+        already present is, by default, **skipped** (the resume efficiency); with ``refresh_tail``
+        it instead gets only its most-recent window re-fetched and persisted — the daily
+        roll-forward, since the underlying-level presence scan otherwise freezes an already-seeded
+        ticker at whatever day it was first backfilled (it never advances to a new session). The
+        result reports which were ``fetched`` (full), ``refreshed`` (tail), ``skipped``, or
+        ``failed``. A ticker whose fetch raises a labeled :class:`HistoryFetchError` (does not
+        resolve, not entitled, session dropped) is logged and recorded in ``failed`` — it never
+        aborts the rest of a large sweep.
 
-        The resume skip is decided against ONE upfront partition-name scan
+        The present-vs-new decision is made against ONE upfront partition-name scan
         (:meth:`ParquetStore.underlyings_present` — a filesystem walk, no Parquet read), never a
         full-table read per ticker: on the live store (hundreds of thousands of one-row files)
-        the per-ticker read was the real stall behind the observed ~3 names / 10 min. Storage
-        stays idempotent on ``(provider, underlying, trade_date)``, so even a non-skipped
-        re-fetch replaces rather than duplicates — the skip is the efficiency, the idempotent
-        key is the correctness.
+        the per-ticker read was the real stall behind the observed ~3 names / 10 min. Persisting
+        through ``store.write`` replaces the ``daily_bar`` partitions for a touched
+        ``(provider, underlying, trade_date)``, so even a re-fetch replaces rather than duplicates —
+        the skip is the efficiency, the idempotent key is the correctness.
         """
         log = _LOGGER.bind(correlation_id=correlation_id, provider=self.provider)
         fetched: list[str] = []
+        refreshed: list[str] = []
         skipped: list[str] = []
         failed: list[str] = []
         bar_count = 0
         present = self.store.underlyings_present("daily_bar", provider=self.provider)
         for request in requests:
-            if request.underlying in present:
+            already_present = request.underlying in present
+            if already_present and not refresh_tail:
                 skipped.append(request.underlying)
                 continue
             try:
-                bars = self.fetch(request)
+                bars = self.fetch(request, recent_only=already_present)
             except HistoryFetchError as exc:
                 log.info(
                     "ibkr.history.backfill.ticker_failed",
@@ -301,10 +333,11 @@ class CpRestHistoryCollector:
             if bars:
                 self.store.write("daily_bar", list(bars))
                 bar_count += len(bars)
-            fetched.append(request.underlying)
+            (refreshed if already_present else fetched).append(request.underlying)
         log.info(
             "ibkr.history.backfill.done",
             fetched=len(fetched),
+            refreshed=len(refreshed),
             skipped=len(skipped),
             failed=len(failed),
             bar_count=bar_count,
@@ -314,4 +347,5 @@ class CpRestHistoryCollector:
             skipped=tuple(skipped),
             bar_count=bar_count,
             failed=tuple(failed),
+            refreshed=tuple(refreshed),
         )

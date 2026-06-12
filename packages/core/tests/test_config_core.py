@@ -105,13 +105,21 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # whole-config hash — moved BY DESIGN; `qc`/`pricing`/`scenarios` stay byte-identical (section
     # isolation). The universe/full values below are regenerated over the expanded `universe`
     # bundle. This is a pre-capture dev change: no banked historical record carries the old hash.
+    #
+    # T-qc-residual-units (2026-06-12, ADR 0028): the forward/parity QC cut-offs moved from
+    # absolute-$ (`max_residual_mad`/`max_parity_residual`) to relative-to-forward
+    # (`max_rel_residual_mad`/`max_rel_parity_residual`) — an absolute $ bar was an always-FAIL
+    # false positive on a 7400-pt index. The field rename + new defaults + version bump moved the
+    # `qc` bundle hash — and so the folded whole-config hash — BY DESIGN; `universe`/`pricing`/
+    # `scenarios` stay byte-identical (section isolation). Pre-capture dev change: no banked record
+    # carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "cc19d3dc8bb594af464527fb0d5d29ac33f576ca37fbd314b2a951cd2ba07955"
+        "a9ed58bfe77c3d0814c24ebf7770701dc4d22ce73468c61ff8ce555ea8d56efc"
     )
     assert config_hashes(config) == {
         "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
-        "qc": "47652138530ab77b3ae3f42efbaf6f60ffea9cff2a9fd60161867a826fc8d9ed",
+        "qc": "c660e955677d5df53d104bf0b0ac24fc5182fc20230d63dbc4ab5458290672a8",
         "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
         "universe": "d41c8d2d840f7f6de4267018cc1bc451692891055dc5e5513e6c37aab4e2e70c",
     }
@@ -127,7 +135,7 @@ def test_supplementary_qc_cutoffs_fold_into_the_qc_bundle_hash() -> None:
     hashes = config_hashes(base)
     for block, field, new_value in (
         ("continuity", "max_gap_count", 9),
-        ("forward_engine", "max_residual_mad", 0.07),
+        ("forward_engine", "max_rel_residual_mad", 0.007),
         ("fit_tolerance", "max_surface_rmse", 0.03),
         ("anomaly", "fail_z", 6.0),
     ):

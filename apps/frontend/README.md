@@ -34,28 +34,25 @@ production CORS.
 
 ## Pages
 
-Seven pages over `react-router`, wrapped in a shared `AppLayout` (top-bar nav):
+Three operator pages over `react-router`, wrapped in the shared top-bar shell:
 
 - **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
   (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
-  point-in-time, price-first constituent list (TanStack Table), then select a ticker to
-  see its **price-first** detail — the daily **candlestick** (TradingView Lightweight Charts),
-  the **3D IV surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
+  point-in-time, price-first constituent list (TanStack Table), preload the daily OHLC history for
+  **every constituent** through `/api/price-history/batch`, then select a ticker to see its
+  **price-first** detail — the daily **candlestick** (TradingView Lightweight Charts), the **3D IV
+  surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
   **dollar Greeks**, each tagged with its P0.2 unit string. TradingView Lightweight Charts
   renders the daily candlesticks and dollar-Greek term-structure line charts; Plotly remains
   the 3D/heatmap/non-line chart path (ADR 0030). Every panel self-labels. Picking a past date
   re-resolves the basket and analytics as-of that date (never today-defaulted).
-- **Health** — the operator dashboard: the four flags (data flowing / surfaces
-  building / QC passing / scenarios current), the trade date, and the EOD backlog,
-  read from `orchestration.build_dashboard` over the store and the run-state ledger.
-- **Surfaces** — the fitted SVI slices for an underlying (default `AAPL`, the symbol
-  the offline sample chain produces), read back from the `surface_parameters` table.
-- **Risk** — net portfolio sensitivities, read back from `risk_aggregates`.
-- **Run** — provider listing, pipeline launch, and job polling. The `SAMPLE` provider
-  builds a **real** surface by replaying a committed day through the actor pipeline (see
-  the live-run path below); the job lifecycle is live.
-- **Config** — list and read the platform config files (read-only, traversal-guarded).
-- **NotFound** — the catch-all 404.
+- **Risk Scenarios** — the full-reprice stress surface over spot and vol shocks, read from
+  `/api/risk/scenarios`, with the portfolio selector from `/api/risk/portfolios`. The same
+  surface rendering (the shared `StressSurface` component) also backs the Basket Builder's
+  on-demand **Stress basket** action (`POST /api/basket/scenarios`), so a composed basket can be
+  stressed live without a persisted portfolio.
+- **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
+  disabled until the explicit order-gate work lands.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
 `market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture
@@ -71,11 +68,22 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/surfaces[?underlying=&trade_date=]`, `GET /api/surfaces/underlyings`.
 - `GET /api/risk[?portfolio_id=]`, `GET /api/risk/portfolios`,
   `GET /api/risk/scenarios[?portfolio_id=]`.
+- `POST /api/basket/risk` — price/risk a composed multi-leg basket as the book-additive sum of
+  its legs' stored dollar Greeks (WS 2A; summation, never a reprice).
+- `POST /api/basket/scenarios` — the **on-demand** full-reprice stress surface for a composed
+  basket (WS 2B): reconstructs a valuation per option leg from the stored grid and reprices over
+  the config-driven (spot × vol) grid, returning the same `surface` shape as
+  `/api/risk/scenarios` plus the worst-case cell and labelled per-leg gaps. The interactive,
+  no-cron counterpart to the persisted-surface read — works off today's analytics without a
+  configured portfolio.
 - `GET /api/providers`, `GET /api/run/underlyings`, `POST /api/run`,
   `GET /api/jobs`, `GET /api/jobs/{id}`.
 - `GET /api/config`, `GET /api/config/{filename}`.
 - `GET /api/price-history[?underlying=&start=&end=]` — daily OHLC bars for one ticker over a
   window, from the `daily_bar` table (WS 1I).
+- `GET|POST /api/price-history/batch` — grouped daily OHLC histories for a requested list of
+  underlyings. The front uses `POST` with `underlyings[]` and `end=<as_of>` so the first page has
+  all constituent histories without one browser request per ticker.
 - `GET /api/constituents[?index=&as_of=]` — the point-in-time index basket via the as-of
   `members` resolver (the no-look-ahead gate), from `index_constituents`; the web app orders it
   by **index weight** (market-cap proxy) and default-selects the heaviest name (WS 1I).

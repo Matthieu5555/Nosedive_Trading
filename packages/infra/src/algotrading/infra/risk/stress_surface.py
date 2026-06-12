@@ -34,9 +34,11 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+import numpy as np
 from algotrading.core.config import ScenarioConfig, StressSurfaceConfig
+from algotrading.infra.pricing import price_european_array
 
-from .greeks import PositionRisk
+from .greeks import PositionRisk, net_lots
 from .scenarios import (
     Scenario,
     ScenarioGridError,
@@ -176,25 +178,88 @@ class StressSurface:
     pnl_grid: tuple[tuple[float, ...], ...]
 
 
+def _european_grid_pnls(
+    lines: list[PositionRisk],
+    spot_axis: tuple[float, ...],
+    vol_axis: tuple[float, ...],
+) -> list[list[float]]:
+    """The full-reprice PnL grid (spot × vol) for the European lines, summed over them.
+
+    Closed-form Black-76 over the whole cartesian grid in one ``(legs, spot, vol)`` array
+    (:func:`pricing.price_european_array`), held bit-faithful to the scalar engine. The
+    surface holds ``time_shock = 0`` (the grid asserts it), so maturity and the discount
+    factor are unchanged under the shock — only the forward (``forward*(1+s)``) and the vol
+    (``max(vol+v, 0)``) move, the same state :func:`scenarios.shock_valuation` builds. Returns
+    an ``len(spot_axis) × len(vol_axis)`` grid; flat zero when there are no European lines.
+    """
+    n_spot, n_vol = len(spot_axis), len(vol_axis)
+    if not lines:
+        return [[0.0] * n_vol for _ in range(n_spot)]
+
+    forward = np.array([ln.valuation.forward for ln in lines], dtype=np.float64)
+    strike = np.array([ln.valuation.strike for ln in lines], dtype=np.float64)
+    maturity = np.array([ln.valuation.maturity_years for ln in lines], dtype=np.float64)
+    vol = np.array([ln.valuation.volatility for ln in lines], dtype=np.float64)
+    discount = np.array([ln.valuation.discount_factor for ln in lines], dtype=np.float64)
+    is_call = np.array([ln.valuation.option_right == "C" for ln in lines], dtype=bool)
+    base_price = np.array([ln.greeks.price for ln in lines], dtype=np.float64)
+    scale = np.array([ln.scale for ln in lines], dtype=np.float64)
+
+    spot_shocks = np.asarray(spot_axis, dtype=np.float64)
+    vol_shocks = np.asarray(vol_axis, dtype=np.float64)
+    # Broadcast to (legs, spot, vol): the per-leg state on axis 0, the spot shock on axis 1,
+    # the vol shock on axis 2. carry and maturity are held fixed, so forward*(1+s) is exactly
+    # the shocked forward (spot*(1+s) carried out to the unchanged maturity).
+    shocked_forward = forward[:, None, None] * (1.0 + spot_shocks[None, :, None])
+    shocked_vol = np.maximum(vol[:, None, None] + vol_shocks[None, None, :], 0.0)
+    priced = price_european_array(
+        forward=shocked_forward,
+        strike=strike[:, None, None],
+        maturity_years=maturity[:, None, None],
+        volatility=shocked_vol,
+        discount_factor=discount[:, None, None],
+        is_call=is_call[:, None, None],
+    )
+    pnl = (priced - base_price[:, None, None]) * scale[:, None, None]
+    grid: list[list[float]] = pnl.sum(axis=0).tolist()
+    return grid
+
+
 def stress_surface(
     lines: Iterable[PositionRisk], config: ScenarioConfig, *, steps: int | None = None
 ) -> StressSurface:
     """Full-reprice the book over the cartesian surface grid and arrange it as a z-grid.
 
     Each cell is the portfolio's full-reprice PnL under that ``(spot_shock, vol_shock)``
-    state, summed over the netted lines (reusing :func:`scenarios.scenario_line_pnls` /
-    :func:`scenarios.scenario_totals` — no second reprice path). An empty book reprices to a
-    flat-zero surface over the configured axes (the honest full reprice of nothing); the axes
-    are a pure function of config, independent of the book. ``steps`` is forwarded to the
-    American lattice and ignored for European contracts.
+    state, summed over the netted lines. European lines are repriced in closed form over the
+    whole grid at once (:func:`_european_grid_pnls`); any non-European line (the American
+    lattice) keeps the scalar :func:`scenarios.scenario_line_pnls` path, and the two add
+    cell-by-cell — so the surface is the same full reprice, just without a per-cell
+    ``PricingState`` construction for the European legs that dominate the basket page. An
+    empty book reprices to a flat-zero surface over the configured axes (the honest full
+    reprice of nothing); the axes are a pure function of config, independent of the book.
+    ``steps`` is forwarded to the American lattice and ignored for European contracts.
     """
     spot_axis, vol_axis = surface_axes(config)
-    grid = stress_surface_grid(config)
-    cells = scenario_line_pnls(lines, grid, steps=steps)
-    totals = scenario_totals(cells)  # scenario_id -> portfolio full-reprice PnL
-    pnl_grid = tuple(
-        tuple(totals.get(_surface_scenario_id(s, v), 0.0) for v in vol_axis) for s in spot_axis
-    )
+    line_list = net_lots(lines)
+    european = [ln for ln in line_list if ln.valuation.exercise_style == "european"]
+    american = [ln for ln in line_list if ln.valuation.exercise_style != "european"]
+
+    grid = _european_grid_pnls(european, spot_axis, vol_axis)
+    if american:
+        # The lattice has no closed form to vectorize; reprice it on the scalar path and
+        # add it onto the European grid cell-by-cell (PnL is additive across lines).
+        cells = scenario_line_pnls(american, stress_surface_grid(config), steps=steps)
+        totals = scenario_totals(cells)
+        grid = [
+            [
+                grid[i][j] + totals.get(_surface_scenario_id(s, v), 0.0)
+                for j, v in enumerate(vol_axis)
+            ]
+            for i, s in enumerate(spot_axis)
+        ]
+
+    pnl_grid = tuple(tuple(row) for row in grid)
     return StressSurface(
         scenario_version=effective_surface_version(config),
         spot_axis=spot_axis,

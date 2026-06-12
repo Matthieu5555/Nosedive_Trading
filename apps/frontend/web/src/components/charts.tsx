@@ -1,9 +1,10 @@
-// The Tab-1 chart panels. The daily candlestick and the Greek term-structure line charts use
-// TradingView Lightweight Charts; the 3D IV surface and the smile stay on the Plotly wrapper.
+// The Tab-1 chart panels. The daily candlestick, the Greek term-structure line charts, and the
+// smile use TradingView Lightweight Charts; only the 3D IV surface stays on the Plotly wrapper
+// (lightweight-charts has no 3D/mesh path).
 //
 // Each panel is self-labelling (answers "what am I looking at?") and reads a typed BFF response.
-// The 3D IV surface is a mesh3d over (delta, maturity, implied_vol); the smile is a 2D scatter
-// of vol vs delta.
+// The 3D IV surface is a mesh3d over (delta, maturity, implied_vol); the smile is a 2D line chart
+// of vol vs log-moneyness, split into its put wing (k ≤ 0) and call wing (k ≥ 0) as two series.
 
 import type { Data } from "plotly.js";
 
@@ -35,22 +36,18 @@ export function PriceChart({ data }: { data: PriceHistoryResponse }) {
 }
 
 export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) {
-  // The x-axis label follows the payload's declared axis (delta-band grid vs the coarser
-  // moneyness-bucket fallback) — mixed-axis maturities never happen (one source per day).
-  const axisTitle = maturities.length > 0 ? smileAxis(maturities[0].smile).title : "delta";
+  // A clean rectangular vol surface: x = the smile's strike axis (signed delta, or log-moneyness
+  // on the grid fallback), y = the maturity *index* (0,1,2…), z = implied vol. The maturity axis
+  // is an even index, not calendar years — in years the short tenors bunch near zero and the mesh
+  // looks spiky/nonsensical; an even index lays the surface flat and regular. Plotly `surface`
+  // over a (maturity × x) z-grid reads as a true surface, not a mesh3d scatter cloud. A missing
+  // (x, maturity) cell is a null hole, never an invented value.
+  const sorted = [...maturities]
+    .filter((maturity) => smileAxis(maturity.smile).values.length > 0)
+    .sort((a, b) => a.maturity_years - b.maturity_years);
+  const axisTitle = sorted.length > 0 ? smileAxis(sorted[0].smile).title : "moneyness (log)";
   const label = `Implied-volatility surface (vol vs ${axisTitle} vs maturity)`;
-  // Flatten every maturity's band points into an (x, maturity, vol) point cloud for mesh3d.
-  const xs: number[] = [];
-  const years: number[] = [];
-  const vols: number[] = [];
-  for (const maturity of maturities) {
-    smileAxis(maturity.smile).values.forEach((x, i) => {
-      xs.push(x);
-      years.push(maturity.maturity_years);
-      vols.push(maturity.smile.implied_vols[i]);
-    });
-  }
-  if (vols.length === 0) {
+  if (sorted.length === 0) {
     return (
       <figure aria-label={label} className="plot">
         <figcaption>{label}</figcaption>
@@ -58,51 +55,85 @@ export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) 
       </figure>
     );
   }
+  // Common x grid (union of every maturity's strike axis), so the z-grid stays rectangular even
+  // if a maturity carries slightly different points.
+  const xGrid = [...new Set(sorted.flatMap((m) => smileAxis(m.smile).values))].sort((a, b) => a - b);
+  const z: (number | null)[][] = sorted.map((maturity) => {
+    const axis = smileAxis(maturity.smile);
+    const byX = new Map(axis.values.map((x, i) => [x, maturity.smile.implied_vols[i]]));
+    return xGrid.map((x) => byX.get(x) ?? null);
+  });
+  const yIndex = sorted.map((_, i) => i);
   const trace: Data = {
-    type: "mesh3d",
-    x: xs,
-    y: years,
-    z: vols,
+    type: "surface",
+    x: xGrid,
+    y: yIndex,
+    z,
     name: "IV surface",
+    colorscale: "Viridis",
+    showscale: false,
   };
   return (
     <Plot
       label={label}
+      height={480}
       data={[trace]}
       layout={{
         scene: {
           xaxis: { title: { text: axisTitle } },
-          yaxis: { title: { text: "maturity (y)" } },
+          yaxis: {
+            title: { text: "maturity" },
+            tickvals: yIndex,
+            ticktext: sorted.map((maturity) => maturity.tenor_label || maturity.label),
+          },
           zaxis: { title: { text: "implied vol" } },
+          aspectmode: "cube",
         },
       }}
     />
   );
 }
 
+// Smile wing colours: puts (downside) read red, calls (upside) green — the convention an
+// operator expects, matching the --negative / --positive design tokens.
+const PUT_COLOR = "#ef9c92";
+const CALL_COLOR = "#a8e6ba";
+
+// The smile is drawn in TradingView Lightweight Charts (the numeric-x yield-curve panel), not
+// Plotly: it renders with a real height like the candlestick / term-structure panels, and the
+// x-axis is log-moneyness so the curve reads as a true smile — ATM at 0, OTM puts on the left
+// (strikes below the forward, k < 0), OTM calls on the right (k > 0). The downward left→right
+// slope IS the skew. Two series — a red put wing (k ≤ 0) and a green call wing (k ≥ 0), sharing
+// the ATM point so they join. The yield-curve scale rejects negative x, so log-moneyness is
+// shifted +1.0 and scaled ×1000 into the integer axis; the tick formatter restores the real k.
+const SMILE_X_OFFSET = 1.0;
+const SMILE_X_SCALE = 1000;
+const toSmileX = (k: number): number => Math.round((k + SMILE_X_OFFSET) * SMILE_X_SCALE);
+const fromSmileX = (x: number): string => (x / SMILE_X_SCALE - SMILE_X_OFFSET).toFixed(3);
+
 export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
-  const axis = smileAxis(maturity.smile);
   // A degenerate calibration (parameter railed to a bound, non-converged, or arb-breached)
   // is shown flagged, never as a clean fit — the flag clears once real term structure lands.
   const degenerate = maturity.surface_slice?.degenerate ?? false;
-  const label = `Smile — ${maturity.label} (implied vol vs ${axis.title})${
+  const label = `Smile — ${maturity.label} (implied vol vs log-moneyness; puts ◄ ATM ► calls)${
     degenerate ? " ⚠ degenerate fit" : ""
   }`;
-  const trace: Data = {
-    type: "scatter",
-    mode: "lines+markers",
-    x: axis.values,
-    y: maturity.smile.implied_vols,
-    name: maturity.label,
-  };
+  const ks = maturity.smile.log_moneyness;
+  const vols = maturity.smile.implied_vols;
+  const puts: LightweightLineSeries = { label: "puts", color: PUT_COLOR, points: [] };
+  const calls: LightweightLineSeries = { label: "calls", color: CALL_COLOR, points: [] };
+  ks.forEach((k, i) => {
+    const point = { x: toSmileX(k), label: k.toFixed(3), value: vols[i] };
+    if (k <= 0) puts.points.push(point);
+    if (k >= 0) calls.points.push(point);
+  });
   return (
-    <Plot
+    <LightweightLineChart
       label={label}
-      data={[trace]}
-      layout={{
-        xaxis: { title: { text: axis.title } },
-        yaxis: { title: { text: "implied vol" } },
-      }}
+      series={[puts, calls]}
+      yUnit="IV"
+      xFormatter={fromSmileX}
+      valueFormatter={(value) => `${(value * 100).toFixed(1)}%`}
     />
   );
 }

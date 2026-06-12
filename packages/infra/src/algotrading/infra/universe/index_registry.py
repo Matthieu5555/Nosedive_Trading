@@ -39,10 +39,11 @@ from .errors import IndexRegistryError
 # reflective config loader enforces for the flat economic sections.
 _ENTRY_FIELDS = frozenset({"name", "calendar", "currency", "ibkr", "enabled"})
 # The IBKR sub-block: the three required keys, plus the optional ``symbol`` override (the IBKR
-# secdef ticker when it differs from the registry key). ``_IBKR_FIELDS`` is the allow-list (a typo
-# still fails loudly); only ``_IBKR_REQUIRED`` must be present.
+# secdef ticker when it differs from the registry key) and ``constituent_conids`` (per-constituent
+# verified-conid pins). ``_IBKR_FIELDS`` is the allow-list (a typo still fails loudly); only
+# ``_IBKR_REQUIRED`` must be present.
 _IBKR_REQUIRED = frozenset({"conid", "secType", "exchange"})
-_IBKR_FIELDS = _IBKR_REQUIRED | frozenset({"symbol"})
+_IBKR_FIELDS = _IBKR_REQUIRED | frozenset({"symbol", "constituent_conids"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +66,13 @@ class IbkrRef:
     # registry's ``SX5E``); set ``ibkr.symbol`` to the IBKR ticker and resolution uses it while the
     # rest of the platform keeps the registry symbol. ``None`` (the default) means same as the key.
     symbol: str | None = None
+    # Verified conid pins for individual constituents whose bare ticker the ``/secdef/search`` door
+    # cannot resolve unambiguously — a ticker shared by two listings (Euronext-Paris ``SAN`` is
+    # Sanofi, Bolsa-de-Madrid ``SAN`` is Banco Santander; IBKR even renames one to ``SAN1``) or a
+    # name search returns junk for. Each ``label -> conid`` pin is fetched by its unique conid (the
+    # actual identifier), bypassing the search; ``label`` is the underlying key the bars store
+    # under. A frozen tuple of pairs (not a dict) so the dataclass stays hashable. Default: no pins.
+    constituent_conids: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +169,32 @@ def _parse_ibkr(symbol: str, raw: object) -> IbkrRef:
         sec_type=_require_str(symbol, "ibkr.secType", raw["secType"]),
         exchange=_require_str(symbol, "ibkr.exchange", raw["exchange"]),
         symbol=ibkr_symbol,
+        constituent_conids=_parse_constituent_conids(symbol, raw.get("constituent_conids")),
     )
+
+
+def _parse_constituent_conids(symbol: str, raw: object) -> tuple[tuple[str, int], ...]:
+    """Parse the optional ``ibkr.constituent_conids`` pin map (``label -> verified conid``).
+
+    Absent (``None``) means no pins — the empty tuple. Present, it must be a mapping; each label is
+    a non-empty string and each conid a positive int (``0``/negative is rejected — a pin exists to
+    name a *real* contract, never the placeholder). A ``bool`` conid (YAML ``true``) is a config
+    error, not a ``1``. Each bad entry raises a labeled :class:`IndexRegistryError`, never coerced.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping):
+        raise IndexRegistryError(symbol, "ibkr.constituent_conids", raw, "must be a mapping")
+    pins: list[tuple[str, int]] = []
+    for label, conid in raw.items():
+        label_str = _require_str(symbol, "ibkr.constituent_conids", label)
+        field = f"ibkr.constituent_conids.{label_str}"
+        if isinstance(conid, bool) or not isinstance(conid, int):
+            raise IndexRegistryError(symbol, field, conid, "must be an integer")
+        if conid <= 0:
+            raise IndexRegistryError(symbol, field, conid, "must be a positive conid (never 0)")
+        pins.append((label_str, conid))
+    return tuple(pins)
 
 
 def _parse_entry(symbol: str, raw: object, known_calendars: frozenset[str]) -> IndexEntry:

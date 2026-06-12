@@ -402,3 +402,58 @@ def test_backfill_presence_scan_is_one_pass_not_a_read_per_ticker(tmp_path: Path
     assert sorted(result.fetched) == ["AAPL", "GOOG"]
     assert store.presence_calls == 1  # one scan for the whole sweep
     assert store.read_calls == 0  # presence never goes through a full-table read
+
+
+# -- refresh-tail: roll an already-present ticker forward to a new session -----------------
+def test_refresh_tail_rolls_a_present_ticker_forward_in_one_window(tmp_path: Path) -> None:
+    """A present ticker under ``refresh_tail`` re-fetches ONLY its most-recent window.
+
+    The underlying-level presence scan otherwise freezes a seeded ticker at the day it was first
+    backfilled (it is skipped wholesale, never advancing to a new session). ``refresh_tail`` rolls
+    it forward by fetching a single unanchored window (today's ~999 bars) — NOT re-paging years of
+    history — and the new session's bar lands via the idempotent ``(provider, underlying, date)``
+    write. It lands in ``refreshed``, not ``skipped``.
+    """
+    store = ParquetStore(tmp_path)
+    # Day 1: seed a long history so the ticker is "present" on disk.
+    _collector(_PaginatedGateway(_series(1500), cap=999), store).backfill(
+        [HistoryRequest("AAPL", 8314, "5y")]
+    )
+    assert "AAPL" in store.underlyings_present("daily_bar", provider="IBKR")
+
+    # Day 2: one new session has appeared at the end of the series.
+    series_day2 = _series(1501)
+    new_session = series_day2[-1]["date"]
+    assert new_session not in {b.trade_date for b in store.read("daily_bar", provider="IBKR")}
+
+    roll_gw = _PaginatedGateway(series_day2, cap=999)
+    result = _collector(roll_gw, store).backfill(
+        [HistoryRequest("AAPL", 8314, "5y")], refresh_tail=True
+    )
+    assert result.refreshed == ("AAPL",)
+    assert result.skipped == () and result.fetched == ()
+    # Exactly one real window, unanchored (most-recent) — no backward paging for a roll-forward.
+    assert roll_gw.window_starts == [None]
+    assert new_session in {b.trade_date for b in store.read("daily_bar", provider="IBKR")}
+
+
+def test_refresh_tail_off_still_skips_a_present_ticker(tmp_path: Path) -> None:
+    """Default (``refresh_tail`` off) is unchanged: a present ticker is skipped, not re-fetched."""
+    store = ParquetStore(tmp_path)
+    _collector(_FakeTransport({8314: _payload("AAPL")}), store).backfill(
+        [HistoryRequest("AAPL", 8314, "1y")]
+    )
+    roll_gw = _PaginatedGateway(_series(1501), cap=999)
+    result = _collector(roll_gw, store).backfill([HistoryRequest("AAPL", 8314, "5y")])
+    assert result.skipped == ("AAPL",) and result.refreshed == ()
+    assert roll_gw.window_starts == []  # never hit the wire for the skipped ticker
+
+
+def test_refresh_tail_still_full_fetches_an_absent_ticker(tmp_path: Path) -> None:
+    """``refresh_tail`` only changes present tickers; an absent one still gets full back-paging."""
+    gw = _PaginatedGateway(_series(2300), cap=999)
+    result = _collector(gw, ParquetStore(tmp_path)).backfill(
+        [HistoryRequest("AAPL", 8314, "5y")], refresh_tail=True
+    )
+    assert result.fetched == ("AAPL",) and result.refreshed == ()
+    assert len(gw.window_starts) >= 3  # full backward paging, not a single window

@@ -25,3 +25,33 @@ export interface ScenariosResponse {
   n_cells: number;
   surface: StressSurfaceData;
 }
+
+// A basket leg that could not be repriced into the stress surface, named by its grid coordinate
+// and a machine-readable reason (no_analytics_row / provider_ambiguous / no_instrument_master /
+// no_spot_for_stock_leg) — a labelled gap, never a silent zero.
+export interface BasketScenarioGap {
+  underlying: string;
+  tenor_label: string | null;
+  delta_band: string | null;
+  reason: string;
+}
+
+// POST /api/basket/scenarios — the on-demand full-reprice surface for a composed basket. Same
+// `surface` shape as the persisted view (rendered by the StressSurface component), plus the
+// worst-case cell and the per-leg gaps. `n_resolved` of `n_legs` legs made it into the reprice.
+export interface BasketScenariosResponse {
+  basket_id: string;
+  trade_date: string;
+  underlying: string;
+  surface: StressSurfaceData;
+  worst_case: {
+    spot_shock: number;
+    vol_shock: number;
+    pnl: number;
+    unit: string;
+  };
+  n_legs: number;
+  n_resolved: number;
+  gaps: BasketScenarioGap[];
+  n_gaps: number;
+}

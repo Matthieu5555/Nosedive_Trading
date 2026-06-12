@@ -10,6 +10,7 @@ import type { Data } from "plotly.js";
 
 import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SmileAxis } from "../api";
 import { CandleChart } from "./CandleChart";
+import { CHART_COLORS } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
 import { Plot } from "./Plot";
 
@@ -95,9 +96,9 @@ export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) 
 }
 
 // Smile wing colours: puts (downside) read red, calls (upside) green — the convention an
-// operator expects, matching the --negative / --positive design tokens.
-const PUT_COLOR = "#ef9c92";
-const CALL_COLOR = "#a8e6ba";
+// operator expects, read off the shared --negative / --positive design tokens.
+const PUT_COLOR = CHART_COLORS.negative;
+const CALL_COLOR = CHART_COLORS.positive;
 
 // The smile is drawn in TradingView Lightweight Charts (the numeric-x yield-curve panel), not
 // Plotly: it renders with a real height like the candlestick / term-structure panels, and the
@@ -152,11 +153,11 @@ const GREEK_PANELS: ReadonlyArray<{ name: GreekName; title: string }> = [
 ];
 
 const BAND_COLORS = [
-  "#a8e6ba",
+  CHART_COLORS.positive,
   "#8fc7ff",
   "#f0cf7a",
   "#d6b3ff",
-  "#ef9c92",
+  CHART_COLORS.negative,
   "#79d7cf",
 ] as const;
 

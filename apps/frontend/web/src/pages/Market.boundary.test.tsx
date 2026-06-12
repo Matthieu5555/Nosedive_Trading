@@ -16,41 +16,15 @@ vi.mock("./market/IndexAnalytics", () => ({
 }));
 
 import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
-import {
-  CONSTITUENTS_TWO,
-  PRICE_HISTORY_BATCH_TWO,
-  PRICE_HISTORY_AAA,
-  RECORDED_TWO_DATES,
-} from "../test/fixtures";
+
+// The page's endpoints are served by the msw defaults (src/test/server.ts); only the thrown
+// render error is bespoke here.
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  const table: Record<string, unknown> = {
-    "GET /api/recorded-dates": RECORDED_TWO_DATES,
-    "GET /api/constituents": CONSTITUENTS_TWO,
-    "GET /api/price-history": PRICE_HISTORY_AAA,
-    "POST /api/price-history/batch": PRICE_HISTORY_BATCH_TWO,
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string | Request | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : input;
-      const path = new URL(url, "http://localhost").pathname;
-      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-      const value = table[`${method} ${path}`];
-      const ok = value !== undefined;
-      return Promise.resolve({
-        ok,
-        status: ok ? 200 : 500,
-        statusText: ok ? "OK" : "Server Error",
-        json: async () => value ?? { error: "not mocked" },
-      } as Response);
-    }),
-  );
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   resetConstituentHistoryBatchCacheForTests();
 });

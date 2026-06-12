@@ -6,13 +6,13 @@
 
 import { useEffect, useRef } from "react";
 import {
-  ColorType,
-  CrosshairMode,
   LineSeries,
   createYieldCurveChart,
   type IYieldCurveChartApi,
   type LineData,
 } from "lightweight-charts";
+
+import { baseLightweightOptions } from "./chartTheme";
 
 export interface LightweightLinePoint {
   x: number;
@@ -33,10 +33,6 @@ export interface LightweightLineChartProps {
   xFormatter?: (x: number) => string;
   valueFormatter?: (value: number) => string;
 }
-
-const GRID = "#2b302c";
-const AXIS = "#454d45";
-const MUTED = "#8f978f";
 
 function defaultXFormatter(x: number): string {
   if (x < 12) return `${x}m`;
@@ -75,21 +71,10 @@ export function LightweightLineChart({
     if (container === null) return;
 
     const maxX = Math.max(12, ...series.flatMap((item) => item.points.map((point) => point.x)));
+    const base = baseLightweightOptions();
     const chart: IYieldCurveChartApi = createYieldCurveChart(container, {
-      autoSize: true,
-      layout: {
-        background: { type: ColorType.Solid, color: "rgba(0,0,0,0)" },
-        textColor: MUTED,
-        fontFamily: '"Basis Grotesque", Inter, sans-serif',
-        fontSize: 11,
-        attributionLogo: true,
-      },
-      grid: {
-        vertLines: { color: GRID },
-        horzLines: { color: GRID },
-      },
-      rightPriceScale: { borderColor: AXIS },
-      crosshair: { mode: CrosshairMode.Normal },
+      ...base,
+      layout: { ...base.layout, attributionLogo: true },
       localization: {
         priceFormatter: valueFormatter,
       },

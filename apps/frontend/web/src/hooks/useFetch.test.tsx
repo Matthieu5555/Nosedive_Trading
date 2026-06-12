@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { expect, test } from "vitest";
 
 import { useFetch } from "./useFetch";
+import { server } from "../test/server";
 
 // A tiny probe component that renders the hook's state machine flat into the DOM, so a test can
-// assert on data / error / stale without a page.
+// assert on data / error / stale without a page. The probe path is served by per-test msw
+// handlers, so the hook's real fetch path (signals, error parsing) is exercised end to end.
 function Probe({ path, refreshMs }: { path: string; refreshMs?: number }) {
   const { data, loading, error, stale } = useFetch<{ value: number }>(path, refreshMs);
   return (
@@ -17,21 +20,8 @@ function Probe({ path, refreshMs }: { path: string; refreshMs?: number }) {
   );
 }
 
-function okResponse(body: unknown): Response {
-  return { ok: true, json: async () => body } as unknown as Response;
-}
-
-function errorResponse(status: number): Response {
-  return { ok: false, status, statusText: "boom", json: async () => ({}) } as unknown as Response;
-}
-
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
-
 test("a successful load exposes the data and clears loading", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse({ value: 42 })));
+  server.use(http.get("/api/thing", () => HttpResponse.json({ value: 42 })));
   render(<Probe path="/api/thing" />);
   await waitFor(() => expect(screen.getByTestId("value")).toHaveTextContent("42"));
   expect(screen.getByTestId("loading")).toHaveTextContent("false");
@@ -40,7 +30,9 @@ test("a successful load exposes the data and clears loading", async () => {
 });
 
 test("a first-load failure fronts an error, not stale", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errorResponse(500)));
+  server.use(
+    http.get("/api/thing", () => HttpResponse.json({ error: "boom" }, { status: 500 })),
+  );
   render(<Probe path="/api/thing" />);
   await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("500"));
   expect(screen.getByTestId("value")).toHaveTextContent("none");
@@ -48,13 +40,14 @@ test("a first-load failure fronts an error, not stale", async () => {
 });
 
 test("a failed background refresh marks the data stale and keeps it on screen", async () => {
-  // First poll succeeds (data banked), the next fails: the panel must keep the good value and
-  // raise `stale`, not blank to an error — the silent-refresh-failure gap this hook now closes.
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValueOnce(okResponse({ value: 7 }))
-    .mockResolvedValue(errorResponse(503));
-  vi.stubGlobal("fetch", fetchMock);
+  // First poll succeeds (data banked), every later one fails: the panel must keep the good
+  // value and raise `stale`, not blank to an error — the silent-refresh-failure gap this hook
+  // now closes. msw matches handlers in order: the `once` success handler answers the first
+  // request and is consumed; every later poll falls through to the 503.
+  server.use(
+    http.get("/api/thing", () => HttpResponse.json({ value: 7 }), { once: true }),
+    http.get("/api/thing", () => HttpResponse.json({}, { status: 503 })),
+  );
   render(<Probe path="/api/thing" refreshMs={20} />);
 
   await waitFor(() => expect(screen.getByTestId("value")).toHaveTextContent("7"));

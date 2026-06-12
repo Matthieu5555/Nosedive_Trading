@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { afterEach, expect, test, vi } from "vitest";
 
 // Plotly and lightweight-charts both draw to a canvas jsdom does not implement; swap each
@@ -9,52 +10,31 @@ vi.mock("../components/CandleChart", async () => await import("../test/candleMoc
 vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
 
 import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
-import {
-  ANALYTICS_AAA,
-  ANALYTICS_AAA_MONEYNESS_FALLBACK,
-  CONSTITUENTS_TWO,
-  PRICE_HISTORY_BATCH_TWO,
-  PRICE_HISTORY_AAA,
-  RECORDED_EMPTY,
-  RECORDED_TWO_DATES,
-} from "../test/fixtures";
+import { ANALYTICS_AAA_MONEYNESS_FALLBACK, PRICE_HISTORY_BATCH_TWO, RECORDED_EMPTY } from "../test/fixtures";
+import { jsonGet, notMocked, server } from "../test/server";
+
+// The msw defaults (src/test/server.ts) already serve this page's happy path: recorded dates,
+// constituents, single-ticker price history, analytics, and the batch preload. Each test only
+// overrides the endpoints it bends.
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   resetConstituentHistoryBatchCacheForTests();
 });
 
-// Route the stubbed fetch by method + URL path so each endpoint returns its own fixture. The
-// component histories are fetched through the batch endpoint, not one request per row.
-function mockEndpoints(overrides: Partial<Record<string, unknown>> = {}): void {
-  const table: Record<string, unknown> = {
-    "GET /api/recorded-dates": RECORDED_TWO_DATES,
-    "GET /api/constituents": CONSTITUENTS_TWO,
-    "GET /api/price-history": PRICE_HISTORY_AAA,
-    "GET /api/analytics": ANALYTICS_AAA,
-    "POST /api/price-history/batch": PRICE_HISTORY_BATCH_TWO,
-    ...overrides,
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string | Request | URL, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : input;
-      const path = new URL(url, "http://localhost").pathname;
-      const method = init?.method ?? (input instanceof Request ? input.method : "GET");
-      const value = table[`${method} ${path}`];
-      const ok = value !== undefined;
-      return Promise.resolve({
-        ok,
-        status: ok ? 200 : 500,
-        statusText: ok ? "OK" : "Server Error",
-        json: async () => value ?? { error: "not mocked" },
-      } as Response);
+// Capture every body POSTed to the batch-preload endpoint while still serving the fixture, so
+// a test can assert on the request contract itself (count, payload).
+function captureBatchBodies(): unknown[] {
+  const bodies: unknown[] = [];
+  server.use(
+    http.post("/api/price-history/batch", async ({ request }) => {
+      bodies.push(await request.json());
+      return HttpResponse.json(PRICE_HISTORY_BATCH_TWO);
     }),
   );
+  return bodies;
 }
 
 test("leads with the index daily-history panel and an as-of date dropdown", async () => {
-  mockEndpoints();
   render(<MarketPage />);
   // The index's own daily candlestick leads the page (price-first).
   expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
@@ -64,7 +44,6 @@ test("leads with the index daily-history panel and an as-of date dropdown", asyn
 });
 
 test("renders the point-in-time constituent list, scrollable, price-first", async () => {
-  mockEndpoints();
   render(<MarketPage />);
   const region = await screen.findByRole("region", { name: /constituents/i });
   expect(within(region).getByText("AAA")).toBeInTheDocument();
@@ -78,7 +57,6 @@ test("renders the point-in-time constituent list, scrollable, price-first", asyn
 test("default-selects the heaviest constituent and shows its detail without a click", async () => {
   // CONSTITUENTS_TWO weights: AAA 0.6 > BBB 0.4 — so AAA (the index's heaviest) is selected by
   // default (cahier des charges §3.2), and its analytics render with no interaction.
-  mockEndpoints();
   render(<MarketPage />);
 
   const region = await screen.findByRole("region", { name: /constituents/i });
@@ -90,7 +68,6 @@ test("default-selects the heaviest constituent and shows its detail without a cl
 });
 
 test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and dollar Greeks", async () => {
-  mockEndpoints();
   const user = userEvent.setup();
   render(<MarketPage />);
 
@@ -135,7 +112,7 @@ test("the selected component's candlestick renders without waiting for the batch
   // The batch preload is forced to FAIL: the detail panel must still fill through the
   // single-ticker endpoint — on the live store the batch takes ~1 min and a page reload
   // restarts it, so a batch-gated detail never shows.
-  mockEndpoints({ "POST /api/price-history/batch": undefined });
+  server.use(http.post("/api/price-history/batch", notMocked));
   const user = userEvent.setup();
   render(<MarketPage />);
 
@@ -149,50 +126,32 @@ test("the selected component's candlestick renders without waiting for the batch
 test("returning to the page does not re-fire the whole-basket batch preload", async () => {
   // The batch costs ~1 min live and keeps running server-side after unmount: page switches
   // must reuse the session-cached preload, never stack a new scan per visit.
-  mockEndpoints();
+  const batchBodies = captureBatchBodies();
   const first = render(<MarketPage />);
   await screen.findByLabelText("Price history for AAA");
   first.unmount();
   render(<MarketPage />);
   await screen.findByLabelText("Price history for AAA");
 
-  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-  const batchCalls = fetchMock.mock.calls.filter(([input, init]) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const method =
-      (init as RequestInit | undefined)?.method ??
-      (input instanceof Request ? input.method : "GET");
-    return method === "POST" && url.includes("/api/price-history/batch");
-  });
-  expect(batchCalls.length).toBe(1);
+  expect(batchBodies.length).toBe(1);
 });
 
 test("the batch preload requests the full ticker symbols, not fragments", async () => {
   // The request body is the contract: multi-character tickers must arrive intact. A fixed-
   // payload mock hides any key-encoding bug, so this test pins the body itself.
-  mockEndpoints();
+  const batchBodies = captureBatchBodies();
   render(<MarketPage />);
   await screen.findByLabelText("Price history for AAA");
 
-  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-  const batchCall = fetchMock.mock.calls.find(([input, init]) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const method =
-      (init as RequestInit | undefined)?.method ??
-      (input instanceof Request ? input.method : "GET");
-    return method === "POST" && url.includes("/api/price-history/batch");
-  });
-  expect(batchCall).toBeDefined();
-  const body = JSON.parse(String((batchCall?.[1] as RequestInit).body)) as {
-    underlyings: string[];
-  };
+  expect(batchBodies.length).toBeGreaterThanOrEqual(1);
+  const body = batchBodies[0] as { underlyings: string[] };
   expect(body.underlyings).toEqual(["AAA", "BBB"]);
 });
 
 test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {
   // F-BFF-04: when the BFF serves the surface-grid fallback, the axis announces itself as
   // moneyness (never "delta"), and the degenerate calibration is visibly flagged.
-  mockEndpoints({ "GET /api/analytics": ANALYTICS_AAA_MONEYNESS_FALLBACK });
+  server.use(jsonGet("/api/analytics", ANALYTICS_AAA_MONEYNESS_FALLBACK));
   render(<MarketPage />);
 
   const smile = await screen.findByLabelText(/Smile — 0\.250y/i);
@@ -206,7 +165,7 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
 });
 
 test("renders a labeled empty state when no dates are recorded", async () => {
-  mockEndpoints({ "GET /api/recorded-dates": RECORDED_EMPTY });
+  server.use(jsonGet("/api/recorded-dates", RECORDED_EMPTY));
   render(<MarketPage />);
   expect(await screen.findByText(/No capture runs to show/i)).toBeInTheDocument();
 });
@@ -214,21 +173,21 @@ test("renders a labeled empty state when no dates are recorded", async () => {
 test("shows a qc-failing day with a QC fail badge instead of hiding it", async () => {
   // count==0 (no clean day) but a viewable qc-failing day exists — it must be selectable and
   // shown with its QC badge, not hidden (cahier des charges §3.1/§5).
-  mockEndpoints({
-    "GET /api/recorded-dates": {
+  server.use(
+    jsonGet("/api/recorded-dates", {
       index: "SPX",
       count: 0,
       dates: [],
       available: [{ date: "2026-06-10", qc: "fail" }],
-    },
-  });
+    }),
+  );
   render(<MarketPage />);
   expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
   expect(await screen.findByText("QC fail")).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {
-  mockEndpoints({ "GET /api/recorded-dates": undefined });
+  server.use(http.get("/api/recorded-dates", notMocked));
   render(<MarketPage />);
   await waitFor(() => {
     expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);

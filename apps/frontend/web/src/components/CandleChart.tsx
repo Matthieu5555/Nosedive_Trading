@@ -13,14 +13,13 @@
 import { useEffect, useRef } from "react";
 import {
   CandlestickSeries,
-  ColorType,
-  CrosshairMode,
   createChart,
   type CandlestickData,
   type IChartApi,
 } from "lightweight-charts";
 
 import type { DailyBar } from "../api";
+import { CHART_COLORS, baseLightweightOptions } from "./chartTheme";
 
 export interface CandleChartProps {
   bars: DailyBar[];
@@ -28,12 +27,9 @@ export interface CandleChartProps {
   label: string;
 }
 
-// Theme tokens mirrored from src/index.css so the chart sits inside the dark panel grammar.
-const GRID = "#2b302c"; // --border
-const AXIS = "#454d45"; // --border-strong
-const MUTED = "#8f978f"; // --muted
-const UP = "#a8e6ba"; // --positive
-const DOWN = "#ef9c92"; // --negative
+// Up/down candle colours read positive/negative off the shared dark-panel theme tokens.
+const UP = CHART_COLORS.positive;
+const DOWN = CHART_COLORS.negative;
 
 // Explicit, locale-aware rounding for the hover read-out — every displayed number passes through
 // an explicit rounding (the design brief forbids raw floats on screen).
@@ -49,23 +45,12 @@ export function CandleChart({ bars, label }: CandleChartProps) {
     const container = containerRef.current;
     if (container === null) return;
 
-    // autoSize wires lightweight-charts' own ResizeObserver, so the chart tracks the panel
-    // width without a manual resize handler (matching the Plotly wrapper's responsiveness).
+    // autoSize (inside baseLightweightOptions) wires lightweight-charts' own ResizeObserver, so
+    // the chart tracks the panel width without a manual resize handler (matching the Plotly
+    // wrapper's responsiveness).
     const chart: IChartApi = createChart(container, {
-      autoSize: true,
-      layout: {
-        background: { type: ColorType.Solid, color: "rgba(0,0,0,0)" },
-        textColor: MUTED,
-        fontFamily: '"Basis Grotesque", Inter, sans-serif',
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: GRID },
-        horzLines: { color: GRID },
-      },
-      rightPriceScale: { borderColor: AXIS },
-      timeScale: { borderColor: AXIS },
-      crosshair: { mode: CrosshairMode.Normal },
+      ...baseLightweightOptions(),
+      timeScale: { borderColor: CHART_COLORS.axis },
     });
 
     const series = chart.addSeries(CandlestickSeries, {

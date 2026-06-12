@@ -320,71 +320,67 @@ function requestSignal(signal?: AbortSignal): AbortSignal | undefined {
   return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal;
 }
 
-// One narrow fetch helper: every page goes through here so error handling is uniform. An
-// optional `signal` lets the caller (the data hook) cancel an in-flight request on unmount.
-export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(path, { signal: requestSignal(signal) });
-  if (!response.ok) {
-    let detail = "";
-    try {
-      detail = JSON.stringify(await response.json());
-    } catch {
-      detail = response.statusText;
-    }
-    throw new Error(`${response.status} ${detail}`);
+// A non-2xx BFF response, carrying the typed error detail the BFF deliberately serves (the
+// 400 `detail` of a malformed basket, a labelled error body) instead of a bare status line.
+export class ApiError extends Error {
+  readonly status: number;
+  readonly detail: string;
+
+  constructor(status: number, detail: string) {
+    super(`${status} ${detail}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
   }
-  return (await response.json()) as T;
+}
+
+// The most useful human-readable detail a failed response offers: the BFF's typed `detail`
+// field when present, otherwise the whole JSON error body, otherwise the bare status text.
+function errorDetail(payload: unknown, statusText: string): string {
+  if (payload !== null && typeof payload === "object" && "detail" in payload) {
+    return String((payload as { detail: unknown }).detail);
+  }
+  if (payload !== null) return JSON.stringify(payload);
+  return statusText;
+}
+
+// The one fetch path every call goes through, so error handling cannot diverge per verb: a
+// non-OK response throws a typed ApiError carrying the status and the BFF's labelled detail.
+async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { ...init, signal: requestSignal(signal) });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new ApiError(response.status, errorDetail(payload, response.statusText));
+  }
+  return payload as T;
+}
+
+// GET a BFF path. An optional `signal` lets the caller (the data hook) cancel an in-flight
+// request on unmount.
+export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(path, {}, signal);
 }
 
 export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: requestSignal(signal),
-  });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
-  }
-  return (await response.json()) as T;
+  return requestJson<T>(
+    path,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    signal,
+  );
 }
 
 // Price a composed basket. A labelled gap comes back inside a 200 payload (gaps[]); a malformed
-// basket is a 400 whose labelled detail we surface, not a bare status line.
+// basket is a 400 whose labelled detail the ApiError surfaces, not a bare status line.
 export async function priceBasket(body: BasketRequest): Promise<BasketRiskResponse> {
-  const response = await fetch("/api/basket/risk", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: requestSignal(),
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail =
-      payload && typeof payload === "object" && "detail" in payload
-        ? String((payload as { detail: unknown }).detail)
-        : response.statusText;
-    throw new Error(`${response.status} ${detail}`);
-  }
-  return payload as BasketRiskResponse;
+  return postJson<BasketRiskResponse>("/api/basket/risk", body);
 }
 
 // Stress a composed basket on demand: the full-reprice (spot × vol) surface plus the worst-case
 // cell and labelled per-leg gaps. Same 400-detail handling as priceBasket.
 export async function stressBasket(body: BasketRequest): Promise<BasketScenariosResponse> {
-  const response = await fetch("/api/basket/scenarios", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: requestSignal(),
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail =
-      payload && typeof payload === "object" && "detail" in payload
-        ? String((payload as { detail: unknown }).detail)
-        : response.statusText;
-    throw new Error(`${response.status} ${detail}`);
-  }
-  return payload as BasketScenariosResponse;
+  return postJson<BasketScenariosResponse>("/api/basket/scenarios", body);
 }

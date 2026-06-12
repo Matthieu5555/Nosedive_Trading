@@ -12,6 +12,7 @@ import type {
   RiskResponse,
   SurfaceResponse,
 } from "../api";
+import type { ScenariosResponse } from "../stressApi";
 
 const PROV = {
   calc_ts: "2026-05-29T15:31:00+00:00",
@@ -404,4 +405,24 @@ export const BASKET_RISK_AAA: BasketRiskResponse = {
   gaps: [],
   n_legs: 2,
   n_gaps: 0,
+};
+
+// --- Risk-scenarios shell fixtures (shared by the msw default handlers and the page tests) ---
+
+export const PORTFOLIOS_ONE = { portfolios: ["CORE-INDEX-OPTIONS"] };
+
+// No persisted stress surface yet: empty axes, zero cells — the labelled-empty page state.
+export const SCENARIOS_EMPTY: ScenariosResponse = {
+  portfolio_id: null,
+  n_cells: 0,
+  surface: {
+    spot_shock: [],
+    vol_shock: [],
+    scenario_pnl: [],
+    scenario_version: null,
+    unit: "$ (full-reprice PnL)",
+    n_cells: 0,
+    has_holes: false,
+    n_holes: 0,
+  },
 };

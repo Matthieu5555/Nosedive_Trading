@@ -1,17 +1,22 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { http, HttpResponse } from "msw";
+import { expect, test, vi } from "vitest";
 
 // Plotly draws to a canvas jsdom does not implement; swap the wrapper for the DOM stub.
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
 import { BasketPage } from "./Basket";
 import { BASKET_RISK_AAA } from "../test/fixtures";
-import { mockFetch } from "../test/http";
+import { jsonPost, server } from "../test/server";
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+// A malformed-basket rejection, as the BFF serves it: a 400 whose typed `detail` names the
+// problem — the UI must surface that detail, never a bare status line.
+function badBasket(path: string) {
+  return http.post(path, () =>
+    HttpResponse.json({ error: "bad_basket", detail: "boom" }, { status: 400 }),
+  );
+}
 
 test("the strangle template pre-fills the ±30Δ wing legs in the grid", async () => {
   const user = userEvent.setup();
@@ -36,7 +41,7 @@ test("the straddle template pre-fills the two ATM legs (atm call + atmp put)", a
 
 test("pricing a composed basket renders the totals with unit strings visible", async () => {
   const user = userEvent.setup();
-  mockFetch(BASKET_RISK_AAA);
+  server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: /price basket/i }));
@@ -48,15 +53,17 @@ test("pricing a composed basket renders the totals with unit strings visible", a
   expect(within(totals).getByText("$ per 1% move")).toBeInTheDocument();
 });
 
-test("a pricing error renders a labelled alert, not a blank panel", async () => {
+test("a pricing error renders a labelled alert carrying the BFF's typed detail", async () => {
   const user = userEvent.setup();
-  mockFetch({ error: "bad_basket", detail: "boom" }, false);
+  server.use(badBasket("/api/basket/risk"));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
   await user.click(screen.getByRole("button", { name: /price basket/i }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(/Failed to price basket/i),
   );
+  // The 400's labelled detail reaches the operator — not a bare "400 Bad Request".
+  expect(screen.getByRole("alert")).toHaveTextContent(/boom/);
 });
 
 const BASKET_STRESS_AAA = {
@@ -86,7 +93,7 @@ const BASKET_STRESS_AAA = {
 
 test("stressing a composed basket renders the worst case and the PnL surface", async () => {
   const user = userEvent.setup();
-  mockFetch(BASKET_STRESS_AAA);
+  server.use(jsonPost("/api/basket/scenarios", BASKET_STRESS_AAA));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
@@ -102,13 +109,14 @@ test("stressing a composed basket renders the worst case and the PnL surface", a
   expect(within(heatmap).getByTestId("plot-types")).toHaveTextContent("heatmap");
 });
 
-test("a stress error renders a labelled alert", async () => {
+test("a stress error renders a labelled alert carrying the BFF's typed detail", async () => {
   const user = userEvent.setup();
-  mockFetch({ error: "bad_basket", detail: "boom" }, false);
+  server.use(badBasket("/api/basket/scenarios"));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(/Failed to stress basket/i),
   );
+  expect(screen.getByRole("alert")).toHaveTextContent(/boom/);
 });

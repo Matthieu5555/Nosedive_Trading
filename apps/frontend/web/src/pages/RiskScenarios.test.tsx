@@ -1,12 +1,14 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { http } from "msw";
+import { expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
 import { RiskScenariosPage } from "./RiskScenarios";
+import { jsonGet, notMocked, server } from "../test/server";
 import type { ScenariosResponse } from "../stressApi";
 
-const PORTFOLIOS = { portfolios: ["CORE-INDEX-OPTIONS"] };
+// /api/risk/portfolios is served by the msw defaults; each test picks its scenarios payload.
 
 const SCENARIOS: ScenariosResponse = {
   portfolio_id: null,
@@ -48,48 +50,8 @@ const SCENARIOS_WITH_HOLE: ScenariosResponse = {
   },
 };
 
-const SCENARIOS_EMPTY: ScenariosResponse = {
-  portfolio_id: null,
-  n_cells: 0,
-  surface: {
-    spot_shock: [],
-    vol_shock: [],
-    scenario_pnl: [],
-    scenario_version: null,
-    unit: "$ (full-reprice PnL)",
-    n_cells: 0,
-    has_holes: false,
-    n_holes: 0,
-  },
-};
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
-function mockEndpoints(scenarios: unknown = SCENARIOS): void {
-  const table: Record<string, unknown> = {
-    "/api/risk/portfolios": PORTFOLIOS,
-    "/api/risk/scenarios": scenarios,
-  };
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string) => {
-      const path = new URL(input, "http://localhost").pathname;
-      const value = table[path];
-      const ok = value !== undefined;
-      return Promise.resolve({
-        ok,
-        status: ok ? 200 : 500,
-        statusText: ok ? "OK" : "Server Error",
-        json: async () => value ?? { error: "not mocked" },
-      } as Response);
-    }),
-  );
-}
-
 test("renders the stress summary with max gain/loss and a portfolio selector", async () => {
-  mockEndpoints();
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
   render(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
   // Max gain 1500, max loss -1200 (signed money, no decimals).
@@ -99,7 +61,7 @@ test("renders the stress summary with max gain/loss and a portfolio selector", a
 });
 
 test("renders the PnL surface and heatmap as Plotly traces", async () => {
-  mockEndpoints();
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
   render(<RiskScenariosPage />);
   const surface = await screen.findByLabelText(/Stress PnL surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
@@ -108,7 +70,7 @@ test("renders the PnL surface and heatmap as Plotly traces", async () => {
 });
 
 test("a missing cell is reported as missing and excluded from the gain/loss stats", async () => {
-  mockEndpoints(SCENARIOS_WITH_HOLE);
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS_WITH_HOLE));
   render(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
   // The hole is announced beside the cell count…
@@ -120,27 +82,14 @@ test("a missing cell is reported as missing and excluded from the gain/loss stat
 });
 
 test("renders a labeled empty state when no surface is persisted", async () => {
-  mockEndpoints(SCENARIOS_EMPTY);
+  // The msw default for /api/risk/scenarios IS the empty surface (SCENARIOS_EMPTY).
   render(<RiskScenariosPage />);
   expect(await screen.findByText(/No stress surface persisted yet/i)).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {
-  // Only portfolios is mocked; /api/risk/scenarios is absent → 500 → error path.
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string) => {
-      const path = new URL(input, "http://localhost").pathname;
-      const value = path === "/api/risk/portfolios" ? PORTFOLIOS : undefined;
-      const ok = value !== undefined;
-      return Promise.resolve({
-        ok,
-        status: ok ? 200 : 500,
-        statusText: ok ? "OK" : "Server Error",
-        json: async () => value ?? { error: "not mocked" },
-      } as Response);
-    }),
-  );
+  // Portfolios stays on its default; /api/risk/scenarios is forced onto the 500 path.
+  server.use(http.get("/api/risk/scenarios", notMocked));
   render(<RiskScenariosPage />);
   await waitFor(() => {
     expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);

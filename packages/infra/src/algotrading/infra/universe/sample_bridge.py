@@ -1,7 +1,7 @@
 """Bridge the broker-raw sample wire-format ↔ the canonical contracts raw event (ADR 0039).
 
 The committed sample fixtures under ``packages/infra-{ibkr,saxo}/samples/`` are the broker-raw
-EAV schema (:class:`storage.events.RawMarketEvent`: ``collector_session_id`` / ``field_value:
+EAV schema (:class:`storage.events.CollectorEvent`: ``collector_session_id`` / ``field_value:
 Decimal`` / colon-delimited ``OPT:`` keys / ``provider`` / ``contract_id_broker``). The canonical
 raw layer the ``ParquetStore`` persists is the contracts schema
 (:class:`contracts.RawMarketEvent`: ``session_id`` / ``value: float`` / pipe-delimited keys /
@@ -44,7 +44,7 @@ from algotrading.infra.contracts.instrument_key import (
     InstrumentKey,
     broker_contract_id_from_canonical,
 )
-from algotrading.infra.storage.events import RawMarketEvent as BrokerRawEvent
+from algotrading.infra.storage.events import CollectorEvent as BrokerRawEvent
 
 from .contracts import (
     OptionContract,

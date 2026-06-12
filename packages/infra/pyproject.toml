@@ -19,16 +19,19 @@ dependencies = [
     "prometheus-client>=0.25.0",
     "py-vollib>=1.0.12",
     "pyarrow>=24.0.0",
+    "pydantic>=2",
     "pytz>=2026.2",
     "quantlib>=1.42.1",
     "scipy>=1.17.1",
+    "sqlalchemy>=2.0",
     "structlog>=25.5.0",
+    "tenacity>=9.1.4",
     "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 # Install with: uv sync --extra postgres
-# Required by PostgresRunRepository in storage.postgres_runs.
+# Required by SqlRunRepository (storage.sql_repositories) when POSTGRES_URL selects the Postgres backend.
 postgres = ["psycopg[binary]>=3.2"]
 
 [tool.uv.sources]

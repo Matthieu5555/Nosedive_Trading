@@ -133,10 +133,9 @@ def assess_quote(
 
     if not findings:
         return QuoteAssessment(status="usable", reasons=())
-    worst = max(severity for severity, _ in findings)
-    status = worst
+    worst = max((severity for severity, _ in findings), key=_SEVERITY_RANK.__getitem__)
     reasons = tuple(reason for _, reason in findings)
-    return QuoteAssessment(status=status, reasons=reasons)
+    return QuoteAssessment(status=worst, reasons=reasons)
 
 
 def cross_strike_monotonicity_violations(

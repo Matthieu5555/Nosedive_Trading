@@ -41,11 +41,7 @@ def replay_day(
     if underlying is not None:
         events = store.read(_RAW_MARKET_EVENTS, trade_date=trade_date, underlying=underlying)
     else:
-        events = [
-            event
-            for event in store.read(_RAW_MARKET_EVENTS)
-            if event.trade_date == trade_date
-        ]
+        events = store.read(_RAW_MARKET_EVENTS, trade_date=trade_date)
     return sorted(events, key=lambda event: (event.canonical_ts, event.event_id))
 
 

@@ -5,6 +5,7 @@ description = "Shared foundation (level 0): config, structured logging, provenan
 requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2",
+    "python-dotenv>=1.2.2",
     "pyyaml>=6.0",
 ]
 

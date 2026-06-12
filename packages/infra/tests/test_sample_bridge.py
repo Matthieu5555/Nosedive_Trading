@@ -1,7 +1,7 @@
 """The broker-raw ↔ contracts sample bridge (ADR 0039) round-trips faithfully.
 
 Guards `universe/sample_bridge.py`: the single converter between the committed broker-raw sample
-wire-format (`storage.events.RawMarketEvent`, colon keys, `Decimal`) and the canonical contracts
+wire-format (`storage.events.CollectorEvent`, colon keys, `Decimal`) and the canonical contracts
 raw model (`contracts.RawMarketEvent`, pipe keys, `float`). Exercises the real committed IBKR
 samples — no broker, runs in the gate. Two invariants:
 

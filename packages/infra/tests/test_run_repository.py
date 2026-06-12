@@ -1,8 +1,9 @@
 """Conformance tests for the ``RunRepository`` port.
 
-Every concrete backend (``SqliteRunRepository``, ``PostgresRunRepository``) must pass
-the exact same test suite. If a test has to know *which* backend it is running against,
-the port is leaking — fix the port, not the test.
+One SQLAlchemy Core repository (``SqlRunRepository``) serves every SQL dialect; the
+suite runs it against SQLite always and against Postgres when available. If a test has
+to know *which* dialect it is running against, the port is leaking — fix the port, not
+the test.
 
 **Postgres tests** skip automatically when ``POSTGRES_URL`` is not set in the
 environment. To run them locally::
@@ -10,17 +11,18 @@ environment. To run them locally::
     export POSTGRES_URL="postgresql://user:pass@localhost:5432/testdb"
     cd packages/infra && uv run pytest tests/test_run_repository.py -v
 
-The Postgres tests use a fresh table name per test session (via the ``pg_dsn`` fixture)
-so they can run in parallel against a shared schema without collisions.
-
 **Test oracle:** expected values are derived from the ``RunRecord`` inputs, not from
 the backend under test. Round-trips are asserted field-by-field so a backend that
-silently drops a field fails immediately.
+silently drops a field fails immediately. The persisted SQLite byte formats (sorted-key
+JSON payload, ISO-8601 'T'-separated ``ended_at``) are pinned against handwritten
+golden strings so a refactor can never silently move them.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,7 +31,11 @@ from algotrading.core.manifest import Manifest
 from algotrading.infra.storage.factory import make_run_repository
 from algotrading.infra.storage.ports import RunRepository
 from algotrading.infra.storage.runs import RunRecord, RunStatus
-from algotrading.infra.storage.sqlite_runs import SqliteRunRepository
+from algotrading.infra.storage.sql_repositories import (
+    SqlRunRepository,
+    postgres_engine_url,
+    sqlite_engine_url,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -63,8 +69,8 @@ def _record(run_id: str, job: str = "eod", status: str = RunStatus.OK) -> RunRec
 
 
 @pytest.fixture()
-def sqlite_repo(tmp_path: Path) -> SqliteRunRepository:
-    return SqliteRunRepository(tmp_path / "runs.db")
+def sqlite_repo(tmp_path: Path) -> SqlRunRepository:
+    return SqlRunRepository(sqlite_engine_url(tmp_path / "runs.db"))
 
 
 @pytest.fixture()
@@ -81,32 +87,129 @@ def pg_dsn() -> str:
 
 @pytest.fixture(params=["sqlite", "postgres"])
 def repo(request, tmp_path: Path) -> RunRepository:
-    """Parametrize over all available backends.
+    """Parametrize the one repository over both dialects.
 
     Postgres variant skips when POSTGRES_URL is unset; SQLite variant always runs.
-    Each variant resolves its own dependency so a skipped Postgres never affects SQLite.
     """
     if request.param == "postgres":
         dsn = os.environ.get("POSTGRES_URL", "")
         if not dsn:
             pytest.skip("POSTGRES_URL not set — skipping Postgres conformance tests")
-        from algotrading.infra.storage.postgres_runs import PostgresRunRepository
+        return SqlRunRepository(postgres_engine_url(dsn))
+    return SqlRunRepository(sqlite_engine_url(tmp_path / "runs.db"))
 
-        return PostgresRunRepository(dsn)
-    return SqliteRunRepository(tmp_path / "runs.db")
+
+# --- golden serialized bytes (M28 pin) ---
+
+# Handwritten from the documented registry shape (keys JSON-sorted, datetimes as
+# ``datetime.isoformat()``, the manifest nested under "manifest") — NOT copied from
+# the code under test. This is the byte format persisted in registry files and in
+# the sqlite/postgres payload columns; it must never drift.
+_GOLDEN_RUN_PAYLOAD = (
+    '{"ended_at": "2026-06-05T09:30:00+00:00", "job": "eod", '
+    '"manifest": {"code_identity": "unknown", "code_version": "0.1.0", '
+    '"config_hashes": {"qc": "abc123"}, "config_snapshot": {}, '
+    '"correlation_id": "corr-1", "environment": "test", '
+    '"input_partitions": {"raw": "2026-06-05/BTC"}, '
+    '"output_partitions": {"derived": "2026-06-05/BTC"}, '
+    '"run_id": "run-001", "status": "ok"}, '
+    '"started_at": "2026-06-05T09:00:00+00:00"}'
+)
+
+
+def test_run_record_serializes_to_pinned_golden_bytes() -> None:
+    """The persisted byte form of a RunRecord is pinned — refactors must not move it."""
+    assert json.dumps(_record("run-001").to_dict(), sort_keys=True) == _GOLDEN_RUN_PAYLOAD
+
+
+def test_run_record_round_trips_from_its_serialized_form() -> None:
+    record = _record("run-001")
+    rebuilt = RunRecord.from_dict(record.to_dict())
+    assert rebuilt.job == record.job
+    assert rebuilt.started_at == record.started_at
+    assert rebuilt.ended_at == record.ended_at
+    assert rebuilt.manifest == record.manifest
+
+
+def test_run_record_from_dict_applies_manifest_defaults_for_old_payloads() -> None:
+    """Payloads written before code_identity/config_snapshot existed still deserialize."""
+    payload = json.loads(_GOLDEN_RUN_PAYLOAD)
+    del payload["manifest"]["code_identity"]
+    del payload["manifest"]["config_snapshot"]
+    del payload["manifest"]["correlation_id"]
+    rebuilt = RunRecord.from_dict(payload)
+    assert rebuilt.manifest.code_identity == "unknown"
+    assert rebuilt.manifest.config_snapshot == {}
+    assert rebuilt.manifest.correlation_id is None
+
+
+# --- persisted SQLite byte formats (M17/M28 pins) ---
+
+def test_sqlite_persists_pinned_payload_and_iso_t_ended_at(
+    sqlite_repo: SqlRunRepository, tmp_path: Path
+) -> None:
+    """The SQLite file stores the golden payload bytes and a 'T'-separated ended_at.
+
+    The 'T' separator is the M17 verifier caveat: SQLAlchemy's stock SQLite DateTime
+    writes a space, which sorts differently from the 'T' the previous backend wrote,
+    so mixed old/new rows could mis-order within a day. Expected strings are the
+    handwritten golden payload and ``2026-06-05T09:30:00+00:00`` (the fixture's _T1).
+    """
+    sqlite_repo.record(_record("run-001"))
+    with sqlite3.connect(tmp_path / "runs.db") as connection:
+        payload, ended_at = connection.execute(
+            "SELECT payload, ended_at FROM runs WHERE run_id = 'run-001'"
+        ).fetchone()
+    assert payload == _GOLDEN_RUN_PAYLOAD
+    assert ended_at == "2026-06-05T09:30:00+00:00"
+
+
+def test_adopts_a_database_created_by_the_legacy_hand_sql_backend(tmp_path: Path) -> None:
+    """A DB file written by the retired sqlite3 backend reads back without migration.
+
+    The legacy DDL and row format are reproduced verbatim from the retired
+    ``sqlite_runs.py`` (schema: run_id/job/status/ended_at TEXT + payload TEXT;
+    ended_at as ``isoformat()``; payload as sorted-key JSON).
+    """
+    db_path = tmp_path / "legacy.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.executescript(
+            "CREATE TABLE IF NOT EXISTS runs (\n"
+            "    run_id   TEXT PRIMARY KEY,\n"
+            "    job      TEXT NOT NULL,\n"
+            "    status   TEXT NOT NULL,\n"
+            "    ended_at TEXT NOT NULL,\n"
+            "    payload  TEXT NOT NULL\n"
+            ");\n"
+            "CREATE INDEX IF NOT EXISTS idx_runs_job_ended ON runs (job, ended_at);\n"
+        )
+        connection.execute(
+            "INSERT INTO runs (run_id, job, status, ended_at, payload) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("run-001", "eod", "ok", "2026-06-05T09:30:00+00:00", _GOLDEN_RUN_PAYLOAD),
+        )
+
+    repo = SqlRunRepository(sqlite_engine_url(db_path))
+    listed = repo.list_runs("eod")
+    assert len(listed) == 1
+    assert listed[0].manifest.run_id == "run-001"
+    assert listed[0].ended_at == _T1
+    healthy = repo.last_healthy("eod")
+    assert healthy is not None and healthy.manifest.run_id == "run-001"
+    # And a new-style write lands beside the legacy row in the same format.
+    repo.record(_record("run-002"))
+    assert [r.manifest.run_id for r in repo.list_runs("eod")] == ["run-001", "run-002"]
 
 
 # --- port structural conformance ---
 
-def test_satisfies_port_structurally(sqlite_repo: SqliteRunRepository) -> None:
+def test_satisfies_port_structurally(sqlite_repo: SqlRunRepository) -> None:
     """Backend satisfies RunRepository by shape (structural typing)."""
     assert isinstance(sqlite_repo, RunRepository)
 
 
 def test_postgres_satisfies_port_structurally(pg_dsn: str) -> None:
-    from algotrading.infra.storage.postgres_runs import PostgresRunRepository
-
-    assert isinstance(PostgresRunRepository(pg_dsn), RunRepository)
+    assert isinstance(SqlRunRepository(postgres_engine_url(pg_dsn)), RunRepository)
 
 
 # --- round-trip ---
@@ -202,10 +305,15 @@ def test_jobs_are_isolated(repo: RunRepository) -> None:
 
 # --- factory ---
 
-def test_factory_returns_sqlite_when_no_postgres_url(tmp_path: Path, monkeypatch) -> None:
+def test_factory_returns_sqlite_backed_repo_when_no_postgres_url(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.delenv("POSTGRES_URL", raising=False)
     repo = make_run_repository(sqlite_path=tmp_path / "runs.db")
-    assert isinstance(repo, SqliteRunRepository)
+    assert isinstance(repo, SqlRunRepository)
+    # The SQLite database file is created at the requested path.
+    repo.record(_record("run-001"))
+    assert (tmp_path / "runs.db").exists()
 
 
 def test_factory_raises_without_any_backend(monkeypatch) -> None:
@@ -215,7 +323,27 @@ def test_factory_raises_without_any_backend(monkeypatch) -> None:
 
 
 def test_factory_prefers_postgres_over_sqlite(pg_dsn: str, tmp_path: Path) -> None:
-    from algotrading.infra.storage.postgres_runs import PostgresRunRepository
-
     repo = make_run_repository(sqlite_path=tmp_path / "runs.db", postgres_dsn=pg_dsn)
-    assert isinstance(repo, PostgresRunRepository)
+    assert isinstance(repo, SqlRunRepository)
+    # Postgres selected: the sqlite file is never created.
+    repo.record(_record("run-factory-pg"))
+    assert not (tmp_path / "runs.db").exists()
+
+
+def test_postgres_engine_url_selects_the_psycopg3_driver() -> None:
+    """Plain postgres DSNs gain the explicit psycopg-3 dialect; explicit drivers pass through.
+
+    Expected values follow SQLAlchemy's URL grammar: ``dialect+driver://rest``.
+    """
+    assert (
+        postgres_engine_url("postgresql://u:p@h:5432/db")
+        == "postgresql+psycopg://u:p@h:5432/db"
+    )
+    assert (
+        postgres_engine_url("postgres://u:p@h:5432/db")
+        == "postgresql+psycopg://u:p@h:5432/db"
+    )
+    assert (
+        postgres_engine_url("postgresql+psycopg://u:p@h/db")
+        == "postgresql+psycopg://u:p@h/db"
+    )

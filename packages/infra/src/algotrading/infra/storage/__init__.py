@@ -11,21 +11,18 @@ The storage layer has two tiers with distinct backends and distinct guarantees:
 
 **Metadata/serving tier (M10 — SQLite local / Postgres deployed):**
   Run registry, positions, triage, universe. Small, relational, point-looked-up.
-  Backends are configuration: ``SqliteRunRepository`` for local/single-host,
-  ``PostgresRunRepository`` for multi-host concurrent access.
+  One SQLAlchemy Core repository per port (``sql_repositories.py``); the SQLite/Postgres
+  choice is the engine URL the factory builds (``POSTGRES_URL`` selects Postgres, which
+  requires ``uv sync --extra postgres``).
 
 Ports (Protocols) are defined in ``storage.ports``; concrete backends are never
 imported directly by callers — use ``factory.make_run_repository()`` instead.
 
 Public API of this module (metadata tier, M10):
   ``RunRecord``, ``RunStatus``, ``RunRegistry``    — the run record types
-  ``SqliteRunRepository``                          — local backend
+  ``SqlRunRepository``                             — the SQL backend (dialect by URL)
   ``RunRepository``                                — the port (Protocol)
   ``make_run_repository``                          — backend factory
-
-  ``PostgresRunRepository`` is an optional backend (requires ``psycopg[binary]``).
-  Import it directly: ``from algotrading.infra.storage.postgres_runs import PostgresRunRepository``
-  or install the extra and let ``make_run_repository()`` select it via ``POSTGRES_URL``.
 
 Public API of the analytics data plane (M1):
   ``ParquetStore``                                 — the StorageRepository implementation
@@ -52,8 +49,7 @@ from .profiles import (
 from .runs import RunRecord, RunRegistry, RunStatus
 from .schema import arrow_schema
 from .serialization import from_row, to_row
-from .sqlite_profiles import SqliteProfileRepository
-from .sqlite_runs import SqliteRunRepository
+from .sql_repositories import SqlProfileRepository, SqlRunRepository
 
 __all__ = [
     # Analytics data plane (M1) — the StorageRepository implementation + codec.
@@ -68,9 +64,9 @@ __all__ = [
     "primary_key_of",
     "to_row",
     # Raw-event JSON codec (M5 slice, ADR 0021) — for committed offline samples. The
-    # collector-level ``RawMarketEvent`` (storage.events) is the EAV capture event, distinct
-    # from the frozen analytics contract ``contracts.tables.RawMarketEvent``; import it
-    # explicitly from ``storage.events`` to keep the two unambiguous.
+    # collector-level EAV capture event is ``storage.events.CollectorEvent`` (renamed from
+    # ``RawMarketEvent`` to end the collision with the frozen analytics contract
+    # ``contracts.tables.RawMarketEvent``); import it explicitly from ``storage.events``.
     "events_from_json",
     "events_to_json",
     # Metadata / serving tier (M10) — the run registry.
@@ -78,12 +74,12 @@ __all__ = [
     "RunRegistry",
     "RunRepository",
     "RunStatus",
-    "SqliteRunRepository",
+    "SqlRunRepository",
     "make_run_repository",
     # Metadata tier — effective-dated config profiles (C7 / ADR 0028 as-of stage).
     "ProfileRepository",
     "ProfileVersion",
-    "SqliteProfileRepository",
+    "SqlProfileRepository",
     "build_profile_version",
     "make_profile_repository",
     "platform_config_from_profile",

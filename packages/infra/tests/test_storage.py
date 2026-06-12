@@ -117,6 +117,58 @@ def test_writing_no_records_is_a_noop(tmp_path: Path) -> None:
     assert store.read("raw_market_events") == []
 
 
+# -- trade_date pushdown equivalence (M7 pin) --------------------------------
+def _event_on(day: date, event_id: str, underlying: str = "SPX") -> RawMarketEvent:
+    """An event stamped on ``day`` — timestamps and trade_date agree, as the write path does."""
+    ts = datetime(day.year, day.month, day.day, 14, 30, tzinfo=UTC)
+    return RawMarketEvent(
+        session_id=f"sess-{day.isoformat()}",
+        event_id=event_id,
+        instrument_key=f"{underlying}|IND|CBOE|USD|1|con-1||",
+        exchange_ts=ts,
+        receipt_ts=ts,
+        canonical_ts=ts,
+        field_name="last",
+        value=100.0,
+        trade_date=day,
+        underlying=underlying,
+    )
+
+
+def test_trade_date_pushdown_equals_full_scan_then_filter(tmp_path: Path) -> None:
+    """``read(trade_date=d)`` returns exactly the full-scan rows whose trade_date == d.
+
+    This is the equivalence M7's call-site fixes rely on: a collector only writes
+    events stamped with its own trade_date, so pruning the read to one partition
+    must return the identical set a full read + Python filter does — for every
+    stored day, with and without an underlying filter. Sorted by (canonical_ts,
+    event_id), the replay order, so the comparison is order-insensitive.
+    """
+    store = _store(tmp_path)
+    days = [date(2026, 6, 3), date(2026, 6, 4), date(2026, 6, 5)]
+    events = [
+        _event_on(day, f"evt-{day.isoformat()}-{i}-{underlying}", underlying)
+        for day in days
+        for i in range(2)
+        for underlying in ("SPX", "NDX")
+    ]
+    store.write("raw_market_events", events)
+
+    def replay_sorted(rows: list) -> list:
+        return sorted(rows, key=lambda e: (e.canonical_ts, e.event_id))
+
+    full_scan = store.read("raw_market_events")
+    assert len(full_scan) == len(events)
+    for day in days:
+        pushed = store.read("raw_market_events", trade_date=day)
+        filtered = [e for e in full_scan if e.trade_date == day]
+        assert replay_sorted(pushed) == replay_sorted(filtered)
+        # And the underlying-scoped variant matches the same oracle.
+        pushed_one = store.read("raw_market_events", trade_date=day, underlying="SPX")
+        filtered_one = [e for e in filtered if e.underlying == "SPX"]
+        assert replay_sorted(pushed_one) == replay_sorted(filtered_one)
+
+
 # -- append-only immutability ----------------------------------------------
 def test_append_only_rejects_overwriting_an_existing_observation(tmp_path: Path) -> None:
     from algotrading.infra.storage import AppendOnlyViolation

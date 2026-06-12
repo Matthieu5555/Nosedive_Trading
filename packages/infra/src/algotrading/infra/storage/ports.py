@@ -30,9 +30,9 @@ class RunRepository(Protocol):
     """The run registry: one durable record per job run, with healthy-run lookup.
 
     Backend-neutral: persisting a run returns nothing the caller can rely on (a
-    filesystem registry returns a ``Path``; a SQLite or Postgres one has none). No
-    consumer uses the return value. All three implementations (``RunRegistry``,
-    ``SqliteRunRepository``, ``PostgresRunRepository``) satisfy this port structurally.
+    filesystem registry returns a ``Path``; a SQL one has none). No consumer uses the
+    return value. Both implementations (``RunRegistry``, ``SqlRunRepository``) satisfy
+    this port structurally.
     """
 
     def record(self, run: RunRecord) -> None:
@@ -54,7 +54,8 @@ class ProfileRepository(Protocol):
 
     A profile name maps to an append-only set of immutable versions; a run pins a
     ``content_hash`` and resolves "the config in force on day D" by ``effective_from``.
-    Backend-neutral (SQLite now, Postgres later) — consumers depend on this Protocol.
+    Backend-neutral (``SqlProfileRepository``: SQLite or Postgres by engine URL) —
+    consumers depend on this Protocol.
     """
 
     def save(self, version: ProfileVersion) -> None:

@@ -1,15 +1,17 @@
-"""Factory: select the right ``RunRepository`` backend from environment configuration.
+"""Factory: select the metadata-tier backend (engine URL) from environment configuration.
 
-The backend choice is configuration, not code — callers depend on the ``RunRepository``
-Protocol and never import a concrete store directly. The selection rule is:
+The backend choice is configuration, not code — callers depend on the ``RunRepository`` /
+``ProfileRepository`` Protocols and never import a concrete store directly. Both ports are
+served by one SQLAlchemy Core repository each (``sql_repositories.py``); "which backend"
+is just which engine URL the factory builds. The selection rule for runs is:
 
-    1. If ``POSTGRES_URL`` env var is set (or ``postgres_dsn`` is passed), return a
-       ``PostgresRunRepository``. Requires ``psycopg[binary]`` (``uv sync --extra postgres``).
-    2. Otherwise return a ``SqliteRunRepository`` at ``sqlite_path``.
+    1. If ``POSTGRES_URL`` env var is set (or ``postgres_dsn`` is passed), connect to
+       Postgres. Requires ``psycopg`` (``uv sync --extra postgres``).
+    2. Otherwise use the SQLite file at ``sqlite_path``.
     3. If neither is available, raise ``ValueError``.
 
-This is the ONLY place a caller should decide which backend to use. Do not import
-``SqliteRunRepository`` or ``PostgresRunRepository`` directly in production code.
+This is the ONLY place a caller should decide which backend to use. Do not construct
+``SqlRunRepository`` or ``SqlProfileRepository`` directly in production code.
 
 Example (orchestration bootstrap)::
 
@@ -33,22 +35,18 @@ def make_run_repository(
     sqlite_path: str | Path | None = None,
     postgres_dsn: str | None = None,
 ) -> RunRepository:
-    """Return a ``RunRepository`` backend selected by configuration.
+    """Return a ``RunRepository`` on the backend selected by configuration.
 
     Priority: Postgres (if ``POSTGRES_URL`` env var or ``postgres_dsn``) > SQLite.
     Raises ``ValueError`` if no backend can be configured.
     """
+    from .sql_repositories import SqlRunRepository, postgres_engine_url, sqlite_engine_url
+
     dsn = postgres_dsn or os.environ.get("POSTGRES_URL")
     if dsn:
-        from .postgres_runs import PostgresRunRepository
-
-        return PostgresRunRepository(dsn)
-
+        return SqlRunRepository(postgres_engine_url(dsn))
     if sqlite_path is not None:
-        from .sqlite_runs import SqliteRunRepository
-
-        return SqliteRunRepository(Path(sqlite_path))
-
+        return SqlRunRepository(sqlite_engine_url(Path(sqlite_path)))
     raise ValueError(
         "No run-registry backend configured. "
         "Set POSTGRES_URL for Postgres, or pass sqlite_path for SQLite."
@@ -56,11 +54,12 @@ def make_run_repository(
 
 
 def make_profile_repository(*, sqlite_path: str | Path) -> ProfileRepository:
-    """Return a ``ProfileRepository`` backend (SQLite — the config-profile metadata tier).
+    """Return a ``ProfileRepository`` (SQLite — the config-profile metadata tier).
 
     The profile store is the SQLite "higher layer" of the storage direction (ADR 0028);
-    a Postgres backend can be added later behind the same port without touching callers.
+    pointing the same repository at a Postgres engine URL is a configuration change,
+    not a new backend.
     """
-    from .sqlite_profiles import SqliteProfileRepository
+    from .sql_repositories import SqlProfileRepository, sqlite_engine_url
 
-    return SqliteProfileRepository(Path(sqlite_path))
+    return SqlProfileRepository(sqlite_engine_url(Path(sqlite_path)))

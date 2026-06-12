@@ -26,7 +26,6 @@ self-sufficient — git is dev-time only, this store is the run-time system of r
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -37,6 +36,8 @@ from algotrading.core.config import (
     config_hashes,
     config_snapshot,
 )
+from pydantic import TypeAdapter
+from pydantic.dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,11 @@ class ProfileVersion:
     ``content_hash`` is the composite of ``config_hashes`` — the immutable handle a run
     pins. ``config_snapshot`` is the fully-resolved config (rebuildable into a
     :class:`PlatformConfig`); ``config_hashes`` are its per-bundle hashes.
+
+    A pydantic dataclass: construction validates/coerces (an ISO string becomes a
+    ``date``), so deserialization is one validation call. ``to_dict`` stays hand-written
+    because its byte shape is persisted (repository payload columns) and pinned by a
+    golden test.
     """
 
     name: str
@@ -66,14 +72,11 @@ class ProfileVersion:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ProfileVersion:
-        """Rebuild a version from its serialized form."""
-        return cls(
-            name=str(payload["name"]),
-            effective_from=date.fromisoformat(str(payload["effective_from"])),
-            content_hash=str(payload["content_hash"]),
-            config_hashes=dict(payload["config_hashes"]),
-            config_snapshot=dict(payload["config_snapshot"]),
-        )
+        """Rebuild a version from its serialized form (validated, coerced)."""
+        return _PROFILE_VERSION_ADAPTER.validate_python(payload)
+
+
+_PROFILE_VERSION_ADAPTER = TypeAdapter(ProfileVersion)
 
 
 def build_profile_version(

@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
-from .events import RawMarketEvent
+from .events import CollectorEvent
 
 
 def _encode_value(value: Decimal | str | None) -> object:
@@ -28,7 +28,7 @@ def _decode_value(value: object) -> Decimal | str | None:
     raise ValueError(f"unexpected encoded field value {value!r}")
 
 
-def events_to_json(events: Sequence[RawMarketEvent]) -> str:
+def events_to_json(events: Sequence[CollectorEvent]) -> str:
     """Serialize raw events to a stable JSON array (exact Decimals, ISO timestamps)."""
     rows = [
         {
@@ -48,10 +48,10 @@ def events_to_json(events: Sequence[RawMarketEvent]) -> str:
     return json.dumps(rows, indent=2, sort_keys=True)
 
 
-def events_from_json(text: str) -> list[RawMarketEvent]:
-    """Parse the array written by :func:`events_to_json` back into ``RawMarketEvent`` instances."""
+def events_from_json(text: str) -> list[CollectorEvent]:
+    """Parse the array written by :func:`events_to_json` back into ``CollectorEvent`` instances."""
     return [
-        RawMarketEvent(
+        CollectorEvent(
             collector_session_id=row["collector_session_id"],
             event_id=row["event_id"],
             receipt_ts=datetime.fromisoformat(row["receipt_ts"]),

@@ -1,4 +1,4 @@
-"""The raw market event: one immutable observation of a single field.
+"""The collector capture event: one immutable raw-layer observation of a single field.
 
 The raw layer is entity-attribute-value: one event records exactly one observed field of one
 instrument (its ``field_name`` and ``field_value``), as captured. This keeps the persisted
@@ -30,7 +30,7 @@ def _require_utc(ts: datetime, name: str) -> None:
 
 
 @dataclass(frozen=True)
-class RawMarketEvent:
+class CollectorEvent:
     """A single immutable observation of one field of one instrument.
 
     Identity is ``(collector_session_id, event_id)`` and the raw layer is immutable: a given
@@ -66,3 +66,4 @@ class RawMarketEvent:
             _require_utc(self.exchange_ts, "exchange_ts")
         if isinstance(self.field_value, Decimal) and not self.field_value.is_finite():
             raise ValueError(f"field_value must be finite, got {self.field_value}")
+

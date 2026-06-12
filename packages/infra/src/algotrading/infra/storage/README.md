@@ -48,9 +48,22 @@ through that port — no module reaches into Parquet or DuckDB directly.
   provider-scoped by construction — a stamp pointing at one source's bar never resolves to
   another source's bar for the same `(underlying, trade_date)`.
 
-## Metadata / serving tier (M10) — run registry, over SQLite / Postgres
+## Metadata / serving tier (M10) — run registry + config profiles, over SQLite / Postgres
 
-`RunRepository` (`ports.py`) with `SqliteRunRepository` (local) and
-`PostgresRunRepository` (deployed), selected by `factory.make_run_repository()`. Small,
-relational, point-looked-up — the blueprint's "relational metadata store" (Part I),
-orthogonal to the analytics data-plane port. See ADR 0015.
+`RunRepository` and `ProfileRepository` (`ports.py`), each satisfied by one SQLAlchemy
+Core repository (`sql_repositories.py`: `SqlRunRepository`, `SqlProfileRepository`).
+The SQLite/Postgres choice is the engine URL built by `factory.make_run_repository()` /
+`factory.make_profile_repository()` (`POSTGRES_URL` selects Postgres; requires
+`uv sync --extra postgres`). `RunRegistry` (`runs.py`) stays as the JSON-file,
+zero-dependency reference. Small, relational, point-looked-up — the blueprint's
+"relational metadata store" (Part I), orthogonal to the analytics data-plane port.
+See ADR 0015.
+
+Two persisted formats are pinned (golden tests): the SQLite `ended_at` column is
+ISO-8601 'T'-separated text (`datetime.isoformat()`), and every payload column is
+sorted-key JSON (`json.dumps(payload, sort_keys=True)`) — byte-identical to the
+pre-SQLAlchemy backends, so existing database files are adopted without migration.
+The record types themselves (`RunRecord` in `runs.py`, `ProfileVersion` in
+`profiles.py`) are pydantic dataclasses: `from_dict` is one validation call (nested
+`Manifest` defaults come from the dataclass itself), while `to_dict` stays hand-written
+because its bytes are the persisted shape.

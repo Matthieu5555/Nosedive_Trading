@@ -16,14 +16,14 @@ export function resetConstituentHistoryBatchCacheForTests(): void {
 }
 
 function fetchConstituentHistoryBatch(
-  symbolsKey: string,
+  symbols: string[],
   asOf: string,
 ): Promise<PriceHistoryBatchResponse> {
-  const key = `${asOf}${symbolsKey}`;
+  const key = JSON.stringify([asOf, ...symbols]);
   let promise = constituentHistoryBatchCache.get(key);
   if (promise === undefined) {
     promise = postJson<PriceHistoryBatchResponse>("/api/price-history/batch", {
-      underlyings: symbolsKey.split(""),
+      underlyings: symbols,
       end: asOf,
     });
     promise.catch(() => constituentHistoryBatchCache.delete(key));
@@ -40,13 +40,13 @@ export function useConstituentHistoryBatch(
   loading: boolean;
   error: string | null;
 } {
-  const symbolsKey = useMemo(() => symbols.join(""), [symbols]);
+  const symbolsKey = useMemo(() => JSON.stringify(symbols), [symbols]);
   const [data, setData] = useState<PriceHistoryBatchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (symbolsKey === "") {
+    if (symbolsKey === "[]") {
       setData(null);
       setError(null);
       setLoading(false);
@@ -55,7 +55,7 @@ export function useConstituentHistoryBatch(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void fetchConstituentHistoryBatch(symbolsKey, asOf)
+    void fetchConstituentHistoryBatch(JSON.parse(symbolsKey) as string[], asOf)
       .then((payload) => {
         if (!cancelled) setData(payload);
       })

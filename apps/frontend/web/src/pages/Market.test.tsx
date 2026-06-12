@@ -167,6 +167,28 @@ test("returning to the page does not re-fire the whole-basket batch preload", as
   expect(batchCalls.length).toBe(1);
 });
 
+test("the batch preload requests the full ticker symbols, not fragments", async () => {
+  // The request body is the contract: multi-character tickers must arrive intact. A fixed-
+  // payload mock hides any key-encoding bug, so this test pins the body itself.
+  mockEndpoints();
+  render(<MarketPage />);
+  await screen.findByLabelText("Price history for AAA");
+
+  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
+  const batchCall = fetchMock.mock.calls.find(([input, init]) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const method =
+      (init as RequestInit | undefined)?.method ??
+      (input instanceof Request ? input.method : "GET");
+    return method === "POST" && url.includes("/api/price-history/batch");
+  });
+  expect(batchCall).toBeDefined();
+  const body = JSON.parse(String((batchCall?.[1] as RequestInit).body)) as {
+    underlyings: string[];
+  };
+  expect(body.underlyings).toEqual(["AAA", "BBB"]);
+});
+
 test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {
   // F-BFF-04: when the BFF serves the surface-grid fallback, the axis announces itself as
   // moneyness (never "delta"), and the degenerate calibration is visibly flagged.

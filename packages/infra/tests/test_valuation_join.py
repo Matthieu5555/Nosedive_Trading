@@ -28,7 +28,6 @@ from algotrading.infra.actor.valuation_join import (
 from algotrading.infra.contracts import (
     InstrumentKey,
     InstrumentMaster,
-    MarketStateSnapshot,
     Position,
 )
 from algotrading.infra.forwards import ForwardEstimate
@@ -39,7 +38,7 @@ from algotrading.infra.snapshots.quote_quality import QuoteAssessment
 from algotrading.infra.surfaces import SliceFit
 from algotrading.infra.surfaces.svi import SviParams
 from fixtures.library import make_option, make_underlying
-from fixtures.records import make_stamp
+from fixtures.records import make_record
 
 # --- Fixture constants ------------------------------------------------------
 
@@ -99,20 +98,16 @@ def _position(contract_key: str, *, quantity: float, source: str = "record") -> 
 def _underlying_snapshot(symbol: str, spot: float, *, usable: bool = True) -> AssessedSnapshot:
     """A usable underlying snapshot — the only kind that supplies a spot."""
     key = make_underlying(symbol).canonical()
-    snapshot = MarketStateSnapshot(
+    snapshot = make_record(
+        "market_state_snapshots",
         snapshot_ts=VALUATION_TS,
         instrument_key=key,
         reference_spot=spot,
         bid=spot - 0.1,
         ask=spot + 0.1,
         last=spot,
-        spread_pct=0.001,
-        reference_type="mid",
-        flags=("open",),
-        completeness=1.0,
         trade_date=TRADE_DATE,
         underlying=symbol,
-        provenance=make_stamp(),
     )
     status = "usable" if usable else "reject"
     return AssessedSnapshot(snapshot=snapshot, assessment=QuoteAssessment(status=status, reasons=()))
@@ -122,7 +117,8 @@ def _option_snapshot(
     instrument: InstrumentKey, *, status: str = "usable"
 ) -> AssessedSnapshot:
     """An option snapshot, carrying the contract's own QC verdict (drives confidence)."""
-    snapshot = MarketStateSnapshot(
+    snapshot = make_record(
+        "market_state_snapshots",
         snapshot_ts=VALUATION_TS,
         instrument_key=instrument.canonical(),
         reference_spot=5.0,
@@ -130,12 +126,8 @@ def _option_snapshot(
         ask=5.1,
         last=5.0,
         spread_pct=0.04,
-        reference_type="mid",
-        flags=("open",),
-        completeness=1.0,
         trade_date=TRADE_DATE,
         underlying=instrument.underlying_symbol,
-        provenance=make_stamp(),
     )
     return AssessedSnapshot(snapshot=snapshot, assessment=QuoteAssessment(status=status, reasons=()))
 

@@ -23,7 +23,7 @@ from typing import Any
 
 import algotrading.infra.pricing as pricing
 import pytest
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.contracts import (
     ContractValidationError,
     RiskAggregate,
@@ -39,7 +39,6 @@ from algotrading.infra.pricing import (
     pricing_result,
 )
 from algotrading.infra.risk import (
-    RISK_ENGINE_VERSION,
     AttributionConfig,
     PositionRisk,
     Scenario,
@@ -53,18 +52,13 @@ from algotrading.infra.risk import (
 )
 from algotrading.infra.storage import ParquetStore
 from fixtures.positions import RISK_VALUATIONS, risk_positions
+from fixtures.records import make_stamp
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 
 
 def _stamp() -> ProvenanceStamp:
-    return stamp(
-        calc_ts=TS,
-        code_version=RISK_ENGINE_VERSION,
-        config_hashes={"cfg": "cfg-hash-0"},
-        source_records=(source_ref("market_state_snapshots", TS, "AAPL|OPT|C|100"),),
-        source_timestamps=(TS,),
-    )
+    return make_stamp((source_ref("market_state_snapshots", TS, "AAPL|OPT|C|100"),))
 
 
 def _lines() -> list[PositionRisk]:

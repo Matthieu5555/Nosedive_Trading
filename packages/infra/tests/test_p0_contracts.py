@@ -7,11 +7,9 @@ and the no-look-ahead read returns the bar captured *for* a date, never a later 
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from algotrading.core.provenance import source_ref, stamp
 from algotrading.infra.contracts import (
     ContractValidationError,
     DailyBar,
@@ -22,60 +20,25 @@ from algotrading.infra.contracts import (
     validate_record,
 )
 from algotrading.infra.storage import ParquetStore
-
-TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
-TRADE_DATE = date(2026, 5, 29)
-
-
-def _stamp(source: str) -> object:
-    return stamp(
-        calc_ts=TS,
-        code_version="p0-test",
-        config_hashes={"cfg": "cfg-0"},
-        source_records=(source_ref("raw_market_events", "sess-p0", source),),
-        source_timestamps=(TS,),
-    )
+from fixtures.records import TRADE_DATE, make_record
 
 
 def _pricing_result(**overrides: object) -> PricingResult:
-    base = dict(
-        snapshot_ts=TS,
-        contract_key="AAPL|OPT|C|100",
-        pricer_version="px-1",
-        price=5.0,
-        delta=0.5,
-        gamma=0.02,
-        vega=0.1,
-        theta=-0.01,
-        rho=0.03,
-        dollar_delta=50.0,
-        dollar_gamma=2.0,
-        dollar_vega=10.0,
-        dollar_theta=-0.0000274,
-        dollar_rho=0.0003,
-        source_snapshot_ts=TS,
-        provenance=_stamp("px:AAPL|OPT|C|100"),
-    )
-    base.update(overrides)
-    return PricingResult(**base)  # type: ignore[arg-type]
+    # Baseline + the completed dollar layer (the P0 subject under test); overrides
+    # then break one field at a time.
+    full_dollar_layer: dict[str, object] = {"dollar_theta": -0.0000274, "dollar_rho": 0.0003}
+    return make_record("pricing_results", **{**full_dollar_layer, **overrides})
 
 
 def _daily_bar(provider: str = "IBKR", underlying: str = "AAPL", **overrides: object) -> DailyBar:
-    base = dict(
-        provider=provider,
-        underlying=underlying,
-        trade_date=TRADE_DATE,
-        open=99.0,
-        high=101.5,
-        low=98.5,
-        close=100.25,
-        volume=1_234_567.0,
-        bar_type="1d-TRADES",
-        source="cp-rest",
-        provenance=_stamp(f"bar:{provider}:{underlying}"),
-    )
-    base.update(overrides)
-    return DailyBar(**base)  # type: ignore[arg-type]
+    # Hand-chosen OHLC kept explicit: the rejection tests below rely on exactly which
+    # field a bent value trips first (e.g. high<low must fail on "high", not "close").
+    ohlc: dict[str, object] = {
+        "open": 99.0, "high": 101.5, "low": 98.5, "close": 100.25,
+        "volume": 1_234_567.0, "source": "cp-rest",
+    }
+    return make_record("daily_bar", provider=provider, underlying=underlying,
+                       **{**ohlc, **overrides})
 
 
 # -- PricingResult: the completed dollar layer ------------------------------------------

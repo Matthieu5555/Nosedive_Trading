@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 import pytest
 from algotrading.infra_ibkr.collectors.cp_rest_discovery import (
@@ -19,31 +18,25 @@ from algotrading.infra_ibkr.collectors.cp_rest_discovery import (
     parse_strikes,
 )
 
-
-class _FakeTransport:
-    def __init__(self, responses: dict[str, Any]) -> None:
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-        self._responses = responses
-
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        self.calls.append((path, dict(params or {})))
-        return self._responses[path]
+from .conftest import FakeCpTransport
 
 
 def test_underlying_conid_omits_name_field() -> None:
-    transport = _FakeTransport(
-        {"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
+    transport = FakeCpTransport(
+        get_routes={"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
     )
     discovery = CpRestDiscovery(transport)
     assert discovery.underlying_conid("SPY") == 265598
-    (path, params) = transport.calls[0]
+    (path, params) = transport.get_calls[0]
     assert path == "/iserver/secdef/search"
     assert "name" not in params  # the documented gotcha: name suppresses /strikes
     assert params["symbol"] == "SPY"
 
 
 def test_underlying_conid_unresolved_raises() -> None:
-    transport = _FakeTransport({"/iserver/secdef/search": [{"conid": 1, "symbol": "OTHER"}]})
+    transport = FakeCpTransport(
+        get_routes={"/iserver/secdef/search": [{"conid": 1, "symbol": "OTHER"}]}
+    )
     with pytest.raises(DiscoveryError):
         CpRestDiscovery(transport).underlying_conid("SPY")
 
@@ -74,8 +67,8 @@ def test_parse_info_contract_malformed_raises() -> None:
 
 
 def test_contracts_walks_info_for_one_strike() -> None:
-    transport = _FakeTransport(
-        {
+    transport = FakeCpTransport(
+        get_routes={
             "/iserver/secdef/info": [
                 {"conid": "987654", "maturityDate": "20260626", "strike": "758", "right": "C"}
             ]
@@ -87,7 +80,7 @@ def test_contracts_walks_info_for_one_strike() -> None:
     assert len(contracts) == 1
     assert contracts[0].broker_contract_id == "987654"
     # The info call carried the conid + (month, strike, right) — never a name field.
-    (path, params) = transport.calls[0]
+    (path, params) = transport.get_calls[0]
     assert path == "/iserver/secdef/info"
     assert params["conid"] == 265598 and params["right"] == "C"
 
@@ -97,8 +90,8 @@ def test_underlying_conid_prefers_the_stock_row_over_a_futures_root() -> None:
     # "BARLEY FUTURES ASX" FIRST and Boeing NYSE second — top-level secType is null on the
     # wire; the truth is in sections[].secType. The first symbol-matching row carrying an
     # STK section must win, never blind first-match.
-    transport = _FakeTransport(
-        {
+    transport = FakeCpTransport(
+        get_routes={
             "/iserver/secdef/search": [
                 {
                     "conid": "11673684",
@@ -123,8 +116,8 @@ def test_underlying_conid_prefers_the_stock_row_over_a_futures_root() -> None:
 def test_underlying_conid_falls_back_to_first_match_when_no_stock_row() -> None:
     # A response with no STK section anywhere (older fixtures carry a top-level secType and
     # no sections) keeps the previous first-match behavior rather than failing.
-    transport = _FakeTransport(
-        {"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
+    transport = FakeCpTransport(
+        get_routes={"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
     )
     assert CpRestDiscovery(transport).underlying_conid("SPY") == 265598
 
@@ -132,8 +125,8 @@ def test_underlying_conid_falls_back_to_first_match_when_no_stock_row() -> None:
 def test_underlying_conid_prefers_the_currency_consistent_venue() -> None:
     # Live: 'SAF' lists SARATOGA (VALUE, a dead aggregated listing) before SAFRAN (SBF).
     # An EUR-currency discovery (an SX5E constituent sweep) must pick the EUR-venue row.
-    transport = _FakeTransport(
-        {
+    transport = FakeCpTransport(
+        get_routes={
             "/iserver/secdef/search": [
                 {"conid": "331451987", "symbol": "SAF", "companyName": "SARATOGA INVESTMENT",
                  "description": "VALUE", "sections": [{"secType": "STK"}]},
@@ -148,8 +141,8 @@ def test_underlying_conid_prefers_the_currency_consistent_venue() -> None:
 def test_underlying_conid_currency_venue_beats_a_foreign_homonym() -> None:
     # Live: 'ITX' lists ITX GROUP (VALUE) then ITACONIX (LSE) then INDITEX (BM). A naive
     # "first non-VALUE stock" picks the wrong LSE company; the EUR-venue rule picks Inditex.
-    transport = _FakeTransport(
-        {
+    transport = FakeCpTransport(
+        get_routes={
             "/iserver/secdef/search": [
                 {"conid": "44200850", "symbol": "ITX", "companyName": "ITX GROUP LTD",
                  "description": "VALUE", "sections": [{"secType": "STK"}]},
@@ -166,8 +159,8 @@ def test_underlying_conid_currency_venue_beats_a_foreign_homonym() -> None:
 def test_underlying_conid_avoids_a_dead_value_listing_without_currency_match() -> None:
     # No venue matches the discovery currency: the dead VALUE listing still loses to a
     # real venue (the USD sweep shape — primary listings are never on VALUE).
-    transport = _FakeTransport(
-        {
+    transport = FakeCpTransport(
+        get_routes={
             "/iserver/secdef/search": [
                 {"conid": "1", "symbol": "XYZ", "companyName": "DEAD LISTING",
                  "description": "VALUE", "sections": [{"secType": "STK"}]},

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from algotrading.core.provenance import source_ref, stamp
+from algotrading.core.provenance import source_ref
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra_ibkr.collectors.cp_rest_history import (
     CpRestHistoryCollector,
@@ -30,8 +30,10 @@ from algotrading.infra_ibkr.collectors.cp_rest_history import (
 )
 from algotrading.infra_ibkr.config import load_ibkr_history_config
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
+from fixtures.records import make_stamp
 
-_CALC_TS = datetime(2026, 6, 7, 20, 0, tzinfo=UTC)
+from .conftest import FakeCpTransport
+
 _T0_MS = int((datetime(2026, 6, 4, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
 _T1_MS = int((datetime(2026, 6, 5, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
 
@@ -46,39 +48,35 @@ def _payload(underlying: str) -> dict[str, Any]:
     }
 
 
-class _FakeTransport:
-    """Records every path touched; returns a per-conid payload (or raises a queued error)."""
+def _history_transport(
+    payloads: dict[int, dict[str, Any]],
+    *,
+    errors: list[Exception] | None = None,
+    conid_errors: dict[int, Exception] | None = None,
+) -> FakeCpTransport:
+    """History GETs answer a per-conid payload; POSTs are no-ops.
 
-    def __init__(self, payloads: dict[int, dict[str, Any]], *, errors: list[Exception] | None = None) -> None:
-        self.get_paths: list[str] = []
-        self.post_paths: list[str] = []
-        self._payloads = payloads
-        self._errors = list(errors or [])
+    ``errors`` is a FIFO raised ahead of the next GETs (transient-retry tests);
+    ``conid_errors`` makes one conid permanently unservable (boundary-failure tests).
+    """
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        self.get_paths.append(path)
-        if self._errors:
-            raise self._errors.pop(0)
-        conid = int((params or {}).get("conid", 0))
-        return self._payloads.get(conid, {"data": []})
+    def _by_conid(_path: str, params: dict[str, Any]) -> dict[str, Any]:
+        conid = int(params.get("conid", 0))
+        if conid_errors and conid in conid_errors:
+            raise conid_errors[conid]
+        return payloads.get(conid, {"data": []})
 
-    def post(self, path: str, body: dict[str, Any] | None = None) -> Any:
-        self.post_paths.append(path)
-        return None
+    return FakeCpTransport(get_responder=_by_conid, get_errors=errors, post_response=None)
 
 
 def _provenance_for(underlying: str, trade_date: date) -> object:
-    return stamp(
-        calc_ts=_CALC_TS,
-        code_version="1c-history-test",
-        config_hashes={"ibkr_history": "cfg-0"},
-        source_records=(source_ref("raw_market_events", "ibkr-history", f"{underlying}-{trade_date}"),),
-        source_timestamps=(_CALC_TS,),
+    return make_stamp(
+        (source_ref("raw_market_events", "ibkr-history", f"{underlying}-{trade_date}"),)
     )
 
 
 def _collector(
-    transport: _FakeTransport,
+    transport: FakeCpTransport,
     store: ParquetStore,
     *,
     established: bool = True,
@@ -96,7 +94,7 @@ def _collector(
 
 # -- happy path: fetch + persist round-trips to DailyBar ----------------------------------
 def test_fetch_normalizes_and_backfill_persists_bars(tmp_path: Path) -> None:
-    transport = _FakeTransport({8314: _payload("AAPL")})
+    transport = _history_transport({8314: _payload("AAPL")})
     store = ParquetStore(tmp_path)
     collector = _collector(transport, store)
     result = collector.backfill([HistoryRequest("AAPL", 8314, "1y")])
@@ -109,7 +107,7 @@ def test_fetch_normalizes_and_backfill_persists_bars(tmp_path: Path) -> None:
 
 # -- read-only invariant (mirror test_cp_rest_adapter) -----------------------------------
 def test_history_path_is_read_only(tmp_path: Path) -> None:
-    transport = _FakeTransport({8314: _payload("AAPL")})
+    transport = _history_transport({8314: _payload("AAPL")})
     _collector(transport, ParquetStore(tmp_path)).backfill([HistoryRequest("AAPL", 8314, "1y")])
     # Only the market-data history endpoint is touched (warmup + the real fetch); never an order.
     assert set(transport.get_paths) == {"/iserver/marketdata/history"}
@@ -125,7 +123,7 @@ def test_warmup_failure_is_non_fatal(tmp_path: Path) -> None:
     Gateway the ``conid=0`` probe answers 503. The queued error is popped by the warmup's first
     ``get``; the subsequent real fetch (conid 8314) still returns its payload and persists.
     """
-    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[RuntimeError("503 on warmup")])
+    transport = _history_transport({8314: _payload("AAPL")}, errors=[RuntimeError("503 on warmup")])
     result = _collector(transport, ParquetStore(tmp_path)).backfill(
         [HistoryRequest("AAPL", 8314, "1y")]
     )
@@ -134,7 +132,7 @@ def test_warmup_failure_is_non_fatal(tmp_path: Path) -> None:
 
 # -- session gating ----------------------------------------------------------------------
 def test_fetch_before_established_is_raised_not_sent(tmp_path: Path) -> None:
-    transport = _FakeTransport({8314: _payload("AAPL")})
+    transport = _history_transport({8314: _payload("AAPL")})
     collector = _collector(transport, ParquetStore(tmp_path), established=False)
     with pytest.raises(HistoryFetchError, match="not established"):
         collector.fetch(HistoryRequest("AAPL", 8314, "1y"))
@@ -147,7 +145,7 @@ def test_transient_failure_is_retried_then_succeeds(tmp_path: Path) -> None:
     # The first fetch GET raises (maintenance window); the retry succeeds. The slept delays are
     # recorded via a capturing sleep so the backoff schedule is asserted, not just the outcome.
     slept: list[float] = []
-    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[RuntimeError("503 maintenance")])
+    transport = _history_transport({8314: _payload("AAPL")}, errors=[RuntimeError("503 maintenance")])
     collector = CpRestHistoryCollector(
         transport=transport,
         store=ParquetStore(tmp_path),
@@ -165,7 +163,7 @@ def test_transient_failure_is_retried_then_succeeds(tmp_path: Path) -> None:
 
 def test_exhausted_retries_raise_labeled_error(tmp_path: Path) -> None:
     errors = [RuntimeError("down")] * 5  # max_attempts in the config
-    transport = _FakeTransport({8314: _payload("AAPL")}, errors=errors)
+    transport = _history_transport({8314: _payload("AAPL")}, errors=errors)
     collector = _collector(transport, ParquetStore(tmp_path))
     collector._warmed_up = True
     with pytest.raises(HistoryFetchError, match="failed after"):
@@ -182,11 +180,11 @@ def test_backfill_resume_refetches_only_the_missing_tail(tmp_path: Path) -> None
     ]
     # First run "killed" after the first ticker: only AAPL on disk.
     store = ParquetStore(tmp_path)
-    partial = _collector(_FakeTransport(payloads), store)
+    partial = _collector(_history_transport(payloads), store)
     partial.backfill(requests[:1])
 
     # Restart over the full list: AAPL is skipped (already on disk), MSFT+GOOG fetched.
-    resume_transport = _FakeTransport(payloads)
+    resume_transport = _history_transport(payloads)
     resumed = _collector(resume_transport, store)
     result = resumed.backfill(requests)
     assert result.skipped == ("AAPL",)
@@ -196,21 +194,21 @@ def test_backfill_resume_refetches_only_the_missing_tail(tmp_path: Path) -> None
 
     # The final on-disk set equals an uninterrupted run from scratch.
     fresh = ParquetStore(tmp_path / "fresh")
-    _collector(_FakeTransport(payloads), fresh).backfill(requests)
+    _collector(_history_transport(payloads), fresh).backfill(requests)
     key = lambda b: (b.underlying, b.trade_date)  # noqa: E731
     assert sorted(store.read("daily_bar"), key=key) == sorted(fresh.read("daily_bar"), key=key)
 
 
 def test_empty_basket_writes_nothing(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
-    result = _collector(_FakeTransport({}), store).backfill([])
+    result = _collector(_history_transport({}), store).backfill([])
     assert result.fetched == () and result.bar_count == 0
     assert store.read("daily_bar") == []
 
 
 def test_ticker_with_no_history_in_window_persists_no_bars(tmp_path: Path) -> None:
     # The conid returns an empty data window; the ticker is "fetched" but writes zero bars.
-    transport = _FakeTransport({8314: {"symbol": "AAPL", "data": []}})
+    transport = _history_transport({8314: {"symbol": "AAPL", "data": []}})
     store = ParquetStore(tmp_path)
     result = _collector(transport, store).backfill([HistoryRequest("AAPL", 8314, "1y")])
     assert result.fetched == ("AAPL",)
@@ -296,7 +294,7 @@ def test_fetch_pages_backward_over_the_cap_to_full_history(tmp_path: Path) -> No
 
 def test_first_window_failure_is_surfaced_not_swallowed(tmp_path: Path) -> None:
     """A boundary error on the FIRST (most-recent) window is a genuine failure, raised — not empty."""
-    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(500)])
+    transport = _history_transport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(500)])
     collector = _collector(transport, ParquetStore(tmp_path))
     collector._warmed_up = True  # the queued 500 lands on the first real window
     with pytest.raises(HistoryFetchError, match="HTTP 500"):
@@ -306,7 +304,7 @@ def test_first_window_failure_is_surfaced_not_swallowed(tmp_path: Path) -> None:
 def test_terminal_status_is_not_retried(tmp_path: Path) -> None:
     """A 404/500 window fails fast (no backoff burned); only 503/timeouts are retried."""
     slept: list[float] = []
-    transport = _FakeTransport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(404)])
+    transport = _history_transport({8314: _payload("AAPL")}, errors=[_terminal_transport_error(404)])
     collector = CpRestHistoryCollector(
         transport=transport, store=ParquetStore(tmp_path), config=load_ibkr_history_config(),
         provider="IBKR", is_established=lambda: True, provenance_for=_provenance_for,
@@ -336,14 +334,10 @@ def test_backfill_continues_past_a_failed_ticker(tmp_path: Path) -> None:
     AAPL/GOOG resolve and persist; BADX (conid 7) always answers a boundary 500 (a constituent
     IBKR cannot serve) — it lands in ``failed`` without aborting the other two.
     """
-    class _Routed(_FakeTransport):
-        def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-            conid = int((params or {}).get("conid", 0))
-            if conid == 7:  # BADX — always a boundary error
-                raise _terminal_transport_error(500)
-            return super().get(path, params)
-
-    routed = _Routed({8314: _payload("AAPL"), 9999: _payload("GOOG")})
+    routed = _history_transport(
+        {8314: _payload("AAPL"), 9999: _payload("GOOG")},
+        conid_errors={7: _terminal_transport_error(500)},  # BADX — always a boundary error
+    )
     result = _collector(routed, ParquetStore(tmp_path)).backfill(
         [HistoryRequest("AAPL", 8314, "1y"),
          HistoryRequest("BADX", 7, "1y"),
@@ -379,12 +373,12 @@ def test_backfill_presence_scan_is_one_pass_not_a_read_per_ticker(tmp_path: Path
 
     store = _CountingStore(tmp_path)
     # NVDA is already on disk; AAPL and GOOG are not.
-    seeded = _collector(_FakeTransport({4815: _payload("NVDA")}), store)
+    seeded = _collector(_history_transport({4815: _payload("NVDA")}), store)
     seeded.backfill([HistoryRequest("NVDA", 4815, "1y")])
     store.read_calls = 0
     store.presence_calls = 0
 
-    transport = _FakeTransport({8314: _payload("AAPL"), 9999: _payload("GOOG")})
+    transport = _history_transport({8314: _payload("AAPL"), 9999: _payload("GOOG")})
     result = _collector(transport, store).backfill(
         [HistoryRequest("NVDA", 4815, "1y"),
          HistoryRequest("AAPL", 8314, "1y"),
@@ -432,7 +426,7 @@ def test_refresh_tail_rolls_a_present_ticker_forward_in_one_window(tmp_path: Pat
 def test_refresh_tail_off_still_skips_a_present_ticker(tmp_path: Path) -> None:
     """Default (``refresh_tail`` off) is unchanged: a present ticker is skipped, not re-fetched."""
     store = ParquetStore(tmp_path)
-    _collector(_FakeTransport({8314: _payload("AAPL")}), store).backfill(
+    _collector(_history_transport({8314: _payload("AAPL")}), store).backfill(
         [HistoryRequest("AAPL", 8314, "1y")]
     )
     roll_gw = _PaginatedGateway(_series(1501), cap=999)

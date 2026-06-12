@@ -12,25 +12,18 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 import pytest
-from algotrading.core.provenance import source_ref, stamp
+from algotrading.core.provenance import source_ref
 from algotrading.infra.contracts import DailyBar
 from algotrading.infra_ibkr.collectors.cp_rest_history_normalize import (
     HistoryNormalizeError,
     history_to_daily_bars,
     trade_date_of_bar,
 )
-
-_CALC_TS = datetime(2026, 6, 7, 20, 0, tzinfo=UTC)
+from fixtures.records import make_stamp
 
 
 def _provenance_for(_underlying: str, trade_date: date) -> object:
-    return stamp(
-        calc_ts=_CALC_TS,
-        code_version="1c-history-test",
-        config_hashes={"ibkr_history": "cfg-0"},
-        source_records=(source_ref("raw_market_events", "ibkr-history", f"AAPL-{trade_date}"),),
-        source_timestamps=(_CALC_TS,),
-    )
+    return make_stamp((source_ref("raw_market_events", "ibkr-history", f"AAPL-{trade_date}"),))
 
 
 # Two epoch-ms timestamps, computed by hand: 2026-06-04 and 2026-06-05 (UTC midnight session).

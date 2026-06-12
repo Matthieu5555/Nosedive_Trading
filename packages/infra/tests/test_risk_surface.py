@@ -17,10 +17,9 @@ from decimal import Decimal
 
 import pytest
 from algotrading.core.config import ScenarioConfig
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.contracts import RiskAggregate, ScenarioResult
 from algotrading.infra.risk import (
-    RISK_ENGINE_VERSION,
     AggregationError,
     BrokerGreeks,
     Position,
@@ -43,18 +42,14 @@ from algotrading.infra.risk import (
     scenario_result,
 )
 from fixtures.positions import RISK_VALUATIONS, risk_positions
+from fixtures.records import make_stamp
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 
 
 def _stamp(keys: tuple[str, ...]) -> ProvenanceStamp:
-    return stamp(
-        calc_ts=TS,
-        code_version=RISK_ENGINE_VERSION,
-        config_hashes={"cfg": "cfg-hash-0"},
-        source_records=tuple(source_ref("market_state_snapshots", TS, k) for k in keys),
-        source_timestamps=(TS,),
-    )
+    """A stamp whose sources are the priced contracts — one ref per key."""
+    return make_stamp(tuple(source_ref("market_state_snapshots", TS, k) for k in keys))
 
 
 def _pf_lines() -> list:

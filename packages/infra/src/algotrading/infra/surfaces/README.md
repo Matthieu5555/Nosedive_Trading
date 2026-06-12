@@ -138,7 +138,7 @@ onto `0.0` and the grid is byte-identical across processes without `PYTHONHASHSE
 construction. The grid is **provider-partitioned** (ADR 0017 / 0034 §4): it lands at
 `<root>/analytics/projected_option_analytics/provider=<P>/trade_date=<D>/underlying=<SYM>[/version=<V>]/data.parquet`.
 The golden artifact is `tests/golden/projected_option_analytics.json`; regenerate
-deliberately with `F_REGEN_GOLDEN=1 uv run pytest -k golden`.
+deliberately with `uv run pytest packages/infra/tests -k golden --regen-golden`.
 
 ## The rich fit vs the persisted contracts
 

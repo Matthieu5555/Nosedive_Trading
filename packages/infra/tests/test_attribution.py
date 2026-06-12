@@ -9,9 +9,10 @@ accuracy — bounded-and-reported for a small shock, material-and-labeled for a 
 
 Golden + cross-process determinism mirror ``test_determinism_risk``: recompute the committed
 attribution and compare, and recompute the stamp hashes in a fresh interpreter with
-``PYTHONHASHSEED`` unset. Regenerate the golden deliberately (the diff is then reviewed):
+``PYTHONHASHSEED`` unset. Regenerate the golden deliberately (the diff is then reviewed)
+with the one shared flag (``conftest.golden_artifact``):
 
-    ATTRIBUTION_REGEN_GOLDEN=1 uv run pytest packages/infra/tests/test_attribution.py -k golden
+    uv run pytest packages/infra/tests/test_attribution.py -k golden --regen-golden
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.contracts import ContractValidationError, ScenarioAttribution
 from algotrading.infra.pricing import PriceGreeks
 from algotrading.infra.risk import (
@@ -46,6 +47,7 @@ from algotrading.infra.risk import (
 )
 from algotrading.infra.storage import ParquetStore
 from fixtures.positions import CALL_100, RISK_VALUATIONS, risk_positions
+from fixtures.records import make_stamp
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 DEFAULT_CFG = AttributionConfig.defaults()
@@ -232,11 +234,13 @@ def test_degenerate_scale_zero_quantity() -> None:
 
 # --- Seam: round-trip through storage, malformed rejected --------------------
 def _stamp(contract_key: str) -> ProvenanceStamp:
-    return stamp(
+    # Exact historical parameters, passed explicitly: the committed attribution golden
+    # pins the stamp hashes these produce.
+    return make_stamp(
+        (source_ref("market_state_snapshots", TS, contract_key),),
         calc_ts=TS,
         code_version=RISK_ENGINE_VERSION,
         config_hashes={"scenarios": "cfg-hash-0", "attribution": DEFAULT_CFG.version},
-        source_records=(source_ref("market_state_snapshots", TS, contract_key),),
         source_timestamps=(TS,),
     )
 
@@ -329,18 +333,9 @@ def compute_attribution_summary() -> dict[str, Any]:
     return out
 
 
-def test_attribution_golden_byte_identical() -> None:
+def test_attribution_golden_byte_identical(golden_artifact: Any) -> None:
     summary = compute_attribution_summary()
-    if os.environ.get("ATTRIBUTION_REGEN_GOLDEN"):
-        _GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _GOLDEN_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        pytest.skip(f"regenerated golden artifact at {_GOLDEN_PATH}")
-
-    assert _GOLDEN_PATH.exists(), (
-        "missing golden artifact; regenerate with "
-        f"ATTRIBUTION_REGEN_GOLDEN=1 uv run pytest {Path(__file__).name} -k golden"
-    )
-    golden = json.loads(_GOLDEN_PATH.read_text())
+    golden = golden_artifact(_GOLDEN_PATH, summary)
     assert summary["attribution_version"] == golden["attribution_version"]
     for tag in ("small", "large"):
         got, want = summary[tag], golden[tag]

@@ -20,53 +20,33 @@ surface (spec ``tasks/D1-storage-foundation.md`` "Test surface"), with the oblig
 * writes are order-invariant: shuffling the input batch yields the same on-disk partitions
   and the same read-back set (TESTING.md reordering invariance).
 
-Records are built inline (self-contained), matching the convention in ``test_storage.py``.
-``DailyBar`` is the provider-partitioned table in the registry, so it is the vehicle here.
+Records come from the shared fixture builders (``fixtures.records.make_record`` /
+``make_stamp``). ``DailyBar`` is the provider-partitioned table in the registry, so it
+is the vehicle here.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
-from algotrading.core.provenance import source_ref, stamp
+from algotrading.core.provenance import source_ref
 from algotrading.infra.contracts import DailyBar, ForwardCurvePoint
-from algotrading.infra.contracts.bundles import ForwardDiagnostics
 from algotrading.infra.storage import ParquetStore, StorageError
-
-TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
-TRADE_DATE = date(2026, 5, 29)
-
-
-def _bar_stamp(provider: str, underlying: str = "AAPL") -> object:
-    # A bar's own stamp points back at the raw events that produced it; the exact
-    # source table here is immaterial to the bar's identity.
-    return stamp(
-        calc_ts=TS,
-        code_version="d1-test",
-        config_hashes={"cfg": "cfg-0"},
-        source_records=(source_ref("raw_market_events", f"sess-{provider}", "evt-1"),),
-        source_timestamps=(TS,),
-    )
+from fixtures.records import TRADE_DATE, make_record, make_stamp
 
 
 def _bar(provider: str = "IBKR", underlying: str = "AAPL", **overrides: object) -> DailyBar:
-    base = dict(
-        provider=provider,
-        underlying=underlying,
-        trade_date=TRADE_DATE,
-        open=99.0,
-        high=101.5,
-        low=98.5,
-        close=100.25,
-        volume=1_234_567.0,
-        bar_type="1d-TRADES",
-        source="cp-rest",
-        provenance=_bar_stamp(provider, underlying),
-    )
-    base.update(overrides)
-    return DailyBar(**base)  # type: ignore[arg-type]
+    # The bar's own stamp points back at raw events; the exact source table is
+    # immaterial to the bar's identity (the lineage tests here resolve bars, not events).
+    base: dict[str, object] = {
+        "open": 99.0, "high": 101.5, "low": 98.5, "close": 100.25,
+        "volume": 1_234_567.0, "source": "cp-rest",
+        "provenance": make_stamp((source_ref("raw_market_events", f"sess-{provider}", "evt-1"),)),
+    }
+    return make_record("daily_bar", provider=provider, underlying=underlying,
+                       **{**base, **overrides})
 
 
 def _forward_sourced_from_bar(provider: str) -> ForwardCurvePoint:
@@ -76,24 +56,9 @@ def _forward_sourced_from_bar(provider: str) -> ForwardCurvePoint:
     reference carries ``provider`` in its key tuple — the mechanism that makes lineage
     provider-scoped without a special-case filter.
     """
-    return ForwardCurvePoint(
-        snapshot_ts=TS,
-        underlying="AAPL",
-        maturity_years=0.5,
-        expiry_date=date(2026, 12, 18),
-        day_count="ACT/365F",
-        forward_price=100.0,
-        diagnostics=ForwardDiagnostics(
-            method="parity", candidate_count=4, residual_mad=0.1, quality_label="good"
-        ),
-        source_snapshot_ts=TS,
-        provenance=stamp(
-            calc_ts=TS,
-            code_version="d1-test",
-            config_hashes={"cfg": "cfg-0"},
-            source_records=(source_ref("daily_bar", provider, "AAPL", TRADE_DATE),),
-            source_timestamps=(TS,),
-        ),
+    return make_record(
+        "forward_curve",
+        provenance=make_stamp((source_ref("daily_bar", provider, "AAPL", TRADE_DATE),)),
     )
 
 

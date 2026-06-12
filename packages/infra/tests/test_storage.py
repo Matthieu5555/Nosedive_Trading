@@ -6,8 +6,9 @@ port conformance, immutable append-only raw, the versioned-restatement semantics
 a versioned write), schema-evolution-on-read, lineage resolution, and a golden-bytes
 determinism substrate for byte-identical replay (M7).
 
-Records are built inline (self-contained) rather than from the shared fixture library,
-which is still entangled with the risk workstream in the flat tree.
+Records come from the shared fixture builders (``fixtures.records.make_record`` /
+``make_stamp``) with this file's SPX vocabulary as explicit overrides, so a contract
+gaining a field is the fixture library's problem, not this file's.
 """
 
 from __future__ import annotations
@@ -17,17 +18,16 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from algotrading.core import source_ref, stamp
+from algotrading.core import source_ref
+from algotrading.core.provenance import ProvenanceStamp
 from algotrading.infra.contracts import (
     DailyBar,
     ForwardCurvePoint,
     InstrumentKey,
     InstrumentMaster,
-    MarketStateSnapshot,
     RawMarketEvent,
     StorageRepository,
 )
-from algotrading.infra.contracts.bundles import ForwardDiagnostics
 from algotrading.infra.storage import (
     ParquetStore,
     SchemaCompatibilityError,
@@ -36,24 +36,21 @@ from algotrading.infra.storage import (
     from_row,
 )
 from algotrading.infra.storage.partitioning import partition_file
+from fixtures.records import make_record, make_stamp
 
 _TS = datetime(2026, 6, 5, 14, 30, tzinfo=UTC)
 _TD = date(2026, 6, 5)
 
 
-def _stamp(event_id: str = "evt-a"):
-    return stamp(
-        calc_ts=_TS,
-        code_version="algotrading-infra-0.1.0",
-        config_hashes={"cfg": "cfg"},
-        source_records=(source_ref("raw_market_events", "sess-1", event_id),),
-        source_timestamps=(_TS,),
-    )
+def _stamp(event_id: str = "evt-a") -> ProvenanceStamp:
+    # Sources pin (sess-1, <event_id>) so the lineage tests resolve to exactly the
+    # raw event this file writes; everything else rides the fixture defaults.
+    return make_stamp((source_ref("raw_market_events", "sess-1", event_id),))
 
 
 def _event(event_id: str, value: float = 5000.0) -> RawMarketEvent:
-    return RawMarketEvent(
-        session_id="sess-1",
+    return make_record(
+        "raw_market_events",
         event_id=event_id,
         instrument_key="SPX|IND|CBOE|USD|1|con-1||",
         exchange_ts=_TS,
@@ -67,16 +64,14 @@ def _event(event_id: str, value: float = 5000.0) -> RawMarketEvent:
 
 
 def _forward(forward: float) -> ForwardCurvePoint:
-    return ForwardCurvePoint(
+    return make_record(
+        "forward_curve",
         snapshot_ts=_TS,
         underlying="SPX",
         maturity_years=0.5,
         expiry_date=date(2026, 12, 18),
         day_count="ACT/365F",
         forward_price=forward,
-        diagnostics=ForwardDiagnostics(
-            method="parity", candidate_count=8, residual_mad=0.1, quality_label="good"
-        ),
         source_snapshot_ts=_TS,
         provenance=_stamp(),
     )
@@ -121,7 +116,8 @@ def test_writing_no_records_is_a_noop(tmp_path: Path) -> None:
 def _event_on(day: date, event_id: str, underlying: str = "SPX") -> RawMarketEvent:
     """An event stamped on ``day`` — timestamps and trade_date agree, as the write path does."""
     ts = datetime(day.year, day.month, day.day, 14, 30, tzinfo=UTC)
-    return RawMarketEvent(
+    return make_record(
+        "raw_market_events",
         session_id=f"sess-{day.isoformat()}",
         event_id=event_id,
         instrument_key=f"{underlying}|IND|CBOE|USD|1|con-1||",
@@ -406,7 +402,8 @@ def test_lineage_does_not_conflate_event_id_across_sessions(tmp_path: Path) -> N
 # returning [] — an under-specified read masquerading as "no data for that day").
 # It must union across every provider segment for that one (trade_date, underlying).
 def _daily_bar(provider: str, close: float) -> DailyBar:
-    return DailyBar(
+    return make_record(
+        "daily_bar",
         provider=provider,
         underlying="SPX",
         trade_date=_TD,
@@ -415,7 +412,6 @@ def _daily_bar(provider: str, close: float) -> DailyBar:
         low=4980.0,
         close=close,
         volume=1000.0,
-        bar_type="1d-TRADES",
         source="test",
         provenance=_stamp(),
     )
@@ -468,7 +464,8 @@ def test_provider_partitioned_read_without_provider_stays_scoped_to_the_partitio
 # -- snapshot round-trip (a derived contract with a provenance stamp) -------
 def test_snapshot_round_trips_with_its_stamp(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    snap = MarketStateSnapshot(
+    snap = make_record(
+        "market_state_snapshots",
         snapshot_ts=_TS,
         instrument_key="SPX|IND|CBOE|USD|1|con-1||",
         reference_spot=5000.0,
@@ -476,9 +473,6 @@ def test_snapshot_round_trips_with_its_stamp(tmp_path: Path) -> None:
         ask=5001.0,
         last=5000.0,
         spread_pct=0.0004,
-        reference_type="mid",
-        flags=("open",),
-        completeness=1.0,
         trade_date=_TD,
         underlying="SPX",
         provenance=_stamp(),

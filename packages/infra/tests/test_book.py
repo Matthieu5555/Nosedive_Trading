@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pytest
 from algotrading.core.config import MonetizationConfig, ScenarioConfig, StressSurfaceConfig
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.contracts import BookGreeks
 from algotrading.infra.pricing import dollar_greeks
 from algotrading.infra.risk import (
@@ -30,6 +30,7 @@ from algotrading.infra.risk import (
 from algotrading.infra.risk.stress_surface import stress_surface
 from algotrading.infra.storage import ParquetStore
 from fixtures.positions import CALL_100, CALL_105, PUT_95, PUT_100
+from fixtures.records import make_stamp
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -54,12 +55,11 @@ _LAYER_C = BookLayerInput("C", (_L_PUT15,))
 
 
 def _stamp() -> ProvenanceStamp:
-    return stamp(
-        calc_ts=_VAL_TS,
-        code_version="2d-test",
+    # The "scenarios" config-hash key is load-bearing: the round-trip test asserts the
+    # stamp names the scenario config that shaped the book rows.
+    return make_stamp(
+        (source_ref("market_state_snapshots", "book-test"),),
         config_hashes={"scenarios": "cfg-scn-0"},
-        source_records=(source_ref("market_state_snapshots", "book-test"),),
-        source_timestamps=(_VAL_TS,),
     )
 
 

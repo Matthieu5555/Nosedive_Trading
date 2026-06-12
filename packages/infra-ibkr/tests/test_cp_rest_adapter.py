@@ -19,6 +19,8 @@ from algotrading.infra_ibkr.collectors.cp_rest_adapter import (
     unsubscribe_message,
 )
 
+from .conftest import FakeCpTransport
+
 _CONID = 265598
 _IK = "OPT:SPY:OPT:20260626:C:758:100:SMART:USD"
 _INSTRUMENT = CpInstrument(instrument_key=_IK, conid=_CONID, underlying="SPY")
@@ -27,18 +29,12 @@ _RECEIPT = datetime(2026, 6, 4, 18, 29, 21, tzinfo=UTC)
 _UPDATED_MS = int((datetime(2026, 6, 4, 18, 29, 20, 115000, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
 
 
-class _FakeTransport:
-    def __init__(self, snapshot_rows: list[dict[str, Any]]) -> None:
-        self.get_paths: list[str] = []
-        self.post_paths: list[str] = []
-        self._snapshot_rows = snapshot_rows
-
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        self.get_paths.append(path)
-        return self._snapshot_rows
+def _snapshot_transport(snapshot_rows: list[dict[str, Any]]) -> FakeCpTransport:
+    """Every snapshot GET answers the same canned rows (the warm steady state)."""
+    return FakeCpTransport(get_response=snapshot_rows)
 
 
-def _adapter(transport: _FakeTransport) -> CpRestMarketDataAdapter:
+def _adapter(transport: FakeCpTransport) -> CpRestMarketDataAdapter:
     # _sleep injected as a no-op: a transport whose rows never warm must not stall the test on
     # the snapshot engine's real warm-up sleeps.
     return CpRestMarketDataAdapter(
@@ -48,7 +44,7 @@ def _adapter(transport: _FakeTransport) -> CpRestMarketDataAdapter:
 
 
 def test_snapshot_normalizes_rows_to_events() -> None:
-    transport = _FakeTransport(
+    transport = _snapshot_transport(
         [{"conid": _CONID, "84": "9.27", "86": "9.31", "_updated": _UPDATED_MS}]
     )
     events = _adapter(transport).snapshot()
@@ -62,7 +58,7 @@ def test_snapshot_normalizes_rows_to_events() -> None:
 
 
 def test_snapshot_ignores_unknown_conid() -> None:
-    transport = _FakeTransport([{"conid": 999999, "84": "9.27"}])
+    transport = _snapshot_transport([{"conid": 999999, "84": "9.27"}])
     assert _adapter(transport).snapshot() == ()
 
 
@@ -74,19 +70,12 @@ def test_snapshot_warms_up_a_cold_first_response() -> None:
     adapter must emit the warmed quote, not an empty tuple.
     """
 
-    class _ColdThenWarm(_FakeTransport):
-        def __init__(self) -> None:
-            super().__init__([])
-            self._calls = 0
+    def _cold_then_warm(_path: str, _params: dict[str, Any]) -> list[dict[str, Any]]:
+        if len(transport.get_calls) == 1:  # the call being answered is already recorded
+            return [{"conid": _CONID, "server_id": "q0"}]  # cold: metadata only
+        return [{"conid": _CONID, "84": "9.27"}]
 
-        def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-            self.get_paths.append(path)
-            self._calls += 1
-            if self._calls == 1:
-                return [{"conid": _CONID, "server_id": "q0"}]  # cold: metadata only
-            return [{"conid": _CONID, "84": "9.27"}]
-
-    transport = _ColdThenWarm()
+    transport = FakeCpTransport(get_responder=_cold_then_warm)
     events = _adapter(transport).snapshot()
     assert [e.field_name for e in events] == ["bid"]
     assert events[0].value == 9.27
@@ -94,7 +83,7 @@ def test_snapshot_warms_up_a_cold_first_response() -> None:
 
 
 def test_snapshot_is_read_only() -> None:
-    transport = _FakeTransport([{"conid": _CONID, "84": "9.27"}])
+    transport = _snapshot_transport([{"conid": _CONID, "84": "9.27"}])
     _adapter(transport).snapshot()
     # The only endpoint touched is the market-data snapshot; nothing order-related, ever.
     assert transport.get_paths == ["/iserver/marketdata/snapshot"]
@@ -103,7 +92,7 @@ def test_snapshot_is_read_only() -> None:
 
 
 def test_handle_ws_frame_emits_ticks() -> None:
-    transport = _FakeTransport([])
+    transport = _snapshot_transport([])
     adapter = _adapter(transport)
     received: list[RawMarketEvent] = []
     adapter.set_tick_callback(received.append)
@@ -116,7 +105,7 @@ def test_handle_ws_frame_emits_ticks() -> None:
 
 
 def test_handle_ws_control_frame_emits_nothing() -> None:
-    transport = _FakeTransport([])
+    transport = _snapshot_transport([])
     adapter = _adapter(transport)
     received: list[RawMarketEvent] = []
     adapter.set_tick_callback(received.append)
@@ -125,7 +114,7 @@ def test_handle_ws_control_frame_emits_nothing() -> None:
 
 
 def test_subscribe_and_unsubscribe_frames() -> None:
-    adapter = _adapter(_FakeTransport([]))
+    adapter = _adapter(_snapshot_transport([]))
     assert adapter.subscribe_frames() == (subscribe_message(_CONID),)
     assert subscribe_message(_CONID).startswith(f"smd+{_CONID}+")
     assert adapter.unsubscribe_all() == (unsubscribe_message(_CONID),)

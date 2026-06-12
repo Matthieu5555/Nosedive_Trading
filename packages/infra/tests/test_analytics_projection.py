@@ -770,18 +770,9 @@ def compute_grid_summary() -> dict[str, Any]:
     }
 
 
-def test_projection_golden_byte_identical() -> None:
+def test_projection_golden_byte_identical(golden_artifact: Any) -> None:
     summary = compute_grid_summary()
-    if os.environ.get("F_REGEN_GOLDEN"):
-        _GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _GOLDEN_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        pytest.skip(f"regenerated golden artifact at {_GOLDEN_PATH}")
-
-    assert _GOLDEN_PATH.exists(), (
-        "missing golden artifact; regenerate with "
-        f"F_REGEN_GOLDEN=1 uv run pytest {Path(__file__).name} -k golden"
-    )
-    golden = json.loads(_GOLDEN_PATH.read_text())
+    golden = golden_artifact(_GOLDEN_PATH, summary)
     assert summary["gap_count"] == golden["gap_count"]
     assert summary["config_hash_keys"] == golden["config_hash_keys"]
     assert set(summary["cells"]) == set(golden["cells"])

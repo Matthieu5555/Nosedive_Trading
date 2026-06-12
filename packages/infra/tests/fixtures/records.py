@@ -9,10 +9,16 @@ passing validation, ready to write. Two jobs:
 
 They are built once and returned as a fresh dict each call, so a test that mutates
 a copy cannot disturb another test.
+
+``make_record`` is the keyword-override door onto the same baselines: tests that need
+"one good record with a few fields bent" build it as baseline + explicit overrides
+instead of re-enumerating every contract field. A contract gaining a field then needs
+editing here only — never in the consuming test files (M11).
 """
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -86,15 +92,36 @@ _DEFAULT_SOURCE_RECORDS = (
 
 def make_stamp(
     source_records: tuple[SourceRecordRef, ...] = _DEFAULT_SOURCE_RECORDS,
+    *,
+    calc_ts: datetime = CALC_TS,
+    code_version: str = CODE_VERSION,
+    config_hashes: dict[str, str] | None = None,
+    source_timestamps: tuple[datetime, ...] = (SNAPSHOT_TS,),
 ) -> ProvenanceStamp:
-    """A valid provenance stamp pointing at the given source records."""
+    """A valid provenance stamp pointing at the given source records.
+
+    Every ``stamp`` field is overridable so hash-pinned suites (the determinism
+    goldens) can pass their exact historical parameters and keep their stamp hashes
+    byte-identical; everything else rides the fixture defaults.
+    """
     return stamp(
-        calc_ts=CALC_TS,
-        code_version=CODE_VERSION,
-        config_hashes=CONFIG_HASH,
+        calc_ts=calc_ts,
+        code_version=code_version,
+        config_hashes=CONFIG_HASH if config_hashes is None else config_hashes,
         source_records=source_records,
-        source_timestamps=(SNAPSHOT_TS,),
+        source_timestamps=source_timestamps,
     )
+
+
+def make_record(table: str, **overrides: Any) -> Any:
+    """The baseline record for ``table`` with the named fields replaced.
+
+    Overrides go through ``dataclasses.replace``, so an unknown field name fails
+    loudly, and deliberately *invalid* values pass through unchecked — exactly what
+    the "break one field" rejection tests need (contract validation lives at the
+    write door, not in the constructors).
+    """
+    return dataclasses.replace(baseline_records()[table], **overrides)
 
 
 def baseline_records() -> dict[str, Any]:

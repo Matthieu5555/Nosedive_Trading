@@ -26,6 +26,8 @@ from algotrading.infra_ibkr.history_backfill import (
     history_requests_for,
 )
 
+from .conftest import FakeCpTransport
+
 _CALC_TS = datetime(2026, 6, 7, 20, 0, tzinfo=UTC)
 _AS_OF = date(2026, 6, 1)
 
@@ -68,16 +70,11 @@ def _ohlc(symbol: str) -> dict[str, Any]:
     }
 
 
-class _FakeTransport:
+def _backfill_transport() -> FakeCpTransport:
     """Answers secdef-search (index + equity) and marketdata-history over canned data."""
+    history = {conid: _ohlc(sym) for sym, conid in _CONID.items()}
 
-    def __init__(self) -> None:
-        self.get_paths: list[str] = []
-        self._history = {conid: _ohlc(sym) for sym, conid in _CONID.items()}
-
-    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        self.get_paths.append(path)
-        params = dict(params or {})
+    def _route(path: str, params: dict[str, Any]) -> Any:
         if path == "/iserver/secdef/search":
             symbol = str(params["symbol"])
             conid = _CONID[symbol]
@@ -91,12 +88,10 @@ class _FakeTransport:
                 ]
             return [{"conid": conid, "symbol": symbol}]  # an equity constituent
         if path == "/iserver/marketdata/history":
-            conid = int(params.get("conid", 0))
-            return self._history.get(conid, {"data": []})
+            return history.get(int(params.get("conid", 0)), {"data": []})
         raise AssertionError(f"unexpected path {path!r}")
 
-    def post(self, path: str, body: dict[str, Any] | None = None) -> Any:
-        return None
+    return FakeCpTransport(get_responder=_route, post_response=None)
 
 
 def _seeded_store(tmp_path: Path) -> ParquetStore:
@@ -121,7 +116,7 @@ def test_requests_resolve_index_and_constituent_conids(tmp_path: Path) -> None:
     requests = history_requests_for(
         store=store,
         registry=_registry(),
-        transport=_FakeTransport(),
+        transport=_backfill_transport(),
         period="5y",
         as_of_date=_AS_OF,
     )
@@ -153,7 +148,7 @@ def test_pinned_constituent_conid_is_resolved_without_a_search(tmp_path: Path) -
             }
         }
     )
-    transport = _FakeTransport()
+    transport = _backfill_transport()
     requests = history_requests_for(
         store=store, registry=registry, transport=transport, period="5y", as_of_date=_AS_OF
     )
@@ -171,7 +166,7 @@ def test_no_constituents_resolves_index_underlyings_only(tmp_path: Path) -> None
     requests = history_requests_for(
         store=ParquetStore(tmp_path),  # no membership seeded — must not be read
         registry=_registry(),
-        transport=_FakeTransport(),
+        transport=_backfill_transport(),
         period="5y",
         as_of_date=_AS_OF,
         include_constituents=False,
@@ -183,7 +178,7 @@ def test_no_constituents_resolves_index_underlyings_only(tmp_path: Path) -> None
 def test_backfill_persists_daily_bars_for_every_ticker(tmp_path: Path) -> None:
     """A bound collector (injected fake transport) fetches and persists a DailyBar set per ticker."""
     store = _seeded_store(tmp_path)
-    transport = _FakeTransport()
+    transport = _backfill_transport()
     collector = build_history_collector(
         store=store, calc_ts=_CALC_TS, transport=transport
     )

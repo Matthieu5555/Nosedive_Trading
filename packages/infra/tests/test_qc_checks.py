@@ -67,7 +67,7 @@ from algotrading.infra.risk import (
 from algotrading.infra.snapshots import AssessedSnapshot, QuoteAssessment, SnapshotBatch
 from algotrading.infra.surfaces import CalendarViolation, SliceFit
 from fixtures.positions import CALL_100, PUT_100
-from fixtures.records import make_stamp
+from fixtures.records import make_record
 
 # --- shared injected clock and thresholds ---------------------------------------
 RUN_ID = "qc-run-2026-06-02"
@@ -118,7 +118,8 @@ def _summary(
 
 
 def _snapshot(instrument_key: str, *, underlying: str, spread_pct: float) -> MarketStateSnapshot:
-    return MarketStateSnapshot(
+    return make_record(
+        "market_state_snapshots",
         snapshot_ts=RUN_TS,
         instrument_key=instrument_key,
         reference_spot=100.0,
@@ -126,12 +127,9 @@ def _snapshot(instrument_key: str, *, underlying: str, spread_pct: float) -> Mar
         ask=100.0 + spread_pct * 50.0,
         last=100.0,
         spread_pct=spread_pct,
-        reference_type="mid",
         flags=(),
-        completeness=1.0,
         trade_date=date(2026, 6, 2),
         underlying=underlying,
-        provenance=make_stamp(),
     )
 
 

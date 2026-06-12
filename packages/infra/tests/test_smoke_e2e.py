@@ -28,6 +28,15 @@ def _r(name: str, status: str, *, hard: bool = True) -> smoke.StageResult:
     return smoke.StageResult(name, status, "detail", hard=hard)
 
 
+def test_strict_exit_code_folds_the_verdict_to_ci_binary() -> None:
+    # CI's contract (the docstring's "hard failure stays 1, else 0"): exit 2 ("alive but
+    # degraded" — an expected SKIP or soft failure) is green, so the workflow step needs no
+    # exit-code special-casing; only a broken spine (1) stays red.
+    assert smoke.strict_exit_code(smoke.EXIT_SOFT) == 0
+    assert smoke.strict_exit_code(smoke.EXIT_OK) == 0
+    assert smoke.strict_exit_code(smoke.EXIT_HARD) == 1
+
+
 def test_smoke_exit_code_convention() -> None:
     # All PASS -> 0.
     assert smoke.compute_exit_code([_r("a", smoke.PASS), _r("b", smoke.PASS)]) == smoke.EXIT_OK

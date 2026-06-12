@@ -6,9 +6,9 @@ the headline guarantee that worst-case loss reproduces under a pinned scenario v
 
 * **Golden file.** The pf-risk portfolio is run through aggregation and the scenario
   grid and its outputs compared to ``golden/risk_pf_risk.json``. Regenerate deliberately
-  (the diff is then reviewed):
+  (the diff is then reviewed) with the one shared flag (``conftest.golden_artifact``):
 
-      RISK_REGEN_GOLDEN=1 uv run pytest packages/infra/tests/test_determinism_risk.py -k golden
+      uv run pytest packages/infra/tests/test_determinism_risk.py -k golden --regen-golden
 
 * **Cross-process hash stability.** The ``stamp_hash`` on an emitted contract is
   recomputed in a separate interpreter (no inherited state, ``PYTHONHASHSEED`` unset) and
@@ -31,7 +31,7 @@ from typing import Any
 
 import pytest
 from algotrading.core.config import ScenarioConfig
-from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.risk import (
     RISK_ENGINE_VERSION,
     LotConsistencyError,
@@ -46,6 +46,7 @@ from algotrading.infra.risk import (
     worst_case,
 )
 from fixtures.positions import CALL_100, PUT_100, RISK_VALUATIONS, risk_positions
+from fixtures.records import make_stamp
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CONFIG_HASH = {"cfg": "cfg-hash-0"}
@@ -70,14 +71,16 @@ def _lines() -> list:
 
 
 def _stamp_for(contract_keys: tuple[str, ...]) -> ProvenanceStamp:
-    """A stamp whose sources are the priced contracts — order-free by construction."""
-    return stamp(
+    """A stamp whose sources are the priced contracts — order-free by construction.
+
+    Parameters passed explicitly (not fixture defaults): the committed risk golden
+    pins the stamp hashes these produce.
+    """
+    return make_stamp(
+        tuple(source_ref("market_state_snapshots", TS, key) for key in contract_keys),
         calc_ts=TS,
         code_version=RISK_ENGINE_VERSION,
         config_hashes=CONFIG_HASH,
-        source_records=tuple(
-            source_ref("market_state_snapshots", TS, key) for key in contract_keys
-        ),
         source_timestamps=(TS,),
     )
 
@@ -123,18 +126,9 @@ def compute_risk_summary() -> dict[str, Any]:
 
 
 # --- Golden artifact ---------------------------------------------------------
-def test_golden_risk_matches_committed_artifact() -> None:
+def test_golden_risk_matches_committed_artifact(golden_artifact: Any) -> None:
     summary = compute_risk_summary()
-    if os.environ.get("RISK_REGEN_GOLDEN"):
-        _GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _GOLDEN_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        pytest.skip(f"regenerated golden artifact at {_GOLDEN_PATH}")
-
-    assert _GOLDEN_PATH.exists(), (
-        f"missing golden artifact; regenerate with "
-        f"RISK_REGEN_GOLDEN=1 uv run pytest {Path(__file__).name} -k golden"
-    )
-    golden = json.loads(_GOLDEN_PATH.read_text())
+    golden = golden_artifact(_GOLDEN_PATH, summary)
     # Lineage hashes match byte-for-byte (the determinism handle).
     assert summary["aggregate_stamp_hash"] == golden["aggregate_stamp_hash"]
     assert summary["first_scenario_stamp_hash"] == golden["first_scenario_stamp_hash"]

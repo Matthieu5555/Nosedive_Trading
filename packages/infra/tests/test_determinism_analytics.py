@@ -6,9 +6,9 @@ outputs" is backed here by real machinery, per ``tasks/TESTING.md``:
 * **Golden file.** The analytics pipeline (synthetic chain -> forward -> IV ->
   surface) is run and its key outputs compared to a committed artifact,
   ``tests/golden/analytics_pipeline.json``. Regeneration is a deliberate, reviewable
-  act, never automatic:
+  act, never automatic — the one shared flag (``conftest.golden_artifact``):
 
-      C_REGEN_GOLDEN=1 uv run pytest tests/test_determinism_analytics.py -k golden
+      uv run pytest packages/infra/tests/test_determinism_analytics.py -k golden --regen-golden
 
   which rewrites the JSON; the change then shows up in ``git diff`` for review.
 
@@ -111,18 +111,9 @@ def compute_pipeline_summary() -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # Golden artifact                                                             #
 # --------------------------------------------------------------------------- #
-def test_golden_pipeline_matches_committed_artifact() -> None:
+def test_golden_pipeline_matches_committed_artifact(golden_artifact: Any) -> None:
     summary = compute_pipeline_summary()
-    if os.environ.get("C_REGEN_GOLDEN"):
-        _GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _GOLDEN_PATH.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-        pytest.skip(f"regenerated golden artifact at {_GOLDEN_PATH}")
-
-    assert _GOLDEN_PATH.exists(), (
-        f"missing golden artifact; regenerate with "
-        f"C_REGEN_GOLDEN=1 uv run pytest {Path(__file__).name} -k golden"
-    )
-    golden = json.loads(_GOLDEN_PATH.read_text())
+    golden = golden_artifact(_GOLDEN_PATH, summary)
 
     # Lineage hashes must match byte-for-byte (the determinism handle).
     assert summary["forward_stamp_hash"] == golden["forward_stamp_hash"]

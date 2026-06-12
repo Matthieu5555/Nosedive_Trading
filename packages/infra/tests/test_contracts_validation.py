@@ -9,10 +9,9 @@ as TESTING.md requires.
 from __future__ import annotations
 
 import dataclasses
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 import pytest
-from algotrading.core import source_ref, stamp
 from algotrading.infra.contracts import (
     Basket,
     BasketLeg,
@@ -27,36 +26,13 @@ from algotrading.infra.contracts import (
 )
 from algotrading.infra.storage.errors import SchemaCompatibilityError
 from algotrading.infra.storage.serialization import from_row, to_row
-
-_TS = datetime(2026, 6, 5, 14, 30, tzinfo=UTC)
-
-
-def _stamp():
-    return stamp(
-        calc_ts=_TS,
-        code_version="algotrading-infra-0.1.0",
-        config_hashes={"cfg": "cfg"},
-        source_records=(source_ref("raw_market_events", "s", "e"),),
-        source_timestamps=(_TS,),
-    )
+from fixtures.records import make_record, make_stamp
 
 
 def _snapshot() -> MarketStateSnapshot:
-    return MarketStateSnapshot(
-        snapshot_ts=_TS,
-        instrument_key="SPX|IND|CBOE|USD|1|abc||",
-        reference_spot=5000.0,
-        bid=4999.0,
-        ask=5001.0,
-        last=5000.0,
-        spread_pct=0.0004,
-        reference_type="mid",
-        flags=(),
-        completeness=1.0,
-        trade_date=date(2026, 6, 5),
-        underlying="SPX",
-        provenance=_stamp(),
-    )
+    # The shared baseline (fixtures.records): one fully valid snapshot; the rejection
+    # tests below break exactly one field of it via dataclasses.replace.
+    return make_record("market_state_snapshots")
 
 
 def test_option_instrument_key_canonical_round_trips() -> None:
@@ -122,7 +98,7 @@ def test_non_positive_where_positive_required_is_rejected() -> None:
 
 
 def test_invalid_provenance_surfaces_as_contract_error() -> None:
-    bad_stamp = dataclasses.replace(_stamp(), stamp_hash="0" * 64)
+    bad_stamp = dataclasses.replace(make_stamp(), stamp_hash="0" * 64)
     bad = dataclasses.replace(_snapshot(), provenance=bad_stamp)
     with pytest.raises(ContractValidationError) as exc:
         validate(bad)

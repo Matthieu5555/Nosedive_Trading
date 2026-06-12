@@ -13,6 +13,14 @@ that unified the original flat `backend/` build with Vincent's monorepo is compl
 flat tree is retired). The single gate runs from the repo root:
 `uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q`.
 
+The gate and the operator entrypoints are encoded as recipes in the root
+`justfile` — `just gate`, `just smoke` (offline end-to-end walk incl. the
+byte-identical-replay check), `just eod [CAL]`, `just backfill`, `just login
+[live|paper]`, `just web-test` — run `just --list` for the full set, or
+`uv tool run --from rust-just just <recipe>` if `just` isn't installed. CI
+(`.github/workflows/gate.yml`) fires the same gate, the offline smoke, and the
+web app's lint+tests on every push and pull request.
+
 - `packages/`             The single tree: `core` (`algotrading.core` — config/log/manifest/
   provenance), `infra` (`algotrading.infra` — the contract seam plus market-data, analytics,
   risk, QC/validation, the Nautilus-hosted actor, orchestration, observability, replay),

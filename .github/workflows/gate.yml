@@ -1,0 +1,79 @@
+# CI gate (M2 / REP12). Runs the same four-command gate as AGENTS.md
+# ("Verify before you declare done"), the offline end-to-end smoke, and the
+# web app's lint+test — on every push and pull request.
+#
+# This file is the contract even if no GitHub remote is currently wired:
+# the `justfile` at the repo root encodes the identical commands for local use
+# (`just gate`, `just smoke`, `just web-test`).
+name: gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-gate:
+    name: ruff + mypy + import-linter + pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: ruff
+        run: uv run ruff check .
+      - name: mypy
+        run: uv run mypy .
+      - name: import-linter
+        run: uv run lint-imports
+      - name: pytest
+        run: uv run pytest -q
+
+  smoke:
+    name: offline end-to-end smoke (byte-identical replay)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: smoke_e2e (offline; no network, no broker, no credentials)
+        # Replays the committed synthetic_known_answer chain into a temp store and
+        # asserts provenance + byte-identical replay. The web stage is skipped here
+        # because the `web` job below covers it. Exit-code contract (measured,
+        # scripts/smoke_e2e.py): 0 = healthy, 1 = spine broken (hard failure),
+        # 2 = degraded-by-SKIP — and --skip-web itself is a SKIP, as is the known
+        # 1F-grid stage on the reconstruct_day path, so a green run exits 2 here.
+        # Accept 0 and 2; fail only on 1.
+        run: |
+          set +e
+          uv run python scripts/smoke_e2e.py --skip-web
+          code=$?
+          set -e
+          if [ "$code" -eq 1 ]; then
+            echo "smoke_e2e: hard failure (exit 1) — the spine is broken"
+            exit 1
+          fi
+          echo "smoke_e2e: exit $code accepted (0 = healthy, 2 = expected SKIPs only)"
+
+  web:
+    name: web app lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/frontend/web/package-lock.json
+      - name: npm ci
+        run: npm ci
+      - name: lint
+        run: npm run lint
+      - name: test
+        run: npm test

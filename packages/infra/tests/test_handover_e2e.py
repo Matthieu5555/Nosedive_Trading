@@ -122,7 +122,7 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path / "data")
     assert store.root == tmp_path / "data", "the store opens on the requested data root"
     thresholds = thresholds_from_config(config.qc_threshold)
-    assert thresholds.threshold_version == config.qc_threshold.version
+    assert thresholds.version == config.qc_threshold.version
 
     # -- stage (c): a triggered replay produces derived outputs -------------
     # Seed a known-answer raw day, then trigger reconstruction.reconstruct_day exactly

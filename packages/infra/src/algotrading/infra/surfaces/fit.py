@@ -19,11 +19,11 @@ bracketing slices. Pure throughout: ``calc_ts`` is injected at emission.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
-import numpy as np
 from algotrading.core.config import SurfaceConfig
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
 from algotrading.infra.contracts import (
@@ -91,24 +91,26 @@ class SliceFit:
 def _interpolate_sorted(ks: tuple[float, ...], ws: tuple[float, ...], k: float) -> float:
     """Linear interpolation of ``w`` over sorted ``ks``, flat beyond the ends.
 
-    The bracket search is delegated to :func:`numpy.searchsorted`, but the interior
-    interpolant keeps this module's exact arithmetic (``ws[i-1] + weight*(ws[i]-ws[i-1])``
-    with ``weight = (k - ks[i-1]) / span``). ``numpy.interp`` would also clamp flat at the
-    ends, but its interior formula ``fp[i] + slope*(x-xp[i])`` differs by op-ordering and
-    diverges from the hand-rolled loop by up to one ULP on interior points (measured); that
-    shift would change the serialized total-variance bytes a ``SurfaceGrid`` content hash is
-    taken over, so the byte-preserving form is kept here.
+    The bracket search is :func:`bisect.bisect_left` — the same first-``ks[i] >= k`` index
+    ``numpy.searchsorted(..., side="left")`` returned before, without rebuilding two arrays
+    per scalar call (this sits under projection's delta-inversion bisection loop, thousands
+    of evaluations per grid). The interior interpolant keeps this module's exact arithmetic
+    (``ws[i-1] + weight*(ws[i]-ws[i-1])`` with ``weight = (k - ks[i-1]) / span``); both the
+    old NumPy form (float64 ops) and this pure-``float`` form execute the identical IEEE-754
+    double operations, so the outputs are bit-identical (pinned by the old-vs-new sweep in
+    ``test_surfaces.py``). ``numpy.interp`` was rejected for the same reason as before: its
+    interior formula ``fp[i] + slope*(x-xp[i])`` differs by op-ordering and diverges by up
+    to one ULP (measured); that shift would change the serialized total-variance bytes a
+    ``SurfaceGrid`` content hash is taken over, so the byte-preserving form is kept here.
     """
-    knots = np.asarray(ks)
-    values = np.asarray(ws)
-    if k <= knots[0]:
-        return float(values[0])
-    if k >= knots[-1]:
-        return float(values[-1])
-    index = int(np.searchsorted(knots, k, side="left"))
-    span = knots[index] - knots[index - 1]
-    weight = (k - knots[index - 1]) / span
-    return float(values[index - 1] + weight * (values[index] - values[index - 1]))
+    if k <= ks[0]:
+        return ws[0]
+    if k >= ks[-1]:
+        return ws[-1]
+    index = bisect_left(ks, k)
+    span = ks[index] - ks[index - 1]
+    weight = (k - ks[index - 1]) / span
+    return ws[index - 1] + weight * (ws[index] - ws[index - 1])
 
 
 def _distinct_sorted_points(

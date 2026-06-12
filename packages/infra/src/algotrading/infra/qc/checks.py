@@ -1,8 +1,9 @@
 """The ten named QC checks plus rolling-baseline anomaly detection.
 
 Each check is a pure function: it takes the object a producing workstream emitted,
-the :class:`~algotrading.infra.qc.thresholds.QcThresholds` bundle, and an injected
-``run_id`` / ``run_ts`` (never a clock), and returns one
+the typed, hashed :class:`~algotrading.core.config.QcThresholdConfig` (every economic
+cut-off lives there, ADR 0028 — the nested blocks name which config block owns each
+cut-off), and an injected ``run_id`` / ``run_ts`` (never a clock), and returns one
 :class:`~algotrading.infra.contracts.QcResult`. A check never raises on a *failing*
 target — a fail is a normal verdict carried in the result. It raises only when its
 inputs are self-contradictory (a mis-wired join), via the QC-owned exceptions, because
@@ -19,7 +20,9 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from datetime import datetime
+from statistics import median
 
+from algotrading.core.config import QcThresholdConfig
 from algotrading.core.log import get_logger
 from algotrading.infra.contracts import QcResult
 from algotrading.infra.forwards import ForwardEstimate, ParityLine
@@ -27,6 +30,7 @@ from algotrading.infra.iv import STATUS_CONVERGED, IvResult
 from algotrading.infra.risk import BrokerGreeks, GreekDiscrepancy, PositionRisk, reconcile
 from algotrading.infra.snapshots import SnapshotBatch
 from algotrading.infra.surfaces import CalendarViolation, SliceFit
+from algotrading.infra.utils import robust_zscore_vs_baseline
 
 from .errors import ContractKeyMismatchError, EmptyBaselineError
 from .inputs import CollectorContinuityInput, GridPointInput
@@ -38,7 +42,6 @@ from .result import (
     STATUS_WARN,
     build_result,
 )
-from .thresholds import QcThresholds
 
 _log = get_logger(__name__)
 
@@ -81,7 +84,7 @@ _USABLE_QUOTE_STATUS = "usable"
 def check_collector_continuity(
     summary: CollectorContinuityInput,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -103,9 +106,12 @@ def check_collector_continuity(
         "subscribed_count": subscribed,
         "covered_count": covered,
     }
-    if gap_count > thresholds.max_gap_count or coverage_ratio < thresholds.min_coverage_ratio:
+    if (
+        gap_count > thresholds.continuity.max_gap_count
+        or coverage_ratio < thresholds.continuity.min_coverage_ratio
+    ):
         status = STATUS_FAIL
-    elif gap_count > thresholds.warn_gap_count:
+    elif gap_count > thresholds.continuity.warn_gap_count:
         status = STATUS_WARN
     else:
         status = STATUS_PASS
@@ -127,7 +133,7 @@ def check_collector_continuity(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=float(gap_count),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -138,7 +144,7 @@ def check_underlying_quote_health(
     batch: SnapshotBatch,
     underlying_instrument_keys: Sequence[str],
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -179,7 +185,7 @@ def check_underlying_quote_health(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=worst_spread,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -191,7 +197,7 @@ def check_option_chain_coverage(
     underlying: str,
     expected_contract_keys: Sequence[str],
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -227,7 +233,7 @@ def check_option_chain_coverage(
         status=status,
         severity=SEVERITY_WARNING,
         measured_value=float(usable_count),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -237,7 +243,7 @@ def check_option_chain_coverage(
 def check_forward_stability(
     estimate: ForwardEstimate,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -259,8 +265,8 @@ def check_forward_stability(
         else math.inf
     )
     unstable = (
-        relative_residual_mad > thresholds.max_rel_residual_mad
-        or estimate.confidence < thresholds.min_forward_confidence
+        relative_residual_mad > thresholds.forward_engine.max_rel_residual_mad
+        or estimate.confidence < thresholds.forward_engine.min_forward_confidence
     )
     status = STATUS_FAIL if unstable else STATUS_PASS
     context = {
@@ -272,8 +278,8 @@ def check_forward_stability(
         "confidence": estimate.confidence,
         "quality_label": estimate.quality_label,
         "reason_code": estimate.reason_code,
-        "max_rel_residual_mad": thresholds.max_rel_residual_mad,
-        "min_confidence": thresholds.min_forward_confidence,
+        "max_rel_residual_mad": thresholds.forward_engine.max_rel_residual_mad,
+        "min_confidence": thresholds.forward_engine.min_forward_confidence,
     }
     return build_result(
         check_name=CHECK_FORWARD_STABILITY,
@@ -281,7 +287,7 @@ def check_forward_stability(
         status=status,
         severity=SEVERITY_WARNING,
         measured_value=relative_residual_mad,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -293,7 +299,7 @@ def check_parity_residual(
     underlying: str,
     maturity_years: float,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -317,7 +323,8 @@ def check_parity_residual(
             worst_index = index
     forward = line.forward
     worst_relative = worst_abs / forward if forward > 0.0 else math.inf
-    status = STATUS_PASS if worst_relative <= thresholds.max_rel_parity_residual else STATUS_FAIL
+    max_rel_parity_residual = thresholds.forward_engine.max_rel_parity_residual
+    status = STATUS_PASS if worst_relative <= max_rel_parity_residual else STATUS_FAIL
     context = {
         "underlying": underlying,
         "failing_maturity": maturity_years,
@@ -326,7 +333,7 @@ def check_parity_residual(
         "forward": forward,
         "worst_residual_index": worst_index,
         "residual_count": len(residuals),
-        "max_rel_parity_residual": thresholds.max_rel_parity_residual,
+        "max_rel_parity_residual": thresholds.forward_engine.max_rel_parity_residual,
     }
     return build_result(
         check_name=CHECK_PARITY_RESIDUAL,
@@ -334,7 +341,7 @@ def check_parity_residual(
         status=status,
         severity=SEVERITY_WARNING,
         measured_value=worst_relative,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -345,7 +352,7 @@ def check_iv_solver_convergence(
     results: Sequence[IvResult],
     target_key: str,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -359,7 +366,8 @@ def check_iv_solver_convergence(
     total = len(results)
     failed = [r for r in results if r.status != STATUS_CONVERGED]
     ratio = len(failed) / total if total > 0 else 0.0
-    status = STATUS_PASS if ratio <= thresholds.max_non_convergence_ratio else STATUS_FAIL
+    max_non_convergence_ratio = thresholds.fit_tolerance.max_non_convergence_ratio
+    status = STATUS_PASS if ratio <= max_non_convergence_ratio else STATUS_FAIL
     failing_solvers = [
         {"contract_key": r.contract_key, "status": r.status} for r in failed
     ]
@@ -368,7 +376,7 @@ def check_iv_solver_convergence(
         "non_convergence_ratio": ratio,
         "failed_count": len(failed),
         "total_count": total,
-        "max_non_convergence_ratio": thresholds.max_non_convergence_ratio,
+        "max_non_convergence_ratio": thresholds.fit_tolerance.max_non_convergence_ratio,
         "failing_solvers": failing_solvers,
     }
     return build_result(
@@ -377,7 +385,7 @@ def check_iv_solver_convergence(
         status=status,
         severity=SEVERITY_WARNING,
         measured_value=ratio,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -387,7 +395,7 @@ def check_iv_solver_convergence(
 def check_surface_fit_error(
     fit: SliceFit,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -398,14 +406,14 @@ def check_surface_fit_error(
     badly-fit slice plus the fit method, so the operator knows which expiry's smile
     to investigate.
     """
-    status = STATUS_PASS if fit.rmse <= thresholds.max_surface_rmse else STATUS_FAIL
+    status = STATUS_PASS if fit.rmse <= thresholds.fit_tolerance.max_surface_rmse else STATUS_FAIL
     context = {
         "underlying": fit.underlying,
         "failing_maturity": fit.maturity_years,
         "rmse": fit.rmse,
         "method": fit.method,
         "n_points": fit.n_points,
-        "max_surface_rmse": thresholds.max_surface_rmse,
+        "max_surface_rmse": thresholds.fit_tolerance.max_surface_rmse,
     }
     return build_result(
         check_name=CHECK_SURFACE_FIT_ERROR,
@@ -413,7 +421,7 @@ def check_surface_fit_error(
         status=status,
         severity=SEVERITY_WARNING,
         measured_value=fit.rmse,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -424,7 +432,7 @@ def check_calendar_sanity(
     violations: Sequence[CalendarViolation],
     underlying: str,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -464,7 +472,7 @@ def check_calendar_sanity(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=float(count),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -475,7 +483,7 @@ def check_greek_sanity(
     line: PositionRisk,
     *,
     broker: BrokerGreeks | None = None,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -553,7 +561,7 @@ def check_greek_sanity(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=float(len(breaches)),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -565,7 +573,7 @@ def check_scenario_completeness(
     expected_cells: Sequence[tuple[str, str]],
     portfolio_id: str,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -596,7 +604,7 @@ def check_scenario_completeness(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=float(len(missing)),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -608,7 +616,7 @@ def check_tenor_coverage_floor(
     underlying: str,
     tenor_grid: Sequence[str],
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -621,7 +629,7 @@ def check_tenor_coverage_floor(
     count to the tenor's configured floor (``>=`` passes — boundary-exact passes, the
     thresholds convention). A pinned tenor *absent entirely* (zero cells) is a breach, not
     a skip — the count is simply zero. A pinned tenor with **no** configured floor is a
-    config error: :meth:`QcThresholds.tenor_floor` raises rather than defaulting to zero,
+    config error: :meth:`GridQcConfig.floor_for` raises rather than defaulting to zero,
     so a mis-keyed grid fails loudly instead of passing a tenor for free.
 
     Measured value is the worst margin across tenors (lowest ``count - floor``): negative
@@ -638,7 +646,7 @@ def check_tenor_coverage_floor(
     breaches: list[dict[str, object]] = []
     worst_margin: float | None = None
     for tenor in tenor_grid:
-        floor = thresholds.tenor_floor(tenor)
+        floor = thresholds.grid.floor_for(tenor)
         count = counts[tenor]
         margin = float(count - floor)
         if worst_margin is None or margin < worst_margin:
@@ -667,7 +675,7 @@ def check_tenor_coverage_floor(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=measured,
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -679,7 +687,7 @@ def check_delta_band_completeness(
     underlying: str,
     tenor_grid: Sequence[str],
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -704,9 +712,9 @@ def check_delta_band_completeness(
     for point in points:
         if point.tenor_label in by_tenor:
             by_tenor[point.tenor_label].append(point.delta)
-    band_low = thresholds.band_low_delta
-    band_high = thresholds.band_high_delta
-    max_step = thresholds.max_delta_step
+    band_low = thresholds.grid.band_low_delta
+    band_high = thresholds.grid.band_high_delta
+    max_step = thresholds.grid.max_delta_step
     # A tiny tolerance so a delta landing exactly on the configured edge (the 30Δ point) is
     # treated as reaching it, not as falling just short of it.
     edge_tol = 1e-9
@@ -745,7 +753,7 @@ def check_delta_band_completeness(
         status=status,
         severity=SEVERITY_CRITICAL,
         measured_value=float(len(gaps)),
-        threshold_version=thresholds.threshold_version,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
@@ -792,35 +800,19 @@ def _band_gap_reasons(
     return reasons
 
 
-def _median(values: Sequence[float]) -> float:
-    """The median of a non-empty sequence (no external dependency)."""
-    ordered = sorted(values)
-    n = len(ordered)
-    mid = n // 2
-    if n % 2 == 1:
-        return ordered[mid]
-    return 0.5 * (ordered[mid - 1] + ordered[mid])
-
-
 def robust_z_score(observed: float, baseline: Sequence[float]) -> float:
-    """A median/MAD robust z-score of ``observed`` against a rolling ``baseline``.
+    """A median/MAD robust z-score of ``observed`` against a rolling ``baseline``, unsigned.
 
-    Uses the median absolute deviation rather than the standard deviation so a single
-    earlier spike in the baseline does not inflate the scale and mask a new one. When
-    the baseline has no spread (all equal), a value equal to the median scores 0 and
-    any departure scores infinity — the only honest answers for a degenerate scale.
-    Raises :class:`EmptyBaselineError` for an empty baseline, since "is this a spike"
-    has no answer without a reference.
+    The QC-plane view over the one shared implementation
+    (:func:`algotrading.infra.utils.robust_zscore_vs_baseline`, ADR 0021): the magnitude
+    of the signed score — the QC anomaly check bands on distance, not direction. A
+    degenerate baseline (no spread) scores 0 on the median and infinity off it, exactly
+    as before (``abs`` of the signed ±inf/0). Raises :class:`EmptyBaselineError` for an
+    empty baseline, since "is this a spike" has no answer without a reference.
     """
     if not baseline:
         raise EmptyBaselineError(observed)
-    center = _median(baseline)
-    deviations = [abs(value - center) for value in baseline]
-    mad = _median(deviations)
-    if mad == 0.0:
-        return 0.0 if observed == center else math.inf
-    # 1.4826 scales MAD to a standard-deviation-equivalent for normal data.
-    return abs(observed - center) / (1.4826 * mad)
+    return abs(robust_zscore_vs_baseline(observed, baseline))
 
 
 def detect_anomaly(
@@ -829,7 +821,7 @@ def detect_anomaly(
     metric_name: str,
     target_key: str,
     *,
-    thresholds: QcThresholds,
+    thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
@@ -842,23 +834,23 @@ def detect_anomaly(
     raises :class:`EmptyBaselineError`.
     """
     score = robust_z_score(observed, baseline)
-    status = STATUS_FAIL if score > thresholds.anomaly_mad_multiplier else STATUS_PASS
+    status = STATUS_FAIL if score > thresholds.anomaly.mad_multiplier else STATUS_PASS
     context = {
         "metric": metric_name,
         "target": target_key,
         "observed": observed,
-        "baseline_median": _median(baseline),
+        "baseline_median": median(baseline),
         "robust_z_score": score if math.isfinite(score) else "inf",
         "baseline_size": len(baseline),
-        "mad_multiplier": thresholds.anomaly_mad_multiplier,
+        "mad_multiplier": thresholds.anomaly.mad_multiplier,
     }
     return build_result(
         check_name=CHECK_ANOMALY,
         target_key=target_key,
         status=status,
         severity=SEVERITY_WARNING,
-        measured_value=score if math.isfinite(score) else thresholds.anomaly_mad_multiplier * 1e9,
-        threshold_version=thresholds.threshold_version,
+        measured_value=score if math.isfinite(score) else thresholds.anomaly.mad_multiplier * 1e9,
+        threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,

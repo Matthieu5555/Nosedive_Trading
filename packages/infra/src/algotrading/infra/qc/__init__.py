@@ -14,10 +14,10 @@ Its sibling, the rolling-baseline anomaly plane, lives in
 The fastest path to a daily verdict:
 
     from algotrading.core.config import PlatformConfig            # load it
-    from algotrading.infra.qc import thresholds_from_config, build_report
+    from algotrading.infra.qc import build_report
     from algotrading.infra.qc import check_collector_continuity   # + the checks you have inputs for
 
-    thresholds = thresholds_from_config(config.qc_threshold)
+    thresholds = config.qc_threshold   # the typed, hashed QcThresholdConfig, read directly (M37)
     results = [check_collector_continuity(summary, thresholds=thresholds,
                                           run_id=run_id, run_ts=run_ts), ...]
     report = build_report(results, run_id=run_id, run_ts=run_ts)

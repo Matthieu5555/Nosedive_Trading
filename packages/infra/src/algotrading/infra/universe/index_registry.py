@@ -13,12 +13,16 @@ What the registry is *not*: it is *which indices*, never *what is inside them*. 
 (1A ``IndexConstituent``) is a separate, bitemporal, look-ahead-gated concern and must not
 be folded in here (ADR 0035 §3).
 
-Why a bespoke parser rather than the reflective ``build_dataclass`` seam: that seam coerces
-flat scalar/tuple fields, but the registry is a *keyed map of nested dataclasses* with a
-calendar-code that must validate against a live library name set. That validation — reject
-an unknown calendar code, never silently default it — is the load-bearing rule (a typo like
-``XEURX`` falling back to some calendar would capture the wrong close instant, a look-ahead
-bug). So the parsing lives here, beside the calendar resolver that consumes the same codes.
+Validation rides the same pydantic v2 seam as the economic config sections
+(``core.config``'s ``_SECTION_CONFIG`` discipline: frozen + ``strict`` + ``extra="forbid"``,
+REP6/M16): strict mode rejects a YAML ``true`` for a conid natively, ``extra="forbid"``
+replaces the hand allow-lists, and the one load-bearing bespoke rule — reject an unknown
+calendar code, **never** silently default it (a typo like ``XEURX`` falling back to some
+calendar would capture the wrong close instant, a look-ahead bug) — is a ``field_validator``
+against the live ``exchange_calendars`` name set. A pydantic ``ValidationError`` is mapped
+onto the labeled :class:`IndexRegistryError` (symbol, field, value, reason) exactly as
+core's config boundary maps onto ``ConfigFieldError``, so a bad entry names what was wrong
+the same way it always did.
 
 The ``ibkr:`` sub-block is the only provider-specific part; symbol/name/calendar/currency
 describe the index and stay provider-neutral, so a future Saxo/Deribit sibling sub-block
@@ -29,21 +33,97 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Annotated, NoReturn
 
 import exchange_calendars as xcals
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 from .errors import IndexRegistryError
 
-# The provider-agnostic registry fields plus the one provider sub-block. Any other key in
-# an entry is rejected (a typo must fail loudly, not be ignored), the same discipline the
-# reflective config loader enforces for the flat economic sections.
-_ENTRY_FIELDS = frozenset({"name", "calendar", "currency", "ibkr", "enabled"})
-# The IBKR sub-block: the three required keys, plus the optional ``symbol`` override (the IBKR
-# secdef ticker when it differs from the registry key) and ``constituent_conids`` (per-constituent
-# verified-conid pins). ``_IBKR_FIELDS`` is the allow-list (a typo still fails loudly); only
-# ``_IBKR_REQUIRED`` must be present.
-_IBKR_REQUIRED = frozenset({"conid", "secType", "exchange"})
-_IBKR_FIELDS = _IBKR_REQUIRED | frozenset({"symbol", "constituent_conids"})
+
+def _require_non_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must be a non-empty string")
+    return value
+
+
+def _require_iso_currency(value: str) -> str:
+    if not (len(value) == 3 and value.isalpha() and value.isupper()):
+        raise ValueError("must be a 3-letter uppercase ISO code")
+    return value
+
+
+# A string that must carry content — strict mode already rejects non-strings, this
+# rejects the present-but-blank operator error ("symbol: ' '").
+_NonBlankStr = Annotated[str, AfterValidator(_require_non_blank)]
+
+
+class _IbkrRefModel(BaseModel):
+    """The validation schema for the ``ibkr:`` sub-block (strict, no unknown keys).
+
+    ``secType`` is the on-disk spelling (an alias for ``sec_type``); ``conid`` ``0`` is the
+    unverified placeholder, so ``>= 0``; a *pinned* constituent conid exists to name a real
+    contract, so ``> 0``. Strict mode rejects a YAML ``true`` for any conid natively.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    conid: int = Field(ge=0)
+    sec_type: str = Field(alias="secType")
+    exchange: _NonBlankStr
+    symbol: _NonBlankStr | None = None
+    # An absent or explicitly-null pin map means "no pins" (the historical contract);
+    # anything else must be a mapping of non-blank label -> positive verified conid.
+    constituent_conids: Annotated[
+        dict[_NonBlankStr, Annotated[int, Field(gt=0)]],
+        BeforeValidator(lambda value: {} if value is None else value),
+    ] = Field(default_factory=dict)
+
+    @field_validator("sec_type")
+    @classmethod
+    def _sec_type_non_blank(cls, value: str) -> str:
+        return _require_non_blank(value)
+
+
+class _IndexEntryModel(BaseModel):
+    """The validation schema for one registry entry (strict, no unknown keys).
+
+    Every field is required — a missing one is a labeled error, never defaulted. The
+    calendar check needs the live ``exchange_calendars`` name set, passed via the
+    validation context so the model stays a pure schema.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
+
+    name: _NonBlankStr
+    calendar: str
+    currency: Annotated[str, AfterValidator(_require_iso_currency)]
+    ibkr: _IbkrRefModel
+    enabled: bool
+
+    @field_validator("calendar")
+    @classmethod
+    def _known_calendar(cls, value: str, info: ValidationInfo) -> str:
+        # The load-bearing negative: an unknown calendar code is rejected here, NEVER
+        # coerced to some default calendar. A silent fallback would resolve the wrong
+        # session close.
+        _require_non_blank(value)
+        known: frozenset[str] = (info.context or {}).get("known_calendars", frozenset())
+        if value not in known:
+            raise ValueError(
+                "unknown exchange_calendars code (not in get_calendar_names()); "
+                "an unknown calendar is never defaulted"
+            )
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,106 +219,63 @@ class IndexRegistry:
         return tuple(sorted((e for e in self.entries if e.enabled), key=lambda e: e.symbol))
 
 
-def _require_str(symbol: str, field: str, value: object) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise IndexRegistryError(symbol, field, value, "must be a non-empty string")
-    return value
+def _raise_registry_error(symbol: str, exc: ValidationError) -> NoReturn:
+    """Map a pydantic ``ValidationError`` onto the labeled :class:`IndexRegistryError`.
 
-
-def _parse_ibkr(symbol: str, raw: object) -> IbkrRef:
-    if not isinstance(raw, Mapping):
-        raise IndexRegistryError(symbol, "ibkr", raw, "must be a mapping")
-    unknown = set(raw) - _IBKR_FIELDS
-    if unknown:
-        bad = sorted(unknown)[0]
-        raise IndexRegistryError(symbol, f"ibkr.{bad}", raw[bad], "unknown key")
-    missing = _IBKR_REQUIRED - set(raw)
-    if missing:
-        raise IndexRegistryError(symbol, f"ibkr.{sorted(missing)[0]}", None, "missing field")
-    conid = raw["conid"]
-    # bool is an int subclass; a YAML `true` for a conid is a config error, not a 1.
-    if isinstance(conid, bool) or not isinstance(conid, int):
-        raise IndexRegistryError(symbol, "ibkr.conid", conid, "must be an integer")
-    if conid < 0:
-        raise IndexRegistryError(symbol, "ibkr.conid", conid, "must be >= 0")
-    ibkr_symbol = raw.get("symbol")
-    if ibkr_symbol is not None:
-        ibkr_symbol = _require_str(symbol, "ibkr.symbol", ibkr_symbol)
-    return IbkrRef(
-        conid=conid,
-        sec_type=_require_str(symbol, "ibkr.secType", raw["secType"]),
-        exchange=_require_str(symbol, "ibkr.exchange", raw["exchange"]),
-        symbol=ibkr_symbol,
-        constituent_conids=_parse_constituent_conids(symbol, raw.get("constituent_conids")),
-    )
-
-
-def _parse_constituent_conids(symbol: str, raw: object) -> tuple[tuple[str, int], ...]:
-    """Parse the optional ``ibkr.constituent_conids`` pin map (``label -> verified conid``).
-
-    Absent (``None``) means no pins — the empty tuple. Present, it must be a mapping; each label is
-    a non-empty string and each conid a positive int (``0``/negative is rejected — a pin exists to
-    name a *real* contract, never the placeholder). A ``bool`` conid (YAML ``true``) is a config
-    error, not a ``1``. Each bad entry raises a labeled :class:`IndexRegistryError`, never coerced.
+    Takes the first reported error, joins its location into the dotted ``field`` the
+    registry has always named (``ibkr.conid``, ``ibkr.constituent_conids.SAN1``), and
+    carries the offending input value plus a plain-language reason — the same boundary
+    discipline as core's ``ConfigFieldError`` mapper, so callers and tests keep the
+    symbol/field/value/reason semantics rather than a pydantic traceback.
     """
-    if raw is None:
-        return ()
-    if not isinstance(raw, Mapping):
-        raise IndexRegistryError(symbol, "ibkr.constituent_conids", raw, "must be a mapping")
-    pins: list[tuple[str, int]] = []
-    for label, conid in raw.items():
-        label_str = _require_str(symbol, "ibkr.constituent_conids", label)
-        field = f"ibkr.constituent_conids.{label_str}"
-        if isinstance(conid, bool) or not isinstance(conid, int):
-            raise IndexRegistryError(symbol, field, conid, "must be an integer")
-        if conid <= 0:
-            raise IndexRegistryError(symbol, field, conid, "must be a positive conid (never 0)")
-        pins.append((label_str, conid))
-    return tuple(pins)
+    error = exc.errors()[0]
+    location = error.get("loc", ())
+    # "[key]" is pydantic's marker for a bad mapping *key* (a blank pin label); the
+    # offending mapping is already named by the rest of the path.
+    parts = [str(part) for part in location if part != "[key]"]
+    field = ".".join(parts) if parts else "<entry>"
+    kind = error.get("type", "")
+    if kind == "missing":
+        raise IndexRegistryError(symbol, field, None, "missing field") from exc
+    if kind == "extra_forbidden":
+        raise IndexRegistryError(symbol, field, error.get("input"), "unknown key") from exc
+    raise IndexRegistryError(symbol, field, error.get("input"), error.get("msg", "")) from exc
+
+
+def _thaw(value: object) -> object:
+    """Deep-copy nested mappings into plain dicts (strict pydantic accepts only ``dict``).
+
+    The loaded config deep-freezes the ``indices:`` block into ``MappingProxyType`` for
+    stable hashing; strict-mode validation requires real ``dict`` instances. Values are
+    untouched — strictness still rejects every wrong leaf type.
+    """
+    if isinstance(value, Mapping):
+        return {key: _thaw(item) for key, item in value.items()}
+    return value
 
 
 def _parse_entry(symbol: str, raw: object, known_calendars: frozenset[str]) -> IndexEntry:
     if not symbol or not symbol.strip():
         raise IndexRegistryError(symbol, "symbol", symbol, "must be a non-empty string")
-    if not isinstance(raw, Mapping):
-        raise IndexRegistryError(symbol, "<entry>", raw, "must be a mapping")
-    unknown = set(raw) - _ENTRY_FIELDS
-    if unknown:
-        bad = sorted(unknown)[0]
-        raise IndexRegistryError(symbol, bad, raw[bad], "unknown key")
-    missing = _ENTRY_FIELDS - set(raw)
-    if missing:
-        raise IndexRegistryError(symbol, sorted(missing)[0], None, "missing field")
-
-    calendar = _require_str(symbol, "calendar", raw["calendar"])
-    # The load-bearing negative: an unknown calendar code is rejected here, NEVER coerced to
-    # some default calendar. A silent fallback would resolve the wrong session close.
-    if calendar not in known_calendars:
-        raise IndexRegistryError(
-            symbol,
-            "calendar",
-            calendar,
-            "unknown exchange_calendars code (not in get_calendar_names()); "
-            "an unknown calendar is never defaulted",
+    try:
+        model = _IndexEntryModel.model_validate(
+            _thaw(raw), context={"known_calendars": known_calendars}
         )
-
-    currency = _require_str(symbol, "currency", raw["currency"])
-    if not (len(currency) == 3 and currency.isalpha() and currency.isupper()):
-        raise IndexRegistryError(
-            symbol, "currency", currency, "must be a 3-letter uppercase ISO code"
-        )
-
-    enabled = raw["enabled"]
-    if not isinstance(enabled, bool):
-        raise IndexRegistryError(symbol, "enabled", enabled, "must be a boolean")
-
+    except ValidationError as exc:
+        _raise_registry_error(symbol, exc)
     return IndexEntry(
         symbol=symbol,
-        name=_require_str(symbol, "name", raw["name"]),
-        calendar=calendar,
-        currency=currency,
-        ibkr=_parse_ibkr(symbol, raw["ibkr"]),
-        enabled=enabled,
+        name=model.name,
+        calendar=model.calendar,
+        currency=model.currency,
+        ibkr=IbkrRef(
+            conid=model.ibkr.conid,
+            sec_type=model.ibkr.sec_type,
+            exchange=model.ibkr.exchange,
+            symbol=model.ibkr.symbol,
+            constituent_conids=tuple(model.ibkr.constituent_conids.items()),
+        ),
+        enabled=model.enabled,
     )
 
 

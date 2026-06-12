@@ -7,12 +7,10 @@ robust (median/MAD) z-score, so a few outliers in the baseline cannot inflate th
 and hide a real shift. Too little history is reported as ``NO_BASELINE`` — never silently
 treated as normal, which is the failure mode that lets a cold-start run look healthy.
 
-This is the depth the static QC plane does not have. The robust z-score here is a
-self-contained primitive (no dependency on the QC plane), deliberately mirroring the one
-in :func:`algotrading.infra.qc.robust_z_score`; both compute the same median/MAD
-statistic, and each plane's test pins it against an independent hand computation. A future
-shared ``utils`` could unify them, but the validation plane stays importable on its own
-until then.
+This is the depth the static QC plane does not have. The robust z-score is the one shared
+implementation in :mod:`algotrading.infra.utils.robust` (ADR 0021) — the same primitive
+the QC plane's :func:`algotrading.infra.qc.robust_z_score` wraps — so the median/MAD
+statistic has exactly one home and cannot drift between the planes.
 """
 
 from __future__ import annotations
@@ -20,8 +18,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from statistics import median
 
 from algotrading.core.config import AnomalyQcConfig, QcThresholdConfig
+from algotrading.infra.utils import robust_zscore_vs_baseline
 
 # The anomaly bands are economic and live in the hashed ``qc`` config block
 # (``AnomalyQcConfig``), never as ``.py`` literals (ADR 0028). The dataclass field defaults
@@ -30,38 +30,6 @@ from algotrading.core.config import AnomalyQcConfig, QcThresholdConfig
 # config-default block would hydrate, while a production run hydrates from the loaded,
 # hashed ``qc.yaml`` via :func:`anomaly_thresholds_from_config`.
 _DEFAULT_ANOMALY = AnomalyQcConfig(version="anomaly-default")
-
-
-def _median(values: Sequence[float]) -> float:
-    """The median of a non-empty sequence (no external dependency)."""
-    ordered = sorted(values)
-    n = len(ordered)
-    mid = n // 2
-    if n % 2 == 1:
-        return ordered[mid]
-    return 0.5 * (ordered[mid - 1] + ordered[mid])
-
-
-def robust_zscore_vs_baseline(value: float, baseline: Sequence[float]) -> float:
-    """A signed median/MAD robust z-score of ``value`` against a rolling ``baseline``.
-
-    Uses the median absolute deviation rather than the standard deviation so a single
-    earlier spike in the baseline does not inflate the scale and mask a new one. When the
-    baseline has no spread (all values equal), a value on the median scores 0 and any
-    departure scores +/- infinity — the only honest answers for a degenerate scale. The
-    sign is kept (positive above the median, negative below) so the detail line reads
-    which way the metric moved; the bands compare on magnitude. The baseline must be
-    non-empty (the caller gates on ``min_baseline`` first).
-    """
-    center = _median(baseline)
-    deviations = [abs(v - center) for v in baseline]
-    mad = _median(deviations)
-    if mad == 0.0:
-        if value == center:
-            return 0.0
-        return float("inf") if value > center else float("-inf")
-    # 1.4826 scales MAD to a standard-deviation-equivalent for normal data.
-    return (value - center) / (1.4826 * mad)
 
 
 class AnomalyStatus(StrEnum):
@@ -172,7 +140,7 @@ def detect_anomaly(
     else:
         status = AnomalyStatus.NORMAL
     z_text = "inf" if magnitude == float("inf") else f"{z:.2f}"
-    detail = f"robust z={z_text} (value={value:g}, baseline median={_median(baseline):g})"
+    detail = f"robust z={z_text} (value={value:g}, baseline median={median(baseline):g})"
     return AnomalyOutcome(metric, status, value, z, len(baseline), detail)
 
 

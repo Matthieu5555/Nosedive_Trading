@@ -237,7 +237,11 @@ config section version folded with a hash of the grid-construction constants —
 effective version is persisted on every `ScenarioResult`, so worst-case loss regenerates
 exactly. The grid also de-dupes configured shocks and refuses a residual id collision, so
 a repeated shock can never collapse a cell or double-count the worst case. ADR 0006 has
-the full rationale.
+the full rationale. The two grid builders (`scenarios.py` families grid,
+`stress_surface.py` cartesian surface) share one home for the identity primitives —
+`grid_versioning.py` (`dedup_preserving_order`, `short_construction_hash`) — so the
+ordered de-dup and the canonical-JSON short hash folded into every `effective_*_version`
+cannot drift between them.
 
 ## Positions and basket
 

@@ -12,6 +12,7 @@ import math
 from datetime import UTC, datetime
 
 import pytest
+from algotrading.infra.utils import robust_zscore_vs_baseline
 from algotrading.infra.validation import (
     AnomalyOutcome,
     AnomalyStatus,
@@ -21,7 +22,6 @@ from algotrading.infra.validation import (
     ValidationStatus,
     detect_anomalies,
     detect_anomaly,
-    robust_zscore_vs_baseline,
     run_validation,
 )
 from hypothesis import given
@@ -45,13 +45,9 @@ AS_OF = datetime(2026, 6, 2, 23, 30, tzinfo=UTC)
 # ================================================================================
 # anomaly detection
 # ================================================================================
-def test_robust_zscore_matches_hand_computation() -> None:
-    # value 33 -> (33 - 15.5) / 4.4478 = 3.9345 (hand-computed, independent of the code).
-    z = robust_zscore_vs_baseline(33.0, BASELINE)
-    assert z == pytest.approx(17.5 / _SCALE, rel=1e-9)
-    assert z == pytest.approx(3.9345, abs=1e-3)
-
-
+# The robust z-score primitive itself (hand-computed values, degenerate baselines) is
+# pinned in test_robust.py — its one home is algotrading.infra.utils.robust (M15). The
+# tests here pin the *banding* the validation plane layers on top of it.
 def test_on_median_scores_zero_and_is_normal() -> None:
     outcome = detect_anomaly("m", BASELINE, 15.5, THRESHOLDS)
     assert outcome.robust_z == pytest.approx(0.0)
@@ -108,13 +104,13 @@ def test_judged_outcome_requires_a_score() -> None:
         AnomalyOutcome("m", AnomalyStatus.FAIL, 1.0, robust_z=None, baseline_n=12, detail="x")
 
 
-def test_degenerate_baseline_scores_inf_off_median_zero_on() -> None:
+def test_degenerate_baseline_off_median_is_an_unambiguous_fail() -> None:
+    # The primitive scores +/-inf off a flat baseline (pinned in test_robust.py); the
+    # plane must band an infinite magnitude as FAIL, never wrap or mask it.
     flat = [7.0] * 12
-    assert robust_zscore_vs_baseline(7.0, flat) == 0.0
-    assert robust_zscore_vs_baseline(9.0, flat) == math.inf
-    assert robust_zscore_vs_baseline(5.0, flat) == -math.inf
-    # An off-median value against a no-spread baseline is an unambiguous FAIL.
-    assert detect_anomaly("m", flat, 9.0, THRESHOLDS).status is AnomalyStatus.FAIL
+    outcome = detect_anomaly("m", flat, 9.0, THRESHOLDS)
+    assert outcome.status is AnomalyStatus.FAIL
+    assert outcome.robust_z == math.inf
 
 
 def test_thresholds_reject_inverted_bands() -> None:

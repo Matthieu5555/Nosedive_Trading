@@ -315,7 +315,8 @@ def test_duplicate_strikes_are_deduplicated() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Nonparametric interpolation kernel (REP1: numpy-backed _interpolate_sorted)  #
+# Nonparametric interpolation kernel (_interpolate_sorted; stdlib-bisect since   #
+# M38, byte-identical to the numpy-backed REP1 form — pinned below)              #
 # --------------------------------------------------------------------------- #
 def _flat_clamped_linear_interp(
     ks: tuple[float, ...], ws: tuple[float, ...], k: float
@@ -399,6 +400,63 @@ def test_interpolate_sorted_clamp_edges_are_bit_identical_to_hand_rolled() -> No
     ws = (0.20, 0.07, 0.05, 0.15)
     for k in (ks[0] - 5.0, ks[0], ks[-1], ks[-1] + 5.0):
         assert _interpolate_sorted(ks, ws, k) == hand_rolled(ks, ws, k)
+
+
+def _numpy_searchsorted_interpolate(
+    ks: tuple[float, ...], ws: tuple[float, ...], k: float
+) -> float:
+    """The pre-M38 numpy-backed kernel, reproduced verbatim as the bit-identity oracle.
+
+    This is the exact routine M38 replaced (``np.asarray`` + ``np.searchsorted`` per
+    scalar call); the replacement delegates the bracket search to ``bisect.bisect_left``
+    and keeps the interior arithmetic. The two must agree bit-for-bit on every input —
+    the interpolant feeds ``total_variance`` and thus the ``SurfaceGrid`` content hash.
+    """
+    import numpy as np
+
+    knots = np.asarray(ks)
+    values = np.asarray(ws)
+    if k <= knots[0]:
+        return float(values[0])
+    if k >= knots[-1]:
+        return float(values[-1])
+    index = int(np.searchsorted(knots, k, side="left"))
+    span = knots[index] - knots[index - 1]
+    weight = (k - knots[index - 1]) / span
+    return float(values[index - 1] + weight * (values[index] - values[index - 1]))
+
+
+@pytest.mark.parametrize(
+    ("name", "ks", "ws"),
+    [
+        ("two_knots", (-0.5, 0.5), (0.04, 0.09)),
+        ("uneven_spacing", (-2.0, -0.3, 0.1, 1.7), (0.20, 0.07, 0.05, 0.15)),
+        # Awkward, non-representable floats so the sweep exercises real rounding.
+        ("irrational_ish", (-1.1, -0.7, -0.1, 0.3, 0.9), (0.123, 0.071, 0.0531, 0.0617, 0.143)),
+        ("tiny_variances", (-0.05, 0.0, 0.05), (1.7e-7, 1.1e-7, 2.3e-7)),
+    ],
+)
+def test_interpolate_sorted_is_bit_identical_to_the_numpy_form_on_a_dense_sweep(
+    name: str, ks: tuple[float, ...], ws: tuple[float, ...]
+) -> None:
+    """M38 hash gate: stdlib-bisect kernel == old numpy kernel, bit-for-bit, densely.
+
+    Sweeps 10_001 evaluation points spanning past both ends (so the clamp branches,
+    every knot, and the interior all get hit) and compares against the verbatim
+    pre-M38 numpy implementation. ``float.hex()`` equality is deliberate: the gate is
+    bit-identity, not closeness — a one-ULP shift would move persisted surface bytes.
+    """
+    from algotrading.infra.surfaces.fit import _interpolate_sorted
+
+    low, high = ks[0] - 0.2, ks[-1] + 0.2
+    n = 10_001
+    step = (high - low) / (n - 1)
+    sweep = [low + i * step for i in range(n)]
+    sweep.extend(ks)  # every knot exactly
+    for k in sweep:
+        new = _interpolate_sorted(ks, ws, k)
+        old = _numpy_searchsorted_interpolate(ks, ws, k)
+        assert new.hex() == old.hex(), (name, k)
 
 
 # --------------------------------------------------------------------------- #

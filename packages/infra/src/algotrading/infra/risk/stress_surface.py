@@ -20,17 +20,15 @@ in ``scenarios.yaml``), hashed into ``config_hashes["scenarios"]`` and folded in
 :func:`effective_surface_version` so the production ±50%/±50% grid is a YAML edit, never a
 ``.py`` literal (ADR 0028).
 
-Boundary note (WS 2C is concurrently refactoring ``scenarios.py``): this module deliberately
-keeps a *local* :func:`effective_surface_version` rather than editing the shared
-:func:`scenarios.effective_scenario_version`. It folds the existing scenario version plus the
-surface-construction hash, so it is a strict superset; unifying the two is a follow-up once
-the 2C claim on ``scenarios.py`` clears.
+Version note: :func:`effective_surface_version` stays a *separate* version from
+:func:`scenarios.effective_scenario_version` — it folds that version plus the
+surface-construction hash, a strict superset. The shared *encoding* (ordered de-dup,
+canonical-JSON short hash) now lives in :mod:`.grid_versioning` (the 2C-deferral
+follow-up, landed as M44); the persisted version strings are byte-identical.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -39,6 +37,7 @@ from algotrading.core.config import ScenarioConfig, StressSurfaceConfig
 from algotrading.infra.pricing import price_european_array
 
 from .greeks import PositionRisk, net_lots
+from .grid_versioning import dedup_preserving_order, short_construction_hash
 from .scenarios import (
     Scenario,
     ScenarioGridError,
@@ -64,18 +63,6 @@ _CENTRE_EPS = 1e-12
 _AXIS_DECIMALS = 10
 
 
-def _dedup_preserving_order(values: tuple[float, ...]) -> tuple[float, ...]:
-    """Drop duplicate axis points, keeping first-seen order (a degenerate range collapses
-    to the single centre column)."""
-    seen: set[float] = set()
-    unique: list[float] = []
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            unique.append(value)
-    return tuple(unique)
-
-
 def _symmetric_axis(abs_mag: float, steps: int) -> tuple[float, ...]:
     """A symmetric shock axis of ``steps`` points over ``[-abs_mag, +abs_mag]``.
 
@@ -92,7 +79,7 @@ def _symmetric_axis(abs_mag: float, steps: int) -> tuple[float, ...]:
         if abs(value) < _CENTRE_EPS:
             value = 0.0
         points.append(round(value, _AXIS_DECIMALS))
-    return _dedup_preserving_order(tuple(points))
+    return dedup_preserving_order(tuple(points))
 
 
 def _surface_scenario_id(spot_shock: float, vol_shock: float) -> str:
@@ -134,8 +121,9 @@ def _surface_construction_hash(surface: StressSurfaceConfig) -> str:
     """A short, stable (cross-process) hash of the surface-construction inputs.
 
     Folded into :func:`effective_surface_version`, so changing the stress range/steps (or the
-    construction policy) moves the persisted version automatically. SHA-256 over canonical
-    JSON — never Python's salted ``hash()`` — so it is identical in every run and machine.
+    construction policy) moves the persisted version automatically. The encoding (canonical-
+    JSON SHA-256, 12 hex chars) is the shared :func:`~.grid_versioning.short_construction_hash`
+    — byte-identical to the inline copy it replaced.
     """
     payload = {
         "version": SURFACE_CONSTRUCTION_VERSION,
@@ -145,8 +133,7 @@ def _surface_construction_hash(surface: StressSurfaceConfig) -> str:
         "spot_steps": surface.spot_steps,
         "vol_steps": surface.vol_steps,
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    return short_construction_hash(payload)
 
 
 def effective_surface_version(config: ScenarioConfig) -> str:

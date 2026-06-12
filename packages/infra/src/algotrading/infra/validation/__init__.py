@@ -39,7 +39,6 @@ from .anomaly import (
     anomaly_thresholds_from_config,
     detect_anomalies,
     detect_anomaly,
-    robust_zscore_vs_baseline,
 )
 from .engine import REASON_METRIC_ANOMALY, ValidationOutcome, run_validation
 from .state import (
@@ -77,7 +76,6 @@ __all__ = [
     "detect_anomalies",
     "detect_anomaly",
     "escalation_level",
-    "robust_zscore_vs_baseline",
     "run_validation",
     "triage_from_qc",
     "triage_from_validation",

@@ -254,6 +254,22 @@ def test_bad_constituent_conid_pin_is_rejected_not_coerced() -> None:
     assert exc.value.field == "ibkr.constituent_conids"
 
 
+def test_explicit_null_pin_map_means_no_pins() -> None:
+    # YAML `constituent_conids:` with no value parses to None; the historical contract is
+    # "no pins", never a crash — pinned across the M16 pydantic migration.
+    block = _block_with(
+        "SPX", ibkr={"conid": 1, "secType": "IND", "exchange": "CBOE", "constituent_conids": None}
+    )
+    assert parse_index_registry(block).get("SPX").ibkr.constituent_conids == ()
+
+
+def test_non_mapping_entry_is_rejected_with_the_entry_field_label() -> None:
+    with pytest.raises(IndexRegistryError) as exc:
+        parse_index_registry({"SPX": ["not", "a", "mapping"]})
+    assert exc.value.symbol == "SPX"
+    assert exc.value.field == "<entry>"
+
+
 def test_blank_ibkr_symbol_override_is_rejected() -> None:
     """A present-but-blank ``ibkr.symbol`` is an operator error, not a clean 'no override'."""
     with pytest.raises(IndexRegistryError) as exc:

@@ -54,9 +54,11 @@ above. Two pieces:
   `configs/universe.yaml`. Each `IndexEntry` carries `symbol` (the registry key, shared
   with 1A/1C/1G/1I), `name`, an `exchange_calendars` `calendar` code, a 3-letter
   `currency`, an `IbkrRef` provider sub-block (`conid`/`secType`/`exchange`), and an
-  `enabled` switch. `parse_index_registry` validates every entry and **rejects an unknown
-  calendar code rather than defaulting it** (a wrong calendar = a wrong close instant = a
-  look-ahead bug). The provider-agnostic fields describe the index; only `ibkr:` is
+  `enabled` switch. `parse_index_registry` validates every entry through the same
+  pydantic v2 strict/extra-forbid seam as the core config sections (M16) — a bad field
+  raises a labeled `IndexRegistryError` (symbol/field/value/reason) — and **rejects an
+  unknown calendar code rather than defaulting it** (a wrong calendar = a wrong close
+  instant = a look-ahead bug). The provider-agnostic fields describe the index; only `ibkr:` is
   IBKR-specific, so a future `saxo:`/`deribit:` sibling joins under the same key (ADR 0023).
   The block stays inside the hashed `universe` bundle (`config_hashes["universe"]`) with
   **no separate hash** — the typed object is *not* hashed; the raw block on

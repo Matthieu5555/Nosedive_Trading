@@ -1,7 +1,8 @@
 # infra.qc — the named static QC plane
 
 A library of pure, named checks. Each takes a producing module's output (a snapshot
-batch, a forward estimate, a slice fit, a risk line) plus a `QcThresholds` bundle and an
+batch, a forward estimate, a slice fit, a risk line) plus the typed, hashed
+`core.config.QcThresholdConfig` (every economic cut-off lives there, ADR 0028) and an
 injected `run_id` / `run_ts`, and returns one stamped `contracts.QcResult`. No clock is
 read inside a check, so a check is a pure function of its inputs and reproduces
 byte-for-byte in replay.
@@ -42,10 +43,12 @@ meaningless discrepancy.
 
 ## Entry points
 
-- `thresholds_from_config(config.qc_threshold)` → `QcThresholds` (platform cut-offs +
-  QC-owned supplements, each documented in `thresholds.py`; the grid cut-offs are surfaced
-  via `.grid` / `.tenor_floor(tenor)` / `.band_low_delta` / `.band_high_delta` /
-  `.max_delta_step`, read from the typed `qc.grid` config block).
+- the checks read `config.qc_threshold` (`QcThresholdConfig`) directly (M37): the three
+  cross-cutting scalars at the top level, every other cut-off on the nested block that
+  owns it (`.continuity.*`, `.forward_engine.*`, `.fit_tolerance.*`,
+  `.anomaly.mad_multiplier`, `.grid.*` incl. `.grid.floor_for(tenor)`); the version stamp
+  on every result is `.version`. `thresholds.py` keeps `QcThresholds` /
+  `thresholds_from_config` only as transitional aliases for the orchestration call sites.
 - the twelve `check_*` functions and `detect_anomaly`.
 - `build_report(results, run_id=, run_ts=)` → `QcReport`; `escalation_level(report)` →
   `none` / `notice` / `page`.

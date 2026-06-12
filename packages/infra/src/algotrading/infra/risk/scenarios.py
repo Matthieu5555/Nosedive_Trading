@@ -33,8 +33,6 @@ Sign conventions, stated once and asserted by tests:
 from __future__ import annotations
 
 import dataclasses
-import hashlib
-import json
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -48,6 +46,7 @@ from algotrading.infra.pricing import PriceGreeks, price
 from .bumps import DEFAULT_BUMPS, BumpSpec
 from .config import AttributionConfig
 from .greeks import PositionRisk, central_difference_greeks, net_lots
+from .grid_versioning import dedup_preserving_order, short_construction_hash
 from .valuation import ContractValuationInput, pricing_state_for
 
 # The blueprint-faithful (Eq-19) decomposition conventions: the default attribution
@@ -70,23 +69,6 @@ class ScenarioGridError(Exception):
     """The configured shocks produced a grid with colliding scenario ids."""
 
 
-def _unique_preserving_order(values: tuple[float, ...]) -> tuple[float, ...]:
-    """Drop duplicate shocks, keeping first-seen order — a deterministic de-dup.
-
-    Duplicate configured shocks would otherwise mint duplicate scenario ids, which
-    silently collapse cells in any id-keyed map and double-count a scenario in the
-    worst-case total. De-duping at the source keeps the grid well-formed regardless
-    of config hygiene.
-    """
-    seen: set[float] = set()
-    unique: list[float] = []
-    for value in values:
-        if value not in seen:
-            seen.add(value)
-            unique.append(value)
-    return tuple(unique)
-
-
 def _grid_construction_hash(
     roll_down_days: tuple[int, ...], crash_rule_tag: str = _CRASH_RULE_TAG
 ) -> str:
@@ -94,15 +76,16 @@ def _grid_construction_hash(
 
     Folded into the persisted scenario version, so changing the configured
     ``roll_down_days`` or the crash rule moves the version automatically even when
-    ``config.version`` does not.
+    ``config.version`` does not. The encoding (canonical-JSON SHA-256, 12 hex chars)
+    is the shared :func:`~.grid_versioning.short_construction_hash` — byte-identical
+    to the inline copy it replaced.
     """
     payload = {
         "version": GRID_CONSTRUCTION_VERSION,
         "roll_down_days": list(roll_down_days),
         "crash_rule": crash_rule_tag,
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    return short_construction_hash(payload)
 
 
 def effective_scenario_version(config: ScenarioConfig) -> str:
@@ -136,8 +119,8 @@ def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
     vol spike), and a small time roll-down. Ordering is fixed and the ids are
     stable, so the grid is a pure function of the config.
     """
-    spot_shocks = _unique_preserving_order(config.spot_shocks)
-    vol_shocks = _unique_preserving_order(config.vol_shocks)
+    spot_shocks = dedup_preserving_order(config.spot_shocks)
+    vol_shocks = dedup_preserving_order(config.vol_shocks)
     scenarios: list[Scenario] = [
         Scenario(f"spot_{shock:+.4f}", "spot", shock, 0.0, 0.0) for shock in spot_shocks
     ]

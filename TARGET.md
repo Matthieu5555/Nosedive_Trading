@@ -170,10 +170,11 @@ decaying faster, long back vega. Entry reads the **term structure** panel (slope
 the front already renders. The parity identity on p.45 is the consistency check the
 pricing layer already enforces.
 
-## 4. Analytics rulings (owner, 2026-06-12)
+## 4. Standing rulings (owner, 2026-06-12)
 
-Three rulings that change domain contracts. Each needs an ADR + blueprint amendment before
-build (ADR 0011); recorded here so the specs are cut from one place.
+R1–R3 change domain contracts and each needs an ADR + blueprint amendment before build
+(ADR 0011); R4 is a connectivity ruling that sharpens an existing ADR. Recorded here so
+the specs are cut from one place.
 
 **R1 — Real risk-free curves; Rho against Euribor.** Today the only rate in the system is
 the **parity-implied per-expiry rate** backed out of the option chain (`infra/forwards`),
@@ -200,6 +201,16 @@ combined surface remains the forward-backing and attribution reference.
 **R3 — Implied correlation as a first-class signal.** From R2-grade per-name surfaces and
 the index surface, compute and persist ρ̄ per tenor (§3, S1) daily. This is the dispersion
 entry signal and a market-state diagnostic (correlation regime) for the whole book.
+
+**R4 — IBKR via the Client-Portal Web/REST API, not TWS.** ADR 0024 accepted two IBKR
+ingestion paths with "REST preferred, the Nautilus-TWS adapter alongside". This ruling
+sharpens it: **the Client-Portal REST API is *the* IBKR path** — capture already runs on
+it (`cp_rest_*` in `packages/infra-ibkr`), and everything new (constituent option capture
+§7.4, historical bars, and the 3A/3B order path when its gate opens) is built against the
+REST transport. The TWS socket path is not built against; consequently anything premised
+on Nautilus's TWS-only IBKR adapter (the live `TradingNode` collapse, REP7; the TWS leg of
+ADR 0024) stays parked unless this ruling is reversed. Follow-up: an ADR note amending
+0024 from "alongside" to "REST-only target path".
 
 ## 5. The full capability map
 

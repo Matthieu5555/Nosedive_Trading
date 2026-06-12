@@ -1,5 +1,7 @@
 """Tests for the shared WebSocketListener — real local WS server, no external network.
 
+The listener's canonical home is ``algotrading.infra.collectors.ws_listener`` (hoisted from
+its former byte-identical twins in the Saxo and Deribit leaves, which now re-export it).
 The server side uses ``websockets.sync.server`` (thread-based), so each scenario exercises a
 genuine handshake, frame delivery, connection drop and reconnect against the listener's owned
 thread. All waits are condition-polled with a deadline — no arbitrary sleeps.
@@ -14,8 +16,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
 import websockets
-from algotrading.infra_saxo.connectivity.ws_listener import WebSocketListener
-from websockets.sync.server import serve
+from algotrading.infra.collectors.ws_listener import WebSocketListener
+from websockets.sync.server import ServerConnection, serve
 
 _DEADLINE_S = 10.0
 
@@ -30,7 +32,7 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = _DEADLINE_S) -> 
 
 
 @contextmanager
-def _ws_server(handler: Callable) -> Iterator[str]:
+def _ws_server(handler: Callable[[ServerConnection], None]) -> Iterator[str]:
     """Run a local sync WebSocket server on an ephemeral port; yield its ws:// URL."""
     with serve(handler, "127.0.0.1", 0) as server:
         host, port = server.socket.getsockname()[:2]
@@ -42,23 +44,23 @@ def _ws_server(handler: Callable) -> Iterator[str]:
             server.shutdown()
 
 
-def _hold_open(connection) -> None:
+def _hold_open(connection: ServerConnection) -> None:
     """Block the handler until the peer closes (returning closes the connection)."""
     with contextlib.suppress(websockets.exceptions.ConnectionClosed):
         connection.recv()
 
 
 def test_frames_flow_and_on_connect_runs_first() -> None:
-    received_subscribes: list[str] = []
-    frames: list[str] = []
+    received_subscribes: list[bytes | str] = []
+    frames: list[bytes | str] = []
 
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         received_subscribes.append(connection.recv())  # the on_connect subscribe message
         connection.send("frame-a")
         connection.send("frame-b")
         _hold_open(connection)
 
-    async def on_connect(ws) -> None:
+    async def on_connect(ws: websockets.ClientConnection) -> None:
         await ws.send("SUBSCRIBE")
 
     with _ws_server(handler) as url:
@@ -79,11 +81,11 @@ def test_frames_flow_and_on_connect_runs_first() -> None:
 def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
     """A dropped connection must reconnect (old Saxo loop died on the first recv error)."""
     connections = 0
-    frames: list[str] = []
+    frames: list[bytes | str] = []
     faults: list[str] = []
     lock = threading.Lock()
 
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         nonlocal connections
         with lock:
             connections += 1
@@ -94,7 +96,7 @@ def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
             return  # close the first connection -> client must reconnect
         _hold_open(connection)
 
-    async def on_connect(ws) -> None:
+    async def on_connect(ws: websockets.ClientConnection) -> None:
         await ws.send("SUBSCRIBE")
 
     with _ws_server(handler) as url:
@@ -114,9 +116,9 @@ def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
 
 
 def test_bad_frame_does_not_end_the_session() -> None:
-    frames: list[str] = []
+    frames: list[bytes | str] = []
 
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         connection.send("bad")
         connection.send("good")
         _hold_open(connection)
@@ -139,16 +141,16 @@ def test_bad_frame_does_not_end_the_session() -> None:
 def test_fatal_factory_error_is_reported_and_recovered() -> None:
     """A fatal error (factory raises) surfaces as a fault, then a fresh factory call retries."""
     attempts = 0
-    frames: list[str] = []
+    frames: list[bytes | str] = []
     faults: list[str] = []
 
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         connection.send("after-recovery")
         _hold_open(connection)
 
     with _ws_server(handler) as url:
 
-        def factory():
+        def factory() -> object:
             nonlocal attempts
             attempts += 1
             if attempts == 1:
@@ -170,7 +172,7 @@ def test_fatal_factory_error_is_reported_and_recovered() -> None:
 
 
 def test_stop_joins_thread_promptly() -> None:
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         _hold_open(connection)  # never sends — the listener idles in its recv poll
 
     with _ws_server(handler) as url:
@@ -185,7 +187,7 @@ def test_stop_joins_thread_promptly() -> None:
 
 
 def test_start_is_idempotent_while_running() -> None:
-    def handler(connection) -> None:
+    def handler(connection: ServerConnection) -> None:
         _hold_open(connection)
 
     with _ws_server(handler) as url:

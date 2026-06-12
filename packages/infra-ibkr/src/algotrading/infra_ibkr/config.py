@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Annotated, NoReturn
 
 from algotrading.core.config import LoadedConfig, load_yaml_config
+from algotrading.infra.connectivity import BackoffSchedule
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -79,7 +80,13 @@ class EstablishedWaitConfig(BaseModel):
 
 
 class RetryConfig(BaseModel):
-    """Exponential-with-cap retry around IBKR maintenance windows (ADR 0031 §5)."""
+    """Exponential-with-cap retry around IBKR maintenance windows (ADR 0031 §5).
+
+    This model only validates the YAML fields and carries ``max_attempts`` for the loop;
+    the delay formula itself (``min(cap, base * factor**attempt)``, 0-based, no jitter) is
+    owned by infra's one backoff engine, :class:`BackoffSchedule` — the audit (M20) found it
+    cloned here verbatim, so now it is delegated, never re-stated.
+    """
 
     model_config = _HISTORY_MODEL_CONFIG
 
@@ -89,10 +96,11 @@ class RetryConfig(BaseModel):
     cap_seconds: float
 
     def delay_for(self, attempt: int) -> float:
-        """Backoff delay before retry ``attempt`` (0-based): ``min(cap, base*factor**a)``."""
-        if attempt < 0:
-            raise IbkrHistoryConfigError(f"retry attempt must be >= 0, got {attempt}")
-        return min(self.cap_seconds, self.base_seconds * self.factor**attempt)
+        """Backoff delay before retry ``attempt`` (0-based), per infra's ``BackoffSchedule``."""
+        schedule = BackoffSchedule(
+            base_seconds=self.base_seconds, factor=self.factor, cap_seconds=self.cap_seconds
+        )
+        return schedule.delay_for(attempt)
 
 
 class IbkrHistoryConfig(BaseModel):

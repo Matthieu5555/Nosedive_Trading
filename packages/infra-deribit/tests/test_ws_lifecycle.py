@@ -1,9 +1,10 @@
-"""Lifecycle tests for the Deribit WS path + the byte-identity guard on the runner twin.
+"""Lifecycle tests for the Deribit WS path on the shared listener runner.
 
-The full WebSocketListener behavior suite lives in infra-saxo (`tests/test_ws_listener.py`)
-against the identical module; here we pin (a) that the two copies stay byte-identical until
-the runner is hoisted to ``algotrading.infra.collectors``, and (b) the Deribit-specific wiring:
-subscribe-on-connect, confirmation filtering, and the adapter's start/stop lifecycle.
+The full WebSocketListener behavior suite lives in infra (`tests/test_ws_listener.py`)
+against the canonical ``algotrading.infra.collectors.ws_listener``; here we pin (a) that the
+leaf import path re-exports that one class (the byte-identical twins and their guard test are
+gone), and (b) the Deribit-specific wiring: subscribe-on-connect, confirmation filtering, and
+the adapter's start/stop lifecycle.
 """
 
 from __future__ import annotations
@@ -14,25 +15,23 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from pathlib import Path
 from unittest.mock import MagicMock
 
-import algotrading.infra_deribit.connectivity.ws_listener as deribit_ws_listener
-import algotrading.infra_saxo.connectivity.ws_listener as saxo_ws_listener
 import websockets
+from algotrading.infra.collectors.ws_listener import WebSocketListener
 from algotrading.infra_deribit.collectors.deribit_adapter import DeribitMarketDataAdapter
 from algotrading.infra_deribit.connectivity.deribit_transport import DeribitTransport
+from algotrading.infra_deribit.connectivity.ws_listener import (
+    WebSocketListener as DeribitWebSocketListener,
+)
 from websockets.sync.server import serve
 
 _DEADLINE_S = 10.0
 
 
-def test_ws_listener_twin_is_byte_identical() -> None:
-    """The runner is duplicated only because sibling leaves may not import each other; the
-    copies must not drift until it is hoisted to algotrading.infra.collectors."""
-    saxo_src = Path(saxo_ws_listener.__file__).read_bytes()
-    deribit_src = Path(deribit_ws_listener.__file__).read_bytes()
-    assert saxo_src == deribit_src
+def test_leaf_import_path_reexports_the_one_shared_listener() -> None:
+    """The leaf module is a thin re-export of the canonical infra class — one implementation."""
+    assert DeribitWebSocketListener is WebSocketListener
 
 
 def _wait_until(predicate: Callable[[], bool], timeout: float = _DEADLINE_S) -> bool:

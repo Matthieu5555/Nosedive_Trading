@@ -18,9 +18,13 @@ A custom adapter over IBKR's Client Portal Web API (the Saxo/Deribit pattern —
 real deps):
 
 - `connectivity/cp_rest_transport.py` — `CpRestTransport`: REST verbs + the WS URL over the local
-  CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests. Also
-  the **one canonical transport-seam protocol** (`SupportsRestGet` / `SupportsRest`) every
-  collector types its injected transport with — no more per-module `_SupportsGet` copies.
+  CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests. The
+  429/503 retry rides tenacity (audit M20) with the unchanged cadence — `Retry-After` honoured
+  when sane, else `backoff_base * 2**retry_index`, injected `sleep` — and a failed call raises
+  `CpRestTransportError` carrying `status_code` directly (no `__cause__` reach). The
+  transport-seam protocol (`SupportsRestGet` / `SupportsRest`) every collector types its injected
+  transport with is re-exported here; its one definition lives in
+  `algotrading.infra.collectors.transport_seam` (audit M40, shared with the Saxo leaf).
 - `connectivity/cp_rest_session.py` — `CpRestSession`: the brokerage-session lifecycle TWS hid —
   `/iserver/auth/status` + a daemon-thread `/tickle` keepalive (~60 s; the session dies after ~5 min
   of silence). A dropped session fires `on_drop`, the engine's reconnect signal;

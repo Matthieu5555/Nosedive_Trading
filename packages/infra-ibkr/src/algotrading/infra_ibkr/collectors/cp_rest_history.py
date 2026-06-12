@@ -38,6 +38,7 @@ from typing import Any
 import structlog
 from algotrading.infra.contracts import DailyBar
 from algotrading.infra.storage import ParquetStore
+from tenacity import RetryCallState, RetryError, Retrying, retry_if_exception, stop_after_attempt
 
 from ..config import IbkrHistoryConfig
 from ..connectivity.cp_rest_transport import SupportsRestGet
@@ -55,14 +56,14 @@ _TERMINAL_WINDOW_STATUSES = frozenset({404, 500})
 
 
 def _window_http_status(exc: BaseException) -> int | None:
-    """The HTTP status behind a transport error, if any (read from the wrapped cause).
+    """The HTTP status a transport error carried, if any.
 
-    ``CpRestTransport`` raises its error ``from`` the underlying ``httpx`` status error, so the
-    code is at ``exc.__cause__.response.status_code``. Duck-typed (no httpx import) and ``None``
-    when the failure carried no HTTP response (a timeout, a connect error, a test stub).
+    ``CpRestTransportError`` exposes the status directly as ``status_code`` (audit M20 — the
+    old reach into ``exc.__cause__.response`` is gone). Attribute-typed (no transport import)
+    and ``None`` when the failure carried no HTTP response (a timeout, a connect error, a
+    test stub).
     """
-    response = getattr(getattr(exc, "__cause__", None), "response", None)
-    code = getattr(response, "status_code", None)
+    code = getattr(exc, "status_code", None)
     return code if isinstance(code, int) else None
 
 
@@ -248,33 +249,50 @@ class CpRestHistoryCollector:
         params = {"conid": str(request.conid), "period": request.period, "bar": self.config.bar}
         if start_time is not None:
             params["startTime"] = start_time
-        last_error: Exception | None = None
-        for attempt in range(self.config.retry.max_attempts):
+
+        def attempt_get() -> Any:
             try:
-                payload = self.transport.get(_HISTORY_PATH, params)
+                return self.transport.get(_HISTORY_PATH, params)
             except Exception as exc:  # transport-level failure (maintenance window, timeout)
-                last_error = exc
-                # A 404/500 is a definitive "no data for this window" (the start of history), not a
-                # transient outage — fail fast so the backward pager does not burn its retry budget
-                # (and minutes of backoff) on the oldest window of every ticker.
+                # A 404/500 is a definitive "no data for this window" (the start of history),
+                # not a transient outage — convert to the non-retryable HistoryFetchError so
+                # the backward pager does not burn its retry budget (and minutes of backoff)
+                # on the oldest window of every ticker.
                 status = _window_http_status(exc)
                 if status in _TERMINAL_WINDOW_STATUSES:
                     raise HistoryFetchError(
                         f"history window for {request.underlying!r} returned HTTP {status} "
                         f"(no data for the requested window)"
                     ) from exc
-                if attempt + 1 < self.config.retry.max_attempts:
-                    self.sleep(self.config.retry.delay_for(attempt))
-                continue
-            if not isinstance(payload, dict):
-                raise HistoryFetchError(
-                    f"history payload for {request.underlying!r} is not a mapping: {payload!r}"
-                )
-            return payload
-        raise HistoryFetchError(
-            f"history fetch for {request.underlying!r} failed after "
-            f"{self.config.retry.max_attempts} attempts: {last_error}"
+                raise
+
+        def _wait(retry_state: RetryCallState) -> float:
+            # attempt_number is 1-based, the config schedule is 0-based: the first retry
+            # waits delay_for(0) — the exact cadence of the old hand-rolled loop.
+            return self.config.retry.delay_for(retry_state.attempt_number - 1)
+
+        # tenacity is the retry engine (audit M20); the cadence is the config's unchanged
+        # exponential-with-cap schedule, the sleep stays injected (no real waiting in tests),
+        # and a HistoryFetchError (terminal window) never re-enters the loop.
+        retrying = Retrying(
+            retry=retry_if_exception(lambda exc: not isinstance(exc, HistoryFetchError)),
+            stop=stop_after_attempt(self.config.retry.max_attempts),
+            wait=_wait,
+            sleep=self.sleep,
         )
+        try:
+            payload = retrying(attempt_get)
+        except RetryError as err:
+            last_error = err.last_attempt.exception()
+            raise HistoryFetchError(
+                f"history fetch for {request.underlying!r} failed after "
+                f"{self.config.retry.max_attempts} attempts: {last_error}"
+            ) from last_error
+        if not isinstance(payload, dict):
+            raise HistoryFetchError(
+                f"history payload for {request.underlying!r} is not a mapping: {payload!r}"
+            )
+        return payload
 
     def backfill(
         self,

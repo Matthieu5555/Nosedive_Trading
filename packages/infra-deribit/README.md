@@ -8,9 +8,10 @@ Deribit (crypto options) leaf adapter. Owner: **M5 — broker adapters**. Import
 - `connectivity/deribit_transport.py` — `DeribitTransport`: public REST (httpx) for discovery +
   index price, and `ws_listener(...)` building a reconnecting WS subscription (`websockets`,
   lazy-imported). No auth — market data is public.
-- `connectivity/ws_listener.py` — `WebSocketListener`: the shared WS lifecycle (owned thread,
-  stop event, reconnect with backoff, fault callback). Byte-identical twin in `infra-saxo`
-  (sibling leaves may not import each other); intended home: `algotrading.infra.collectors`.
+- `connectivity/ws_listener.py` — thin re-export of `WebSocketListener`, the shared WS
+  lifecycle (owned thread, stop event, reconnect with backoff, fault callback). The single
+  implementation lives in `algotrading.infra.collectors.ws_listener` (the former byte-identical
+  twin here was hoisted there — audit M26).
 - `collectors/deribit_discovery.py` — `/public/get_instruments` + the pure
   `parse_deribit_instrument_name` (`BTC-25JUL25-100000-C` → canonical `OptionContract`).
 - `collectors/deribit_adapter.py` — WebSocket ticker frames → `BrokerTick` EAV, with the crypto

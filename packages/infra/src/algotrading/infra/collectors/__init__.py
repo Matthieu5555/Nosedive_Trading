@@ -12,6 +12,11 @@ Import the collector and the unified tick, the pure gap/meta helpers and the res
 predicate, the daily :class:`CollectorSummary` and its pure builder, the feed-notice
 classification, and the disk replay (:func:`replay_day` read + :class:`ReplaySource` push
 source) from here. All four live broker leaves (Deribit, Saxo, IBKR) ride this one seam.
+
+Two transport-facing seams the leaves share also live here: the REST protocol every polling
+collector consumes (:class:`SupportsRestGet` / :class:`SupportsRest`) and the one WebSocket
+listener lifecycle (:class:`WebSocketListener` — owned thread, stop event, reconnect, fault
+callback) both streaming leaves run their subscriptions on.
 """
 
 from __future__ import annotations
@@ -30,6 +35,8 @@ from .normalize import (
 from .notices import ENTITLEMENT, OTHER, PACING, FeedNotice, classify_feed_notice
 from .replay import ReplaySource, next_sequence, replay_day
 from .summary import CollectorSummary, summarize_session
+from .transport_seam import SupportsRest, SupportsRestGet
+from .ws_listener import WebSocketListener
 
 __all__ = [
     "ENTITLEMENT",
@@ -47,6 +54,9 @@ __all__ = [
     "ReplaySource",
     "ReservedFieldError",
     "SequenceStamping",
+    "SupportsRest",
+    "SupportsRestGet",
+    "WebSocketListener",
     "build_gap_event",
     "classify_feed_notice",
     "is_observation",

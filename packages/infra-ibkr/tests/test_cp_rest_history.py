@@ -29,6 +29,7 @@ from algotrading.infra_ibkr.collectors.cp_rest_history import (
     HistoryRequest,
 )
 from algotrading.infra_ibkr.config import load_ibkr_history_config
+from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
 
 _CALC_TS = datetime(2026, 6, 7, 20, 0, tzinfo=UTC)
 _T0_MS = int((datetime(2026, 6, 4, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
@@ -234,19 +235,10 @@ def _series(n: int) -> list[dict[str, Any]]:
     return out
 
 
-class _BoundaryHttpError(Exception):
-    """Stand-in for httpx's status error: carries ``.response.status_code`` (what the collector reads)."""
-
-    def __init__(self, code: int) -> None:
-        super().__init__(f"HTTP {code}")
-        self.response = type("_R", (), {"status_code": code})()
-
-
-def _terminal_transport_error(code: int) -> RuntimeError:
-    """A transport error chained ``from`` an HTTP status error — the real ``CpRestTransport`` shape."""
-    err = RuntimeError(f"GET history failed: HTTP {code}")
-    err.__cause__ = _BoundaryHttpError(code)
-    return err
+def _terminal_transport_error(code: int) -> CpRestTransportError:
+    """A transport error carrying its HTTP status — the real ``CpRestTransport`` shape (M20:
+    ``status_code`` is a first-class field; the old ``__cause__.response`` reach is gone)."""
+    return CpRestTransportError(f"GET history failed: HTTP {code}", status_code=code)
 
 
 class _PaginatedGateway:

@@ -38,6 +38,15 @@ summary = collector.close()  # flush, unsubscribe, return the daily CollectorSum
 - **`replay.py`** — `replay_day` (read a stored day in canonical order) and `ReplaySource` (a push
   adapter that re-emits stored events through the same collector; re-capture is exactly-once).
 - **`summary.py`** / **`notices.py`** — the daily `CollectorSummary` and feed-notice classification.
+- **`transport_seam.py`** — `SupportsRestGet` / `SupportsRest`, the one REST transport protocol
+  every polling collector consumes (it used to be copy-pasted seven times across the broker
+  leaves — audit M40). `runtime_checkable`; concrete transports (`CpRestTransport`,
+  `SaxoTransport`) satisfy it structurally, tests satisfy it with a fake.
+- **`ws_listener.py`** — `WebSocketListener`, the one WS subscription lifecycle (owned daemon
+  thread, stop event, reconnect via the `websockets` iterator, fault callback) both streaming
+  leaves run on. Hoisted from byte-identical twins in infra-saxo/infra-deribit (audit M26); the
+  leaf `connectivity.ws_listener` modules are thin re-exports. `websockets` is imported lazily,
+  inside the listen loop — the broker leaves declare the dependency, this package does not.
 
 ## Idempotency — how capture is exactly-once
 
@@ -48,5 +57,8 @@ append-only store keeps one copy. `sequence` is the feed's stable per-(instrumen
 so a captured day and its replay produce the same ids — proven against the real store in
 `tests/test_collectors.py` and `tests/test_collection_use_cases.py`.
 
-Reconnect/backoff and the loss-aware `GapInterval` live in `connectivity.SessionSupervisor`,
-*beneath* the adapter — this package never owns reconnect.
+Broker-*session* reconnect/backoff and the loss-aware `GapInterval` live in
+`connectivity.SessionSupervisor`, *beneath* the adapter — the collector never owns session
+reconnect. The one exception this package does own is the WS transport's own reconnect loop
+(`ws_listener.py` above): a dropped socket re-enters the `websockets` reconnect iterator and the
+drop is surfaced through the fault callback, which is what feeds the gap meta-event machinery.

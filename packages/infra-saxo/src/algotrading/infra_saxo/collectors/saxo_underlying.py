@@ -10,21 +10,15 @@ takes the latest observation at or before its as_of. Read-only (GET), no orders.
 from __future__ import annotations
 
 import math
-from typing import Any, Protocol
 
 from algotrading.core.log import get_logger
 from algotrading.infra.collectors.normalize import BrokerTick
+from algotrading.infra.collectors.transport_seam import SupportsRestGet
 from algotrading.infra.universe import Underlying, instrument_key
 
 from .saxo_adapter import _parse_last_updated
 
 _log = get_logger(__name__)
-
-
-class _SupportsGet(Protocol):
-    """The minimal Saxo REST surface the probe needs (``SaxoTransport`` satisfies it)."""
-
-    def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]: ...
 
 # Saxo InfoPrices Quote field -> canonical EAV field. Mid is mapped to ``last`` as the snapshot
 # builder's last-resort reference spot when bid/ask are unusable (crossed/wide/absent).
@@ -40,7 +34,7 @@ class SaxoUnderlyingProbe:
     """
 
     def __init__(
-        self, transport: _SupportsGet, *, symbol: str, currency: str, asset_type: str = "Stock"
+        self, transport: SupportsRestGet, *, symbol: str, currency: str, asset_type: str = "Stock"
     ) -> None:
         self._transport = transport
         self._symbol = symbol.upper()

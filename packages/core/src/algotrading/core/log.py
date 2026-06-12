@@ -3,6 +3,14 @@
 Every analytics object must be traceable; structured logs are the first link in that
 chain. This module exposes a single entry point, :func:`get_logger`, that attaches a
 JSON formatter emitting one object per line.
+
+Standalone by default, cooperative when configured: when the platform-wide logging
+configuration has installed its handler on the root logger
+(:func:`algotrading.infra.observability.configure_logging` — it marks the handler with
+:data:`HANDLER_MARKER`), :func:`get_logger` attaches nothing and lets records propagate
+into that one root stream instead, so a process never emits two formats. core stays
+dependency-free: it only defines the marker; the structlog-based configurator lives in
+infra and imports it from here.
 """
 
 from __future__ import annotations
@@ -44,8 +52,11 @@ _RESERVED = {
     "logger",
 }
 
-# Marks a handler as installed by this module, so get_logger stays idempotent.
-_MARKER = "_algotrading_handler"
+# Marks a handler as installed by this platform's logging machinery — either by
+# get_logger below (per-logger JSON handler, the standalone default) or by the
+# platform-wide configure_logging (one root handler). One marker serves both: it keeps
+# get_logger idempotent, and it lets get_logger detect a configured root and defer to it.
+HANDLER_MARKER = "_algotrading_handler"
 
 
 class JsonFormatter(logging.Formatter):
@@ -66,17 +77,31 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+def _root_is_configured() -> bool:
+    """Whether the platform-wide logging configuration owns the root logger."""
+    return any(
+        getattr(handler, HANDLER_MARKER, False) for handler in logging.getLogger().handlers
+    )
+
+
 def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     """Return a logger that emits structured JSON to stderr.
 
-    Calling this twice for the same name does not duplicate handlers.
+    Calling this twice for the same name does not duplicate handlers. When the
+    platform-wide configuration has installed its marked handler on the root logger,
+    no per-logger handler is attached — records propagate into that one root stream
+    (same JSON schema, one handler for the whole process).
     """
     logger = logging.getLogger(name)
-    already = any(getattr(h, _MARKER, False) for h in logger.handlers)
+    if _root_is_configured():
+        if logger.level == logging.NOTSET:
+            logger.setLevel(level)
+        return logger
+    already = any(getattr(h, HANDLER_MARKER, False) for h in logger.handlers)
     if not already:
         handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(JsonFormatter())
-        setattr(handler, _MARKER, True)
+        setattr(handler, HANDLER_MARKER, True)
         logger.addHandler(handler)
         logger.setLevel(level)
         # Own handler only — avoid double emission through the root logger.

@@ -14,9 +14,10 @@ Saxo Bank OpenAPI leaf adapter. Owner: **M5 — broker adapters**. Imports `algo
 - `connectivity/saxo_transport.py` — `SaxoTransport`: stateless REST (httpx, one `_request` core
   for all verbs) + streaming-WS URL builder; a caller-supplied `token_fn` keeps auth out of the
   wire layer.
-- `connectivity/ws_listener.py` — `WebSocketListener`: the shared WS lifecycle (owned thread,
-  stop event, reconnect with backoff, fault callback). Byte-identical twin in `infra-deribit`
-  (sibling leaves may not import each other); intended home: `algotrading.infra.collectors`.
+- `connectivity/ws_listener.py` — thin re-export of `WebSocketListener`, the shared WS
+  lifecycle (owned thread, stop event, reconnect with backoff, fault callback). The single
+  implementation lives in `algotrading.infra.collectors.ws_listener` (the former byte-identical
+  twin here was hoisted there — audit M26).
 - `collectors/saxo_discovery.py` — symbol → `OptionContract` list via `contractoptionspaces`.
 - `collectors/saxo_adapter.py` — options-chain streaming snapshot/delta frames → `BrokerTick` EAV
   (binary frame parser, exact per-expiry strike routing via the canonical key parser, Index-map

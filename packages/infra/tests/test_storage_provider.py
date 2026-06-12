@@ -220,3 +220,32 @@ def test_write_order_does_not_change_the_partitions_or_read_back(tmp_path: Path)
     key = lambda b: b.provider  # noqa: E731
     assert sorted(forward.read("daily_bar"), key=key) == sorted(reverse.read("daily_bar"), key=key)
     assert forward.list_partitions("daily_bar") == reverse.list_partitions("daily_bar")
+
+
+# -- underlyings_present: the one-pass presence scan (ohlc-constituent-backfill) --------
+def test_underlyings_present_lists_names_without_reading_parquet(tmp_path: Path) -> None:
+    # The presence set comes from the partition directory names alone (a filesystem walk),
+    # so a caller deciding "skip what is already on disk" pays one cheap scan, never a
+    # full-table parquet read per ticker. Oracle: exactly the names written, per provider.
+    store = ParquetStore(tmp_path)
+    store.write(
+        "daily_bar",
+        [
+            _bar(provider="IBKR", underlying="AAPL"),
+            _bar(provider="IBKR", underlying="NVDA", trade_date=date(2026, 5, 28)),
+            _bar(provider="SAXO", underlying="ASML"),
+        ],
+    )
+    assert store.underlyings_present("daily_bar", provider="IBKR") == frozenset(
+        {"AAPL", "NVDA"}
+    )
+    assert store.underlyings_present("daily_bar", provider="SAXO") == frozenset({"ASML"})
+    # Provider-blind: the union across sources.
+    assert store.underlyings_present("daily_bar") == frozenset({"AAPL", "NVDA", "ASML"})
+
+
+def test_underlyings_present_is_empty_for_an_absent_table_or_provider(tmp_path: Path) -> None:
+    store = ParquetStore(tmp_path)
+    assert store.underlyings_present("daily_bar") == frozenset()
+    store.write("daily_bar", [_bar(provider="IBKR")])
+    assert store.underlyings_present("daily_bar", provider="DERIBIT") == frozenset()

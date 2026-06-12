@@ -228,6 +228,44 @@ class ParquetStore:
                     temp.unlink(missing_ok=True)
 
     # -- reading ----------------------------------------------------------
+    def underlyings_present(self, table: str, *, provider: str | None = None) -> frozenset[str]:
+        """Every ``underlying=<SYM>`` partition name present for *table*, as a set.
+
+        A filesystem walk over the partition *directory names* — no Parquet file is
+        opened — so a sweep deciding "skip what is already on disk" pays one cheap scan
+        instead of a full-table read per ticker (the ohlc-backfill stall). ``provider``
+        narrows a provider-partitioned table to one source segment; left ``None`` it
+        unions across every provider. An absent table or provider segment is an empty
+        set, never an error.
+        """
+        spec = spec_for_table(table)
+        base = table_dir(self.root, table)
+        if not base.exists():
+            return frozenset()
+        if spec.provider_partitioned:
+            roots = (
+                [base / f"provider={provider}"]
+                if provider is not None
+                else [
+                    p
+                    for p in base.iterdir()
+                    if p.is_dir() and p.name.startswith("provider=")
+                ]
+            )
+        else:
+            roots = [base]
+        names: set[str] = set()
+        for segment_root in roots:
+            if not segment_root.exists():
+                continue
+            for date_dir in segment_root.iterdir():
+                if not date_dir.is_dir() or not date_dir.name.startswith("trade_date="):
+                    continue
+                for underlying_dir in date_dir.iterdir():
+                    if underlying_dir.is_dir() and underlying_dir.name.startswith("underlying="):
+                        names.add(underlying_dir.name.split("=", 1)[1])
+        return frozenset(names)
+
     def _discover_providers(self, table: str, spec: Any) -> list[str | None]:
         """Return every provider segment present for *table*, or ``[None]`` if none."""
         base = table_dir(self.root, table)

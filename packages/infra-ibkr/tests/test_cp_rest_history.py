@@ -361,3 +361,44 @@ def test_backfill_continues_past_a_failed_ticker(tmp_path: Path) -> None:
     assert result.failed == ("BADX",)
     assert result.bar_count == 4  # AAPL (2) + GOOG (2); BADX contributed none
     assert {b.underlying for b in ParquetStore(tmp_path).read("daily_bar")} == {"AAPL", "GOOG"}
+
+
+def test_backfill_presence_scan_is_one_pass_not_a_read_per_ticker(tmp_path: Path) -> None:
+    """The skip-if-present check costs ONE partition-name scan for the whole sweep.
+
+    The old shape read the entire daily_bar table back into contracts once PER TICKER —
+    O(tickers × files), the real stall behind the observed ~3 names/10 min on the live
+    store (419k files). The presence set must come from one `underlyings_present` call,
+    and `read` must not be used for presence at all.
+    """
+    class _CountingStore(ParquetStore):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            self.read_calls = 0
+            self.presence_calls = 0
+
+        def read(self, table: str, **kwargs: Any) -> list[Any]:
+            self.read_calls += 1
+            return super().read(table, **kwargs)
+
+        def underlyings_present(self, table: str, *, provider: str | None = None) -> frozenset[str]:
+            self.presence_calls += 1
+            return super().underlyings_present(table, provider=provider)
+
+    store = _CountingStore(tmp_path)
+    # NVDA is already on disk; AAPL and GOOG are not.
+    seeded = _collector(_FakeTransport({4815: _payload("NVDA")}), store)
+    seeded.backfill([HistoryRequest("NVDA", 4815, "1y")])
+    store.read_calls = 0
+    store.presence_calls = 0
+
+    transport = _FakeTransport({8314: _payload("AAPL"), 9999: _payload("GOOG")})
+    result = _collector(transport, store).backfill(
+        [HistoryRequest("NVDA", 4815, "1y"),
+         HistoryRequest("AAPL", 8314, "1y"),
+         HistoryRequest("GOOG", 9999, "1y")]
+    )
+    assert result.skipped == ("NVDA",)
+    assert sorted(result.fetched) == ["AAPL", "GOOG"]
+    assert store.presence_calls == 1  # one scan for the whole sweep
+    assert store.read_calls == 0  # presence never goes through a full-table read

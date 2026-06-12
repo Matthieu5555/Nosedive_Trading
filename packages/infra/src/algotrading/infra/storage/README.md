@@ -17,6 +17,10 @@ through that port — no module reaches into Parquet or DuckDB directly.
   — so two sources of the same `(underlying, trade_date)` land in disjoint partitions and a
   scan that omits `provider` can never cross sources. `read`/`list_versions`/
   `delete_partition` take an optional `provider=` to scope to one source.
+  `underlyings_present(table, provider=)` answers "which symbols have any partition" from
+  the directory names alone (no Parquet opened) — the cheap one-pass presence scan a
+  backfill's skip-if-present check needs (a full-table `read` per ticker over the daily-bar
+  small-file blow-up was the ohlc-backfill stall).
 - **Immutable raw (append-only):** raw events and the instrument master are written
   once and never changed; re-writing an existing primary key raises `AppendOnlyViolation`.
   This is the byte-identical-replay anchor.

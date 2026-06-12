@@ -256,18 +256,6 @@ class CpRestHistoryCollector:
             f"{self.config.retry.max_attempts} attempts: {last_error}"
         )
 
-    def _already_on_disk(self, request: HistoryRequest) -> bool:
-        """Whether this ticker already has bars on disk for this provider (resume skip).
-
-        A backfill is resumable: a ticker whose ``(provider, underlying)`` already has any
-        ``daily_bar`` partition is treated as done for the window and skipped, so a re-run
-        re-fetches only the missing tail. Storage is idempotent on
-        ``(provider, underlying, trade_date)``, so even a non-skipped re-fetch replaces rather
-        than duplicates — the skip is the efficiency, the idempotent key is the correctness.
-        """
-        existing = self.store.read("daily_bar", underlying=None, provider=self.provider)
-        return any(bar.underlying == request.underlying for bar in existing)
-
     def backfill(
         self, requests: Sequence[HistoryRequest], *, correlation_id: str = ""
     ) -> BackfillResult:
@@ -280,14 +268,23 @@ class CpRestHistoryCollector:
         logged and recorded in ``failed`` — it never aborts the rest of a large sweep. Persisting
         through ``store.write`` replaces the ``daily_bar`` partitions for a touched
         ``(provider, underlying, trade_date)`` — idempotent on re-run.
+
+        The resume skip is decided against ONE upfront partition-name scan
+        (:meth:`ParquetStore.underlyings_present` — a filesystem walk, no Parquet read), never a
+        full-table read per ticker: on the live store (hundreds of thousands of one-row files)
+        the per-ticker read was the real stall behind the observed ~3 names / 10 min. Storage
+        stays idempotent on ``(provider, underlying, trade_date)``, so even a non-skipped
+        re-fetch replaces rather than duplicates — the skip is the efficiency, the idempotent
+        key is the correctness.
         """
         log = _LOGGER.bind(correlation_id=correlation_id, provider=self.provider)
         fetched: list[str] = []
         skipped: list[str] = []
         failed: list[str] = []
         bar_count = 0
+        present = self.store.underlyings_present("daily_bar", provider=self.provider)
         for request in requests:
-            if self._already_on_disk(request):
+            if request.underlying in present:
                 skipped.append(request.underlying)
                 continue
             try:

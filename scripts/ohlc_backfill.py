@@ -85,6 +85,14 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         action="store_true",
         help="Backfill only the index underlyings, not their constituents.",
     )
+    parser.add_argument(
+        "--max-windows",
+        type=int,
+        default=None,
+        help="Cap the backward paging at N windows of ~`period` each (default: the collector's "
+        "safety cap, i.e. full listed history). Use 1 for a bounded constituent sweep — every "
+        "extra window multiplies the daily_bar small-file count (see daily-bar-compaction).",
+    )
     return parser.parse_args(argv)
 
 
@@ -135,6 +143,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if collector is None:  # pragma: no cover — credentialed session implies a collector
         return 0
+    if args.max_windows is not None:
+        collector.max_history_windows = args.max_windows
 
     requests = history_requests_for(
         store=store,

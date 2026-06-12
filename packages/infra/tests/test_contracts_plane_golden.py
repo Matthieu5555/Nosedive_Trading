@@ -508,6 +508,26 @@ def test_finite_decimal_guard_still_holds_after_decode() -> None:
 # --- fixture regeneration (a deliberate format change only) -------------------
 
 
+def test_positivity_policy_fields_are_all_under_the_numeric_gate() -> None:
+    """Write-door layering invariant the pydantic swap leans on (review finding).
+
+    The strict positivity/non-negativity TypeAdapters alone would admit np.int64 /
+    np.bool_ (pydantic's number protocol); the door stays correct because the
+    hand-rolled numeric gate (exactly int/float, bool excluded) runs over every
+    numeric field FIRST. That only holds while positive_fields and
+    non_negative_fields are subsets of the numeric field set — pin it per spec.
+    """
+    from algotrading.infra.contracts.registry import numeric_field_names
+
+    for table, spec in REGISTRY.items():
+        numeric = set(numeric_field_names(spec.contract))
+        policy = set(spec.positive_fields) | set(spec.non_negative_fields)
+        assert policy <= numeric, (
+            f"{table}: positivity policy names non-numeric fields {sorted(policy - numeric)}"
+            " — the strict adapters would see them before the bool/np-type gate"
+        )
+
+
 def _regenerate() -> None:
     payload = {
         "rows": _all_rows(),

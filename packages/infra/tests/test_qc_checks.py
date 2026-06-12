@@ -972,6 +972,54 @@ def test_supplementary_thresholds_flow_from_config_into_a_check_verdict() -> Non
     assert relaxed.qc_status == STATUS_WARN
 
 
+def test_forward_engine_threshold_override_flips_the_verdict() -> None:
+    # Review follow-up: same pin as continuity, per block. rel residual 2.0/100 = 0.02
+    # > default max_rel_residual_mad(0.01) -> FAIL; raising the cut-off to 0.05 -> PASS.
+    overridden = QC_CONFIG.model_copy(
+        update={
+            "forward_engine": QC_CONFIG.forward_engine.model_copy(
+                update={"max_rel_residual_mad": 0.05}
+            ),
+        }
+    )
+    estimate = _forward(residual_mad=2.0)
+    failing = check_forward_stability(estimate, thresholds=QC_CONFIG, run_id=RUN_ID, run_ts=RUN_TS)
+    relaxed = check_forward_stability(estimate, thresholds=overridden, run_id=RUN_ID, run_ts=RUN_TS)
+    assert failing.qc_status == STATUS_FAIL
+    assert relaxed.qc_status == STATUS_PASS
+
+
+def test_fit_tolerance_threshold_override_flips_the_verdict() -> None:
+    # rmse 0.08 > default max_surface_rmse(0.02) -> FAIL; raising the cut-off to 0.10 -> PASS.
+    overridden = QC_CONFIG.model_copy(
+        update={
+            "fit_tolerance": QC_CONFIG.fit_tolerance.model_copy(update={"max_surface_rmse": 0.10}),
+        }
+    )
+    fit = _slice_fit(rmse=0.08)
+    failing = check_surface_fit_error(fit, thresholds=QC_CONFIG, run_id=RUN_ID, run_ts=RUN_TS)
+    relaxed = check_surface_fit_error(fit, thresholds=overridden, run_id=RUN_ID, run_ts=RUN_TS)
+    assert failing.qc_status == STATUS_FAIL
+    assert relaxed.qc_status == STATUS_PASS
+
+
+def test_anomaly_threshold_override_flips_the_verdict() -> None:
+    # Baseline median 50, MAD 0.75 (scaled 0.75*1.4826 ~= 1.11): 60 sits ~9.0 robust-z
+    # out — over the default mad_multiplier(5.0) -> FAIL; raising it to 50 -> PASS.
+    overridden = QC_CONFIG.model_copy(
+        update={"anomaly": QC_CONFIG.anomaly.model_copy(update={"mad_multiplier": 50.0})}
+    )
+    baseline = [50.0, 51.0, 49.0, 50.5, 49.5, 50.0, 51.0, 49.0]
+    failing = detect_anomaly(
+        60.0, baseline, "event_rate", "AAPL", thresholds=QC_CONFIG, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    relaxed = detect_anomaly(
+        60.0, baseline, "event_rate", "AAPL", thresholds=overridden, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert failing.qc_status == STATUS_FAIL
+    assert relaxed.qc_status == STATUS_PASS
+
+
 def test_default_supplementary_thresholds_match_config_defaults() -> None:
     # The shared THRESHOLDS config (QC_CONFIG with default nested blocks) carries exactly
     # the config-default cut-offs the boundary cases above are hand-derived against, on

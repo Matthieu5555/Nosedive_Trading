@@ -459,6 +459,20 @@ def test_interpolate_sorted_is_bit_identical_to_the_numpy_form_on_a_dense_sweep(
         assert new.hex() == old.hex(), (name, k)
 
 
+def test_interpolate_sorted_rejects_a_nan_query() -> None:
+    """M38 domain edge: a NaN query fails loud, never silently propagates NaN.
+
+    The replaced numpy kernel raised (IndexError via searchsorted -> len(ks)); the
+    bisect form would otherwise return NaN silently because every comparison against
+    NaN is False. The sweep gate above proves bit-identity only on real inputs, so
+    the NaN edge is pinned separately.
+    """
+    from algotrading.infra.surfaces.fit import _interpolate_sorted
+
+    with pytest.raises(ValueError, match="NaN"):
+        _interpolate_sorted((-0.5, 0.5), (0.04, 0.09), float("nan"))
+
+
 # --------------------------------------------------------------------------- #
 # Cross-maturity interpolation (Eq 22)                                         #
 # --------------------------------------------------------------------------- #

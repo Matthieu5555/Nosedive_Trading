@@ -77,8 +77,12 @@ def _heartbeat(session: CpRestSession, *, alarmed: bool) -> bool:
             _log("brokerage session idle (connected=false) — reauthenticate (no SMS)...")
             session.reauthenticate()
             return False
-        # Not authenticated (or a competing session took the line) — try a revive, but this
-        # usually needs a fresh browser login (SMS).
+        # Not authenticated (or a competing session took the line) — try ONE revive, but
+        # once the ALARM has fired stay hands-off: each POST /iserver/reauthenticate can
+        # kick a competing session off the line, and a real revive needs the operator's
+        # SMS login anyway.
+        if alarmed:
+            return True
         session.reauthenticate()
         time.sleep(_REVIVE_GRACE_S)
         if session.established():

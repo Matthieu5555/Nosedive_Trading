@@ -103,6 +103,10 @@ def _interpolate_sorted(ks: tuple[float, ...], ws: tuple[float, ...], k: float) 
     to one ULP (measured); that shift would change the serialized total-variance bytes a
     ``SurfaceGrid`` content hash is taken over, so the byte-preserving form is kept here.
     """
+    if k != k:  # NaN query: every clamp comparison below is False for NaN, so without
+        # this guard bisect_left returns 0 and the arithmetic silently yields NaN — the
+        # replaced NumPy form raised here (IndexError); keep the failure loud.
+        raise ValueError("interpolation query k must not be NaN")
     if k <= ks[0]:
         return ws[0]
     if k >= ks[-1]:

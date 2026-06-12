@@ -53,12 +53,15 @@ import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, RawMarketEvent
+from algotrading.infra.surfaces import tenor_years as tenor_year_fraction
 from algotrading.infra.universe import (
     AvailableChain,
     ChainSelection,
     IndexEntry,
+    bracket_dates,
     plan_chain,
     select_capture_keys,
+    tenor_target_dates,
 )
 
 from .cp_rest_discovery import CpRestDiscovery
@@ -327,6 +330,55 @@ def _nearest_strikes(
     return sorted(nearest)
 
 
+_MONTH_TOKEN_ABBR: dict[str, int] = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def _parse_month_token(token: str) -> date | None:
+    """An IBKR ``MMMYY`` option-month token (e.g. ``DEC28``) → a mid-month representative date.
+
+    The CP ``secdef/search`` lists option months as ``JUN26;JUL26;DEC28`` tokens; one token
+    deflates to several concrete expiries downstream via ``secdef/info``. Mid-month (day 15) is
+    the representative used to *bracket* tokens around a tenor target; the precise per-tenor
+    bracket is refined on the concrete expiries by :func:`select_expiries_bracketing`. Returns
+    ``None`` for an unparseable token (skipped, never guessed).
+    """
+    cleaned = token.strip().upper()
+    if len(cleaned) != 5:
+        return None
+    month = _MONTH_TOKEN_ABBR.get(cleaned[:3])
+    year = cleaned[3:]
+    if month is None or not year.isdigit():
+        return None
+    return date(2000 + int(year), month, 15)
+
+
+def _select_discovery_months(months: Sequence[str], selection: ChainSelection) -> tuple[str, ...]:
+    """Which listed month tokens to qualify into the chain.
+
+    Legacy (no tenor targeting): the nearest ``max_expiries`` tokens in listed order — the old
+    front-loaded slice. Tenor-targeted: the month tokens **straddling each pinned tenor's target
+    date** (:func:`bracket_dates` over the tokens' representative dates), so discovery reaches the
+    long end (2y/3y) the nearest-N slice silently dropped. Tokens that do not parse fall back to
+    the legacy slice rather than being dropped, so a wire-shape surprise degrades safely.
+    """
+    if not selection.targets_tenors:
+        return tuple(months[: selection.max_expiries])
+    assert selection.as_of is not None  # targets_tenors guarantees this; pin it for the type
+    parsed = [
+        (parsed_date, token)
+        for token in months
+        if (parsed_date := _parse_month_token(token)) is not None
+    ]
+    if not parsed:
+        return tuple(months[: selection.max_expiries])
+    targets = tenor_target_dates(selection.as_of, selection.tenor_years)
+    kept = set(bracket_dates([parsed_date for parsed_date, _ in parsed], targets))
+    return tuple(token for parsed_date, token in sorted(parsed) if parsed_date in kept)
+
+
 def _discover_chain(
     discovery: CpRestDiscovery,
     *,
@@ -353,7 +405,7 @@ def _discover_chain(
     strikes: set[float] = set()
     conid_by_contract: dict[str, str] = {}
     multiplier = "100"
-    for month in months[: selection.max_expiries]:
+    for month in _select_discovery_months(months, selection):
         calls, puts = discovery.strikes(conid, month=month)
         listed = set(calls) | set(puts)
         for strike in _nearest_strikes(listed, spot, _DISCOVERY_STRIKES_PER_SIDE):
@@ -530,7 +582,7 @@ def collect_live_basket(
         transport, symbol=index.ibkr_search_symbol, exchange=index.ibkr.exchange
     )
     conid = resolved.conid
-    selection = selection or _selection_from_config(config)
+    selection = selection or _selection_from_config(config, as_of.date())
     discovery = CpRestDiscovery(
         transport, exchange=index.ibkr.exchange, currency=index.currency
     )
@@ -621,17 +673,24 @@ def collect_live_basket(
     )
 
 
-def _selection_from_config(config: PlatformConfig) -> ChainSelection:
+def _selection_from_config(config: PlatformConfig, as_of: date) -> ChainSelection:
     """Build the capture :class:`ChainSelection` from the universe strike-selection config.
 
     The maturity budget and per-side floor are economic and come from the typed
-    ``universe.yaml`` (never a ``.py`` literal): the nearest-maturity count and the per-side
-    minimum mirror the strike-selection block. The %-of-spot window and option exchange keep
-    their request-shaping defaults (a discovery heuristic, not an economic parameter).
+    ``universe.yaml`` (never a ``.py`` literal). The pinned ``tenor_grid`` labels are resolved to
+    their ACT/365 year fractions through ``surfaces.projection.tenor_years`` — the **single home**
+    of the label→year map — and passed with ``as_of`` (the trade date) so expiry selection targets
+    the term structure (:func:`select_expiries_bracketing`) instead of the nearest few weeklies.
+    ``max_expiries`` keeps the grid length as the legacy fallback budget. The %-of-spot window and
+    option exchange keep their request-shaping defaults (a discovery heuristic, not an economic
+    parameter).
     """
     strike_selection = config.universe.strike_selection
+    grid = config.universe.tenor_grid
     return ChainSelection(
-        max_expiries=len(config.universe.tenor_grid),
+        max_expiries=len(grid),
         min_strikes_per_side=strike_selection.min_strikes_per_side,
         option_exchange=config.universe.exchange,
+        tenor_years=tuple(tenor_year_fraction(label) for label in grid),
+        as_of=as_of,
     )

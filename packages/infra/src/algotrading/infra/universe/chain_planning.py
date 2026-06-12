@@ -43,7 +43,7 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from algotrading.core.config import StrikeSelectionConfig
 from algotrading.infra.contracts import InstrumentKey
@@ -76,6 +76,14 @@ class ChainSelection:
       strikes (a strike = one call + one put) to stream per session, split across the
       kept maturities by :func:`select_capture_keys`. ``None`` means uncapped — stream
       every resolved contract in the kept maturities.
+    - ``tenor_years`` / ``as_of`` — when both are set, expiry selection switches from the
+      legacy "nearest ``max_expiries``" to the **tenor-targeted bracket**
+      (:func:`select_expiries_bracketing`): for each pinned tenor (a year fraction in
+      ``tenor_years``) the listed expiries straddling ``as_of + tenor·365`` are kept, so the
+      captured chain spans the term structure instead of collapsing onto the front month.
+      ``tenor_years`` empty (the default) keeps the legacy nearest-N behaviour, so every
+      caller that does not opt in is unchanged. ``max_expiries`` still bounds the legacy path
+      and remains the per-stage maturity budget there.
     """
 
     max_expiries: int = 8
@@ -83,10 +91,22 @@ class ChainSelection:
     min_strikes_per_side: int = 10
     option_exchange: str = "SMART"
     max_strikes_per_session: int | None = None
+    tenor_years: tuple[float, ...] = ()
+    as_of: date | None = None
+
+    @property
+    def targets_tenors(self) -> bool:
+        """Whether expiry selection uses the tenor-targeted bracket (both inputs present)."""
+        return bool(self.tenor_years) and self.as_of is not None
 
     def __post_init__(self) -> None:
         if self.max_expiries < 1:
             raise ValueError(f"max_expiries must be >= 1, got {self.max_expiries}")
+        for tenor in self.tenor_years:
+            if not (math.isfinite(tenor) and tenor > 0.0):
+                raise ValueError(
+                    f"tenor_years must all be finite and > 0, got {tenor!r}"
+                )
         if not 0.0 < self.strike_window_pct <= 1.0:
             raise ValueError(
                 f"strike_window_pct must be in (0, 1], got {self.strike_window_pct}"
@@ -223,6 +243,84 @@ def select_expiries(expirations: Iterable[str], max_expiries: int) -> tuple[str,
     """
     unique = sorted({expiry for expiry in expirations if expiry})
     return tuple(unique[:max_expiries])
+
+
+def _parse_expiry_token(token: str) -> date | None:
+    """A ``YYYYMMDD`` expiry string → a :class:`date`, or ``None`` if it does not parse."""
+    if len(token) != 8 or not token.isdigit():
+        return None
+    try:
+        return date(int(token[0:4]), int(token[4:6]), int(token[6:8]))
+    except ValueError:
+        return None
+
+
+def tenor_target_dates(as_of: date, tenor_years: Iterable[float]) -> tuple[date, ...]:
+    """The calendar date each pinned tenor points at: ``as_of + tenor·365`` (ACT/365).
+
+    De-duplicated and chronological. Non-finite or non-positive tenors are skipped (a
+    defensive floor — :class:`ChainSelection` already rejects them). ACT/365 matches the
+    pinned-tenor year-fraction map the projection uses (``surfaces.projection.tenor_years``),
+    so a capture target and its projection tenor land on the same convention.
+    """
+    targets: set[date] = set()
+    for tenor in tenor_years:
+        value = float(tenor)
+        if math.isfinite(value) and value > 0.0:
+            targets.add(as_of + timedelta(days=round(value * 365.0)))
+    return tuple(sorted(targets))
+
+
+def bracket_dates(listed: Iterable[date], targets: Iterable[date]) -> tuple[date, ...]:
+    """The listed dates straddling each target: nearest at-or-below and nearest at-or-above.
+
+    For each target the nearest listed date ``<=`` it and the nearest ``>=`` it are kept, so
+    a value interpolated at the target sits between two real observations rather than off the
+    end of them. A target that falls exactly on a listed date selects that one date (both
+    bounds coincide). A target past the end of the listing keeps only the side that exists —
+    the one-sided long-end case, surfaced downstream as a coverage gap, never back-filled.
+    Returns the union over all targets, de-duplicated and chronological. Deterministic and
+    wall-clock-free.
+    """
+    ordered = sorted(set(listed))
+    kept: set[date] = set()
+    for target in targets:
+        below = [value for value in ordered if value <= target]
+        above = [value for value in ordered if value >= target]
+        if below:
+            kept.add(below[-1])
+        if above:
+            kept.add(above[0])
+    return tuple(sorted(kept))
+
+
+def select_expiries_bracketing(
+    expirations: Iterable[str], *, as_of: date, tenor_years: Iterable[float]
+) -> tuple[str, ...]:
+    """Keep, per pinned tenor, the listed expiries straddling that tenor's target date.
+
+    The tenor-targeted replacement for :func:`select_expiries`'s "nearest N". The target for a
+    tenor is ``as_of + tenor·365`` (:func:`tenor_target_dates`); the kept set is the union over
+    all tenors of the bracketing listed expiries (:func:`bracket_dates`). This makes the
+    captured chain span the term structure — a point either side of each pinned tenor so the
+    surface projection interpolates rather than extrapolates — instead of collapsing onto the
+    front month, which is what "nearest N" does when the front month alone lists N weeklies.
+
+    Adjacent short tenors share front-month expiries; the union de-duplicates them. A tenor with
+    no listed expiry on one side (the long end of a thin listing) contributes only the side that
+    exists. Expirations are ``YYYYMMDD`` strings; unparseable tokens are skipped. The result is
+    chronological and de-duplicated, deterministic and wall-clock-free, so the captured set is
+    byte-identical on replay (ADR 0027).
+    """
+    by_date: dict[date, str] = {}
+    for token in expirations:
+        if not token:
+            continue
+        parsed = _parse_expiry_token(token)
+        if parsed is not None:
+            by_date.setdefault(parsed, token)
+    kept = bracket_dates(by_date.keys(), tenor_target_dates(as_of, tenor_years))
+    return tuple(by_date[value] for value in kept)
 
 
 def select_strikes(
@@ -455,7 +553,12 @@ def plan_chain(
     chosen = select_chain(available, underlying, selection.option_exchange)
     if chosen is None:
         return None
-    expiries = select_expiries(chosen.expirations, selection.max_expiries)
+    if selection.tenor_years and selection.as_of is not None:
+        expiries = select_expiries_bracketing(
+            chosen.expirations, as_of=selection.as_of, tenor_years=selection.tenor_years
+        )
+    else:
+        expiries = select_expiries(chosen.expirations, selection.max_expiries)
     return ChainPlan(
         underlying=underlying,
         exchange=chosen.exchange or selection.option_exchange,
@@ -535,7 +638,13 @@ def select_capture_keys(
 
     selected: list[InstrumentKey] = []
     for symbol, group in options_by_underlying.items():
-        expiries = _nearest_expiries(group, selection.max_expiries)
+        if selection.tenor_years and selection.as_of is not None:
+            listed = [key.expiry for key in group if key.expiry is not None]
+            expiries = list(
+                bracket_dates(listed, tenor_target_dates(selection.as_of, selection.tenor_years))
+            )
+        else:
+            expiries = _nearest_expiries(group, selection.max_expiries)
         budget = selection.max_strikes_per_session
         per_expiry = None if budget is None else max(1, budget // max(1, len(expiries)))
         spot = spots.get(symbol)

@@ -22,12 +22,15 @@ from .chain_planning import (
     ChainSelection,
     DeltaBandMarket,
     TenorMarket,
+    bracket_dates,
     plan_chain,
     select_capture_keys,
     select_chain,
     select_expiries,
+    select_expiries_bracketing,
     select_strikes,
     select_strikes_delta_band,
+    tenor_target_dates,
 )
 
 # --- re-exports of the vendored M5 instrument model (kept per ADR 0023; Saxo/Deribit ride it) ---
@@ -122,6 +125,7 @@ __all__ = [
     "UnresolvedContractError",
     "YfiuaSnapshotSource",
     "basket_weight_sum",
+    "bracket_dates",
     "build_instrument_masters",
     "canonical_payload",
     "contracts_to_events",
@@ -145,6 +149,8 @@ __all__ = [
     "select_capture_keys",
     "select_chain",
     "select_expiries",
+    "select_expiries_bracketing",
     "select_strikes",
     "select_strikes_delta_band",
+    "tenor_target_dates",
 ]

@@ -90,3 +90,90 @@ def test_contracts_walks_info_for_one_strike() -> None:
     (path, params) = transport.calls[0]
     assert path == "/iserver/secdef/info"
     assert params["conid"] == 265598 and params["right"] == "C"
+
+
+def test_underlying_conid_prefers_the_stock_row_over_a_futures_root() -> None:
+    # The live gotcha behind the 43 failed backfill names: /secdef/search?symbol=BA returns
+    # "BARLEY FUTURES ASX" FIRST and Boeing NYSE second — top-level secType is null on the
+    # wire; the truth is in sections[].secType. The first symbol-matching row carrying an
+    # STK section must win, never blind first-match.
+    transport = _FakeTransport(
+        {
+            "/iserver/secdef/search": [
+                {
+                    "conid": "11673684",
+                    "symbol": "BA",
+                    "secType": None,
+                    "companyName": "BARLEY FUTURES",
+                    "sections": [{"secType": "IND"}, {"secType": "FUT"}, {"secType": "BAG"}],
+                },
+                {
+                    "conid": "4762",
+                    "symbol": "BA",
+                    "secType": None,
+                    "companyName": "BOEING CO/THE",
+                    "sections": [{"secType": "STK"}, {"secType": "OPT"}],
+                },
+            ]
+        }
+    )
+    assert CpRestDiscovery(transport).underlying_conid("BA") == 4762
+
+
+def test_underlying_conid_falls_back_to_first_match_when_no_stock_row() -> None:
+    # A response with no STK section anywhere (older fixtures carry a top-level secType and
+    # no sections) keeps the previous first-match behavior rather than failing.
+    transport = _FakeTransport(
+        {"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
+    )
+    assert CpRestDiscovery(transport).underlying_conid("SPY") == 265598
+
+
+def test_underlying_conid_prefers_the_currency_consistent_venue() -> None:
+    # Live: 'SAF' lists SARATOGA (VALUE, a dead aggregated listing) before SAFRAN (SBF).
+    # An EUR-currency discovery (an SX5E constituent sweep) must pick the EUR-venue row.
+    transport = _FakeTransport(
+        {
+            "/iserver/secdef/search": [
+                {"conid": "331451987", "symbol": "SAF", "companyName": "SARATOGA INVESTMENT",
+                 "description": "VALUE", "sections": [{"secType": "STK"}]},
+                {"conid": "1322028", "symbol": "SAF", "companyName": "SAFRAN SA",
+                 "description": "SBF", "sections": [{"secType": "STK"}]},
+            ]
+        }
+    )
+    assert CpRestDiscovery(transport, currency="EUR").underlying_conid("SAF") == 1322028
+
+
+def test_underlying_conid_currency_venue_beats_a_foreign_homonym() -> None:
+    # Live: 'ITX' lists ITX GROUP (VALUE) then ITACONIX (LSE) then INDITEX (BM). A naive
+    # "first non-VALUE stock" picks the wrong LSE company; the EUR-venue rule picks Inditex.
+    transport = _FakeTransport(
+        {
+            "/iserver/secdef/search": [
+                {"conid": "44200850", "symbol": "ITX", "companyName": "ITX GROUP LTD",
+                 "description": "VALUE", "sections": [{"secType": "STK"}]},
+                {"conid": "649910368", "symbol": "ITX", "companyName": "ITACONIX PLC",
+                 "description": "LSE", "sections": [{"secType": "STK"}]},
+                {"conid": "162084958", "symbol": "ITX", "companyName": "INDITEX",
+                 "description": "BM", "sections": [{"secType": "STK"}]},
+            ]
+        }
+    )
+    assert CpRestDiscovery(transport, currency="EUR").underlying_conid("ITX") == 162084958
+
+
+def test_underlying_conid_avoids_a_dead_value_listing_without_currency_match() -> None:
+    # No venue matches the discovery currency: the dead VALUE listing still loses to a
+    # real venue (the USD sweep shape — primary listings are never on VALUE).
+    transport = _FakeTransport(
+        {
+            "/iserver/secdef/search": [
+                {"conid": "1", "symbol": "XYZ", "companyName": "DEAD LISTING",
+                 "description": "VALUE", "sections": [{"secType": "STK"}]},
+                {"conid": "2", "symbol": "XYZ", "companyName": "REAL CO",
+                 "description": "ASX", "sections": [{"secType": "STK"}]},
+            ]
+        }
+    )
+    assert CpRestDiscovery(transport, currency="USD").underlying_conid("XYZ") == 2

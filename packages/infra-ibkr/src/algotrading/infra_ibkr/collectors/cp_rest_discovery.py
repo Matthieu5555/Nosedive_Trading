@@ -29,15 +29,71 @@ class _SupportsGet(Protocol):
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
 
-def parse_search_conid(results: object, symbol: str) -> int:
-    """Pick the underlying conid for ``symbol`` from a ``/secdef/search`` response."""
+# IBKR exchange codes by listing currency — the venue-consistency preference for resolving a
+# constituent symbol to ITS index's market (broker vocabulary, like the endpoint paths; not an
+# economic tunable). A symbol is globally ambiguous ('SAF' is Safran on SBF and Saratoga in the
+# US; 'ITX' is Inditex on BM and Itaconix on LSE), and IBKR's "VALUE" venue is a dead/aggregated
+# listing that serves no history. The preference order in :func:`parse_search_conid` is:
+# currency-consistent venue → any non-VALUE stock row → any stock row → first symbol match.
+# A currency absent here simply skips the first tier (the fallback tiers still apply).
+_VENUES_BY_CURRENCY: dict[str, frozenset[str]] = {
+    "USD": frozenset({"NYSE", "NASDAQ", "AMEX", "ARCA", "BATS"}),
+    "EUR": frozenset({"IBIS", "FWB", "SBF", "AEB", "BVME", "BM", "HEX", "ENEXT.BE", "MTAA"}),
+    "GBP": frozenset({"LSE"}),
+    "CHF": frozenset({"EBS"}),
+}
+_DEAD_VENUE = "VALUE"
+
+
+def _is_stock_row(item: Mapping[str, Any]) -> bool:
+    """Whether a ``/secdef/search`` row is an equity listing.
+
+    On the live wire the top-level ``secType`` is ``null``; the instrument kinds are in
+    ``sections[].secType``. Both shapes are accepted (older fixtures carry a top-level
+    ``secType`` and no sections).
+    """
+    if str(item.get("secType") or "").upper() == "STK":
+        return True
+    sections = item.get("sections")
+    if not isinstance(sections, Sequence):
+        return False
+    return any(
+        isinstance(section, Mapping) and str(section.get("secType") or "").upper() == "STK"
+        for section in sections
+    )
+
+
+def parse_search_conid(results: object, symbol: str, *, currency: str | None = None) -> int:
+    """Pick the underlying conid for ``symbol`` from a ``/secdef/search`` response.
+
+    A bare symbol is globally ambiguous on this endpoint — IBKR returns non-equity roots
+    (live: ``symbol=BA`` lists "BARLEY FUTURES ASX" *before* Boeing NYSE), dead "VALUE"
+    listings, and foreign homonyms ahead of the listing the caller means. Preference order
+    among the symbol-matching rows: an equity row on a venue consistent with ``currency``
+    (:data:`_VENUES_BY_CURRENCY`), then any equity row not on the dead ``VALUE`` venue,
+    then any equity row, then the first symbol match (rows with no sections on the wire).
+    """
     if not isinstance(results, Sequence):
         raise DiscoveryError(f"search for {symbol!r} returned no list")
-    for item in results:
-        if isinstance(item, Mapping) and str(item.get("symbol", "")).upper() == symbol.upper():
-            conid = item.get("conid")
-            if conid is not None:
-                return int(conid)
+    matches = [
+        item
+        for item in results
+        if isinstance(item, Mapping)
+        and str(item.get("symbol", "")).upper() == symbol.upper()
+        and item.get("conid") is not None
+    ]
+    stock_rows = [item for item in matches if _is_stock_row(item)]
+    venues = _VENUES_BY_CURRENCY.get((currency or "").upper(), frozenset())
+    for item in stock_rows:
+        if str(item.get("description") or "").upper() in venues:
+            return int(item["conid"])
+    for item in stock_rows:
+        if str(item.get("description") or "").upper() != _DEAD_VENUE:
+            return int(item["conid"])
+    if stock_rows:
+        return int(stock_rows[0]["conid"])
+    if matches:
+        return int(matches[0]["conid"])
     raise DiscoveryError(f"search for {symbol!r} resolved no conid")
 
 
@@ -91,11 +147,15 @@ class CpRestDiscovery:
         self._currency = currency
 
     def underlying_conid(self, symbol: str) -> int:
-        """Resolve the underlying conid (``name`` deliberately omitted — see module docstring)."""
+        """Resolve the underlying conid (``name`` deliberately omitted — see module docstring).
+
+        The discovery's ``currency`` steers the venue preference: a constituent sweep built
+        for an EUR index resolves 'SAF' to Safran on SBF, never the US homonym.
+        """
         results = self._transport.get(
             "/iserver/secdef/search", params={"symbol": symbol, "secType": "STK"}
         )
-        return parse_search_conid(results, symbol)
+        return parse_search_conid(results, symbol, currency=self._currency)
 
     def strikes(self, conid: int, *, month: str) -> tuple[tuple[float, ...], tuple[float, ...]]:
         """Call/put strikes for one expiry month of the underlying ``conid``."""

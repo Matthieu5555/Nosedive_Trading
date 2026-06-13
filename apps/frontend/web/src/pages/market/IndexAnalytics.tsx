@@ -17,7 +17,7 @@ export function IndexAnalytics({ underlying, asOf }: { underlying: string; asOf:
     <AsyncBlock loading={analytics.loading} error={analytics.error}>
       {analytics.data && (
         <>
-          <VolSurface maturities={analytics.data.maturities} />
+          <VolSurface surface={analytics.data.surface} maturities={analytics.data.maturities} />
           <GreeksTermStructure maturities={analytics.data.maturities} />
           <MaturityAccordion maturities={analytics.data.maturities} />
         </>

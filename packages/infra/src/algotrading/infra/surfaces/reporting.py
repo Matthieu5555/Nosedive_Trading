@@ -22,6 +22,7 @@ from datetime import date
 
 from algotrading.infra.contracts import SurfaceParameters
 
+from .fit import degeneracy_reasons
 from .svi import SviParams
 
 
@@ -84,4 +85,91 @@ def summarize_surface_parameters(
             arb_free=p.diagnostics.arb_free,
         )
         for p in ordered
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class DenseSurface:
+    """A regularized vol surface reconstructed from the fitted SVI slices, ready to render.
+
+    The blueprint's queryable surface grid (05-math-notes §"reconstructed grid", glossary
+    "Surface grid"): a dense ``(maturity × log-moneyness)`` lattice of *implied vol*, sampled
+    from the persisted SVI parameters rather than served as the sparse delta-band points a
+    smile is fitted from — so a 3D surface reads as the smooth fitted model, not a coarse
+    polyline. ``implied_vol[i][j]`` is the vol at ``maturity_years[i]`` and
+    ``log_moneyness[j]``. ``degenerate_maturity_years`` carries the fitted maturities whose
+    calibration is flagged (see :func:`degeneracy_reasons`) so the caller can surface the
+    caveat instead of hiding it (blueprint: flag, never silently serve as clean).
+    """
+
+    log_moneyness: tuple[float, ...]
+    maturity_years: tuple[float, ...]
+    implied_vol: tuple[tuple[float, ...], ...]
+    model_version: str
+    degenerate_maturity_years: tuple[float, ...]
+
+
+def reconstruct_dense_surface(
+    slices: Sequence[SurfaceParameters],
+    *,
+    k_min: float = -0.25,
+    k_max: float = 0.25,
+    n_moneyness: int = 41,
+    n_maturities: int = 40,
+) -> DenseSurface | None:
+    """Reconstruct a dense implied-vol surface from persisted SVI slices, or ``None``.
+
+    Samples each slice's curve ``w(k)`` on an ``n_moneyness``-point log-moneyness grid, then
+    interpolates *across* maturities **in total-variance space** (blueprint Eq 22: flat outside
+    the fitted range, linear in ``w`` between the two bracketing slices) onto an
+    ``n_maturities``-point maturity axis. Implied vol is ``sqrt(w / T)`` per cell. Returns
+    ``None`` when fewer than two positive-maturity slices are available — a single slice is a
+    smile, not a surface, and the caller should fall back to its sparse view.
+    """
+    usable = sorted((s for s in slices if s.maturity_years > 0.0), key=lambda s: s.maturity_years)
+    if len(usable) < 2:
+        return None
+    fitted = [
+        (
+            s.maturity_years,
+            SviParams(a=s.svi_a, b=s.svi_b, rho=s.svi_rho, m=s.svi_m, sigma=s.svi_sigma),
+        )
+        for s in usable
+    ]
+    t_lo, t_hi = fitted[0][0], fitted[-1][0]
+    ks = tuple(k_min + (k_max - k_min) * i / (n_moneyness - 1) for i in range(n_moneyness))
+    maturities = tuple(t_lo + (t_hi - t_lo) * j / (n_maturities - 1) for j in range(n_maturities))
+
+    def total_variance_at(k: float, t: float) -> float:
+        # Eq 22: hold the nearest slice flat outside the fitted range, linear in w inside.
+        if t <= fitted[0][0]:
+            return max(fitted[0][1].total_variance(k), 0.0)
+        if t >= fitted[-1][0]:
+            return max(fitted[-1][1].total_variance(k), 0.0)
+        for (t_low, p_low), (t_high, p_high) in zip(fitted, fitted[1:], strict=False):
+            if t_low <= t <= t_high:
+                weight = (t - t_low) / (t_high - t_low)
+                w_low, w_high = p_low.total_variance(k), p_high.total_variance(k)
+                return max(w_low + weight * (w_high - w_low), 0.0)
+        return 0.0  # pragma: no cover - guarded by the range checks above
+
+    implied_vol = tuple(
+        tuple(math.sqrt(total_variance_at(k, t) / t) if t > 0.0 else 0.0 for k in ks)
+        for t in maturities
+    )
+    degenerate = tuple(
+        sorted(
+            {
+                s.maturity_years
+                for s in usable
+                if s.diagnostics is not None and degeneracy_reasons(s.diagnostics)
+            }
+        )
+    )
+    return DenseSurface(
+        log_moneyness=ks,
+        maturity_years=maturities,
+        implied_vol=implied_vol,
+        model_version=usable[0].model_version,
+        degenerate_maturity_years=degenerate,
     )

@@ -46,8 +46,10 @@ from .projection import (
     tenor_years,
 )
 from .reporting import (
+    DenseSurface,
     SurfaceSliceSummary,
     atm_volatility,
+    reconstruct_dense_surface,
     summarize_surface_parameters,
 )
 from .svi import (
@@ -67,6 +69,7 @@ __all__ = [
     "PROJECTION_VERSION",
     "SURFACE_VERSION",
     "CalendarViolation",
+    "DenseSurface",
     "ProjectionConfig",
     "ProjectionConfigError",
     "ProjectionGap",
@@ -89,6 +92,7 @@ __all__ = [
     "merged_config_hashes",
     "project_grid",
     "project_surface_fit",
+    "reconstruct_dense_surface",
     "slice_plot_series",
     "summarize_surface_parameters",
     "surface_grid_cells",

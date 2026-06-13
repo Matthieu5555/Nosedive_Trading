@@ -201,3 +201,17 @@ def test_analytics_prefers_projection_over_grid_fallback(
     ).json()
     assert payload["source"] == "projected_option_analytics"
     assert payload["maturities"][0]["points"], "rich per-cell points must be present"
+
+
+def test_dense_surface_absent_for_a_single_fitted_slice(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # The dense reconstructed surface (the smooth 3D nappe) needs >= 2 fitted slices to span a
+    # maturity axis; the seed carries one, so `surface` is None and the front falls back to the
+    # band-point grid. The key is always present (typed contract), never missing.
+    payload = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()
+    assert "surface" in payload
+    assert payload["surface"] is None

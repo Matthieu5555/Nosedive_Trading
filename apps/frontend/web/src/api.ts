@@ -202,11 +202,24 @@ export interface AnalyticsMaturity {
   points: AnalyticsPoint[];
 }
 
+// The dense vol surface reconstructed from the fitted SVI slices (the blueprint's regularized
+// surface grid). The 3D nappe renders this smooth lattice rather than the sparse delta-band
+// points: `implied_vol[i][j]` is the vol at `maturity_years[i]` / `log_moneyness[j]`. Null when
+// fewer than two fitted slices exist, in which case the front falls back to the band-point grid.
+export interface SurfaceDense {
+  log_moneyness: number[];
+  maturity_years: number[];
+  implied_vol: number[][];
+  model_version: string;
+  degenerate_maturity_years: number[];
+}
+
 export interface AnalyticsResponse {
   underlying: string;
   trade_date: string | null;
   n_maturities: number;
   maturities: AnalyticsMaturity[];
+  surface: SurfaceDense | null;
 }
 
 // One enabled index from the registry (GET /api/indices). The selector is driven by this —

@@ -27,6 +27,17 @@ export const CHART_COLORS = {
 export const CHART_FONT_FAMILY = '"Basis Grotesque", Inter, sans-serif';
 export const CHART_FONT_SIZE = 11;
 
+// The IV-surface colourscale. Lightweight-charts has no 3D path, so the surface stays on Plotly.
+// We deliberately do NOT reuse the pastel dark-theme UI tokens here: as UI accents they are
+// desaturated, which on a 3D surface compresses the luminance range and leaves high vs low vol
+// hard to tell apart. This is Plasma — a perceptually-uniform colormap (monotone luminance, so
+// the eye reads height as magnitude), colorblind-safe, whose blue→yellow run matches the quant
+// convention of cold = low IV / hot = high IV and stays visible on the dark panel (its low end is
+// blue, not near-black like Inferno/Magma). The caller pins cmin/cmax so a given colour always
+// means the same IV across trade dates. Chosen against real SX5E data in
+// notebooks/vol_surface_mock.ipynb (palette comparison).
+export const VOL_COLORSCALE = "Plasma" as const;
+
 const PLOT_AXIS_THEME = {
   gridcolor: CHART_COLORS.grid,
   linecolor: CHART_COLORS.axis,

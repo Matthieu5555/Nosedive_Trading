@@ -3,25 +3,21 @@
 // (lightweight-charts has no 3D/mesh path).
 //
 // Each panel is self-labelling (answers "what am I looking at?") and reads a typed BFF response.
-// The 3D IV surface is a mesh3d over (delta, maturity, implied_vol); the smile is a 2D line chart
-// of vol vs log-moneyness, split into its put wing (k ≤ 0) and call wing (k ≥ 0) as two series.
+// The 3D IV surface is a Plotly `surface` over (log-moneyness, maturity, implied_vol); the smile
+// is a 2D line chart of vol vs log-moneyness, split into a put wing (k ≤ 0) and call wing (k ≥ 0).
 
 import type { Data } from "plotly.js";
 
-import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SmileAxis } from "../api";
+import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
 import { CandleChart } from "./CandleChart";
-import { CHART_COLORS } from "./chartTheme";
+import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
 import { Plot } from "./Plot";
 
-// The smile x-axis values and their honest label (F-BFF-04): the rich projection serves
-// signed deltas; the surface-grid fallback serves moneyness buckets and says so.
-function smileAxis(smile: SmileAxis): { values: number[]; title: string } {
-  if (smile.axis_type === "moneyness") {
-    return { values: smile.moneyness_buckets, title: "moneyness (log)" };
-  }
-  return { values: smile.deltas, title: "delta" };
-}
+// The z-axis is pinned to [0, SURFACE_Z_MAX] (anchored at 0), not auto-ranged, so the surface
+// reads at a stable height — and, via cmin/cmax, a stable colour — across trade dates instead of
+// re-zooming on every capture. 35% IV comfortably covers the index-option body.
+const SURFACE_Z_MAX = 0.35;
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
   const label = `${data.underlying} — daily price (OHLC candlestick)`;
@@ -36,18 +32,69 @@ export function PriceChart({ data }: { data: PriceHistoryResponse }) {
   return <CandleChart bars={data.bars} label={label} />;
 }
 
-export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) {
-  // A clean rectangular vol surface: x = the smile's strike axis (signed delta, or log-moneyness
-  // on the grid fallback), y = the maturity *index* (0,1,2…), z = implied vol. The maturity axis
-  // is an even index, not calendar years — in years the short tenors bunch near zero and the mesh
-  // looks spiky/nonsensical; an even index lays the surface flat and regular. Plotly `surface`
-  // over a (maturity × x) z-grid reads as a true surface, not a mesh3d scatter cloud. A missing
-  // (x, maturity) cell is a null hole, never an invented value.
+const SURFACE_LABEL = "Implied-volatility surface (vol vs log-moneyness vs maturity)";
+
+// Preferred path: the dense surface reconstructed from the fitted SVI slices (the blueprint's
+// regularized grid), served by the BFF. It is already a smooth (maturity × log-moneyness) lattice
+// of implied vol, so it plots as the smooth fitted model — no kinks from a sparse delta-band
+// polyline. y is maturity in *years* (a real continuous axis; the dense grid never bunches the way
+// the 8 raw tenors did, so the index hack the fallback needs is unnecessary here).
+function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
+  const trace = {
+    type: "surface",
+    x: surface.log_moneyness,
+    y: surface.maturity_years,
+    z: surface.implied_vol,
+    name: "IV surface",
+    colorscale: VOL_COLORSCALE,
+    cmin: 0,
+    cmax: SURFACE_Z_MAX,
+    colorbar: { title: { text: "IV" } },
+  } as Data;
+  return (
+    <Plot
+      label={SURFACE_LABEL}
+      height={480}
+      data={[trace]}
+      layout={{
+        scene: {
+          xaxis: { title: { text: "log-moneyness" } },
+          yaxis: { title: { text: "maturity (years)" } },
+          zaxis: { title: { text: "implied vol" }, range: [0, SURFACE_Z_MAX] },
+          aspectmode: "manual",
+          aspectratio: { x: 1.4, y: 1.5, z: 0.7 },
+          camera: { eye: { x: 1.8, y: -1.8, z: 0.8 } },
+        },
+      }}
+    />
+  );
+}
+
+export function VolSurface({
+  surface,
+  maturities,
+}: {
+  surface?: SurfaceDense | null;
+  maturities: AnalyticsMaturity[];
+}) {
+  // Render the smooth reconstructed surface whenever the fit produced one; otherwise fall back to
+  // the coarse grid built from the sparse delta-band points below (e.g. a single fitted slice, or
+  // the surface-grid fallback with no fit).
+  if (surface && surface.maturity_years.length > 0 && surface.log_moneyness.length > 0) {
+    return <DenseVolSurface surface={surface} />;
+  }
+  // A clean rectangular vol surface: x = log-moneyness, y = the maturity *index* (0,1,2…),
+  // z = implied vol. The x axis is ALWAYS log-moneyness (carried in both smile modes), never the
+  // signed-delta axis: signed delta is not monotone in strike — a deep-OTM put (high IV) lands
+  // next to ATM (low IV), which folded every smile into an artificial spike at the middle of the
+  // axis. The maturity axis is an even index, not calendar years — in years the short tenors
+  // bunch near zero and the mesh looks spiky; an even index lays the surface flat and regular.
+  // Plotly `surface` over a (maturity × x) z-grid reads as a true surface, not a mesh3d cloud.
+  // A missing (x, maturity) cell is a null hole, bridged only visually by connectgaps.
   const sorted = [...maturities]
-    .filter((maturity) => smileAxis(maturity.smile).values.length > 0)
+    .filter((maturity) => maturity.smile.log_moneyness.length > 0)
     .sort((a, b) => a.maturity_years - b.maturity_years);
-  const axisTitle = sorted.length > 0 ? smileAxis(sorted[0].smile).title : "moneyness (log)";
-  const label = `Implied-volatility surface (vol vs ${axisTitle} vs maturity)`;
+  const label = SURFACE_LABEL;
   if (sorted.length === 0) {
     return (
       <figure aria-label={label} className="plot">
@@ -56,24 +103,30 @@ export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) 
       </figure>
     );
   }
-  // Common x grid (union of every maturity's strike axis), so the z-grid stays rectangular even
-  // if a maturity carries slightly different points.
-  const xGrid = [...new Set(sorted.flatMap((m) => smileAxis(m.smile).values))].sort((a, b) => a - b);
+  // Common x grid (union of every maturity's log-moneyness axis), so the z-grid stays rectangular
+  // even where a coarse long-dated tenor lacks the wing bands.
+  const xGrid = [...new Set(sorted.flatMap((m) => m.smile.log_moneyness))].sort((a, b) => a - b);
   const z: (number | null)[][] = sorted.map((maturity) => {
-    const axis = smileAxis(maturity.smile);
-    const byX = new Map(axis.values.map((x, i) => [x, maturity.smile.implied_vols[i]]));
-    return xGrid.map((x) => byX.get(x) ?? null);
+    const byK = new Map(maturity.smile.log_moneyness.map((k, i) => [k, maturity.smile.implied_vols[i]]));
+    return xGrid.map((k) => byK.get(k) ?? null);
   });
   const yIndex = sorted.map((_, i) => i);
-  const trace: Data = {
+  // cmin/cmax lock the colour mapping to the same fixed band as the z-axis, so a given colour
+  // means the same IV regardless of the day's min/max — coherent with the pinned z range below.
+  // plotly.js honours cmin/cmax on `surface` at runtime; the bundled TS types omit them, hence
+  // the assertion.
+  const trace = {
     type: "surface",
     x: xGrid,
     y: yIndex,
     z,
     name: "IV surface",
-    colorscale: "Viridis",
-    showscale: false,
-  };
+    colorscale: VOL_COLORSCALE,
+    cmin: 0,
+    cmax: SURFACE_Z_MAX,
+    connectgaps: true,
+    colorbar: { title: { text: "IV" } },
+  } as Data;
   return (
     <Plot
       label={label}
@@ -81,14 +134,19 @@ export function VolSurface({ maturities }: { maturities: AnalyticsMaturity[] }) 
       data={[trace]}
       layout={{
         scene: {
-          xaxis: { title: { text: axisTitle } },
+          xaxis: { title: { text: "log-moneyness" } },
           yaxis: {
             title: { text: "maturity" },
             tickvals: yIndex,
             ticktext: sorted.map((maturity) => maturity.tenor_label || maturity.label),
           },
-          zaxis: { title: { text: "implied vol" } },
-          aspectmode: "cube",
+          // Pinned, zero-anchored z-axis: the surface stops re-zooming itself across dates.
+          zaxis: { title: { text: "implied vol" }, range: [0, SURFACE_Z_MAX] },
+          // Lay the surface flat (compressed z) rather than a cube, so the skew/term structure
+          // reads at a glance instead of a tall spiky block.
+          aspectmode: "manual",
+          aspectratio: { x: 1.4, y: 1.5, z: 0.7 },
+          camera: { eye: { x: 1.8, y: -1.8, z: 0.8 } },
         },
       }}
     />

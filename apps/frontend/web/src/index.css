@@ -442,6 +442,16 @@ h2 {
   width: 100%;
 }
 
+/* The 3D IV surface is the one WebGL Plotly panel. Plotly draws its scene in a `.gl-container`
+ * that is absolutely positioned and, on resize, can paint past the figure box and overlap the
+ * Greeks term-structure below it. Make the figure a containing block, reserve the chart height
+ * (480px chart + caption), and clip — so the scene always stays inside its own panel. */
+.surface-panel .plot {
+  position: relative;
+  min-height: 512px;
+  overflow: hidden;
+}
+
 /* QC verdict chip next to the as-of date: pass (positive), fail (negative), n/a (muted). */
 .qc-badge {
   display: inline-block;

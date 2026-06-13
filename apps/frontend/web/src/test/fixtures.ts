@@ -323,6 +323,9 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
       ],
     },
   ],
+  // One fitted maturity → no dense surface (a smile, not a surface); the front builds the coarse
+  // surface from the band points. The dense-surface path is exercised by ANALYTICS_AAA_DENSE.
+  surface: null,
 };
 
 // The surface-grid fallback day (no projected analytics yet): the smile axis is moneyness
@@ -370,6 +373,24 @@ export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
       points: [],
     },
   ],
+  surface: null,
+};
+
+// The dense-surface day: ≥2 fitted slices → the BFF reconstructs the smooth (maturity ×
+// log-moneyness) lattice the 3D nappe renders, instead of the sparse band points. A tiny 2×3
+// grid keeps the fixture legible; the real payload is 40×41.
+export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
+  ...ANALYTICS_AAA,
+  surface: {
+    log_moneyness: [-0.1, 0.0, 0.1],
+    maturity_years: [0.25, 1.0],
+    implied_vol: [
+      [0.27, 0.24, 0.25],
+      [0.23, 0.21, 0.22],
+    ],
+    model_version: "svi-test",
+    degenerate_maturity_years: [],
+  },
 };
 
 // A priced long strangle on AAA (WS 2A): long 30Δ call + long 30Δ put. The aggregate dollar

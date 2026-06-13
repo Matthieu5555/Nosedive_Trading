@@ -23,7 +23,7 @@ from algotrading.infra.contracts import (
 )
 from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.risk import BasketRisk, LegRisk
-from algotrading.infra.surfaces import SlicePlotSeries, degeneracy_reasons
+from algotrading.infra.surfaces import DenseSurface, SlicePlotSeries, degeneracy_reasons
 
 from .basket_scenarios import BasketStressResult
 
@@ -87,6 +87,23 @@ def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
         "degenerate_reasons": list(reasons),
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
+    }
+
+
+def dense_surface_to_dict(surface: DenseSurface) -> dict[str, object]:
+    """Serialize the reconstructed dense vol surface for the 3D nappe (blueprint surface grid).
+
+    A regularized ``(maturity × log-moneyness)`` implied-vol lattice sampled from the fitted
+    SVI slices, so the front renders the smooth fitted model rather than the sparse delta-band
+    points. ``implied_vol[i][j]`` is the vol at ``maturity_years[i]`` / ``log_moneyness[j]``;
+    ``degenerate_maturity_years`` carries the flagged slices so the caveat is surfaced, not hidden.
+    """
+    return {
+        "log_moneyness": list(surface.log_moneyness),
+        "maturity_years": list(surface.maturity_years),
+        "implied_vol": [list(row) for row in surface.implied_vol],
+        "model_version": surface.model_version,
+        "degenerate_maturity_years": list(surface.degenerate_maturity_years),
     }
 
 

@@ -7,10 +7,14 @@ import type { PlotProps } from "../components/Plot";
 
 export function Plot({ data, label }: PlotProps) {
   const types = data.map((trace) => (trace as { type?: string }).type ?? "unknown").join(",");
+  // Expose the first trace's z grid (a surface's height matrix) so a test can assert WHICH
+  // surface was plotted — e.g. the dense reconstructed grid vs the sparse band-point grid.
+  const z = (data[0] as { z?: unknown }).z;
   return (
     <figure aria-label={label}>
       <figcaption>{label}</figcaption>
       <div data-testid="plot-types">{types}</div>
+      <div data-testid="plot-z">{z === undefined ? "" : JSON.stringify(z)}</div>
     </figure>
   );
 }

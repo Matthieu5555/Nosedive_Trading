@@ -26,11 +26,13 @@ from algotrading.infra.contracts import (
     SurfaceGrid,
     SurfaceParameters,
 )
+from algotrading.infra.surfaces import reconstruct_dense_surface
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ..deps import CtxDep, TradeDateDep
 from ..serializers import (
+    dense_surface_to_dict,
     projected_option_analytics_to_dict,
     surface_parameters_to_dict,
 )
@@ -178,6 +180,12 @@ def get_analytics(
         maturities = _maturities_from_surface_grid(grid, slices)
         if maturities:
             source = "surface_grid"
+    # The 3D nappe renders this dense surface reconstructed from the fitted SVI slices (the
+    # blueprint's regularized surface grid) — smooth, not the sparse delta-band polyline. It is
+    # independent of which maturity-source path filled ``maturities`` above (the band points still
+    # drive the 2D smile + dollar Greeks). ``None`` when fewer than two fitted slices exist, in
+    # which case the front falls back to building a coarse surface from the band points.
+    dense = reconstruct_dense_surface(slices)
     return JSONResponse(
         {
             "underlying": resolved_underlying,
@@ -185,5 +193,6 @@ def get_analytics(
             "n_maturities": len(maturities),
             "source": source,
             "maturities": maturities,
+            "surface": dense_surface_to_dict(dense) if dense is not None else None,
         }
     )

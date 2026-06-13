@@ -10,7 +10,12 @@ vi.mock("../components/CandleChart", async () => await import("../test/candleMoc
 vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
 
 import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
-import { ANALYTICS_AAA_MONEYNESS_FALLBACK, PRICE_HISTORY_BATCH_TWO, RECORDED_EMPTY } from "../test/fixtures";
+import {
+  ANALYTICS_AAA_DENSE,
+  ANALYTICS_AAA_MONEYNESS_FALLBACK,
+  PRICE_HISTORY_BATCH_TWO,
+  RECORDED_EMPTY,
+} from "../test/fixtures";
 import { jsonGet, notMocked, server } from "../test/server";
 
 // The msw defaults (src/test/server.ts) already serve this page's happy path: recorded dates,
@@ -164,6 +169,20 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
   // the signed-delta axis, which folded the smile into an artificial mid-axis spike.
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
   expect(surface.getAttribute("aria-label")).toMatch(/vol vs log-moneyness vs maturity/i);
+});
+
+test("renders the dense reconstructed surface (smooth nappe) when the BFF serves one", async () => {
+  // When the fit produced a dense surface, the 3D nappe plots THAT smooth grid (the blueprint's
+  // reconstructed surface), not the sparse band points — so the z matrix equals the served
+  // surface.implied_vol verbatim, never a coarse polyline rebuilt from the smile.
+  server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DENSE));
+  render(<MarketPage />);
+
+  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
+  expect(within(surface).getByTestId("plot-z")).toHaveTextContent(
+    JSON.stringify(ANALYTICS_AAA_DENSE.surface!.implied_vol),
+  );
 });
 
 test("renders a labeled empty state when no dates are recorded", async () => {

@@ -6,10 +6,17 @@
 > 2nd-order requirement. Pricing emission is the prerequisite — attribution cannot add terms
 > the pricer does not produce.
 
-## The gap
-`PricingResult` (`packages/infra/src/algotrading/infra/contracts/tables.py`) emits
-delta/gamma/vega/theta/rho only — no vanna/volga/charm anywhere in `infra/src`.
-`risk/attribution.py` (2C, landed) decomposes Δ/Γ/Vega/Θ + residual on a **scenario shock** only.
+> **STATUS (2026-06-14): steps 1-2 LANDED — only step 3 (front carry) is open.** Vanna/Volga/Charm
+> are emitted raw+cash+units in `black76`/`dollar_greeks`/`PricingResult`; attribution carries
+> Rho/Vanna/Volga + realized day-over-day. The "gap" section below is **historical** (it predates
+> that work). The actionable remainder = **step 3 only**: carry the new Greeks through
+> `serializers.py → api.ts → front term-structure panels`. See the "Landed" section at the bottom.
+
+## The gap (HISTORICAL — no longer true; see STATUS above)
+At task creation, `PricingResult` (`packages/infra/.../contracts/tables.py`) emitted
+delta/gamma/vega/theta/rho only — no vanna/volga/charm. **That is now false** (steps 1-2 landed).
+`risk/attribution.py` (2C, landed) decomposed Δ/Γ/Vega/Θ + residual on a scenario shock only — now
+extended with Rho/Vanna/Volga + realized day-over-day.
 
 ## Scope
 1. Pricing: add **Vanna, Volga, Charm** (and the obvious 2nd-order set) to the Black-76 engine

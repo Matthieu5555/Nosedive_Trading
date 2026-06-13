@@ -1,5 +1,14 @@
 # 2C — PnL attribution by Greek: decompose dPnL into Δ/Γ/Vega/Θ contributions
 
+> **STATUS (2026-06-14): LANDED — premise stale, do NOT re-build.** The full implementation shipped
+> 2026-06-07 (commit `4e3f50f`, "by-Greek PnL attribution + ScenarioAttribution seam (2C)"):
+> `risk/attribution.py` (`LineAttribution`/`BookAttribution`, the residual/verdict, the seam
+> projection) + `scenarios.py` `TaylorTerms`/`taylor_terms()`. It was later extended (2026-06-13)
+> with Rho/Vanna/Volga + realized day-over-day. **Before touching this task, verify the 2C
+> done-criteria are met** (golden fixtures, seam round-trip, config-hash provenance green) and
+> **rescope to only the genuinely missing pieces, or close it** — the body below describes a build
+> that already exists.
+>
 > **Phase 2, parallel-OK — the front (1I) is the priority, this is wiring on top of built risk.**
 > The risk engine already produces the two numbers this view sits between: the **full reprice**
 > (`risk/scenarios.py` `full_reprice_pnl`, the ADR-0006 source of truth) and a single lumped

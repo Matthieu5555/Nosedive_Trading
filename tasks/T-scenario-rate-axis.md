@@ -1,15 +1,22 @@
-# T-scenario-rate-axis — scenarios.yaml has no rate-shock axis the course prescribed
+# T-scenario-rate-axis — add a rate-shock axis to the scenario grid (blueprint §5 optional extension)
 
-> **From the 2026-06-12 intent-vs-delivery audit** ([report](T-intent-vs-delivery-audit.md),
-> finding Rk-1 / Lane-0). **NOT-IN-CONFIG drift.** The stress surface cannot cover the rate moves the
-> course asked for because the axis is simply absent from config. Coverage caveat: no 2026-06-11
-> risk partition exists on disk, so this is config-and-code only, not verified on delivered output.
+> **STATUS (2026-06-14): engine + config LANDED** (additive forward-fixed rate-shock family + the
+> Rho attribution term that fires under it). Open = optional 3-D stress_surface + BFF/front wiring.
+>
+> **Framing corrected (coherence audit 2026-06-14):** an earlier version claimed *"the course
+> prescribed a rate axis"* — that over-reads a **garbled transcript line**: `Consignes.txt l.119`
+> reads *"moins de 10% de l'éducation"* (and the architecture transcript *"…de l'économie"*), **not
+> "taux"**. The rate axis is **not** a course prescription; it is (a) a **reasonable inference** (the
+> standard third stress axis is spot/vol/rate) and (b) a **blueprint-endorsed optional extension** —
+> `05-math-notes.md §5`: *"the grid may later add … rate shocks … can be layered in without changing
+> the architecture."* So the work is justified — just not as "the course asked for it."
 
-## The gap
+## The gap (original framing — kept for history; see STATUS above)
 
-The course prescribes a **three-axis** stress: spot, vol, **and rate** —
-`AlgoTradingCourse2-Consignes.txt l.117-120`: "moins 50% plus 50% de l'espace [spot] … moins 50%
-plus 50% de la vol … moins de 10% de [taux]" (rate ±~10%).
+The implementation read the stress grid as a **three-axis** stress (spot, vol, **rate**),
+inferring rate ±~10% from `AlgoTradingCourse2-Consignes.txt l.117-120` — a line whose third axis is
+**inaudible/garbled** (see the corrected framing above). The blueprint §5 endorsement is the firm
+anchor; the transcript "prescription" is not.
 
 `configs/scenarios.yaml` carries:
 

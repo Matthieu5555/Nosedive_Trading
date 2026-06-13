@@ -5,7 +5,9 @@
 > (Interactive Brokers), *Staking Workstation* = Trader Workstation (TWS), *grèves* = Greeks,
 > *pôles et poutres* = puts et calls, *formule de Bagage* = formule de Black, *straddle ATR* =
 > straddle ATM, *Eurostat* = EuroStoxx (50), *OSN500* = S&P 500, *l'espace* = le spot,
-> *l'économie* = le taux, *choquer / numérisme* = stresser / l'analyse de risque.
+> *l'économie* ≈ **le taux** *(inférence, pas une certitude — voir §6 ; le mot transcript est
+> brouillé : « l'économie » ici / « l'éducation » dans `Consignes.txt`)*,
+> *choquer / numérisme* = stresser / l'analyse de risque.
 > Les passages inaudibles ou purement répétitifs ont été supprimés. **Rien n'est inventé** :
 > là où le transcript est trop dégradé pour être sûr, c'est marqué *(transcript incertain)* et
 > aucune valeur n'est fabriquée pour combler.
@@ -97,10 +99,14 @@ option, etc.). Puis on **choque** ce book — la grille de stress citée est :
 
 - **spot : −50 % … +50 %**,
 - **vol : −50 % … +50 %**,
-- **taux : −10 % … +10 %**,
+- **« le troisième axe » : −10 % … +10 %**,
 
-« et on regarde comment ça évolue ». *(C'est exactement la grille à trois axes spot/vol/taux du
-projet.)*
+« et on regarde comment ça évolue ». ⚠️ **Réserve d'honnêteté** : le mot du 3ᵉ axe est
+**inaudible/brouillé** dans le transcript (*« moins 10 % de l'économie »* ici, *« …de
+l'éducation »* dans `Consignes.txt`). Je l'**interprète** comme **le taux** — c'est le 3ᵉ axe de
+stress standard (spot/vol/taux) et le blueprint (05-math-notes §5) endosse les *rate shocks* comme
+extension — **mais c'est une inférence, pas un mot prononcé clairement.** À ne **pas** présenter
+comme « le cours a prescrit l'axe taux ».
 
 ## 7. Onglet 3 — les ordres
 

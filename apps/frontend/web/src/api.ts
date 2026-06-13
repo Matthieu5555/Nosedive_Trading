@@ -209,6 +209,17 @@ export interface AnalyticsResponse {
   maturities: AnalyticsMaturity[];
 }
 
+// One enabled index from the registry (GET /api/indices). The selector is driven by this —
+// never a hard-coded list — so it can only ever offer indices the backend actually captures.
+export interface IndexOption {
+  symbol: string;
+  name: string;
+}
+
+export interface IndicesResponse {
+  indices: IndexOption[];
+}
+
 export type QcVerdict = "pass" | "fail" | "unknown";
 
 // A trade date the page can show, with its QC verdict. ``available`` includes qc-failing days

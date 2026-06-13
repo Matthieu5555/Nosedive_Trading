@@ -37,6 +37,13 @@ export function useFetch<T>(path: string, refreshMs = 0): FetchState<T> {
   const inFlightRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    // An empty path means "nothing to fetch yet" (e.g. a selector value not resolved). It is
+    // not an error and not a load — clear any in-flight request and settle to idle.
+    if (!path) {
+      inFlightRef.current?.abort();
+      setLoading(false);
+      return;
+    }
     inFlightRef.current?.abort();
     const controller = new AbortController();
     inFlightRef.current = controller;
@@ -64,6 +71,13 @@ export function useFetch<T>(path: string, refreshMs = 0): FetchState<T> {
   useEffect(() => {
     hasDataRef.current = false;
     setStale(false);
+    // Skip the network entirely for an empty path, but clear stale data from a prior path so a
+    // panel can't show data for the wrong (now-unset) key.
+    if (!path) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     void load();
     const timer = refreshMs > 0 ? window.setInterval(() => void load(), refreshMs) : undefined;
     return () => {
@@ -72,7 +86,7 @@ export function useFetch<T>(path: string, refreshMs = 0): FetchState<T> {
       // setState into an unmounted tree or a now-stale path.
       inFlightRef.current?.abort();
     };
-  }, [load, refreshMs]);
+  }, [load, refreshMs, path]);
 
   return { data, loading, error, stale, refetch: load };
 }

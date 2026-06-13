@@ -160,8 +160,10 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
   expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs log-moneyness/i);
   expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
 
+  // The surface x-axis is ALWAYS log-moneyness (strike-monotone), for either BFF source — never
+  // the signed-delta axis, which folded the smile into an artificial mid-axis spike.
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
-  expect(surface.getAttribute("aria-label")).toMatch(/vol vs moneyness \(log\) vs maturity/i);
+  expect(surface.getAttribute("aria-label")).toMatch(/vol vs log-moneyness vs maturity/i);
 });
 
 test("renders a labeled empty state when no dates are recorded", async () => {
@@ -192,4 +194,19 @@ test("a fetch error renders through AsyncBlock, not a blank page", async () => {
   await waitFor(() => {
     expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);
   });
+});
+
+test("the index selector is driven by /api/indices — a parked index is not offered", async () => {
+  // The registry exposes only SX5E (SPX is parked, enabled:false). The selector must reflect the
+  // registry, never a hard-coded list — so only SX5E is offered and SPX is absent.
+  server.use(
+    jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50" }] }),
+    jsonGet("/api/recorded-dates", { index: "SX5E", count: 0, dates: [], available: [] }),
+  );
+  render(<MarketPage />);
+  const select = await screen.findByLabelText("Index");
+  expect(
+    within(select).getByRole("option", { name: /EURO STOXX 50 \(SX5E\)/ }),
+  ).toBeInTheDocument();
+  expect(within(select).queryByRole("option", { name: /SPX/ })).not.toBeInTheDocument();
 });

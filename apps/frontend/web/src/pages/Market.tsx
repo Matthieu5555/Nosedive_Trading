@@ -12,9 +12,9 @@
 // Plotly choke on a degenerate vol-surface cell, say) degrades to a labelled tile and the rest
 // of the page survives, instead of unwinding the whole tab to a blank screen.
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import type { RecordedDatesResponse } from "../api";
+import type { IndicesResponse, RecordedDatesResponse } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { CoveragePanel } from "../components/CoverageTable";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -27,19 +27,47 @@ import { AsOfSelect, QcBadge } from "./market/marketHeader";
 // batch hook it guards (`./market/constituentHistory`).
 export { resetConstituentHistoryBatchCacheForTests } from "./market/constituentHistory";
 
-// The seeded index registry (roadmap 1J: SX5E first, SPX as the stretch target).
-const INDICES = ["SPX", "SX5E"];
-
 export function MarketPage() {
-  // Default to SX5E: it is the index currently captured (SPX's option chain isn't captured yet),
-  // so the page lands on data. Flip back to SPX once SPX has its own snapshots.
-  const [index, setIndex] = useState("SX5E");
+  // The index selector is driven by the registry's ENABLED set (GET /api/indices) — never a
+  // hard-coded list. Parking an index (enabled:false) drops it here automatically and enabling
+  // one makes it appear, so the selector can never offer an index the backend is not capturing.
+  const indices = useFetch<IndicesResponse>("/api/indices");
+  // Memoised so its identity is stable across renders (the `?? []` would otherwise be a fresh
+  // array each render and re-fire the selection effect below).
+  const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
+
+  const [index, setIndex] = useState("");
+  // Land on the first enabled index as soon as the registry list arrives, and keep the
+  // selection valid if the enabled set ever changes (e.g. an index is parked) under it.
+  useEffect(() => {
+    if (indexOptions.length === 0) return;
+    if (!index || !indexOptions.some((o) => o.symbol === index)) {
+      setIndex(indexOptions[0].symbol);
+    }
+  }, [indexOptions, index]);
+
   const [asOf, setAsOf] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
+  // Only fetch recorded dates once the index is resolved from the registry — an empty path
+  // skips the fetch, so the page never briefly queries a non-existent / default index.
   const recorded = useFetch<RecordedDatesResponse>(
-    `/api/recorded-dates?index=${encodeURIComponent(index)}`,
+    index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );
+
+  // The default as-of must be ONE value, shared by the picker and the panels. Computed in two
+  // places it silently drifts: the picker defaulted to the newest day (available[0]) while the
+  // panels defaulted to the newest QC-passing day — so the header showed one date while the data
+  // on screen was another, and re-selecting the date the picker already displayed fired no change
+  // event, leaving the real day unreachable. So compute it once, here.
+  //
+  // The DEFAULT is the latest available day (available[] is newest-first), not the latest
+  // QC-passing day: the freshest capture is what an operator opens the page to see, and its
+  // quality is already announced by the QC badge next to the date — hiding it by default just
+  // because QC failed left the page blank whenever the newest snapshot was the only one carrying
+  // analytics (the live case: the QC-passing days predate the projected-analytics backfill).
+  const available = recorded.data?.available ?? [];
+  const effectiveAsOf = asOf ?? available[0]?.date ?? null;
 
   return (
     <section className="page">
@@ -52,21 +80,22 @@ export function MarketPage() {
           <select
             aria-label="Index"
             value={index}
+            disabled={indexOptions.length === 0}
             onChange={(event) => {
               setIndex(event.target.value);
               setAsOf(null);
               setSelected(null);
             }}
           >
-            {INDICES.map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {indexOptions.map((item) => (
+              <option key={item.symbol} value={item.symbol}>
+                {item.name} ({item.symbol})
               </option>
             ))}
           </select>
           <AsOfSelect
             recorded={recorded.data}
-            value={asOf}
+            value={effectiveAsOf}
             onChange={(date) => {
               setAsOf(date);
               setSelected(null);
@@ -75,20 +104,9 @@ export function MarketPage() {
         </div>
       </div>
 
-      <AsyncBlock loading={recorded.loading} error={recorded.error}>
+      <AsyncBlock loading={indices.loading || recorded.loading} error={recorded.error}>
         {recorded.data &&
           (() => {
-            // The picker offers every viewable day (incl. qc-failing ones), not only the
-            // clean ones, so a degraded snapshot is selectable and shown with its QC badge.
-            // The DEFAULT, though, is the latest QC-passing day: landing on a failing
-            // (e.g. intraday) capture renders degraded panels before the operator chose
-            // anything. A failing day stays one click away in the picker.
-            const available = recorded.data.available ?? [];
-            const effectiveAsOf =
-              asOf ??
-              available.find((day) => day.qc === "pass")?.date ??
-              available[0]?.date ??
-              null;
             if (available.length === 0 || effectiveAsOf === null) {
               return (
                 <article className="panel">

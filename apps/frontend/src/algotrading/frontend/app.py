@@ -100,6 +100,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import constituents as constituents_router  # noqa: PLC0415
     from .routers import coverage as coverage_router  # noqa: PLC0415
     from .routers import health as health_router  # noqa: PLC0415
+    from .routers import indices as indices_router  # noqa: PLC0415
     from .routers import price_history as price_history_router  # noqa: PLC0415
     from .routers import recorded_dates as recorded_dates_router  # noqa: PLC0415
     from .routers import risk as risk_router  # noqa: PLC0415
@@ -111,6 +112,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(risk_router.router)
     app.include_router(run_router.router)
     app.include_router(config_router.router)
+    app.include_router(indices_router.router)
     app.include_router(price_history_router.router)
     app.include_router(constituents_router.router)
     app.include_router(analytics_router.router)

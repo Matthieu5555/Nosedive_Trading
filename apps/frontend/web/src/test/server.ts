@@ -14,6 +14,7 @@ import { setupServer } from "msw/node";
 import {
   ANALYTICS_AAA,
   CONSTITUENTS_TWO,
+  INDICES_SPX_SX5E,
   PORTFOLIOS_ONE,
   PRICE_HISTORY_AAA,
   PRICE_HISTORY_BATCH_TWO,
@@ -38,6 +39,7 @@ export function jsonPost(path: string, body: JsonBodyType) {
 }
 
 export const server = setupServer(
+  jsonGet("/api/indices", INDICES_SPX_SX5E),
   jsonGet("/api/recorded-dates", RECORDED_TWO_DATES),
   jsonGet("/api/constituents", CONSTITUENTS_TWO),
   jsonGet("/api/price-history", PRICE_HISTORY_AAA),

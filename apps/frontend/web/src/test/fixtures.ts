@@ -5,6 +5,7 @@ import type {
   AnalyticsResponse,
   BasketRiskResponse,
   ConstituentsResponse,
+  IndicesResponse,
   PriceHistoryBatchResponse,
   HealthResponse,
   PriceHistoryResponse,
@@ -151,6 +152,15 @@ export const HEALTH_DEGRADED: HealthResponse = {
 };
 
 // --- WS 1I front-page fixtures (values chosen independently of the backend output) ---
+
+// The enabled-index set the selector is driven by (GET /api/indices). SPX leads so the page's
+// default index matches the SPX-centric recorded/analytics fixtures below.
+export const INDICES_SPX_SX5E: IndicesResponse = {
+  indices: [
+    { symbol: "SPX", name: "S&P 500" },
+    { symbol: "SX5E", name: "EURO STOXX 50" },
+  ],
+};
 
 export const RECORDED_TWO_DATES: RecordedDatesResponse = {
   index: "SPX",

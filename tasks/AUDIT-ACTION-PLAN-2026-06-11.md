@@ -53,7 +53,7 @@ Each fix pairs with the test the finding names. Two commits.
 ## WAVE 3 — REP stack (parallel; fold audit findings into existing rows, do NOT duplicate)
 - **[REP0](REP0-dependency-hygiene.md)** ← F-DEP-01 (drop pandas; land-or-drop polars; fix false
   comment).
-- ~~**[REP1](REP1-scipy-micro-swaps.md)**~~ — **WON'T-FIX** (both swaps break content-hash stability; see Progress).
+- ~~**[REP1](archive/REP1-scipy-micro-swaps.md)**~~ — **WON'T-FIX** (both swaps break content-hash stability; see Progress).
 - **[REP2](REP2-storage-asof-unification.md)** ← F-ASOF-01, F-STORE-03 (**high care — look-ahead
   boundary**; reuse one DuckDB connection / parity-tested winner).
 - **[REP5](REP5-pydantic-bff-contract.md)** ← F-BFF-05 (pydantic `response_model`; coordinate

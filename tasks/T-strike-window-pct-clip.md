@@ -1,7 +1,7 @@
 # T-strike-window-pct-clip — the %-of-spot fallback window can silently clip the 30Δ band at high vol
 
 > **From the 2026-06-12 intent-vs-delivery audit remediation, handed off by the owner after
-> [T-delta-window](T-delta-window.md) landed (gate 1404/0/16, 2026-06-12).** A **second** technical
+> [T-delta-window](archive/T-delta-window.md) landed (gate 1404/0/16, 2026-06-12).** A **second** technical
 > request-shaping bound sits in front of the economics on the capture path — the *same* intent-vs-
 > delivery class as the delta-window bug just killed, one layer over. **Latent mine, not an active
 > bug:** at realistic vols it does not clip, so it is deliberately left as-is. This fiche records the

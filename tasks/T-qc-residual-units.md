@@ -48,7 +48,7 @@ Tests feed hand-built residuals at the $0.10 scale (e.g. 0.03 pass / 0.30 fail) 
 ## Out of scope (do not conflate)
 
 `calendar_sanity` failing on the ultra-short (5–11d) slices is **not** a units bug — it is a symptom
-of the tenor root ([T-tenor-selection](T-tenor-selection.md), landed `74d2cc7`) and should clear
+of the tenor root ([T-tenor-selection](archive/T-tenor-selection.md), landed `74d2cc7`) and should clear
 once a real term structure is re-captured. Keep it separate.
 
 ## Done criteria

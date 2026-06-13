@@ -4,7 +4,7 @@
 > findings An-3 / QC-2). This is **seed #3** of the green-gate≠-correct class, confirmed on real
 > data. **Not a duplicate of the vol-surface lane:** that lane already landed the *propagation*
 > (`arb_free`/`bound_hits`/`degeneracy_reasons` now flow to the contract + BFF + a visible smile
-> flag — [T-vol-surface-correctness](T-vol-surface-correctness.md), policy = flag-not-reject).
+> flag — [T-vol-surface-correctness](archive/T-vol-surface-correctness.md), policy = flag-not-reject).
 > **What is still open is the QC gate that should consume those flags** — it doesn't.
 
 ## The bug (verified on real 2026-06-11 SPX diagnostics)

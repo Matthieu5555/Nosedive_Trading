@@ -12,16 +12,33 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from algotrading.core.config import ConfigError
 from algotrading.infra.storage import ParquetStore
+from algotrading.infra.universe import enabled_indices, load_index_registry
 
 # Repo-root marker: the canonical instructions file lives only at the workspace root.
 _ROOT_MARKER = "AGENTS.md"
 
-# Fallbacks when no config names a default. AAPL is the underlying the offline
-# `synthetic_known_answer` chain fixture (and therefore the SAMPLE run path) produces,
-# so the default surfaces/run views point at data the store can actually hold.
-_DEFAULT_UNDERLYING = "AAPL"
+# The view fallback when a request names no index is resolved from the registry (the single
+# source — never a hard-coded ticker), see `_default_index`. Empty when no registry is present,
+# in which case the routers resolve to a labeled empty view rather than a stale single-name.
 _DEFAULT_WINDOW_DAYS = 30
+
+
+def _default_index(configs_dir: Path) -> str:
+    """The registry's primary (first enabled) index — the view fallback when no index is given.
+
+    Driven by the registry's ``enabled`` set, so it follows the config: with SPX parked it is
+    SX5E, and it can never be a stale hand-set ticker. Returns ``""`` when no registry/enabled
+    index is present (a fresh deployment, an empty test config) — the routers then fall back to
+    an empty, labeled view instead of a hard-coded single-name.
+    """
+    try:
+        registry = load_index_registry(configs_dir)
+    except ConfigError:
+        return ""
+    enabled = enabled_indices(registry)
+    return enabled[0].symbol if enabled else ""
 
 
 class ContextError(Exception):
@@ -50,7 +67,9 @@ class AppContext:
     store_root: Path
     configs_dir: Path
     store: ParquetStore
-    default_underlying: str = _DEFAULT_UNDERLYING
+    # The view fallback when a request names no index. Resolved from the registry by `build()`;
+    # ``""`` for a direct construction that does not set it (an empty test context).
+    default_underlying: str = ""
     default_window_days: int = _DEFAULT_WINDOW_DAYS
 
     @classmethod
@@ -59,7 +78,7 @@ class AppContext:
         *,
         repo_root: Path | None = None,
         store_root: Path | None = None,
-        default_underlying: str = _DEFAULT_UNDERLYING,
+        default_underlying: str | None = None,
     ) -> AppContext:
         """Construct context from the repo root (or injected overrides for tests).
 
@@ -67,16 +86,23 @@ class AppContext:
         capture/runner reads) when set, else ``<repo_root>/data``; ``configs_dir`` to
         ``<repo_root>/configs``. All are injectable so a test can wire a tmp store. The env
         override lets the front point at a separate demo/test store without touching the prod data.
+
+        ``default_underlying`` defaults to the registry's primary enabled index (the single
+        source) — never a hard-coded ticker; pass it explicitly only to override.
         """
         root = repo_root if repo_root is not None else _find_repo_root(Path(__file__).parent)
+        configs_dir = root / "configs"
         if store_root is not None:
             resolved_store_root = store_root
         else:
             env_root = os.environ.get("ALGOTRADING_DATA_ROOT")
             resolved_store_root = Path(env_root) if env_root else root / "data"
+        resolved_default = (
+            default_underlying if default_underlying is not None else _default_index(configs_dir)
+        )
         return cls(
             store_root=resolved_store_root,
-            configs_dir=root / "configs",
+            configs_dir=configs_dir,
             store=ParquetStore(resolved_store_root),
-            default_underlying=default_underlying,
+            default_underlying=resolved_default,
         )

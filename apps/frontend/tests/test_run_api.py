@@ -79,7 +79,7 @@ def test_list_jobs_includes_launched_job(infra_client: TestClient) -> None:
 
 def test_run_underlyings_includes_context_default(infra_client: TestClient) -> None:
     payload = infra_client.get("/api/run/underlyings").json()
-    assert "AAPL" in payload["underlyings"]  # context default from conftest
+    assert "SX5E" in payload["underlyings"]  # context default from conftest (an index, not a single-name)
 
 
 # --------------------------------------------------------------------------- #

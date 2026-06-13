@@ -612,6 +612,9 @@ def ctx(tmp_path: Path) -> AppContext:
         store_root=store_root,
         configs_dir=configs_dir,
         store=ParquetStore(store_root),
+        # An index default (not a single-name) — the empty tmp configs carry no registry to
+        # resolve it from, so set it explicitly for the routers' no-index fallback.
+        default_underlying="SX5E",
     )
 
 

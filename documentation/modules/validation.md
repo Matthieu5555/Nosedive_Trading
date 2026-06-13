@@ -1,1 +1,0 @@
-../../packages/infra/src/algotrading/infra/validation/README.md

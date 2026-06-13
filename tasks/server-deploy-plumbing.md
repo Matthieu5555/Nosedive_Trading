@@ -27,8 +27,7 @@ parameter or compute path.
    and the IBKR socket vars (`IBKR_HOST`, `IBKR_PORT`, `IBKR_CLIENT_ID`, `IBKR_ACCOUNT`). **No real
    secrets, ever** — the public-safety hook rejects them, and rightly so.
 
-2. **`scripts/ibkr_bootstrap.py`** — the smoke test promised by
-   `documentation/connectivity/connect-providers.md` (pre-merge script, never relocated). It
+2. **`scripts/ibkr_bootstrap.py`** — an IBKR connectivity smoke test. It
    connects to a running TWS / IB Gateway, proves a real round-trip (broker clock + skew),
    resolves an underlying on `SMART`, and pulls one delayed stock snapshot. Exit codes:
    **0 healthy / 1 hard failure (no connect or no round-trip) / 2 soft (connected but no quote —
@@ -36,7 +35,7 @@ parameter or compute path.
    ASCII-only output (the cp1252-console gotcha in the troubleshooting table).
 
 3. **Doc re-point** — flip the "not yet relocated / does not exist yet" notes in
-   `connect-providers.md` and `server-deployment-plan.md` for these two artifacts now that they
+   `documentation/connectivity/server-deployment-plan.md` for these two artifacts now that they
    exist; leave every gated/compute note (1C/1G cron, docker compose) untouched.
 
 ## Acceptance

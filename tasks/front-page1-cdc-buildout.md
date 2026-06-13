@@ -1,9 +1,10 @@
 # Task — Page-1 (Vision marché) build-out to the cahier des charges
 
 **Status:** queued (2026-06-10). **Owner:** unclaimed.
-**Goal:** bring Tab-1 up to the block set + reading order of
-[`documentation/cahier_des_charges_dashboard_page1.md`](../documentation/cahier_des_charges_dashboard_page1.md)
-(an **intent reference**, not a pixel spec — ignore its colours). The base is shipped (commit
+**Goal:** bring Tab-1 up to the block set + reading order described in
+[`TARGET.md`](../TARGET.md) §2 (the former `cahier_des_charges_dashboard_page1.md` intent
+reference was retired as obsolete — it was an intent example, not a pixel spec; ignore colours).
+The base is shipped (commit
 `ad97c6c`): control bar + QC badge, index history, constituents row, 3D surface, smile, the
 dollar-Greeks term structure. What's missing is the rest of the CDC's §3.3–3.6 and the §2 order.
 

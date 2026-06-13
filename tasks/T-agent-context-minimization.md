@@ -51,7 +51,7 @@ ADRs were Matthieu's lane). The roadmap (strategy) now lives in
      `[ADR 00NN](…)` links to removed ADRs remain in **held/high-traffic** files I must not clobber —
      `tasks/TASKBOARD.md` (0021, 0029) — and in **archived** specs `tasks/archive/{T-bridge,2A,2B,1I,1F,H2,ibkr-rest-api-evaluation}.md`
      (historical, low value). Active non-held refs were already repointed (`2C-pnl-attribution.md` →
-     blueprint 09; `documentation/connectivity/capture-forward.md` → drop the 0016 mention).
+     blueprint 09; `documentation/connectivity/capture-forward.md` was later removed as obsolete).
    - **DEFERRED:** **0022** (M5 vendored slice, reversed) — Matthieu holds it uncommitted; untrack it
      after his commit (or hand it to him).
    - **Review-then-untrack** (merge-convergence archaeology — the merge is **closed**; confirm each

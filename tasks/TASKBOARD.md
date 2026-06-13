@@ -54,7 +54,7 @@ on order. Each item links its full spec.
 - [T-pricing-config-completeness](T-pricing-config-completeness.md) (fold the `DEFAULT_MONEYNESS_BUCKETS` literal in here)
 
 **Strategy-book & course-gap lanes (TARGET §7 — ordered there)**
-- [T-second-order-greeks](T-second-order-greeks.md) (§7.2 — highest leverage; Vanna/Volga/Charm unblocks attribution + the course 2nd-order req)
+- [T-second-order-greeks](T-second-order-greeks.md) (§7.2) — **steps 1-2 (compute) landed**: Vanna/Volga/Charm in `black76`/`dollar_greeks`/`PricingResult` (raw+cash+units), attribution carries Rho/Vanna/Volga + realized day-over-day, residual shrinks. **Open = step 3** (carry through `serializers.py → api.ts → front panels`); disjoint from the 3A ticket lane, do it after both merge.
 - [T-fills-position-store](T-fills-position-store.md) (§7.1 — the book built from fills) · [T-explicit-rate-parameter](T-explicit-rate-parameter.md) (rate as explicit typed config)
 - [T-constituent-option-capture](T-constituent-option-capture.md) (§7.4 — S1 dispersion blocker) · [T-signal-layer](T-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope) · [T-delta-hedge-band](T-delta-hedge-band.md)
 - [T-rates-curve-ingest](T-rates-curve-ingest.md) (R1) · [T-per-side-surfaces](T-per-side-surfaces.md) (R2 — put/call/combined fit) · [T-mirror-greeks-putcall](T-mirror-greeks-putcall.md) (greeks-only; *not* the same as per-side fit)

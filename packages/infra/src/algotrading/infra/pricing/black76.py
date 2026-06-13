@@ -60,8 +60,18 @@ def _discounted_intrinsic(state: PricingState) -> PriceGreeks:
         sign = -1.0
     price = df * intrinsic
     delta = sign * math.exp((state.carry - rate) * maturity) if in_the_money else 0.0
+    # No convexity and no remaining time value, so every second-order sensitivity is
+    # zero — vanna/volga (no vol response) and charm (no further delta decay).
     return PriceGreeks(
-        price=price, delta=delta, gamma=0.0, vega=0.0, theta=rate * price, rho=-maturity * price
+        price=price,
+        delta=delta,
+        gamma=0.0,
+        vega=0.0,
+        theta=rate * price,
+        rho=-maturity * price,
+        vanna=0.0,
+        volga=0.0,
+        charm=0.0,
     )
 
 
@@ -103,4 +113,34 @@ def price_european(state: PricingState) -> PriceGreeks:
     gamma = carry_discount * pdf_d1 / (spot * vol_sqrt_t)
     vega = spot * carry_discount * pdf_d1 * sqrt_t
     rho = -maturity * price
-    return PriceGreeks(price=price, delta=delta, gamma=gamma, vega=vega, theta=theta, rho=rho)
+
+    # Second-order Greeks (TARGET §7.2), the generalized Black-Scholes-Merton (Haug)
+    # cross/convexity partials with cost of carry ``b == state.carry``, consistent with
+    # the spot-form first-order Greeks above. All three are independently re-derived by
+    # central difference of this engine's own delta/vega in the cross-check tests, which
+    # is what pins their signs to the first-order conventions.
+    #
+    # Vanna = d(delta)/dsigma = -e^{(b-r)T} phi(d1) * d2/sigma  (call == put; ddelta per
+    # 1.00 vol, using the identity d(d1)/dsigma == -d2/sigma).
+    vanna = -carry_discount * pdf_d1 * d2 / sigma
+    # Volga (vomma) = d(vega)/dsigma = vega * d1*d2/sigma  (convexity of vega in vol).
+    volga = vega * d1 * d2 / sigma
+    # Charm = d(delta)/dt == -d(delta)/dT, the per-year delta decay on the same calendar
+    # clock as theta. With d(d1)/dT == b/(sigma*sqrt_t) - d2/(2T), differentiating
+    # delta == e^{(b-r)T} N(d1) (call) / e^{(b-r)T} (N(d1)-1) (put) gives:
+    d1_decay = state.carry / vol_sqrt_t - d2 / (2.0 * maturity)
+    carry_drift = state.carry - rate
+    n_for_charm = cdf_d1 if state.is_call else cdf_d1 - 1.0
+    charm = -carry_discount * (carry_drift * n_for_charm + pdf_d1 * d1_decay)
+
+    return PriceGreeks(
+        price=price,
+        delta=delta,
+        gamma=gamma,
+        vega=vega,
+        theta=theta,
+        rho=rho,
+        vanna=vanna,
+        volga=volga,
+        charm=charm,
+    )

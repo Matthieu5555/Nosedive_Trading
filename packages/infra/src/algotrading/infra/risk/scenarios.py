@@ -188,21 +188,77 @@ class TaylorTerms:
     """The blueprint Eq-19 Taylor PnL split into its named, dollar, book-additive terms.
 
     Each field is the monetized (``scale = multiplier * quantity``) contribution of one
-    Greek to the local PnL — ``delta_pnl = Δ·dS·scale``, ``gamma_pnl = ½·Γ·dS²·scale``,
-    ``vega_pnl = Vega·dσ·scale``, ``theta_pnl = Θ·dt·scale`` — so a book's terms are the
-    term-wise sum of its lines'. :attr:`total` is the lumped Taylor number: the split can
-    never drift from the lump because the lump *is* this sum (one home for the arithmetic).
+    Greek to the local PnL. The first-order/Eq-19 set —
+    ``delta_pnl = Δ·dS·scale``, ``gamma_pnl = ½·Γ·dS²·scale``, ``vega_pnl = Vega·dσ·scale``,
+    ``theta_pnl = Θ·dt·scale`` — extended (TARGET §2.5 / §7.2) with the rate and
+    second-order cross/convexity terms ``rho_pnl = Rho·dr·scale``,
+    ``vanna_pnl = Vanna·dS·dσ·scale`` and ``volga_pnl = ½·Volga·dσ²·scale``. A book's
+    terms are the term-wise sum of its lines'. :attr:`total` is the lumped Taylor number:
+    the split can never drift from the lump because the lump *is* this sum (one home for
+    the arithmetic). The three second-order fields default to ``0.0`` so a legacy
+    four-term construction is unchanged; a pure-spot scenario leaves them zero (no vol or
+    rate move), which is why extending the split moves no existing pure-spot golden.
     """
 
     delta_pnl: float
     gamma_pnl: float
     vega_pnl: float
     theta_pnl: float
+    rho_pnl: float = 0.0
+    vanna_pnl: float = 0.0
+    volga_pnl: float = 0.0
 
     @property
     def total(self) -> float:
-        """The lumped local Taylor PnL — the sum of the four named contributions."""
-        return self.delta_pnl + self.gamma_pnl + self.vega_pnl + self.theta_pnl
+        """The lumped local Taylor PnL — the sum of the named contributions (through Volga)."""
+        return (
+            self.delta_pnl
+            + self.gamma_pnl
+            + self.vega_pnl
+            + self.theta_pnl
+            + self.rho_pnl
+            + self.vanna_pnl
+            + self.volga_pnl
+        )
+
+
+def terms_from_move(
+    greeks: PriceGreeks,
+    *,
+    scale: float,
+    d_spot: float,
+    d_vol: float,
+    d_time: float,
+    d_rate: float,
+    config: AttributionConfig = _EQ19_ATTRIBUTION,
+) -> TaylorTerms:
+    """Factor a local Taylor PnL into named per-Greek dollar terms from an explicit move.
+
+    The single home of the term arithmetic, shared by the scenario path
+    (:func:`taylor_terms`, ``d_rate == 0`` — the grid holds rates fixed) and the realized
+    day-over-day path (which supplies a real ``d_rate``). The move is already in absolute
+    units: ``d_spot`` is a spot change, ``d_vol`` an absolute vol change, ``d_time`` a
+    calendar-time roll in years, ``d_rate`` an absolute rate change (decimal). The two
+    Eq-19 convention flags are *reporting normalisations on the decomposition only* (see
+    :class:`AttributionConfig` / ADR 0038): ``one_pct`` divides the gamma term by 100; a
+    252 day-count rescales the theta term by 365/252. They move that one term (and the
+    residual reported against the full reprice), never the full reprice, which stays the
+    oracle. The rate and second-order terms carry no such fork — they are the literal
+    dollar Taylor contributions.
+    """
+    gamma_curvature = 0.5 * greeks.gamma * d_spot * d_spot
+    if config.gamma_normalisation == "one_pct":
+        gamma_curvature = gamma_curvature / 100.0
+    theta_contribution = greeks.theta * d_time * (365.0 / config.theta_day_count)
+    return TaylorTerms(
+        delta_pnl=greeks.delta * d_spot * scale,
+        gamma_pnl=gamma_curvature * scale,
+        vega_pnl=greeks.vega * d_vol * scale,
+        theta_pnl=theta_contribution * scale,
+        rho_pnl=greeks.rho * d_rate * scale,
+        vanna_pnl=greeks.vanna * d_spot * d_vol * scale,
+        volga_pnl=0.5 * greeks.volga * d_vol * d_vol * scale,
+    )
 
 
 def taylor_terms(
@@ -213,28 +269,24 @@ def taylor_terms(
     scenario: Scenario,
     config: AttributionConfig = _EQ19_ATTRIBUTION,
 ) -> TaylorTerms:
-    """Factor the local Taylor PnL (Eq 19) into its named per-Greek dollar contributions.
+    """Factor the local Taylor PnL (Eq 19, extended) into named per-Greek contributions.
 
-    The single home of the term arithmetic: :func:`_taylor_pnl` (the lumped path) is
-    ``taylor_terms(...).total``, so the split and the lump cannot diverge. With the
-    blueprint-faithful default config (:data:`_EQ19_ATTRIBUTION` — ``one_dollar`` gamma,
-    365-day theta) the terms reproduce the classic ``Δ·dS + ½Γ·dS² + Vega·dσ + Θ·dt`` to
-    the dollar. The two convention flags are *reporting normalisations on the
-    decomposition only* (see :class:`AttributionConfig` / ADR 0038): ``one_pct`` divides
-    the gamma term by 100; a 252 day-count rescales the theta term by 365/252. They move
-    that one term (and the residual reported against the full reprice), never the full
-    reprice itself, which stays the oracle.
+    Resolves the scenario into an explicit move and delegates to the one arithmetic home
+    :func:`terms_from_move`, so the scenario split and the realized split cannot diverge.
+    The scenario grid carries no rate shock, so the rate term is zero here; ``vanna_pnl``
+    is non-zero only for a combined spot-and-vol scenario and ``volga_pnl`` only when the
+    scenario moves vol. With the blueprint-faithful default config
+    (:data:`_EQ19_ATTRIBUTION` — ``one_dollar`` gamma, 365-day theta) the first four terms
+    reproduce the classic ``Δ·dS + ½Γ·dS² + Vega·dσ + Θ·dt`` to the dollar.
     """
-    d_spot = spot * scenario.spot_shock
-    gamma_curvature = 0.5 * greeks.gamma * d_spot * d_spot
-    if config.gamma_normalisation == "one_pct":
-        gamma_curvature = gamma_curvature / 100.0
-    theta_contribution = greeks.theta * scenario.time_shock * (365.0 / config.theta_day_count)
-    return TaylorTerms(
-        delta_pnl=greeks.delta * d_spot * scale,
-        gamma_pnl=gamma_curvature * scale,
-        vega_pnl=greeks.vega * scenario.vol_shock * scale,
-        theta_pnl=theta_contribution * scale,
+    return terms_from_move(
+        greeks,
+        scale=scale,
+        d_spot=spot * scenario.spot_shock,
+        d_vol=scenario.vol_shock,
+        d_time=scenario.time_shock,
+        d_rate=0.0,
+        config=config,
     )
 
 

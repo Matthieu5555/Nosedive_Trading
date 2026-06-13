@@ -151,7 +151,11 @@ def test_pricing_state_shape_is_frozen() -> None:
 
 def test_price_greeks_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PriceGreeks))
-    assert names == ("price", "delta", "gamma", "vega", "theta", "rho")
+    assert names == (
+        "price", "delta", "gamma", "vega", "theta", "rho",
+        # Second-order set (TARGET §7.2), appended with 0.0 defaults.
+        "vanna", "volga", "charm",
+    )
 
 
 def test_pricing_public_surface_covers_what_risk_imports() -> None:

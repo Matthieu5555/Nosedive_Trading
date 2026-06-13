@@ -28,7 +28,9 @@ Greek conventions (see :class:`PriceGreeks`): ``delta`` is spot delta
 (divide by 100 for a one-vol-point move), ``theta`` is per year of calendar time
 (``dPrice/dt``, i.e. time decay, so it is negative for most long options; divide
 by 365 for a one-day figure), and ``rho`` is per 1.00 of the rate, holding the
-forward fixed.
+forward fixed. The second-order set (``vanna``, ``volga``, ``charm``) extends the
+same units — vanna/volga per 1.00 of vol (the vega clock), charm per year (the
+theta clock); see :class:`PriceGreeks` for the full definitions.
 """
 
 from __future__ import annotations
@@ -129,10 +131,28 @@ class PricingState:
 
 @dataclass(frozen=True, slots=True)
 class PriceGreeks:
-    """Model price and the five first/second-order Greeks for one option.
+    """Model price and the first- and second-order Greeks for one option.
 
     Conventions are documented on :mod:`pricing.state`. In short: spot delta,
     spot gamma, vega per 1.00 vol, theta per year (time decay), rho per 1.00 rate.
+
+    The three second-order cross/convexity Greeks (TARGET §7.2) extend the same
+    unit system (``documentation/blueprint/02-math-framework.md``: "All first-order
+    and second-order sensitivities should be computed in a unified unit system"):
+
+    * ``vanna`` = ``d2Price/dspot dsigma`` = ``ddelta/dsigma`` — per 1.00 of vol, the
+      same vol unit as ``vega`` (the cross-sensitivity of delta to a vol move).
+    * ``volga`` (vomma) = ``d2Price/dsigma2`` = ``dvega/dsigma`` — per 1.00 of vol
+      squared (the convexity of vega in vol).
+    * ``charm`` = ``ddelta/dt`` (delta decay) — per **year** of calendar time, the
+      same per-year clock as ``theta`` (``ddelta/dt = -ddelta/dT``), so a roll-down
+      bleeds delta the way ``theta`` bleeds value; divide by 365 for a one-day figure.
+
+    They default to ``0.0`` so the legacy ``PriceGreeks(price, delta, gamma, vega,
+    theta, rho)`` construction still type-checks; the closed-form Black-76 engine
+    fills them with the analytic values, while engines that do not yet expose them
+    (the American lattice, the finite-difference cross-check) leave them ``0.0``
+    *explicitly* rather than silently — a documented gap, not a hidden zero.
     """
 
     price: float
@@ -141,6 +161,9 @@ class PriceGreeks:
     vega: float
     theta: float
     rho: float
+    vanna: float = 0.0
+    volga: float = 0.0
+    charm: float = 0.0
 
 
 def from_spot(

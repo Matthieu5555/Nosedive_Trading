@@ -30,3 +30,7 @@ forward:                       # parity forward-estimate confidence heuristics (
   full_credit_pairs: 4.0             # used-pair count at which the count term saturates to 1.0
   rel_residual_halflife: 1.0e-3      # relative residual that halves the fit term
   single_pair_confidence: 0.30       # confidence for a one-pair fallback (structurally low)
+  rate: null                         # explicit interest rate r (flat) for the carry/dividend split
+                                     # q = r − ln(F/S)/T (Eq 5). null = use the parity-DF-implied
+                                     # rate −ln(DF)/T (unchanged); set a number (e.g. 0.0) to make
+                                     # r an explicit, modifiable input (T-explicit-rate-parameter).

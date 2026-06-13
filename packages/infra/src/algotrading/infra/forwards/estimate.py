@@ -167,19 +167,27 @@ class _Work:
 
 
 def _carry_and_dividend(
-    forward: float, discount_factor: float, spot: float | None, maturity_years: float
+    forward: float,
+    discount_factor: float,
+    spot: float | None,
+    maturity_years: float,
+    rate: float | None = None,
 ) -> tuple[float | None, float | None, float | None]:
     """Implied rate, cost-of-carry, and dividend yield (Eq 5).
 
-    ``r = -ln(DF)/T``; ``b = ln(F/spot)/T``; ``q = r - b``. Carry and dividend need a
-    positive spot, so they are ``None`` without one (the rate only needs ``DF``).
+    ``b = ln(F/spot)/T``; ``q = r - b``. The rate ``r`` is the blueprint's *input* to the
+    split: when an explicit ``rate`` is given (T-explicit-rate-parameter) it is used as
+    ``r`` and returned as the rate, so ``q`` reflects the operator's rate; when ``rate`` is
+    ``None`` it falls back to the parity-DF-implied ``r = -ln(DF)/T`` — the prior behaviour,
+    byte-identical. Carry and dividend need a positive spot, so they are ``None`` without one
+    (the rate only needs ``DF`` / the explicit input).
     """
-    implied_rate = -math.log(discount_factor) / maturity_years
+    effective_rate = rate if rate is not None else -math.log(discount_factor) / maturity_years
     if spot is None or spot <= 0.0:
-        return implied_rate, None, None
+        return effective_rate, None, None
     implied_carry = math.log(forward / spot) / maturity_years
-    implied_dividend = implied_rate - implied_carry
-    return implied_rate, implied_carry, implied_dividend
+    implied_dividend = effective_rate - implied_carry
+    return effective_rate, implied_carry, implied_dividend
 
 
 def _quality_and_confidence(
@@ -293,7 +301,7 @@ def estimate_forward(
     kept = [work for work in works if work.pair.liquidity > 0.0 and not work.rejected]
     residual_mad = median_absolute_deviation(tuple(work.residual for work in kept))
     implied_rate, implied_carry, implied_dividend = _carry_and_dividend(
-        forward, discount_factor, spot, maturity_years
+        forward, discount_factor, spot, maturity_years, config.rate
     )
     quality_label, confidence = _quality_and_confidence(
         len(kept), forward, residual_mad, config=config
@@ -360,7 +368,7 @@ def _single_pair(
             underlying, maturity_years, spot, REASON_SINGLE_PAIR_NO_DF, len(valid), points
         )
     implied_rate, implied_carry, implied_dividend = _carry_and_dividend(
-        forward, fallback_discount_factor, spot, maturity_years
+        forward, fallback_discount_factor, spot, maturity_years, config.rate
     )
     return ForwardEstimate(
         underlying=underlying,

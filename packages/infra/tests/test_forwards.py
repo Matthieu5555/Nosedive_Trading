@@ -175,6 +175,33 @@ def test_recovers_implied_carry_and_dividend() -> None:
     assert estimate.implied_dividend == pytest.approx(0.0, abs=1e-9)
 
 
+def test_explicit_config_rate_overrides_the_carry_split() -> None:
+    # T-explicit-rate-parameter (Eq 5): an explicit config rate becomes the split's *input*
+    # r, so q = r - b uses the operator's rate and the parity-DF-implied rate is overridden.
+    # b = ln(F/spot)/T is unchanged (observed from F and spot); only r (hence q) moves.
+    surface = build_synthetic_surface()
+    explicit = FORWARD_CONFIG.model_copy(update={"rate": 0.05})
+    estimate = estimate_forward(
+        "AAPL", surface.maturity_years, _synthetic_pairs(surface), config=explicit, spot=_SYNTH_SPOT
+    )
+    carry = math.log(100.0 / 99.0) / 0.25
+    assert estimate.implied_rate == pytest.approx(0.05, rel=1e-12)  # the explicit input, not -ln(DF)/T
+    assert estimate.implied_carry == pytest.approx(carry, rel=1e-9)
+    assert estimate.implied_dividend == pytest.approx(0.05 - carry, rel=1e-9)
+
+
+def test_default_none_rate_keeps_the_parity_implied_rate() -> None:
+    # rate=None (the default; the fixture does not set it) is byte-identical to before the
+    # explicit-rate knob existed: r falls back to the parity-DF-implied -ln(DF)/T.
+    assert FORWARD_CONFIG.rate is None
+    surface = build_synthetic_surface()
+    estimate = estimate_forward(
+        "AAPL", surface.maturity_years, _synthetic_pairs(surface), config=FORWARD_CONFIG,
+        spot=_SYNTH_SPOT,
+    )
+    assert estimate.implied_rate == pytest.approx(-math.log(0.99) / 0.25, rel=1e-9)
+
+
 # --------------------------------------------------------------------------- #
 # MAD outlier rejection (Eq 24)                                               #
 # --------------------------------------------------------------------------- #

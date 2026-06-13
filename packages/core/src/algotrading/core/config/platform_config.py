@@ -555,6 +555,13 @@ class ForwardConfig(_ConfigModel):
     full_credit_pairs: float = Field(gt=0.0)
     rel_residual_halflife: float = Field(gt=0.0)
     single_pair_confidence: float = Field(ge=0.0, le=1.0)
+    # Explicit interest rate r (flat, MVP), the blueprint's *input* to the carry/dividend
+    # split q(T) = r − ln(F/S)/T (Eq 5) and the rho basis — owner-asked 2026-06-13: the rate
+    # must be a modifiable parameter, not an implicit back-derived constant (T-explicit-rate-
+    # parameter). ``None`` = fall back to the parity-DF-implied rate r = −ln(DF)/T (the prior
+    # behaviour, byte-identical), so a config that does not set it is unchanged; a value
+    # overrides the split's rate (a curve r(T) is the later form). Negative rates are valid.
+    rate: float | None = None
 
 
 class StressSurfaceConfig(_ConfigModel):

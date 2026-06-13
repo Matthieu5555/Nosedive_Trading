@@ -133,12 +133,19 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # to 2026.06.13. The `scenarios` bundle hash — and so the folded whole-config hash — moved BY
     # DESIGN; `universe`/`qc`/`pricing` stay byte-identical (section isolation). Pre-capture dev
     # change: no banked record carries the old hash.
+    #
+    # T-explicit-rate-parameter (2026-06-13): `ForwardConfig.rate` joined the hashed `forward`
+    # block in `pricing.yaml` — the blueprint's explicit interest-rate *input* to the carry/
+    # dividend split (Eq 5), `null` by default (= the prior parity-DF-implied rate, so computed
+    # values are unchanged). The `pricing` bundle hash — and so the folded whole-config hash —
+    # moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical (section isolation).
+    # Pre-capture dev change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "fcc96af1dad489e4419fd9a5ae45c436e08f3a1292236da500cfd6bb191af10a"
+        "ad24d6c1c8dd7e45117f4afa4446ac473913a26e25a75df3645544a4de1616d7"
     )
     assert config_hashes(config) == {
-        "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
+        "pricing": "9968f42b9f266bcd3d21e199222e9c5e593ca18bffe3ca6b6ce44339c1b157d5",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
         "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",

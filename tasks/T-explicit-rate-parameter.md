@@ -65,3 +65,17 @@ back-derived one once the input exists). Look-ahead clean; golden + gate green.
 `configs/pricing.yaml`, `core/config` (rate field), `infra/forward` + `infra/pricing` (rate as
 input, implied carry), `forward_curve` contract/serializer, BFF + front display. Disjoint from
 `T-delta-step-2`.
+
+## Landed — step 1: the typed-config rate home (the ADR-0028 gap), zero-churn by default
+`ForwardConfig.rate` (`float | None`, `pricing.yaml` under `forward:`) is the explicit
+interest-rate **input** the blueprint pins (Eq 5). `forwards/estimate.py._carry_and_dividend`
+now takes it: when set it is used as `r` for the split `q = r − ln(F/S)/T` and returned as the
+rate; when `null` (the default, and what the yaml ships) it falls back to the parity-DF-implied
+`r = −ln(DF)/T` — **byte-identical** to before, so no analytics/forward golden moved (only the
+`pricing` config-hash, by design). Tests: explicit override reproduces Eq 5 by hand; the `None`
+default keeps the parity-implied rate. Gate green (1288).
+
+**Open (continuation):** surface the explicit rate + implied dividend on the `forward_curve`
+contract/serializer; **BFF + front display** (the owner's "explicitement affiché" — front-adjacent,
+serializers/api.ts are claimed, do after); the `r(T)` curve form; and the value-changing MVP
+default (`rate: 0.0`) once the owner wants the carry split to use a flat 0 instead of the market rate.

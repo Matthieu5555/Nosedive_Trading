@@ -147,5 +147,15 @@ the version string, so no golden moved and no number moved.
 The one visible effect is forward-looking: `PricingResult.pricer_version` on results
 produced on or after 2026-06-02 reads `black76-lr-1.0.0`, while results produced before
 read `black76-crr-1.0.0`. The two label the identical computation. The discontinuity is
-recorded in `documentation/releases/2026-06-02-pricer-version-rename.md` so a future
-diff of the label across the boundary is explained, not mysterious.
+recorded in git history (the rename note `documentation/releases/2026-06-02-pricer-version-rename.md`,
+retired with the docs trim) so a future diff of the label across the boundary is explained, not mysterious.
+
+## Addendum — 2026-06-13: ADR 0005 (analytics-core test surface) folded in
+
+The analytics-core **test-surface** conventions, previously the standalone ADR 0005, live here now
+(0005 retired to git history): (1) the **calendar no-arbitrage** invariant is tested via a flat
+forward-variance construction as the *independent* oracle — `w(k,T) = base(k)·T` is non-decreasing
+in `T` by construction, itself a genuine SVI smile — over 200 Hypothesis examples
+(`test_total_variance_is_non_decreasing_in_maturity`, `tests/test_surfaces.py`); (2) **Black-76 /
+Black-Scholes consistency** is a forward-price-equivalence test parameterized over the documented
+carry (`test_black76_and_black_scholes_agree_under_the_documented_carry`, `tests/test_pricing.py`).

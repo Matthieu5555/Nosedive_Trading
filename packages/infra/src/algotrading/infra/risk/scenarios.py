@@ -23,8 +23,11 @@ Sign conventions, stated once and asserted by tests:
 
 * ``spot_shock`` is relative: ``new_spot = spot * (1 + spot_shock)``.
 * ``vol_shock`` is additive in vol units: ``new_vol = vol + vol_shock``.
+* ``rate_shock`` is additive in rate units: ``new_r = r + rate_shock`` (forward-fixed —
+  only the discount factor responds, matching the pricer's forward-fixed rho; ``+0.0025``
+  is +25 bp). It is the course's third stress axis.
 * ``time_shock`` is a roll-down in years: ``new_T = T - time_shock`` (and the
-  discount factor rolls with it at the implied rate).
+  discount factor rolls with it at the shocked rate).
 * The Taylor time term is ``theta * time_shock`` with the pricer's *calendar* theta
   (``dPrice/dt``, negative for a long option), so a roll-down loses time value —
   matching the full reprice in sign.
@@ -70,21 +73,28 @@ class ScenarioGridError(Exception):
 
 
 def _grid_construction_hash(
-    roll_down_days: tuple[int, ...], crash_rule_tag: str = _CRASH_RULE_TAG
+    roll_down_days: tuple[int, ...],
+    rate_shocks: tuple[float, ...] = (),
+    crash_rule_tag: str = _CRASH_RULE_TAG,
 ) -> str:
     """A short, stable hash of the grid-construction constants.
 
     Folded into the persisted scenario version, so changing the configured
-    ``roll_down_days`` or the crash rule moves the version automatically even when
-    ``config.version`` does not. The encoding (canonical-JSON SHA-256, 12 hex chars)
-    is the shared :func:`~.grid_versioning.short_construction_hash` — byte-identical
-    to the inline copy it replaced.
+    ``roll_down_days``, the crash rule, or adding a ``rate_shocks`` axis moves the version
+    automatically even when ``config.version`` does not. The encoding (canonical-JSON
+    SHA-256, 12 hex chars) is the shared :func:`~.grid_versioning.short_construction_hash`.
+
+    ``rate_shocks`` is added to the payload **only when non-empty**, so a grid with no rate
+    axis (every grid built before this axis existed) hashes byte-identically to before —
+    the rate axis is a strictly additive construction rule, not a silent version bump.
     """
-    payload = {
+    payload: dict[str, object] = {
         "version": GRID_CONSTRUCTION_VERSION,
         "roll_down_days": list(roll_down_days),
         "crash_rule": crash_rule_tag,
     }
+    if rate_shocks:
+        payload["rate_shocks"] = list(rate_shocks)
     return short_construction_hash(payload)
 
 
@@ -94,38 +104,53 @@ def effective_scenario_version(config: ScenarioConfig) -> str:
     Combines the config section version with a hash of the grid-construction
     constants, so a report regenerates exactly from positions + snapshot + this
     version: changing either the economic shocks (config) or the construction rules
-    (``config.roll_down_days``, the crash rule) moves it. Persisting ``config.version``
-    alone would let two different grids share one version.
+    (``config.roll_down_days``, the rate axis, the crash rule) moves it. Persisting
+    ``config.version`` alone would let two different grids share one version.
     """
-    return f"{config.version}+{_grid_construction_hash(config.roll_down_days)}"
+    return f"{config.version}+{_grid_construction_hash(config.roll_down_days, config.rate_shocks)}"
 
 
 @dataclass(frozen=True, slots=True)
 class Scenario:
-    """One explicit market shock: a relative spot move, vol shift, and time roll."""
+    """One explicit market shock: a relative spot move, a vol shift, a rate shift, a time roll.
+
+    ``rate_shock`` defaults to ``0.0`` so the four-field construction (and every grid built
+    without a rate axis) is unchanged; the rate family sets it to the configured additive
+    rate move.
+    """
 
     scenario_id: str
     family: str
     spot_shock: float
     vol_shock: float
     time_shock: float
+    rate_shock: float = 0.0
 
 
 def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
     """Build the deterministic scenario grid from a versioned scenario config.
 
     Families: one parallel spot move per ``spot_shock``, one parallel vol shift per
-    ``vol_shock``, one combined crash (the most adverse spot move with the largest
-    vol spike), and a small time roll-down. Ordering is fixed and the ids are
-    stable, so the grid is a pure function of the config.
+    ``vol_shock``, one parallel rate shift per ``rate_shock`` (the course's third axis;
+    absent when ``rate_shocks`` is empty), one combined crash (the most adverse spot move
+    with the largest vol spike), and a small time roll-down. Ordering is fixed
+    (spot, vol, rate, combined, time) and the ids are stable, so the grid is a pure
+    function of the config — and a config with no rate axis is byte-identical to before
+    this family existed.
     """
     spot_shocks = dedup_preserving_order(config.spot_shocks)
     vol_shocks = dedup_preserving_order(config.vol_shocks)
+    rate_shocks = dedup_preserving_order(config.rate_shocks)
     scenarios: list[Scenario] = [
         Scenario(f"spot_{shock:+.4f}", "spot", shock, 0.0, 0.0) for shock in spot_shocks
     ]
     scenarios += [
         Scenario(f"vol_{shock:+.4f}", "vol", 0.0, shock, 0.0) for shock in vol_shocks
+    ]
+    # The rate family is a pure parallel sweep of the rate axis (rho's axis); each rate
+    # scenario holds spot/vol/time fixed and shifts only the rate (forward-fixed).
+    scenarios += [
+        Scenario(f"rate_{shock:+.4f}", "rate", 0.0, 0.0, 0.0, shock) for shock in rate_shocks
     ]
     if spot_shocks and vol_shocks:
         crash_spot = min(spot_shocks)
@@ -159,13 +184,17 @@ def shock_valuation(
     """Apply a scenario to a valuation input, producing the shocked market state.
 
     Carry is held fixed (so the forward tracks the shocked spot), vol is floored at
-    zero, and the discount factor rolls to the shortened maturity at the implied
-    rate — the same state the pricer would see on that day in that market.
+    zero, and the discount factor rolls to the shortened maturity at the **shocked** rate
+    (base implied rate plus the additive ``rate_shock``) — the same state the pricer would
+    see on that day in that market. The rate shock is forward-fixed: only the discount
+    factor responds (carry, hence the forward, is unchanged), matching the pricer's
+    forward-fixed rho, so the full reprice agrees with the Taylor rho term in sign.
     """
     new_spot = valuation.spot * (1.0 + scenario.spot_shock)
     new_vol = max(valuation.volatility + scenario.vol_shock, 0.0)
     new_maturity = max(valuation.maturity_years - scenario.time_shock, 0.0)
-    new_df = math.exp(-valuation.implied_rate * new_maturity)
+    new_rate = valuation.implied_rate + scenario.rate_shock
+    new_df = math.exp(-new_rate * new_maturity)
     return dataclasses.replace(
         valuation,
         spot=new_spot,
@@ -273,7 +302,7 @@ def taylor_terms(
 
     Resolves the scenario into an explicit move and delegates to the one arithmetic home
     :func:`terms_from_move`, so the scenario split and the realized split cannot diverge.
-    The scenario grid carries no rate shock, so the rate term is zero here; ``vanna_pnl``
+    The rate term fires for a rate-family scenario (``rate_shock``, additive); ``vanna_pnl``
     is non-zero only for a combined spot-and-vol scenario and ``volga_pnl`` only when the
     scenario moves vol. With the blueprint-faithful default config
     (:data:`_EQ19_ATTRIBUTION` — ``one_dollar`` gamma, 365-day theta) the first four terms
@@ -285,7 +314,7 @@ def taylor_terms(
         d_spot=spot * scenario.spot_shock,
         d_vol=scenario.vol_shock,
         d_time=scenario.time_shock,
-        d_rate=0.0,
+        d_rate=scenario.rate_shock,
         config=config,
     )
 

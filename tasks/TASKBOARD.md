@@ -37,7 +37,7 @@ Disjoint lanes; anything touching the same file/contract serializes. TARGET §7 
 on order. Each item links its full spec.
 
 **Correctness / capture**
-- [T-scenario-rate-axis](T-scenario-rate-axis.md) · [T-strike-window-pct-clip](T-strike-window-pct-clip.md) (latent mine — documented, fix is labelling + delivery test)
+- [T-scenario-rate-axis](T-scenario-rate-axis.md) — **engine+config landed** (rate-shock family + additive forward-fixed shock; Rho term now fires under stress; config-hash golden regen). Open = optional 3-D stress_surface + BFF/front wiring (owner-ruled, front-adjacent). · [T-strike-window-pct-clip](T-strike-window-pct-clip.md) (latent mine — documented, fix is labelling + delivery test)
 - [clock-timer-coherence](clock-timer-coherence.md) (the live SX5E/XEUR timer shift) · [daily-bar-compaction](daily-bar-compaction.md) (971k one-row `daily_bar` files)
 - [T-intent-vs-delivery-audit](T-intent-vs-delivery-audit.md) (audit only — hunts the "green gate ≠ correct output" class; findings → tasks)
 

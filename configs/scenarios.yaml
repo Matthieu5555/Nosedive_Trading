@@ -7,9 +7,11 @@
 # 0036).
 
 scenario:                                          # the stress grid (ScenarioConfig)
-  version: "2026.06.07"
+  version: "2026.06.13"                            # bumped: added the rate-shock axis (3rd stress axis)
   spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]     # fractional spot moves (families grid)
   vol_shocks: [-0.05, 0.0, 0.05]                   # absolute vol moves (families grid)
+  rate_shocks: [-0.0025, 0.0, 0.0025]              # absolute rate moves (±25 bp); the course's 3rd
+                                                   # axis (~±10% of rate). Empty list = no rate family.
   roll_down_days: [1]                              # time-roll scenarios (days), one per entry
   stress_surface:                                  # the 2B ±range (spot × vol) PnL surface grid
     version: "2026.06.07"

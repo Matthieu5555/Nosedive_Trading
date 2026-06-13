@@ -1,5 +1,13 @@
 # REP9 — Registry-driven index picker (BFF `/api/indices` over the 1J registry)
 
+> **✅ DONE 2026-06-13** (commits `c1cdffb` + `cf1e106`). Built exactly this: `routers/indices.py`
+> (`GET /api/indices`) over `enabled_indices()` (symbol + name + currency), registered in `app.py`,
+> degrades to a labelled empty list (never 500) when no registry. `IndicesResponse`/`IndexOption`
+> in `api.ts`. The free-text `<input>` → registry-driven `<select>` on `pages/Market.tsx` (the page
+> the spec calls `Home.tsx` was renamed), and the same picker on `Basket.tsx`; `Orders.tsx` seeds
+> its ticket symbol from the registry too. A parked index (SPX) is not offered. BFF + web tests
+> (`test_indices_api.py`, `Market.test.tsx`); gate green. Archive-ready.
+
 > **READY — no blocker.** Dashboard-review follow-up (course transcript + front review;
 > [AUDIT-tasks-coherence-2026-06-07.md](AUDIT-tasks-coherence-2026-06-07.md)).
 > The front page's index selector is a **free-text `<input>`** the operator must type exactly

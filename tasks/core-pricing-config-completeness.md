@@ -34,3 +34,22 @@
 The surface model/fallback policy and the equity forward-engine candidate/outlier policy are typed
 config values read by the code (no `.py` literals at these sites); pricing config-hash golden
 regenerated; gate green.
+
+## Landed — slice 1: `surface.min_points_per_slice` (the SVI-trust routing threshold)
+`SurfaceConfig.min_points_per_slice` (`pricing.yaml surface:`, default 5, validated `>= 5`) now
+drives the SVI-vs-nonparametric routing in `surfaces/fit.py` — the `MIN_POINTS_FOR_SVI` `.py`
+literal is removed from the routing (it stays in `surfaces.svi` only as the hard
+five-parameter identifiability floor, a math invariant). Default 5 = byte-identical routing, so no
+analytics/surface golden moved (only the `pricing` config-hash, by design). Tests: a raised
+threshold routes a well-populated slice to the fallback; the `>= 5` floor is enforced. Gate green.
+
+**Deferred (with their wrinkles, so the next pass has the analysis):**
+- **`model` / `fallback_model`** — not a clean literal move: the blueprint says `fallback_model:
+  spline`, but the code's fallback is **linear-interpolation nonparametric** (`METHOD_NONPARAMETRIC`),
+  not a spline. Adding the keys needs a model-dispatch layer + an owner/blueprint reconciliation of
+  the "spline" name vs the shipped linear interp — do not encode `spline` if the code does linear.
+- **Forward-engine block** (`max_candidate_count` / `outlier_method` / `max_robust_zscore`) — the
+  z-score literal `_MAD_REJECTION_Z = 3.5` lives in the **shared** `utils/robust.py` (used beyond
+  forwards → a config home there would couple the shared util to forward config — a layering call),
+  and `max_candidate_count: 12` is a **new cap behaviour**, not an existing literal. Needs its own
+  small design (where the rate/outlier config lives without cross-layer coupling).

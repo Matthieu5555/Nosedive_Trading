@@ -189,3 +189,50 @@ large/economically-meaningful divergence, else noted as soft-match.
 
 ### Method-question summary for the confirmed class-instances
 All of Cap-1, Cap-2, An-1, An-2, An-3, QC-1 satisfy the three-part test: (1) intended policy is a typed config value (tenor_grid, delta_bound, max_residual_mad, max_surface_rmse) or a prescribed BP/TR value; (2) a code-side count/window/units/drop silently overrides it (`_DISCOVERY_STRIKES_PER_SIDE`, nearest-N, gap-drop, RMSE-only, absolute-units, relative-vs-absolute label); (3) tests stayed green by checking the mechanism on hand-built fixtures, while the matching QC check either FAILed-and-was-unread (Cap-1, Cap-2) or is itself blind (An-3).
+
+---
+
+## ADDENDUM 2026-06-13 — owner intent correction + new instance + index-only scope
+
+> Update after the owner re-stated intent and the **index-only scope ruling** (memory
+> `index-only-app-scope`; `T-index-only-refactor`). The original pass under-read one course
+> requirement and several Lane-0 findings are now resolved/moot by the scope decision.
+
+### An-6 / QC-3 corrected — delta band is ±30Δ **step-2**, not the 8-point grid (NEW class-instance)
+**Intent correction.** QC-3 and Cap-2 above read the course delta grid as
+`−30/−20/−10/ATM/+10/+20/+30` (8 points, ~10Δ step). **That is wrong** — the owner confirms the
+professor asked for a `±30Δ` fork **by a step of 2**: `30/28/…/04/02/ATM/02/…/28/30` (31 points,
+puts −0.30..−0.02, ATM, calls +0.02..+0.30).
+
+**The full instance (the original pass missed this half).** The delivered projection grid is the
+8-point step-10 set, and it lives as a **`.py` literal**, not typed config:
+`surfaces/projection.py` `_DEFAULT_BAND_TARGETS = (−0.30,−0.20,−0.10, 0.0, 0.0, 0.10, 0.20, 0.30)`,
+instantiated **without override** at `actor/driver.py:776`
+(`ProjectionConfig(version=PROJECTION_AXES_VERSION)`). So production projects the coarse grid from
+a code default, and `qc.yaml max_delta_step:0.25` is far too loose to force step-2. This is a clean
+4th instance of the failure class: intent (±30Δ step-2) → overridden by a technical `.py` default →
+gate green because tests check the mechanism on the 8-point fixture, not the delivered step-2 grid.
+QC-3's remediation is re-aimed: **not** "align with the 8-point band" but `max_delta_step → 0.02`
++ move `band_targets` into typed config (ADR-0028) + regen the projection golden.
+- **Severity:** HIGH. **Status:** handed to a parallel agent (`T-delta-step-2` /
+  `T-projection-grid-completeness`). Needs a re-run to bank the 31 points (selection-only change).
+
+### Lane-0 findings resolved / mooted by the index-only scope ruling
+- **#8 `universe.underlyings [AAPL,MSFT,SPY]` (was HIGH)** → **being removed at the root**: the
+  field is deleted entirely (one universe source = the index registry) in `T-index-only-refactor`
+  Phase 3. Single-names are index *constituents*, never option underlyings.
+- **Lane-0 `infra-saxo/configs` + `infra-deribit/configs` drift (was config-only)** → **MOOT**:
+  both broker packages were removed (`T-index-only-refactor` Phase 1, commit `ddc3019`). Saxo/Deribit
+  are no longer in the tree.
+- **SPX** → **parked** (`enabled:false`, kept as the multi-index proof; Phase 2, commit `7cc6d73`).
+  The live capture/projection scope is **SX5E alone** while the app is stabilised.
+- **#7 / Cap-3 `capture.yaml` orphan (HIGH)** → still open as `T-capture-config-coherence`, but now
+  scoped index-only: retire the orphan `collection:` block as part of the index-only cleanup.
+- **"top-10 ATM constituents has no typed home" (ADR-0028 gap)** → unchanged, still un-tracked;
+  flag for the typed-config pass once the equity-index path is stable.
+
+### Still open (unchanged by the scope ruling — the real parameterisation backlog)
+Cap-1 verify-recapture, An-1 (forward label vs QC axis), An-2/QC-4 (parity units), An-3/QC-2
+(surface arb-free QC blind), An-4 (`T-pricing-config-completeness`), Rk-1 (`T-scenario-rate-axis`),
+QC-1 (ADR-0040 gap rows). These are economic-parameter correctness, independent of which
+instruments are in scope.

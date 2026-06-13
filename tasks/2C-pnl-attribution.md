@@ -18,8 +18,8 @@
   and a Plotly attribution view (waterfall) are 1I's to render — this task owns the seam shape, not
   the React. Conforms to **[ADR 0006](../.agent/decisions/0006-risk-engine.md)** (valuation seam,
   full reprice is truth), **[ADR 0011](../.agent/decisions/0011-blueprint-as-plan-of-record.md)** (the
-  attribution math), **[ADR 0029](../.agent/decisions/0029-contract-field-names-conform-to-blueprint.md)**
-  (the `dollar_*` field names — never `cash_*`), and **[ADR 0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)**
+  attribution math **and** the `dollar_*` field names per `documentation/blueprint/09-data-dictionary.md` —
+  never `cash_*`), and **[ADR 0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)**
   (Plotly/shadcn for the front view).
 - **Depends on:** **infra/risk** (built — `full_reprice_pnl`, `local_approx_pnl`, `_taylor_pnl`,
   `PositionRisk.dollar_*`, `scenario_line_pnls`, `build_scenario_report` all exist and land in the

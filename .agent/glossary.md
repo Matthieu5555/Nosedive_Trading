@@ -101,20 +101,13 @@ instead.
   `canonical_ts <= snapshot_ts` are usable and strictly-later ones are dropped as
   the future; order-independent, ties broken by `event_id`. The platform's
   look-ahead boundary.
-- **Total variance** — `w = σ²·T`, implied vol squared times year-fraction to
-  expiry; the space the SVI surface and IV points live in.
-- **Log-moneyness** — `k = ln(K/F)`, strike relative to the forward; the x-axis of
-  every smile.
 - **Parity forward** — the forward `F` recovered from put-call parity
   `C − P = DF·(F − K)` read as a line across strikes, recovering `F` and `DF`
   jointly without an externally supplied discount factor.
-- **SVI** — Stochastic-Volatility-Inspired; the five-parameter raw form
-  `w(k) = a + b(ρ(k−m) + √((k−m)² + σ²))` fit to one maturity's total-variance smile.
-- **Cost of carry (`b`)** — generalized-BSM carry: `b = r` for non-dividend equity,
-  `b = 0` for a future (Black-76), `b = r − q` for continuous dividend yield `q`.
-- **Calendar / butterfly arbitrage** — the two no-arbitrage diagnostics on a
-  surface: calendar = total variance non-decreasing in maturity at fixed `k`;
-  butterfly = Gatheral's `g(k) ≥ 0`. Both are reported as diagnostics, not enforced.
+
+> Domain vol vocabulary (total variance, log-moneyness, SVI, cost of carry, calendar/butterfly
+> no-arb) lives in `documentation/blueprint/10-glossary.md` + `documentation/vol-surface/` — read
+> there, not duplicated here.
 
 ### Risk (Workstream D)
 
@@ -167,7 +160,7 @@ instead.
   surface fitter are checked against an independently-derived answer, not their own
   output.
 
-### Broker protocols and adapter layer (Workstreams M4 / M5)
+### Broker seam / adapter layer
 
 - **Broker-seam direction ([ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md)):**
   Nautilus is the runtime spine; **IBKR rides Nautilus's adapter** plus a custom Client-Portal REST
@@ -176,8 +169,6 @@ instead.
   [ADR 0042](decisions/0042-index-options-only-scope-ibkr-sole-broker.md)); the `MarketDataAdapter`
   seam stays generic so another broker could rejoin. The scalar pull `contracts.BrokerSession` is
   retired; content-addressed event ids run over the vendored running counter.
-- **`BrokerTransport`** — the broker-agnostic Protocol for a live connection: sends subscription
-  requests and delivers raw wire frames. Lives in `infra/`; never imported by `strategy`.
 - **`MarketDataAdapter`** — the Protocol that normalizes a broker's wire frames into `BrokerTick`
   EAV rows. One implementation per broker, in its leaf package (`infra-<broker>`).
 - **`BrokerTick`** — the normalized EAV row crossing the broker seam: `(provider, instrument_key,
@@ -189,9 +180,6 @@ instead.
 - **`ProviderFlow`** — a Protocol in `infra` implemented by each broker leaf: `open_session()`,
   `discover(...)`, `make_adapter(...)`, `resolve_config(...)`. Registered in the app layer (not in
   `infra/`, which never imports a leaf). ADR 0017.
-- **`EventSource`** — a minimal Protocol for supplying raw events to the analytics pipeline:
-  `events(provider, underlying, start, end) -> Iterable[RawMarketEvent]`. Makes live, replay, and
-  future historical sources interchangeable without forking the pipeline. ADR 0016.
 
 ### Provider and exchange identity
 

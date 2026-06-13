@@ -39,11 +39,20 @@ blueprint/transcript/code*. If the blueprint or transcript already says it, link
    - **Owner ruling 2026-06-13: untrack (`git rm`), not an `archive/` folder — git history is the
      archive ("au pire on remonte dans git").** Removing a superseded/dead ADR from the tree is the
      intended end state; recover from history if ever needed.
-   - **DONE (this session):** `git rm` of the verified-dead set with zero live load and no markdown
-     `[](path)` referent in the gate-checked docs — **0013** (deribit, superseded), **0014** (saxo,
-     superseded), **0020** (actor wiring, superseded by 0023). Their dangling `[[…]]` *wiki* mentions
-     in other ADRs are cosmetic (doc-freshness checks only `[](path)` links in map/READMEs, not
-     `decisions/*` cross-links) — sweep them when the holding actor next commits.
+   - **DONE (this session):** untracked **9** ADRs (42 → 33), all orphan-checked (every live clause
+     recorded elsewhere) — **0013** (deribit), **0014** (saxo), **0020** (actor wiring → 0023), **0008**
+     (live IBKR adapter → 0024/0025 + code read-only invariant), **0016** (EventSource, YAGNI, 0 refs),
+     **0021** (M2 merge → frozen pricing in 0004), **0029** (field names → blueprint 09), **0007**
+     (integration/ops → no-dual-path in 0025/0027), **0018** (M0 keystone → layering in import-linter +
+     map). Gate stays green (no `[](path)` referent in map/READMEs). Also added **`decisions/README.md`** — the one-line index of the 35 live
+     ADRs (read it instead of the bodies); glossary trimmed (dead seams + vol-textbook terms → point to
+     blueprint/vol-surface).
+   - **Dangling-link sweep (cosmetic, gate-green; do when the holding file is free):** markdown
+     `[ADR 00NN](…)` links to removed ADRs remain in **held/high-traffic** files I must not clobber —
+     `tasks/TASKBOARD.md` (0021, 0029), `.agent/open-questions.md` (0029 in the OQ-7 Resolved row) —
+     and in **archived** specs `tasks/archive/{T-bridge,2A,2B,1I,1F,H2,ibkr-rest-api-evaluation}.md`
+     (historical, low value). Active non-held refs were already repointed (`2C-pnl-attribution.md` →
+     blueprint 09; `documentation/connectivity/capture-forward.md` → drop the 0016 mention).
    - **DEFERRED:** **0022** (M5 vendored slice, reversed) — Matthieu holds it uncommitted; untrack it
      after his commit (or hand it to him).
    - **Review-then-untrack** (merge-convergence archaeology — the merge is **closed**; confirm each

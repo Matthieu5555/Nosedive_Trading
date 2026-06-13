@@ -109,9 +109,8 @@ correct.
   are written by `scripts/export_sample.py`). The pre-merge tree also kept synthetic golden fixtures
   under `packages/infra/tests/golden/`; those are exercised by the acceptance tests, not by these CLIs.
 - **Backtest depth** (long historical ranges) is a separate concern — capture-forward accumulates the
-  history first. A historical-data provider would plug in as another event source; the dedicated
-  `EventSource` seam for that is recorded in [ADR 0016](../../.agent/decisions/0016-eventsource-seam-backtest-readiness.md)
-  and is currently **YAGNI** under the Nautilus runtime spine ([ADR 0023](../../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)) —
+  history first. A historical-data provider would plug in as another event source — currently **YAGNI**
+  under the Nautilus runtime spine ([ADR 0023](../../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)) —
   Nautilus's data catalog + replay engine is the backtest path. Either way it slots in with no
   pipeline change.
 

@@ -1,8 +1,17 @@
-# 0011 — Blueprint as plan of record: domain authority, scope, and 16-step roadmap
+# 0011 — Plan of record: domain authority and scope
 
 - **Status:** accepted
 - **Date:** 2026-05-30
 - **Source:** Vincent's ADR-009; merged into our stream 2026-06-05
+
+> **AMENDED 2026-06-13 — the blueprint was retired.** The founding blueprint (the old
+> `documentation/` tree) went out of date and was deleted. **`TARGET.md` (repo root) is now the
+> plan of record and the domain authority** — what we build, why, in what order, and the ruling on
+> any formula/contract conflict. The *principle* of this ADR is unchanged and still binding: there
+> is **one** domain source of truth, the code conforms to it, and `AGENTS.md` governs process while
+> the plan of record governs domain. Only the document holding that authority changed (blueprint →
+> TARGET.md). The body below is kept as the historical "why we dissolved the V1/V2 split" record;
+> read every "the blueprint" in it as "the plan of record (now TARGET.md)".
 
 ## Context
 

@@ -54,8 +54,7 @@ or conda. The backend targets Python 3.13.
   that carry the value that triggered them. Define expected variants out of
   existence (deletion is idempotent, search returns empty) rather than raising.
 - **Configuration** centralized in a validated config object, hydrated from versioned YAML —
-  **no business/compute parameter is a `.py` literal** (the binding standard is
-  `documentation/configuration-and-reproducibility.md`, ADR 0028). Only genuine internal
+  **no business/compute parameter is a `.py` literal** (the binding standard is ADR 0028). Only genuine internal
   invariants (math constants, separators) stay in code, at the top of the file with a comment.
 - **Dependency injection.** Functions accept their dependencies as parameters
   rather than constructing clients internally.

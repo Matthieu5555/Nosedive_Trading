@@ -73,7 +73,9 @@ from algotrading.infra.universe import IndexRegistry, parse_index_registry
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CONNECTIVITY = REPO_ROOT / "documentation" / "connectivity"
+# The systemd deployment units live under scripts/systemd/ (they were restored there when the
+# stale documentation/ tree was retired — they are operational artifacts, not docs).
+CONNECTIVITY = REPO_ROOT / "scripts" / "systemd"
 
 # A fixed clock instant: the fire's "today". The trade dates the tests use are on/before it so
 # nothing is rejected as future. Eurex/NYSE close instants below are hand-encoded, not read back.

@@ -2,9 +2,8 @@
 
 Read **this index first**, not all 33 ADR bodies. Open an ADR only when you need the *why* behind a
 rule it names. Domain questions (formulas, contracts, field names, vocabulary) are **not** here —
-they live in the **blueprint** (`documentation/blueprint/`, the authority, ADR 0011) and the course
-**transcript** (`documentation/transcripts/AlgoTradingCourse2-Greeks-et-strategies-vol.md`). ADRs
-record **process/architecture/operational** choices the blueprint deliberately leaves to the build.
+they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs record
+**process/architecture/operational** choices that TARGET deliberately leaves to the build.
 
 > **Scope today (ADR 0042):** index-options-only, **IBKR the sole live broker**, **SX5E** live, SPX
 > parked, single names are index *constituents* (and dispersion-phase underlyings — registry-driven,
@@ -20,7 +19,7 @@ record **process/architecture/operational** choices the blueprint deliberately l
 - **0037** — Futures deferred: ship forward-only (gates task 1D).
 
 ## Architecture & runtime
-- **0011** — The blueprint is the plan of record; it governs the domain, AGENTS.md governs process.
+- **0011** — Plan of record governs the domain, AGENTS.md governs process. (The founding blueprint was retired as out-of-date; `TARGET.md` is now that authority.)
 - **0001** — Workspace layout + the `.agent/` instruction layer.
 - **0023** — Nautilus is the runtime spine; lean on proven libraries; retire the hand-rolled session.
 - **0025** — Analytics hosted in Nautilus; our raw layer stays the system of record (no-dual-path).
@@ -59,4 +58,4 @@ record **process/architecture/operational** choices the blueprint deliberately l
 **Superseded, pending removal:** 0022 (M5 vendored slice — reversed by 0023/0042). **Removed (git
 history; clauses live on elsewhere):** 0007 (no-dual-path → 0025/0027), 0008 (read-only → 0024 + code),
 0013, 0014, 0016 (YAGNI), 0018 (layering → import-linter/map), 0020, 0021 (frozen pricing → 0004), 0029
-(field names → blueprint 09). To recover one: `git log --all --diff-filter=D -- .agent/decisions/`.
+(contract field names). To recover one: `git log --all --diff-filter=D -- .agent/decisions/`.

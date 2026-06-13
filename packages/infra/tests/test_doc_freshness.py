@@ -2,14 +2,13 @@
 
 AGENTS.md asks every change to update the doc next to the code; that rule was
 convention-only and silently re-drifted. This test is the gate-wired guard H2
-added so the README ladder, the routing map, and the `documentation/modules/`
-mirror cannot rot unnoticed. It is deliberately fast and dependency-free (stdlib
-only, no git subprocess) so it rides the root `pytest` gate.
+added so the README ladder and the routing map cannot rot unnoticed. It is
+deliberately fast and dependency-free (stdlib only, no git subprocess) so it
+rides the root `pytest` gate.
 
 What it asserts:
   * every `packages/*` package has a `README.md`;
   * every module dir under the `algotrading.infra` analytics core has one;
-  * every `documentation/modules/` symlink resolves to a real file;
   * `.agent/map.md` routes every canonical top-level area (and no new canonical
     top-level dir appeared without being added to the map);
   * no relative markdown link in the map or the package/module READMEs is dead.
@@ -43,7 +42,6 @@ INFRA_CORE = ROOT / "packages" / "infra" / "src" / "algotrading" / "infra"
 REQUIRED_AREAS = {
     "packages",
     "apps",
-    "documentation",
     "scripts",
     "configs",
     "notebooks",
@@ -69,7 +67,7 @@ def _module_dirs() -> list[Path]:
 
 
 def _docs_with_relative_links() -> list[Path]:
-    docs = [ROOT / ".agent" / "map.md", ROOT / "README.md", ROOT / "documentation" / "README.md"]
+    docs = [ROOT / ".agent" / "map.md", ROOT / "README.md"]
     docs += sorted((ROOT / "packages").glob("*/README.md"))
     docs += sorted(INFRA_CORE.rglob("README.md"))
     return [d for d in docs if d.is_file()]
@@ -91,14 +89,6 @@ def test_every_infra_module_dir_has_a_readme() -> None:
         if not (d / "README.md").is_file()
     ]
     assert not missing, f"infra module dirs without README.md: {missing}"
-
-
-def test_documentation_modules_symlinks_resolve() -> None:
-    mirror = ROOT / "documentation" / "modules"
-    links = [p for p in mirror.iterdir() if p.is_symlink()]
-    assert links, "documentation/modules/ has no symlinks — mirror is empty"
-    broken = [p.name for p in links if not p.resolve().is_file()]
-    assert not broken, f"broken documentation/modules/ symlinks: {broken}"
 
 
 def test_map_routes_every_canonical_top_level_area() -> None:

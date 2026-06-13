@@ -1,0 +1,60 @@
+# eod-capture.service — the daily close-capture one-shot (WS 1G, ADR 0032).
+#
+# The systemd timer is the scheduler; this is the one-shot it fires. It wraps the EOD runner
+# (scripts/eod_run.py → algotrading.infra.orchestration.eod_runner.main), which reads the 1J
+# index registry, captures each enabled index at its own session close, binds one
+# correlation_id, runs run_end_of_day, and freezes a per-run manifest. Idempotency, missed-run
+# catch-up, and gap-tracking all live in the run-state ledger — the one-shot stays one-shot
+# (no in-process scheduler; ADR 0032 §Decision §3).
+#
+# Templated by exchange calendar: %i is the --calendar code the matching timer passes
+# (e.g. eod-capture@XEUR fires the Eurex group, eod-capture@XNYS the NYSE group). Adding an
+# index on an already-covered calendar needs NO new unit — the runner picks it up from
+# enabled_indices(); a brand-new exchange calendar adds one timer (eod-capture@<MIC>.timer).
+#
+# Install (per-user, no root needed):
+#   loginctl enable-linger $USER                       # so user timers fire while logged out
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/systemd/eod-capture@.service ~/.config/systemd/user/   # (this file)
+#   cp scripts/systemd/eod-capture-alert.service ~/.config/systemd/user/
+#   cp scripts/systemd/eod-capture@*.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now eod-capture@XEUR.timer eod-capture@XNYS.timer
+# Operate:
+#   journalctl --user -u eod-capture@XEUR.service          # the run trace (one correlation_id)
+#   systemctl --user list-timers 'eod-capture@*'           # next fire per calendar
+#
+# NOTE: commit this as `eod-capture@.service` (the templated name) — the literal `@` makes it a
+# systemd template instantiated per calendar.
+
+[Unit]
+Description=AlgoTrading EOD close-capture (calendar %i)
+Documentation=file:///srv/project/scripts/systemd/eod-capture@.service
+# A failed run routes here — a single notification with the failed run's correlation_id.
+OnFailure=eod-capture-alert.service
+# Don't fire if the box has no network (the live capture needs the broker REST session).
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Run in the repo so `uv run` resolves the workspace and configs/. Adjust WorkingDirectory to
+# wherever the checkout lives on the server.
+WorkingDirectory=/srv/project
+# Belt-and-suspenders for the IBKR_CP_* credentials: the entrypoint already loads the repo-root
+# .env itself (uv run does not), but loading it here too means a credentialed fire works even if
+# the ExecStart is ever changed. The leading `-` makes a missing file a no-op, not a unit failure.
+EnvironmentFile=-/srv/project/.env
+# The runner is a one-shot; --calendar %i scopes the fire to this timer's exchange group.
+ExecStart=/usr/bin/env uv run python scripts/eod_run.py --calendar %i
+# Retry on a transient failure (a flaky broker session, a momentary disk hiccup). The run is
+# idempotent (ledger + replace-/append-idempotent store writes), so a retry is safe by
+# construction — it re-does only the unfinished tail.
+Restart=on-failure
+RestartSec=120
+# Cap the retries so a hard failure escalates to OnFailure= rather than looping forever.
+StartLimitIntervalSec=900
+StartLimitBurst=3
+# journald captures stdout/stderr — the queryable run history (no separate log file).
+StandardOutput=journal
+StandardError=journal

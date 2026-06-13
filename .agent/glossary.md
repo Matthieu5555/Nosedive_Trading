@@ -51,7 +51,7 @@ instead.
   records to tie a result to the exact economic settings that produced it.
   Environment settings (data root, hosts) deliberately stay out of it. Post-C7 the
   stamp carries a per-**bundle** `config_hashes` dict, not one global hash.
-- **Config bundle** — one of the six blueprint Part VII YAML files under `configs/`
+- **Config bundle** — one of the six YAML files under `configs/`
   (`environment` / `broker` / `universe` / `qc` / `scenarios` / `pricing`); the unit
   of config authoring, validation, and hashing. The four economic bundles load into
   the typed `PlatformConfig` and each hashes independently so a result ties to the
@@ -106,8 +106,7 @@ instead.
   jointly without an externally supplied discount factor.
 
 > Domain vol vocabulary (total variance, log-moneyness, SVI, cost of carry, calendar/butterfly
-> no-arb) lives in `documentation/blueprint/10-glossary.md` + `documentation/vol-surface/` — read
-> there, not duplicated here.
+> no-arb) lives in `TARGET.md` — read there, not duplicated here.
 
 ### Risk (Workstream D)
 

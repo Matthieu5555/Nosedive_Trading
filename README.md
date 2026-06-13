@@ -24,16 +24,13 @@ web app's lint+tests on every push and pull request.
 - `packages/`             The single tree: `core` (`algotrading.core` — config/log/manifest/
   provenance), `infra` (`algotrading.infra` — the contract seam plus market-data, analytics,
   risk, QC/validation, the Nautilus-hosted actor, orchestration, observability, replay),
-  `infra-{ibkr,saxo,deribit}` (broker leaf adapters), and `strategy`/`execution` (upper
-  layers). See each `packages/<pkg>/README.md`. Layering is enforced by import-linter.
+  `infra-ibkr` (the broker leaf adapter — IBKR is the sole live broker, index-only per ADR 0042),
+  and `strategy`/`execution` (upper layers). See each `packages/<pkg>/README.md`. Layering is
+  enforced by import-linter.
 - `apps/frontend/`        Python BFF + React/Vite web app, wired to the real `infra` seams.
-- `documentation/`        Operator handover runbooks, interface contracts, release notes.
-- `documentation/blueprint/` Founding domain reference — formulas, data contracts,
-  field definitions, 16-step roadmap. **Read this before touching any analytics code.** See
-  `documentation/blueprint/README.md` and ADR 0011.
-- `documentation/vol-surface/` Pedagogical vol surface doc + figures. Prerequisite before
-  touching `infra/{iv,surfaces}`.
-- `notebooks/`            Demo pipelines (Deribit, IBKR, Saxo), pricing/Greeks, surface fit.
+- `TARGET.md`             The single roadmap and domain authority — what we build, why, in what
+  order. **Read this before touching any analytics code.** `BIG_PICTURE.md` is the system overview.
+- `notebooks/`            Demo pipelines (IBKR), pricing/Greeks, surface fit.
 - `research/`             Research notes and experiments. As-of reproducibility rules apply.
 - `data/`                 Shared datasets (parquet/duckdb). Keep large/secret data out of git.
 - `.agent/`               Agent instruction layer: routing map, conventions, glossary,

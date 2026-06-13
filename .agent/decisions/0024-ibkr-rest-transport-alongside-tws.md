@@ -1,5 +1,13 @@
 # 0024 — IBKR over REST as a course requirement, under the Nautilus spine
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** Saxo and Deribit were removed entirely —
+> **IBKR is the sole live broker** and the app is index-options-only (SX5E first, SPX parked;
+> [ADR 0042](0042-index-options-only-scope-ibkr-sole-broker.md)). The "same case as Saxo/Deribit"
+> / "Saxo/Deribit precedent" reasoning below stands only as the *historical pattern* that
+> justified the custom IBKR-REST adapter — there is no Saxo/Deribit adapter to match anymore. The
+> decision itself (build the custom IBKR-REST connector under the Nautilus spine, REST preferred)
+> is unchanged.
+
 - **Status:** **accepted** — workspace owner ruled 2026-06-05 to build the custom IBKR-REST
   connector (REST is a hard course requirement; Nautilus's IBKR adapter is TWS-only). The
   resolution below (§"Proposed decision") stands as accepted; the catalog seam it depends on

@@ -1,6 +1,6 @@
 # Decisions — one-line index
 
-Read **this index first**, not all 33 ADR bodies. Open an ADR only when you need the *why* behind a
+Read **this index first**, not all 31 ADR bodies. Open an ADR only when you need the *why* behind a
 rule it names. Domain questions (formulas, contracts, field names, vocabulary) are **not** here —
 they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs record
 **process/architecture/operational** choices that TARGET deliberately leaves to the build.
@@ -43,8 +43,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 ## Analytics, risk & QC
 - **0002** — Foundation hardening: lineage keys, atomic writes, schema enforcement.
 - **0003** — Market-data plane: content-addressed idempotency, gap encoding, broker seam.
-- **0004** — Frozen pricing keystone: determinism machinery, `PRICER_VERSION`, coverage floor.
-- **0005** — Analytics-core test surface: calendar no-arb property, Black-76/BS carry consistency.
+- **0004** — Frozen pricing keystone: determinism machinery, `PRICER_VERSION`, coverage floor. *(also holds the former 0005 test-surface conventions)*
 - **0006** — Risk engine: valuation seam, net/monetization conventions, scenario grid.
 - **0009** — Surface job + broker-agnostic chain planning + market-data policy.
 - **0010** — QC + validation merged into one `triage_records` plane.
@@ -55,7 +54,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0030** — Visualization/UI stack: Plotly.js charts; shadcn/ui + TanStack Table.
 
 ---
-**Superseded, pending removal:** 0022 (M5 vendored slice — reversed by 0023/0042). **Removed (git
-history; clauses live on elsewhere):** 0007 (no-dual-path → 0025/0027), 0008 (read-only → 0024 + code),
+**Removed (git history; clauses live on elsewhere):** 0022 (M5 vendored slice — reversed by 0023/0042),
+0005 (analytics-core test surface → 0004), 0007 (no-dual-path → 0025/0027), 0008 (read-only → 0024 + code),
 0013, 0014, 0016 (YAGNI), 0018 (layering → import-linter/map), 0020, 0021 (frozen pricing → 0004), 0029
 (contract field names). To recover one: `git log --all --diff-filter=D -- .agent/decisions/`.

@@ -93,15 +93,19 @@ testable on its own, lets us feed those same functions from a plain loop if
 Nautilus ever gets in the way, and keeps the strategy-agnostic boundary intact —
 analytics never reach up into strategy code.
 
-## Status (2026-06-05)
+## Status (2026-06-13)
 
 This plan is the active direction, reaffirmed by
 [ADR 0023](.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md): **Nautilus is
-the runtime spine**, and the platform leans on every well-built library it can. Two refinements to
-the IBKR-centric sketch above: market data now comes from **three** brokers — **IBKR via
-Nautilus's own adapter**, and **Saxo + Deribit via our own adapters** (Nautilus ships neither),
-all three normalizing into the one catalog the engine replays. An interim decision to drop the
-Nautilus dependency (ADRs 0007/0020) was reversed by 0023.
+the runtime spine**, and the platform leans on every well-built library it can. An interim decision
+to drop the Nautilus dependency (ADRs 0007/0020) was reversed by 0023.
+
+**Scope** ([ADR 0042](.agent/decisions/0042-index-options-only-scope-ibkr-sole-broker.md)): the
+platform is **index-options-only**, **IBKR is the sole live broker**, and **EuroStoxx-50 (SX5E) is
+the sole live index** (SPX parked). Single names are index *constituents*, never standalone
+underlyings. The earlier multi-broker sketch (Saxo + Deribit adapters) was retired with that pivot
+— do not resurrect it. Market data is IBKR via Nautilus's own adapter, normalizing into the one
+catalog the engine replays.
 
 ## Library leverage — forward view (2026-06-07)
 
@@ -112,16 +116,17 @@ rule holds: lean on libraries for plumbing; keep the deterministic analytics mat
 
 - **Nautilus** is the spine but still under-used. The big future adoptions: a live `TradingNode`
   (today only its backtest engine drives the system); its typed `Bar`/`BarType` model + the IBKR
-  adapter's historical-bar path for the daily-OHLC capture (roadmap 1C/1E); and, when execution
-  lands (3A/3B), `OrderFactory`/`Order`/`Strategy`/`ExecutionEngine` rather than a hand-rolled
-  order model. The open design question is whether Nautilus's `ParquetDataCatalog` *becomes* the
-  raw store — deferred until the provenance/immutability invariants are proven to survive it.
+  adapter's historical-bar path for the daily-OHLC capture (roadmap 1C/1E); and `OrderFactory`/
+  `Order`/`Strategy`/`ExecutionEngine` as the candidate **3B** sign-and-send path (3A landed as a
+  pure, paper preview ticket — the inert object 3B signs). The open design question is whether
+  Nautilus's `ParquetDataCatalog` *becomes* the raw store — deferred until the provenance/
+  immutability invariants are proven to survive it.
 - **QuantLib** is already at its right footprint (the American lattice). It earns more only when a
   **real term structure** arrives — non-flat discount/dividend curves and proper day-counters for
   the gated futures/carry work (1D). Not before; flat-rate one-liners do not need a `YieldTermStructure`.
 - **py-vollib** stays the IV oracle. `py_vollib_vectorized` becomes worth adopting as the batch
-  IV/Greek kernel only if full-chain throughput (S&P 500 × multi-year history, 1F) is measured as a
-  real bottleneck — keeping the scalar diagnostic solver as the per-contract path.
+  IV/Greek kernel only if full-chain throughput (a full index chain × multi-year history, 1F) is
+  measured as a real bottleneck — keeping the scalar diagnostic solver as the per-contract path.
 - **scipy** is the numerics workhorse going forward: `scipy.interpolate` (PCHIP/RBF) for the 1F
   surface regrid, and `scipy.stats`/`scipy.linalg` if parametric VaR or book decorrelation (2D)
   is ever built on top of today's full-reprice scenario engine.
@@ -131,8 +136,8 @@ rule holds: lean on libraries for plumbing; keep the deterministic analytics mat
   serialization. `pyarrow.dataset` is the partition-management upgrade once the store reaches
   years × hundreds of constituents.
 - **exchange-calendars** grows naturally as indices/venues are added (one registry entry each); it
-  will own session/settlement/roll math for 1D futures via `sessions_window`/`next_open`. Permanent
-  coverage gap: crypto (Deribit) has no meaningful calendar and stays on calendar-day logic.
+  will own session/settlement/roll math for 1D futures via `sessions_window`/`next_open`. Today it
+  resolves the Eurex (SX5E) session and close that drive the EOD capture timer.
 - **pydantic** is the highest-leverage *future* play, twice over: as the typed BFF response contract
   (so the unit-carrying `{raw,dollar,unit}` shape and OpenAPI come free as Phase 2 multiplies
   endpoints) and as the config validation layer (retiring the hand-rolled reflective coercer). Both

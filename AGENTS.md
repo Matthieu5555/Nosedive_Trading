@@ -56,12 +56,10 @@ a choice the next agent would otherwise have to reverse-engineer.
 Choices that are *not yet ruled on* live in `.agent/open-questions.md` — a living
 register of decisions awaiting an owner/domain ruling. When you hit a fork that is
 not yours to settle, record it there rather than guessing; when it is ruled it
-becomes an ADR. The merge/convergence is closed; the **plan of record for what we build
-next** is `documentation/roadmap-index-analytics.md` (the index options-analytics pipeline,
-Phase 0→3), with `documentation/vision-medium-term.md` for the *why* and `TARGET.md`
-(repo root) for the end-state capability map the roadmap is steering toward. The live task board
-(`tasks/TASKBOARD.md`) names the one convergence remnant still open (C7) and where each new
-workstream spec lands.
+becomes an ADR. The merge/convergence is closed. The **plan of record** — the end-state
+capability map *and* the ordered build sequence — is `TARGET.md` (repo root); it is the single
+roadmap. The live task board (`tasks/TASKBOARD.md`) tracks who is touching what and the ready
+queue of open specs.
 
 ## Verify before you declare done
 

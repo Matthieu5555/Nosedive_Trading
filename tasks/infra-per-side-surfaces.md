@@ -7,7 +7,7 @@
 ## The gap
 Today **one** surface is fitted per underlying per day (parity → one IV per strike). The course
 insists the **put IV ≠ call IV** for the same (K, T) and wants IV calibrated per right.
-[[T-mirror-greeks-putcall]] **explicitly scopes itself out of R2** — it keeps ONE IV curve and
+[[infra-mirror-greeks-putcall]] **explicitly scopes itself out of R2** — it keeps ONE IV curve and
 mirrors only the *greeks* per side. **This is NOT that task:** R2 fits the surfaces per side.
 
 ## Scope
@@ -20,8 +20,8 @@ mirrors only the *greeks* per side. **This is NOT that task:** R2 fits the surfa
 - The **combined** surface remains the forward-backing + attribution reference.
 
 ## Depends on / cross-link
-Cross-link [[T-mirror-greeks-putcall]] with a "this is NOT R2" pointer on both. Per-name surfaces
-feed [[T-signal-layer]]/S1.
+Cross-link [[infra-mirror-greeks-putcall]] with a "this is NOT R2" pointer on both. Per-name surfaces
+feed [[infra-signal-layer]]/S1.
 
 ## Done criteria
 put/call/combined fitted; `surface_side` through contract→BFF→front with a toggle; put−call spread

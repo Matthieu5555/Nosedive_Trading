@@ -139,5 +139,5 @@ trader.
 - **No secrets in git or app.** Approval tokens and any broker credential come from `$HOME/.env`
   (gitignored), per AGENTS.md §95–96 — never a `.py` literal, never committed config.
 - **Blueprint (ADR 0011) overrides** on any order/ticket/transmission domain detail that conflicts
-  with this spec. Cross-ref the 3A sibling (`tasks/3A-order-ticket.md`) for the ticket shape this
+  with this spec. Cross-ref the 3A sibling (`tasks/execution-order-ticket.md`) for the ticket shape this
   consumes once it lands; align field names with it rather than inventing parallel ones.

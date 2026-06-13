@@ -6,15 +6,15 @@
 ## The gap
 The only rate in the system is the **parity-implied per-expiry rate** backed out of the chain
 (`infra/forwards`); Rho is computed against it. A book-level "rates +50bp" answer is meaningless
-against a per-expiry implied rate. [[T-explicit-rate-parameter]] makes `r` an explicit input and
-[[T-scenario-rate-axis]] shocks it, but neither ingests an **external** curve — that is this task.
+against a per-expiry implied rate. [[core-explicit-rate-config]] makes `r` an explicit input and
+[[infra-scenario-rate-axis]] shocks it, but neither ingests an **external** curve — that is this task.
 
 ## Scope
 - Ingest a **per-currency risk-free curve** as a daily as-of table: **Euribor/€STR pillars for
   EUR** (SX5E), **SOFR for USD** (SPX, when unparked). Contract: `rates(currency, pillar_tenor,
   rate, as_of)`; config names the source per currency.
 - **Rho** becomes the sensitivity to *this* curve, bumped per currency (pairs with
-  [[T-second-order-greeks]]). The parity-implied rate stays the pricing-consistency rate; the
+  [[infra-second-order-greeks]]). The parity-implied rate stays the pricing-consistency rate; the
   external curve is the *risk* rate.
 - **implied − risk-free spread** = first-class diagnostic (funding/dividend/borrow signal) + a QC
   gate on forward estimation.

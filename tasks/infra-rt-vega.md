@@ -17,7 +17,7 @@ not in the projection grid.
   normalisation if the blueprint settles it (absolute rule).
 
 ## Depends on / pairs with
-Natural to land with [[T-second-order-greeks]] (same pricing-output extension).
+Natural to land with [[infra-second-order-greeks]] (same pricing-output extension).
 
 ## Done criteria
 RT-Vega per strike in `PricingResult`/projection, raw+cash with units, convention matches the

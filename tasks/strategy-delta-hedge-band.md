@@ -18,8 +18,8 @@ stays **inside a band** (~0.455–0.46, i.e. ~±0.06 around target) and **re-hed
 - The band edges live in **config**, not a `.py` literal.
 
 ## Depends on / blocks
-Needed by the S1 dispersion book ([[T-constituent-option-capture]] + [[T-signal-layer]]) and S3.
-Pairs with [[T-fills-position-store]] (rebalances change the booked position).
+Needed by the S1 dispersion book ([[ibkr-constituent-option-capture]] + [[infra-signal-layer]]) and S3.
+Pairs with [[execution-fills-position-store]] (rebalances change the booked position).
 
 ## Done criteria
 A config-driven band rule decides hold/re-hedge and sizes the hedge; used by S1/S3 strategy logic;

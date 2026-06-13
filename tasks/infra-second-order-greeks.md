@@ -28,7 +28,7 @@ extended with Rho/Vanna/Volga + realized day-over-day.
 3. Carry the new Greeks through the contract → projection → BFF → front term-structure panels.
 
 ## Depends on / blocks
-Rho term pairs with [[T-rates-curve-ingest]] (R1) for the curve it bumps. Blocks the §7.2
+Rho term pairs with [[infra-rates-curve-ingest]] (R1) for the curve it bumps. Blocks the §7.2
 "attribution completion" and the transcript's "résidu en 2e ordre".
 
 ## Done criteria

@@ -16,7 +16,7 @@
 
 ## Depends on
 Margin forecast gates S2 live; reconciliation + kill switch gate any non-paper booking
-([[T-fills-position-store]], 3B). Alert delivery is independent and cheap.
+([[execution-fills-position-store]], 3B). Alert delivery is independent and cheap.
 
 ## Done criteria
 Each sub-lane: margin forecast sizes S2 capacity; kill switch flattens on trigger; broker recon

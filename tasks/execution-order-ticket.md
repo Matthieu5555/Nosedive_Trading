@@ -23,7 +23,7 @@
 - **Depends on:** **2A** (`tasks/2A-basket-builder.md`) — the basket the ticket is built *from*; the
   ticket model takes a 2A basket as input and must use its leg/instrument identity
   (`contracts/instrument_key.py`, `InstrumentKey`), not a parallel shape. No ticket without a basket.
-- **Blocks:** **3B** (`tasks/3B-sign-and-send.md`) — sign + send. 3B opens the owner gate, extends the
+- **Blocks:** **3B** (`tasks/execution-order-sign-and-send.md`) — sign + send. 3B opens the owner gate, extends the
   broker seam with an order-submission verb, and is the *only* task that may transmit. Keep 3A's model
   the thing 3B signs; do not pre-build submission here.
 - **State going in (verified 2026-06-07):** the broker leaf adapters exist

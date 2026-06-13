@@ -25,7 +25,7 @@
   contract + `risk/multileg.py` book-additive risk a book layers; **landed** `b2b6a06`), **2B**
   ([2B-stress-scenario.md](archive/2B-stress-scenario.md) — the ±50%/±50% spot×vol `StressSurfaceConfig` grid
   + the `GET /api/risk/scenarios` `surface` seam the combined PnL surface reprices over; **landed,
-  full-stack**), and **2C** ([2C-pnl-attribution.md](2C-pnl-attribution.md) — the per-Greek
+  full-stack**), and **2C** ([2C-pnl-attribution.md](infra-pnl-attribution.md) — the per-Greek
   `ScenarioAttribution` shape the combined view drills into; **landed** `4e3f50f`). All three are
   specced **and landed**; 2D is their leaf — it **consumes their frozen contracts**, it does not
   re-derive them. Reuses the additive aggregation (`risk/aggregation.py` — sum of lines equals the

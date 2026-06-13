@@ -19,7 +19,7 @@ ready: immutable raw, byte-identical replay, as-of discipline, the same actor li
   regime — the course's own 2021-vs-2008 method (p.129–130), industrialized.
 
 ## Depends on
-The strategy objects (2D + the strategy book), banked history depth, [[T-second-order-greeks]]
+The strategy objects (2D + the strategy book), banked history depth, [[infra-second-order-greeks]]
 for through-time attribution. Post-week per §5.7.
 
 ## Done criteria

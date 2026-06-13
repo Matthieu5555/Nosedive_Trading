@@ -31,35 +31,59 @@ it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-13 (1507 passed
 | Claude (vincent) | [T-front-currency-and-bands](T-front-currency-and-bands.md) — front display wiring (`api.ts`, `DollarGreeks.tsx`, `MaturityAccordion`, `format.ts`) + un-hardcode `BasketLegGrid` band list | 2026-06-13 | backend `/api/indices` currency single-source already landed; front half remains |
 | Claude (anthony) | Basket/Risk tab operator-flow fixes — `routers/basket.py` (empty `trade_date` → latest banked day), web `pages/Basket.tsx`, `pages/RiskScenarios.tsx` | 2026-06-12 | drop the duplicated stress composer from the Risk tab; on-demand stress lives on Basket |
 
+## Layer ownership (planning pass, 2026-06-13)
+
+Six per-layer planning agents diffed [`TARGET.md`](../TARGET.md) against this board and took
+ownership of their lanes. **Ownership is encoded in the filename prefix** — `core-`, `infra-`,
+`ibkr-`, `strategy-`, `execution-`, `frontend-` — matching the package layers
+`core ← infra ← infra-ibkr ← {strategy, execution} ← apps/frontend`. The ready queue below is
+grouped by that prefix; the prefix *is* the claim. These are lane-ownership claims, **not**
+work-in-progress file locks — claim a specific file in the table above before you edit it.
+Cross-layer seams (one spec, steps in several layers) are split into per-layer specs that link
+their dependency. Two collisions during the pass resolved to the broker leaf and the config
+spine: the capture tasks went `ibkr-`, the config-home tasks went `core-`.
+
 ## Ready queue — unclaimed, pick one and claim a row above
 
 Disjoint lanes; anything touching the same file/contract serializes. TARGET §7 is the authority
-on order. Each item links its full spec.
+on order. Grouped by owning layer; each item links its full spec. **★ = new spec from the
+planning pass.**
 
-**Correctness / capture**
-- [T-scenario-rate-axis](T-scenario-rate-axis.md) — **engine+config landed** (rate-shock family + additive forward-fixed shock; Rho term now fires under stress; config-hash golden regen). Open = optional 3-D stress_surface + BFF/front wiring (owner-ruled, front-adjacent). · [T-strike-window-pct-clip](T-strike-window-pct-clip.md) (latent mine — documented, fix is labelling + delivery test)
-- [clock-timer-coherence](clock-timer-coherence.md) (the live SX5E/XEUR timer shift) · [daily-bar-compaction](daily-bar-compaction.md) (971k one-row `daily_bar` files)
-- [T-intent-vs-delivery-audit](T-intent-vs-delivery-audit.md) (audit only — hunts the "green gate ≠ correct output" class; findings → tasks)
+**`core-` — config & lineage spine (level 0)**
+- [core-explicit-rate-config](core-explicit-rate-config.md) — **step 1 landed** (typed `ForwardConfig.rate` home + Eq-5 carry-split override, zero-churn `null` default; open = `forward_curve` contract/display, `r(T)` curve; the compute-wiring slice is infra's)
+- [core-pricing-config-completeness](core-pricing-config-completeness.md) (fold the `DEFAULT_MONEYNESS_BUCKETS` / surface-model / forward-policy literals into typed `pricing.yaml`)
+- ★ [core-config-effective-dating](core-config-effective-dating.md) (§0/ADR 0028 — the unbuilt as-of/effective-dated half of config; a real look-ahead hole — replay of an old `as_of` silently resolves *today's* config)
 
-**Front**
-- [T-capture-coverage-panel](T-capture-coverage-panel.md) (BFF + component landed; only the `<CoveragePanel>` drop into `Market.tsx` remains)
-- [front-page1-cdc-buildout](front-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards)
+**`infra-` — analytics / risk / surface / storage compute**
+- [infra-second-order-greeks](infra-second-order-greeks.md) (§7.2) — **steps 1-2 (compute) landed** (Vanna/Volga/Charm raw+cash+units; attribution carries Rho/Vanna/Volga + realized day-over-day). Step 3 (front) is now [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md).
+- [infra-pnl-attribution](infra-pnl-attribution.md) (§5.2 engine) · [infra-scenario-rate-axis](infra-scenario-rate-axis.md) (§5.4 — **engine+config landed**; BFF/front slice is [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md))
+- [infra-rates-curve-ingest](infra-rates-curve-ingest.md) (R1) · [infra-per-side-surfaces](infra-per-side-surfaces.md) (R2 — put/call/combined fit) · [infra-mirror-greeks-putcall](infra-mirror-greeks-putcall.md) (greeks-only; *not* the per-side fit)
+- [infra-signal-layer](infra-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope; consumes [ibkr-constituent-option-capture](ibkr-constituent-option-capture.md)) · [infra-rt-vega](infra-rt-vega.md) (#5)
+- [infra-strike-window-pct-clip](infra-strike-window-pct-clip.md) (latent mine — labelling + delivery test) · [infra-daily-bar-compaction](infra-daily-bar-compaction.md) (971k one-row `daily_bar` files)
+- ★ [infra-named-scenarios-and-corr-shock](infra-named-scenarios-and-corr-shock.md) (§5.4 — named historical stress 2008/COVID + correlation-shock axis; reuses the 2B grid + landed rate-axis pattern)
 
-**Phase 2 / Phase 3**
-- [2C-pnl-attribution](2C-pnl-attribution.md) · [2D-strategy-composition](2D-strategy-composition.md)
-- [3A-order-ticket](3A-order-ticket.md) · [3B-order-sign-and-send](3B-order-sign-and-send.md) (read-only / paper until an explicit owner gate)
+**`ibkr-` — IBKR capture lane & connectivity**
+- [ibkr-constituent-option-capture](ibkr-constituent-option-capture.md) (§7.4 — S1 dispersion blocker) · [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
+- [ibkr-clock-timer-coherence](ibkr-clock-timer-coherence.md) (the live SX5E/XEUR timer shift)
+- ★ [ibkr-unattended-reauth](ibkr-unattended-reauth.md) (§5.9 — close the ~daily SMS-2FA wall; OAuth bring-up + SSO-expiry ALARM delivery. **Load-bearing for the unattended-week story**)
 
-**Cross-cutting / config**
-- [ci-pipeline](ci-pipeline.md) · [security-review](security-review.md) · [server-deploy-plumbing](server-deploy-plumbing.md)
-- [T-pricing-config-completeness](T-pricing-config-completeness.md) (fold the `DEFAULT_MONEYNESS_BUCKETS` literal in here)
+**`strategy-` — the strategy book, signals, backtester**
+- ★ [strategy-s1-dispersion](strategy-s1-dispersion.md) (§3 S1 — flagship, week goal; blocked on `ibkr-constituent-option-capture`) · ★ [strategy-s2-index-put-line](strategy-s2-index-put-line.md) (§3 S2) · ★ [strategy-s3-gamma-trading](strategy-s3-gamma-trading.md) (§3 S3)
+- ★ [strategy-s4-covered-strangle](strategy-s4-covered-strangle.md) (§3 S4) · ★ [strategy-s5-calendar-carry](strategy-s5-calendar-carry.md) (§3 S5, optional)
+- [strategy-delta-hedge-band](strategy-delta-hedge-band.md) (hedge rule for S1/S3/S4) · [strategy-backtester](strategy-backtester.md) (§7.8) · ★ [strategy-decorrelation-analytics](strategy-decorrelation-analytics.md) (§5.8 — decorrelation *verification*, post-week; depends on 2D)
 
-**Strategy-book & course-gap lanes (TARGET §7 — ordered there)**
-- [T-second-order-greeks](T-second-order-greeks.md) (§7.2) — **steps 1-2 (compute) landed**: Vanna/Volga/Charm in `black76`/`dollar_greeks`/`PricingResult` (raw+cash+units), attribution carries Rho/Vanna/Volga + realized day-over-day, residual shrinks. **Open = step 3** (carry through `serializers.py → api.ts → front panels`); disjoint from the 3A ticket lane, do it after both merge.
-- [T-fills-position-store](T-fills-position-store.md) (§7.1 — the book built from fills) · [T-explicit-rate-parameter](T-explicit-rate-parameter.md) — **step 1 landed** (typed `ForwardConfig.rate` home + Eq-5 carry-split override, zero-churn `null` default; open = `forward_curve` contract/display, `r(T)` curve)
-- [T-constituent-option-capture](T-constituent-option-capture.md) (§7.4 — S1 dispersion blocker) · [T-signal-layer](T-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope) · [T-delta-hedge-band](T-delta-hedge-band.md)
-- [T-rates-curve-ingest](T-rates-curve-ingest.md) (R1) · [T-per-side-surfaces](T-per-side-surfaces.md) (R2 — put/call/combined fit) · [T-mirror-greeks-putcall](T-mirror-greeks-putcall.md) (greeks-only; *not* the same as per-side fit)
-- [T-rt-vega](T-rt-vega.md) (#5) · [T-option-volume-capture](T-option-volume-capture.md) (#7) · [T-sigfig-scientific-display](T-sigfig-scientific-display.md) (#6)
-- [T-backtester](T-backtester.md) (§7.8) · [T-operational-hardening](T-operational-hardening.md) (§7.9 — margin / kill switch / broker recon / alert delivery)
+**`execution-` — OMS / booking chain (packages/execution, empty)**
+- ★ [execution-booking-commit](execution-booking-commit.md) — **§7 #1, week's top priority**: the password-gated booking write barrier (previewed ticket → paper fill → fills-store + audit)
+- [execution-order-ticket](execution-order-ticket.md) · [execution-order-sign-and-send](execution-order-sign-and-send.md) (read-only / paper until an explicit owner gate) · [execution-fills-position-store](execution-fills-position-store.md) (§7.1 — the book built from fills; risk/attribution read it)
+- [execution-operational-hardening](execution-operational-hardening.md) (§7.9 umbrella — margin / kill switch / broker recon / alert delivery; margin sub-lane gates S2, rest post-week)
+
+**`frontend-` — BFF + web delivery (apps/frontend)**
+- [frontend-page1-cdc-buildout](frontend-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards) · [frontend-sigfig-scientific-display](frontend-sigfig-scientific-display.md) (#6)
+- ★ [frontend-coverage-panel-drop](frontend-coverage-panel-drop.md) (drop the landed `<CoverageTable>` into `Market.tsx` — supersedes the open slice of [T-capture-coverage-panel](T-capture-coverage-panel.md)) · ★ [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) (step 3 of infra-second-order-greeks; after 3A + sigfig) · ★ [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md) (BFF/front slice of infra-scenario-rate-axis)
+
+**Cross-cutting / unowned (no single layer; pick up directly)**
+- [2D-strategy-composition](2D-strategy-composition.md) (Phase 2 — infra/risk + BFF + web vertical, left whole) · [T-intent-vs-delivery-audit](T-intent-vs-delivery-audit.md) (all-layers audit — "green gate ≠ correct output"; findings → tasks)
+- [ci-pipeline](ci-pipeline.md) · [security-review](security-review.md) · [server-deploy-plumbing](server-deploy-plumbing.md) (front-app slices fold into these, not split out)
 
 **Context hygiene**
 - [T-agent-context-minimization](T-agent-context-minimization.md) — Part A (`.agent/` minimum-vital refactor) is partly landed; the `.agent/decisions/` index + glossary trim continue.
@@ -67,7 +91,7 @@ on order. Each item links its full spec.
 ## Blocked / parked — do NOT start
 
 - **[1D-futures-term-structure](1D-futures-term-structure.md)** — parked (ADR [0037](../.agent/decisions/0037-futures-capture-deferred-forward-only.md), futures deferred forward-only). The index-only pivot does not re-open it.
-- **[T-raw-invariant](T-raw-invariant.md)** — the ADR-0040 raw-before-derived guard (#1/#2); sequenced after the live-spine wiring it overlaps.
+- **[T-raw-invariant](infra-raw-invariant.md)** — the ADR-0040 raw-before-derived guard (#1/#2); sequenced after the live-spine wiring it overlaps.
 - **REP7 (nautilus-connectivity)** needs a live `TradingNode`; **REP8 (IBKR LST)** needs IBKR live-auth. Specs were retired to git history with the other REP files; revive from history if revisited.
 
 ## Format

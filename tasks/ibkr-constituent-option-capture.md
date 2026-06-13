@@ -20,7 +20,7 @@ this phase, **registry-driven, never a hand-set list**.
   key on `underlying`) — no engine change; this is a capture-scope + universe-resolution lane.
 
 ## Depends on / blocks
-Blocks [[T-signal-layer]] (implied correlation needs per-name surfaces) and the S1 dispersion
+Blocks [[infra-signal-layer]] (implied correlation needs per-name surfaces) and the S1 dispersion
 book. Pairs with the Basket UI picker expanding to index + constituents.
 
 ## Done criteria

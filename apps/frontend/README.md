@@ -32,6 +32,24 @@ The Vite dev server proxies `/api` and `/healthz` to `127.0.0.1:8000`, so the we
 and API share an origin in development (no CORS dance); `FRONTEND_BASE_URL` covers
 production CORS.
 
+## Tests
+
+Two layers, both under `apps/frontend/web`:
+
+- **Component tests** (`npm test`, Vitest + Testing Library + MSW, jsdom) — the verification
+  gate, alongside `npm run lint`. They cover render, data fetching and handlers per component.
+- **End-to-end tests** (`npm run e2e`, Playwright, real Chromium) — what jsdom cannot do:
+  navigation/button flows across routes and **layout-collision / overflow** checks (elements
+  don't overlap, controls stay on-screen, no horizontal overflow) at desktop, laptop and narrow
+  viewports. Specs live in `web/e2e/`; the BFF is mocked at the network layer with the same
+  contract fixtures the component tests use, so the suite is deterministic and never touches a
+  live BFF or the canonical data store. Playwright boots the Vite dev server itself.
+
+  E2E is **opt-in**, not part of `npm test`: it needs a browser binary
+  (`npx playwright install chromium`, one-time ~110 MB) and a running dev server, so wiring it
+  into the shared gate is a team decision. Run it locally with `npm run e2e`
+  (`npm run e2e:ui` for the inspector, `npm run e2e:report` for the last HTML report).
+
 ## Pages
 
 Three operator pages over `react-router`, wrapped in the shared top-bar shell:

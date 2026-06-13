@@ -1,5 +1,11 @@
 # T-qc-residual-units — forward/parity QC thresholds are absolute-$ on a 7400-pt index (always-FAIL)
 
+> **✅ ALREADY LANDED (verified 2026-06-13).** The fix is in: `configs/qc.yaml` carries
+> `max_rel_residual_mad: 0.01` / `max_rel_parity_residual: 0.02` (relative-to-forward), the config
+> model has those fields, and `qc/checks.py` computes `relative_residual_mad = residual_mad /
+> forward` against `max_rel_residual_mad` — the forward self-label and the QC gate now share one
+> relative basis (An-1 resolved too). The board's "active #1" row is stale. Archive-ready.
+
 > **From the 2026-06-12 intent-vs-delivery audit** ([report](AUDIT-INTENT-VS-DELIVERY-2026-06-12.md),
 > findings An-1 / An-2 / QC-4). **Owner-confirmed #1 priority (2026-06-12)** — the unit mismatch
 > makes the forward/parity QC checks fire on *every* index slice, so it **masks the real QC health

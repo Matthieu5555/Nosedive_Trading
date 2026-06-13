@@ -399,21 +399,41 @@ def check_surface_fit_error(
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
-    """Is the slice fit tight: per-maturity RMSE within tolerance.
+    """Is the slice fit tight AND usable: RMSE within tolerance and not degenerate/arb-violating.
 
-    Measured value is the slice RMSE (total-variance units). It fails when that
-    exceeds ``max_surface_rmse``, naming the underlying and the exact maturity of the
-    badly-fit slice plus the fit method, so the operator knows which expiry's smile
-    to investigate.
+    Measured value is the slice RMSE (total-variance units). A low RMSE alone is **not**
+    sufficient: a railed (a parameter pinned to its bound, e.g. ``rho`` at ±0.999) or
+    degenerate (``sigma → 0``) slice is *over-fit* — it scores a tiny RMSE precisely because it
+    is pathological — so RMSE-only would reward the pathology (An-3 / QC-2, seed #3, confirmed on
+    real SPX data: 3/4 slices ``arb_free=False`` yet all PASS on RMSE). The fit-lane already
+    *renders* such a smile with a flag (flag-not-reject); this gate must not report it as a
+    **clean** fit. So PASS requires RMSE ≤ ``max_surface_rmse`` AND the butterfly verdict
+    ``arb_free`` AND no ``bound_hits`` AND the optimizer not having failed. ``converged is None``
+    (the non-SVI fallback, which has no optimizer) is unknown, not a failure — never penalised.
     """
-    status = STATUS_PASS if fit.rmse <= thresholds.fit_tolerance.max_surface_rmse else STATUS_FAIL
+    rmse_ok = fit.rmse <= thresholds.fit_tolerance.max_surface_rmse
+    # Each reason is one labelled cause of a non-clean fit, surfaced in context so the operator
+    # sees *why* a tiny-RMSE slice is flagged.
+    degeneracy_reasons: list[str] = []
+    if not fit.arb_free:
+        degeneracy_reasons.append("arb_violation")
+    if fit.bound_hits:
+        degeneracy_reasons.append(f"bound_hit:{','.join(fit.bound_hits)}")
+    if fit.converged is False:
+        degeneracy_reasons.append("not_converged")
+    status = STATUS_PASS if (rmse_ok and not degeneracy_reasons) else STATUS_FAIL
     context = {
         "underlying": fit.underlying,
         "failing_maturity": fit.maturity_years,
         "rmse": fit.rmse,
+        "rmse_ok": rmse_ok,
         "method": fit.method,
         "n_points": fit.n_points,
         "max_surface_rmse": thresholds.fit_tolerance.max_surface_rmse,
+        "arb_free": fit.arb_free,
+        "bound_hits": list(fit.bound_hits),
+        "converged": fit.converged,
+        "degeneracy_reasons": degeneracy_reasons,
     }
     return build_result(
         check_name=CHECK_SURFACE_FIT_ERROR,

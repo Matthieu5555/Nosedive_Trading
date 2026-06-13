@@ -1,5 +1,13 @@
 # T-surface-arbfree-qc — surface_fit_error gates on RMSE only, blind to arbitrage/degeneracy
 
+> **✅ DONE 2026-06-13.** `check_surface_fit_error` (`qc/checks.py`) now PASSes only when
+> `rmse ≤ max_surface_rmse` **AND** `arb_free` **AND** no `bound_hits` **AND** `converged is not
+> False` (`converged is None` = the non-SVI fallback, unknown, not penalised). Labelled
+> `degeneracy_reasons` (`arb_violation` / `bound_hit:<param>` / `not_converged`) ride in the
+> context. No new config field (existing `SliceFit` flags + `max_surface_rmse`) → no config-hash
+> change. Regression in `test_qc_checks.py` locks the real-SPX case (tiny RMSE + `arb_free=False`
+> / `rho` railed → FAIL). Gate green (ruff/mypy 210/pytest EXIT 0). Archive-ready.
+
 > **From the 2026-06-12 intent-vs-delivery audit** ([report](AUDIT-INTENT-VS-DELIVERY-2026-06-12.md),
 > findings An-3 / QC-2). This is **seed #3** of the green-gate≠-correct class, confirmed on real
 > data. **Not a duplicate of the vol-surface lane:** that lane already landed the *propagation*

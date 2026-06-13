@@ -692,6 +692,39 @@ def test_surface_fit_boundary_rmse_exact_passes() -> None:
     assert result.qc_status == STATUS_PASS
 
 
+def test_surface_fit_fails_arb_violation_despite_tiny_rmse() -> None:
+    # An-3/QC-2 (seed #3, real 2026-06-11 SPX): an arb-violating slice over-fits to a TINY rmse,
+    # so RMSE-only would PASS it. The gate must NOT report it as a clean fit.
+    railed = dataclasses.replace(_slice_fit(rmse=6e-6), arb_free=False)
+    result = check_surface_fit_error(railed, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = _assert_full_shape(
+        result, check_name="surface_fit_error", status=STATUS_FAIL, severity=SEVERITY_WARNING
+    )
+    assert context["rmse_ok"] is True  # the RMSE alone was fine — that's the whole point
+    assert "arb_violation" in context["degeneracy_reasons"]
+
+
+def test_surface_fit_fails_bound_railed_slice_despite_tiny_rmse() -> None:
+    # rho pinned to its ±0.999 bound (the real SPX slice-0 pathology): tiny rmse, must fail.
+    railed = dataclasses.replace(_slice_fit(rmse=6e-6), bound_hits=("rho",))
+    result = check_surface_fit_error(railed, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = _assert_full_shape(
+        result, check_name="surface_fit_error", status=STATUS_FAIL, severity=SEVERITY_WARNING
+    )
+    assert "bound_hit:rho" in context["degeneracy_reasons"]
+
+
+def test_surface_fit_non_svi_converged_none_is_not_penalised() -> None:
+    # converged is None for the nonparametric fallback (no optimizer) — unknown is not a failure;
+    # a clean (arb-free, no bound-hit) slice with a tight rmse still PASSes.
+    clean = dataclasses.replace(_slice_fit(rmse=0.005), converged=None, method="nonparametric")
+    result = check_surface_fit_error(clean, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = _assert_full_shape(
+        result, check_name="surface_fit_error", status=STATUS_PASS, severity=SEVERITY_WARNING
+    )
+    assert context["degeneracy_reasons"] == []
+
+
 # ================================================================================
 # 8. calendar sanity
 # ================================================================================

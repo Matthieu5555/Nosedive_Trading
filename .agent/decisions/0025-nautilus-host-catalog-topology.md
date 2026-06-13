@@ -1,5 +1,10 @@
 # 0025 — Hosting the analytics in Nautilus: our raw layer stays the system of record
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** Saxo/Deribit are **not** "on standby" — they
+> were removed (IBKR is the sole live broker, app index-options-only). The host/catalog topology
+> and the "our raw layer stays system of record" decision are unaffected; only the broker-standby
+> framing is void. See ADR 0023's amendment.
+
 - **Status:** accepted, 2026-06-05. Implements the C1 design questions left **open** by
   [[0023-nautilus-runtime-spine-and-library-leverage]] (§"Open — for C1 to design and record").
 - **Date:** 2026-06-05

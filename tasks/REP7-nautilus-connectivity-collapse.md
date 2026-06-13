@@ -29,8 +29,9 @@ own the IBKR lifecycle — **without** touching the bespoke capture invariants.
    (`nautilus_ibkr.py`) — this is the precondition, likely its own task.
 2. **Retire `connectivity/session.py`** (the `ib_async`-era seam ADR 0023 §3 flags).
 3. **Fold `connectivity/supervisor.py`** reconnect/heartbeat/re-subscribe into the adapter.
-   **Keep** the client-id bands and the gap → `GapInterval` → collector seam — Saxo/Deribit
-   still need their own lifecycle per ADR 0023 §3, and loss-aware gap records are load-bearing.
+   **Keep** the IBKR client-id band and the gap → `GapInterval` → collector seam — loss-aware
+   gap records are load-bearing. (ADR 0023 §3's "Saxo/Deribit need their own lifecycle" is void:
+   both were removed in T-index-only-refactor; IBKR is the sole live broker.)
 4. **Drop `connectivity/clock.py`** for Nautilus `LiveClock` / `TestClock`. Do this *with*
    steps 2–3 — a standalone clock swap is low-value churn.
 5. **Do NOT touch** the content-addressed dedup / immutability in `collectors/collector.py`
@@ -41,6 +42,6 @@ own the IBKR lifecycle — **without** touching the bespoke capture invariants.
 ## Done when
 
 A live `TradingNode` runs IBKR market data; `session.py` + `clock.py` are gone and
-`supervisor.py`'s IBKR duties are in the adapter; Saxo/Deribit lifecycle + the gap-recording
-seam + capture dedup are intact; root gate + the headline acceptance tests (replay/provenance/
+`supervisor.py`'s IBKR duties are in the adapter; the gap-recording seam + capture dedup are
+intact; root gate + the headline acceptance tests (replay/provenance/
 reconstruction/handover) green.

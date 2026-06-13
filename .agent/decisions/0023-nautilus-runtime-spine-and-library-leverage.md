@@ -1,5 +1,13 @@
 # 0023 — Nautilus is the runtime spine; lean on proven libraries; keep Vincent's broker adapters
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** Decision **3** below ("IBKR on Nautilus,
+> **keep Vincent's Saxo/Deribit**") was **reversed**: Saxo and Deribit were removed entirely —
+> IBKR is the sole live broker and the app is index-options-only (SX5E first, SPX parked).
+> Everything else here (Nautilus is the runtime spine; lean on proven libraries; retire the
+> hand-rolled `ib_async` session) **still stands**. Wherever this ADR says "keep / all three /
+> Saxo+Deribit", read "IBKR only". See ADRs 0013/0014 (superseded) and
+> `tasks/T-index-only-refactor.md`.
+
 - **Status:** accepted by workspace-owner direction, 2026-06-05. **Supersedes
   [[0020-market-data-actor-wiring]]**; revises **[[0007-integration-ops]]** (decision 1,
   the "framework-free actor") and **[[0008-live-ibkr-adapter]]** (the hand-rolled `ib_async`

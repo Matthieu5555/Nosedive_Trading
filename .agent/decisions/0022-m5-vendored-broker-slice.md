@@ -1,5 +1,11 @@
 # 0022 — M5 broker adapters: vendored collector/universe slice (contests 0020)
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** The outcome recorded below — "the vendored
+> Saxo/Deribit slice is the **survivor** (kept)" — was **reversed**: both packages were removed
+> (index-options-only, IBKR sole live broker). The seam direction (promote the richer EAV model /
+> retire the scalar pull seam) still holds; only the keep-Saxo/Deribit conclusion is void. See
+> ADRs 0013/0014 (superseded) and ADR 0023's amendment.
+
 - **Status:** accepted by workspace-owner direction — **contests [[0020-market-data-actor-wiring]]**.
   Recorded so the divergence is visible to the M4 owner, not silent.
   **Resolved 2026-06-05 by [[0023-nautilus-runtime-spine-and-library-leverage]]:** the vendored

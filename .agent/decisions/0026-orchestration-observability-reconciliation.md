@@ -1,5 +1,9 @@
 # 0026 — Orchestration/observability: one actor-driven layer; which helpers we adopted
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** "`provider_flow` (the multi-broker capture
+> driver)" is now single-broker (IBKR only; Saxo/Deribit removed). The orchestration decision is
+> otherwise unaffected. See ADR 0023's amendment.
+
 - **Status:** accepted, 2026-06-05. Records the C3 design choice the spec
   (`tasks/C3-orchestration-and-acceptance.md`, step 2 — "adopt Vincent's richer helpers as
   jobs around the actor") left to the implementer.

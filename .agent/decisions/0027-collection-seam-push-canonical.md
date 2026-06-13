@@ -1,5 +1,10 @@
 # 0027 — Collection seam: the push `RawCollector` is canonical; harvest the pull seam, then retire it
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** The adapter inventory below ("all three live
+> adapters … Deribit … Saxo") is dated — Saxo/Deribit were removed; the surviving push adapters
+> are IBKR-TWS and IBKR-CP-REST. The push-`RawCollector`-is-canonical decision is unaffected. See
+> ADR 0023's amendment.
+
 - **Status:** accepted, 2026-06-05; **implemented by C6, 2026-06-05** — one `BrokerTick`, one
   `RawCollector`, content-addressed live capture, the pull seam deleted, and the four
   collection-coupled use-cases (`collect_live`, `surface_job`, the handover smoke stage,

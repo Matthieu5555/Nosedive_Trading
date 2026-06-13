@@ -9,7 +9,7 @@
 
 - **Owns:** nothing structural — a read-only review producing this findings report. It reviews, it
   does not refactor; concrete fixes it surfaces are filed against the owning task (3A/3B, 1I/BFF, the
-  IBKR/Saxo auth packages, `.env.example`). Use the repo's `security-review` slash skill as the
+  IBKR auth package, `.env.example`). Use the repo's `security-review` slash skill as the
   driver and `check-lookahead-bias` only where a finding touches signal/backfill code.
 - **Depends on:** **3A/3B existing** to review the order seam — those specs are not yet written
   (the [`execution`](../packages/execution/src/algotrading/execution/__init__.py) package is an empty
@@ -77,20 +77,20 @@ Drive the pass with the **`security-review`** slash skill; record findings as yo
 6. **Audit-log completeness.** Every ticket → sign → send transition is recorded (who/what/when, the
    instrument, the gate state) before the send, append-only. A send with no prior audit record is HIGH.
 7. **No credentials in the app.** The order path routes through the existing broker seam
-   (Saxo/Deribit/IBKR adapters), never a new ad-hoc path; secrets stay in the adapter packages' `.env`
+   (the IBKR adapter — sole live broker), never a new ad-hoc path; secrets stay in the adapter package's `.env`
    (per `packages/infra/.../connectivity/supervisor.py:86`), never in `apps/frontend` or the ticket.
 
 ### 3 — The BFF *(start now)*
 8. **Read-only-for-serving, with the write exceptions named.** The BFF docstring says it reads only
    down-layer infra seams ([`app.py:5-15`](../apps/frontend/src/algotrading/frontend/app.py)). But it
-   is **not GET-only**: CORS allows `["GET", "POST", "DELETE"]` (`app.py:46-50`) and three live
-   non-GET routes exist — `POST /api/run`
-   ([`routers/run.py:53`](../apps/frontend/src/algotrading/frontend/routers/run.py)),
-   `POST /api/oauth/saxo/start` and `DELETE /api/oauth/saxo`
-   ([`routers/oauth.py:30,70`](../apps/frontend/src/algotrading/frontend/routers/oauth.py)).
-   Adjudicate each: `/api/run` launches a tracked pipeline job (not an order — acceptable, but
-   confirm it cannot reach a transmit path); the oauth routes are the Saxo CSRF flow, currently
-   failing closed (`501 saxo_backend_not_configured`). Confirm **no route writes a secret or
+   is **not GET-only**: CORS allows non-GET methods (`app.py:46-50`) and live non-GET routes exist —
+   e.g. `POST /api/run`
+   ([`routers/run.py:53`](../apps/frontend/src/algotrading/frontend/routers/run.py)) and the
+   on-demand basket-scenario POST. **The Saxo OAuth router (`routers/oauth.py`, `/api/oauth/saxo/*`)
+   was DELETED in T-index-only-refactor** — do not review it; if any `/api/oauth` route reappears,
+   that itself is a finding. Adjudicate each surviving non-GET route: `/api/run` launches a tracked
+   pipeline job (not an order — acceptable, but confirm it cannot reach a transmit path). Confirm
+   **no route writes a secret or
    transmits an order**, and that the single-operator assumption holds — there is **no multi-user
    auth by design**, so confirm nothing here is exposed to the open internet with a write/secret path.
 9. **CORS.** `allow_origins` is one env-driven origin (`FRONTEND_BASE_URL`, default
@@ -103,12 +103,12 @@ Drive the pass with the **`security-review`** slash skill; record findings as yo
     which is non-canonical). Confirm `.env.example` carries **placeholders only**
     (`TWS_USERID=your_paper_username`, `IBKR_CLIENT_ID=` blank, `TRADING_MODE=paper`,
     `READ_ONLY_API=yes`) — no real value (`.env.example:17-33`).
-11. **The .env-write paths.** Saxo rotates its refresh token and persists each rotation back to
-    `.env` ([`auth/token_persist.py`](../packages/infra-saxo/src/algotrading/infra_saxo/auth/token_persist.py),
-    [`auth/env_tokens.py`](../packages/infra-saxo/src/algotrading/infra_saxo/auth/env_tokens.py)).
-    Confirm it writes a **secret** to disk — then check the file mode: `write_text` does **not**
-    restrict permissions (no `chmod 0o600`; grep for `chmod`/`umask` is clean repo-wide). Flag a
-    world-readable `.env` holding a live token as MEDIUM/HIGH depending on the deploy.
+11. **The .env-write paths.** The Saxo refresh-token rotation that persisted secrets back to `.env`
+    (`infra_saxo/auth/token_persist.py`/`env_tokens.py`) was **removed with the Saxo package**
+    (T-index-only-refactor), so that finding is void. IBKR's CP Gateway owns its own session cookie
+    and the app persists no secret. Confirm this still holds: grep for any `.env`/token `write_text`
+    path repo-wide; if a new credential-to-disk writer appears (any broker), check its file mode
+    (`chmod 0o600`) and flag a world-readable secret file as MEDIUM/HIGH per the deploy.
 12. **Provenance/manifest carry no secrets.** Spot-check the manifest/provenance fields
     (`packages/core/.../manifest.py`) — `environment` and config hashes are recorded; confirm no
     credential, token, or `.env` value is ever folded into a `ProvenanceStamp`, a `config_hashes`

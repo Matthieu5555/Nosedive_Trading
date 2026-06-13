@@ -1,5 +1,10 @@
 # 0012 — Per-broker leaf packages: one `infra-<broker>` package per broker
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** The `infra-saxo` and `infra-deribit` leaf
+> packages were removed; **`infra-ibkr` is the only surviving leaf** (IBKR sole live broker,
+> app index-options-only). The one-leaf-per-broker *rule* stands for any future broker; the
+> multi-leaf diagram below is historical. See ADRs 0013/0014 (superseded).
+
 - **Status:** accepted
 - **Date:** 2026-06-02
 - **Source:** Vincent's ADR-018 (extending ADR-016 to a uniform rule); merged 2026-06-05

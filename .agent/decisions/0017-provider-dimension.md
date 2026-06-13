@@ -1,5 +1,10 @@
 # 0017 — Provider dimension: `provider` as a first-class field and partition key
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** The multi-broker scenario that motivates this
+> ADR (Saxo + IBKR capturing the same symbol) is historical — Saxo/Deribit were removed, IBKR is
+> the sole live broker. The `provider` dimension itself **stays** (generic, load-bearing, kept for
+> a possible future broker); only the motivating example is dated. See ADR 0023's amendment.
+
 - **Status:** accepted
 - **Date:** 2026-06-03
 - **Source:** Vincent's ADR-019; merged 2026-06-05

@@ -51,6 +51,5 @@ parameter or compute path.
 
 - **Cannot be verified end-to-end this weekend** — equity markets are shut until Monday and no
   Gateway is deployed yet. The `--help` path and lint are verifiable now; the live path is a
-  Monday check. (Deribit is 24/7 and could prove the *capture* mechanism earlier, but that is the
-  gated pipeline, not this slice.)
+  Monday check. (The capture mechanism itself is the gated pipeline, not this slice.)
 - Keep this slice strictly non-compute so the C7 gate and the in-flight C7 work are both respected.

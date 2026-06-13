@@ -9,7 +9,7 @@
 - **Owns:** the order sign-off + send seam in `packages/execution/src/algotrading/execution/`
   (today: empty package, `__init__.py` only) — an email sign-off step (out-of-band operator
   confirmation of a built 3A ticket via an approval token) and a transmit path that routes a
-  signed ticket through the **existing broker leaf seam** (`packages/infra-{ibkr,saxo,deribit}`),
+  signed ticket through the **existing broker leaf seam** (`packages/infra-ibkr` — IBKR is the sole live broker),
   plus the append-only, provenance-stamped audit log of every ticket/decision event. Conforms to
   **[ADR 0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md) §4** (read-only
   invariant on the ingestion transport — sending is a *separate, gated* capability) and the

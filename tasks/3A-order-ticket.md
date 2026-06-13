@@ -12,11 +12,11 @@
   (`apps/frontend/src/algotrading/frontend/routers/ticket.py` + its serializer in `serializers.py`),
   and the **ticket-construction/preview UI** (`apps/frontend/web/src/`: a Ticket panel + its typed
   client in `api.ts`). The target broker is named only as a value that resolves to **one of the
-  existing leaf adapters** (`packages/infra-{ibkr,saxo,deribit}`) through the broker seam
+  IBKR leaf adapter** (`packages/infra-ibkr`) through the broker seam
   (`packages/infra/src/algotrading/infra/connectivity/session.py`, `BrokerTransport`). Conforms to
   **[ADR 0011](../.agent/decisions/0011-blueprint-as-plan-of-record.md)** (blueprint governs the
   order/ticket domain — leg semantics, side/qty conventions, the price spec are its call, not ours),
-  **[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine.md)/[0024](../.agent/decisions/0024-ibkr-rest-and-tws-transport.md)/[0025](../.agent/decisions/0025-ibkr-first-broker-increment.md)**
+  **[ADR 0023](../.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md)/[0024](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)/[0025](../.agent/decisions/0025-nautilus-host-catalog-topology.md)**
   (Nautilus is the runtime spine, broker reached only through the adapter seam + IBKR transport), and
   **[ADR 0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)** (shadcn/ui
   for the shell).
@@ -27,7 +27,7 @@
   broker seam with an order-submission verb, and is the *only* task that may transmit. Keep 3A's model
   the thing 3B signs; do not pre-build submission here.
 - **State going in (verified 2026-06-07):** the broker leaf adapters exist
-  (`packages/infra-{ibkr,saxo,deribit}`), reached through the `BrokerTransport` **Protocol** seam in
+  (`packages/infra-ibkr`), reached through the `BrokerTransport` **Protocol** seam in
   `connectivity/session.py` — which today owns connection lifecycle only (`open`/`close`/
   `current_time`); **there is no order-submission verb on the seam** (that is 3B's to add). The Codex
   `market`/`orders` paper-trading routers were **deleted in C4** (≈700 lines of fixtures, no backend
@@ -41,8 +41,8 @@
 
 An operator who has built a basket in 2A can **construct an order ticket from it** — each basket leg
 becomes a ticket leg with an explicit **side** (buy/sell), **quantity**, and **price spec**
-(market, or limit with a price), targeting a named broker that resolves to one of the **existing leaf
-adapters**. The operator **previews** the fully-built ticket (legs, per-leg side/qty/price, the
+(market, or limit with a price), targeting a named broker that resolves to the **IBKR leaf
+adapter**. The operator **previews** the fully-built ticket (legs, per-leg side/qty/price, the
 resolved target broker, an aggregate summary) in the UI. **Nothing is transmitted.** The ticket model
 is a typed, validated, serializable contract — the object 3B will later sign and send — and the
 build step is a **pure** basket→ticket function with no I/O, no credentials, no network. Paper /
@@ -57,7 +57,7 @@ owner gate.
    **quantity**, and a **price spec**), a **`PriceSpec`** that is either `Market` or `Limit(price)`
    (model the two as a closed set — a limit with no price, or a market with a price, is invalid by
    construction), a **time-in-force** enum, the **target broker** as an enum/identifier that resolves
-   to one of `{ibkr, saxo, deribit}`, and a provenance/source reference back to the originating
+   to `ibkr` (the sole live broker today; kept an enum so another broker can rejoin), and a provenance/source reference back to the originating
    basket. **The blueprint (ADR 0011) governs leg semantics, side/qty conventions, and the price spec
    — read it; do not invent field names or conventions the blueprint already fixes.** Add a `__mode__`
    / explicit flag pinning the ticket as **paper/read-only** — transmission is structurally absent
@@ -71,7 +71,7 @@ owner gate.
    `ValueError`/`KeyError`. **No credentials, no network, no adapter call** — the builder names the
    broker, it does not connect to it.
 3. **Resolve the broker through the existing seam — name only, do not transmit.** The target-broker
-   value maps to one of the leaf adapters (`packages/infra-{ibkr,saxo,deribit}`) via the established
+   value maps to one of the leaf adapters (`packages/infra-ibkr`) via the established
    selection seam, *only* to (a) validate the broker is real and (b) carry the identifier on the
    ticket. **Do not add an order-submission method to `BrokerTransport`** and **do not call any
    adapter** — that verb and that call are 3B's, behind the gate. If the natural seam touchpoint is
@@ -88,7 +88,7 @@ owner gate.
    `TicketPreviewRequest` interfaces mirroring the serializer (keep them in sync — the header comment
    makes the HTTP shape the seam). Add a **Ticket panel** (shadcn/ui per ADR 0030) reached from the
    2A basket view: per-leg side toggle + qty input + market/limit price spec, a target-broker picker
-   (the three adapters), and a **read-only preview** of the fully-built ticket (legs, side/qty/price,
+   (IBKR — the sole adapter today), and a **read-only preview** of the fully-built ticket (legs, side/qty/price,
    resolved broker, an aggregate summary). The **transmit/send affordance is absent or visibly
    disabled with a "3B — gated" label** — there is no code path from this UI to a broker. Every panel
    self-labels (what am I looking at?).
@@ -121,7 +121,7 @@ cases:
   (`test_ticket_path_never_transmits`, `test_ticket_path_reads_no_credentials`). This is the gate, made
   a test.
 - **Broker resolves to a real adapter, names only:** a valid target resolves to one of
-  `{ibkr, saxo, deribit}`; an unknown one is the labeled failure above
+  `ibkr` (the sole live broker today); an unknown one is the labeled failure above
   (`test_target_broker_resolves_to_existing_adapter`).
 - **Edge / boundary (the floor):** single-leg basket, duplicate legs, qty exactly at the boundary,
   empty basket → each handled per the named rule above, not a crash.
@@ -153,7 +153,7 @@ verb; `/api/orders` is not resurrected.** Both gates green: the root Python gate
   The owner gate is **explicit and separate**; the ticket is the object 3B signs — keep it clean and
   inert.
 - **Route through the existing broker seam, never a new ad-hoc path.** The broker is reached only via
-  the `BrokerTransport` seam + the leaf adapters (`packages/infra-{ibkr,saxo,deribit}`); in 3A you
+  the `BrokerTransport` seam + the leaf adapters (`packages/infra-ibkr`); in 3A you
   only *name and validate* the target, you do not connect. Leave a `# 3B:` marker where the submit
   verb will attach; do not add it.
 - **Do not resurrect the deleted code.** `/api/orders`, `/api/market`, and `store_serving.py` were

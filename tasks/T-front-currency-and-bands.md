@@ -39,7 +39,7 @@ The data flow is traced and bounded:
 
 `components/BasketLegGrid.tsx:20` hard-codes the old 8-band list
 (`["30dp","20dp","10dp","atm","atmp","10dc","20dc","30dc"]`). These 8 are a *subset* of the new
-**32** (`T-delta-step-2`), so nothing crashes — but the selector hides 24 bands and violates the
+**32** (archive/T-delta-step-2.md), so nothing crashes — but the selector hides 24 bands and violates the
 "no hardcoded config lists" rule (the index picker is already registry-driven via `/api/indices`).
 
 Fix: expose the **band axis** (the projection's `band_labels`, platform-wide, derived from

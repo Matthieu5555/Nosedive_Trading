@@ -1,5 +1,11 @@
 # 0035 — Index registry + per-index capture schedule (exchange-calendar driven)
 
+> **AMENDED 2026-06-13 (T-index-only-refactor).** Where this ADR anticipates a "future
+> Saxo/Deribit sub-block" under a registry entry, read: only `ibkr:` exists today (Saxo/Deribit
+> removed, IBKR sole live broker). The `provider`-generic registry shape stays so another broker
+> could rejoin. SPX is now parked (`enabled:false`); SX5E is the single live index. See ADR 0023's
+> amendment.
+
 - **Status:** accepted, 2026-06-07 (owner-ruled the two forks in design review).
 - **Date:** 2026-06-07.
 - **Implements:** blueprint **Part VII** (configuration) — this refines, and stays inside,

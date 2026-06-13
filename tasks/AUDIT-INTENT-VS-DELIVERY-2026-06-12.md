@@ -75,7 +75,7 @@ large/economically-meaningful divergence, else noted as soft-match.
 | `min_chain_count` (l.11) | `6` | BP `min_points_per_slice: 5` | MATCH(soft) | Close to 5; OK. |
 | `grid.tenor_floors.*` (l.23-30) | all `5` | — | NOT-IN-SOURCE | Matches BP min_points 5; reasonable. |
 | `grid.band_low/high_delta` (l.33-34) | `-0.30/0.30` | TR ±30Δ | **MATCH** | |
-| `grid.max_delta_step` (l.37) | ~~`0.25`~~ → `0.02` | prof: ±30Δ by steps of 2 | **RESOLVED** | Was a loose bar (half the band, QC-3); tightened to `0.02` + new `grid.band_step:0.02` so the QC forces the pas-2 grid (`T-delta-step-2`). |
+| `grid.max_delta_step` (l.37) | ~~`0.25`~~ → `0.02` | prof: ±30Δ by steps of 2 | **RESOLVED** | Was a loose bar (half the band, QC-3); tightened to `0.02` + new `grid.band_step:0.02` so the QC forces the pas-2 grid (archive/T-delta-step-2.md). |
 | `forward_engine.max_residual_mad` (l.51) | `0.05` | — | **DRIFT (HIGH — units)** | Absolute price units; on a 7400-pt index this is ~7e-6 relative — unmeetable (see An-2/QC-4). |
 | `forward_engine.max_parity_residual` (l.53) | `0.10` | — | **DRIFT (HIGH — units)** | Same: absolute $ on a 7400-pt index. |
 | `forward_engine.min_forward_confidence` (l.52) | `0.5` | — | NOT-IN-SOURCE | OK. |

@@ -26,7 +26,7 @@ Points à retenir :
 
 1. **Source de données** : IBKR — préférer une connexion **API / passerelle** robuste plutôt que la TWS.
 2. **Onglet 1 = données agnostiques** : l'**indice + ses actions constituantes**. Tester d'abord sur **EuroStoxx (50)**, pas le S&P 500 (~500 lignes, trop long pour démarrer).
-3. **Périmètre de capture** : **futures sur plusieurs maturités** (≈ 1 mois → 3 ans) et **options puts & calls** sur la bande **−30Δ → ATM → +30Δ**.
+3. **Périmètre de capture** : **futures** sur la grille de tenors **10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y** et **options puts & calls** sur la bande **−30Δ → ATM → +30Δ**.
 4. **Volatilité implicite** : inverser le prix observé (Black) → une IV **par option** ; on observe un **smile** (IV plus élevée sur les ailes).
 5. **Greeks brut + cash**, rangés en **accordéon par maturité × delta** → la **surface de vol**.
 6. **Onglet 2 = risque** : composer un book (UI ergonomique) puis le **stresser** (±50 % spot, ±50 % vol, ±10 % taux).
@@ -40,8 +40,8 @@ Points à retenir :
 La donnée vient d'**IBKR**. Pour ceux qui s'y sont connectés, la **Trader Workstation (TWS)**
 « galère » : mieux vaut éviter de s'appuyer directement dessus et passer par une **connexion API /
 passerelle**, qui donne un **pipeline plus robuste**. La connexion API arrive souvent en mode
-**lecture seule** *(décodage probable de « Ridony » = read-only — transcript incertain)* ; on peut
-le désactiver côté IBKR, mais **pour démarrer, le read-only suffit**.
+**lecture seule (read-only)** ; on peut le désactiver côté IBKR, mais **pour démarrer, le
+read-only suffit**.
 
 ## 2. Onglet 1 — des données totalement agnostiques : indice + constituants
 
@@ -59,9 +59,9 @@ prof dit n'avoir « rien implémenté » : à chacun de la bâtir.
 
 Pour l'indice **et** pour chaque constituant :
 
-- **Futures sur plusieurs maturités** — une structure par terme allant d'environ **1 mois à 3 ans**
-  (clairement cités : 1 mois, 3 mois, …, 12 mois, 18 mois, 2 ans, 3 ans ; les **maturités
-  intermédiaires sont inaudibles** dans le transcript et ne sont **pas** reconstituées ici).
+- **Futures sur plusieurs maturités** — la grille de tenors **10d, 1m, 3m, 6m, 12m, 18m, 2 ans,
+  3 ans** *(le transcript ASR était trop dégradé sur les maturités intermédiaires ; grille
+  complétée d'après la note de l'owner — non inventée)*.
 - **Options puts & calls**, en couvrant **tous les strikes de −30Δ, en passant par l'ATM, jusqu'à
   +30Δ**, avec leur **prix**.
 
@@ -140,7 +140,7 @@ détaillés de la dispersion sont développés dans le transcript complémentair
 |---|----------|--------|
 | 1 | Source IBKR | Connexion **API / passerelle** (pas la TWS) ; read-only OK pour démarrer |
 | 2 | Onglet 1 — données | Agnostique ; **indice + constituants** ; tester sur **EuroStoxx 50** |
-| 3 | Périmètre capture | **Futures** ~1 mois→3 ans ; **options puts & calls** de **−30Δ → ATM → +30Δ** + prix |
+| 3 | Périmètre capture | **Futures** sur **10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y** ; **options puts & calls** de **−30Δ → ATM → +30Δ** + prix |
 | 4 | IV par option | Inversion de **Black** ; **smile** (IV plus haute sur les ailes) |
 | 5 | Greeks brut **et** cash | Delta/Gamma/Theta/Vega… + monétisation ; **accordéon maturité × delta** → surface |
 | 6 | Onglet 2 — risque | Composer un book + **choc ±50 % spot / ±50 % vol / ±10 % taux** |

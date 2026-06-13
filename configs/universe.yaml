@@ -60,11 +60,12 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 #     provider-agnostic; a future saxo:/deribit: sibling joins under the same key (ADR 0023).
 #   - enabled: the scheduler's on/off switch.
 #
-# Both seed entries are now `enabled: true` so the scheduler's enabled_indices() surfaces them
-# and the live EOD spine (1G fire → 1J calendar close → close-capture → project_grid → persist)
-# exercises them end to end. The exchange-calendar / projection / persistence path uses ONLY the
-# calendar code, currency, and symbol — never the IBKR conid — so enabling them with a
-# placeholder conid fully exercises that path today.
+# SX5E is `enabled: true` (the single live focus pipeline); SPX is `enabled: false` (parked,
+# see its note) so the scheduler's enabled_indices() surfaces SX5E alone and the live EOD spine
+# (1G fire → 1J calendar close → close-capture → project_grid → persist) exercises it end to
+# end. The exchange-calendar / projection / persistence path uses ONLY the calendar code,
+# currency, and symbol — never the IBKR conid — so enabling with a placeholder conid fully
+# exercises that path today.
 #
 # CONID STATUS — UNVERIFIED PLACEHOLDER (conid: 0). The IBKR numeric contract id is consumed
 # only by the 1C broker→raw-event qualification seam, which is NOT yet closed in production, so a
@@ -112,4 +113,7 @@ indices:
     currency: USD
     # conid VERIFIED live 2026-06-08 (secdef/search symbol=SPX, secType=IND, exchange=CBOE).
     ibkr: { conid: 416904, secType: IND, exchange: CBOE }
-    enabled: true
+    # PARKED (2026-06-13, T-index-only-refactor): kept in the registry as the living
+    # multi-index proof, but disabled so the scheduler captures/projects SX5E alone while
+    # the app is stabilised on a single live pipeline. Re-enable = flip this one flag.
+    enabled: false

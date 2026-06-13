@@ -308,10 +308,11 @@ def test_loads_from_real_universe_yaml() -> None:
     registry = load_index_registry(CONFIGS_DIR)
     symbols = {e.symbol for e in registry.entries}
     assert {"SX5E", "SPX"} <= symbols
-    # Both seed indices are now enabled (the live EOD spine surfaces them); the calendar/
-    # projection path uses only the symbol/calendar (the conids, now verified-live, are consumed
-    # only at the IBKR door). The enabled set is exactly the two seeds, in canonical (sorted) order.
-    assert [e.symbol for e in enabled_indices(registry)] == ["SPX", "SX5E"]
+    # SX5E is the single live focus pipeline; SPX is PARKED (enabled:false, T-index-only-refactor)
+    # — kept in the registry as the multi-index proof but not surfaced to the scheduler. The
+    # enabled set is therefore exactly SX5E. The calendar/projection path uses only the
+    # symbol/calendar (the conids, verified-live, are consumed only at the IBKR door).
+    assert [e.symbol for e in enabled_indices(registry)] == ["SX5E"]
     # The canonical symbol is SPX (never SP500) per the spec audit.
     assert "SP500" not in symbols
 
@@ -328,9 +329,9 @@ def test_changing_an_index_moves_only_the_universe_hash() -> None:
     config = load_platform_config(CONFIGS_DIR)
     before = config_hashes(config)
     # Flip an enabled flag in the raw block: an economic change (changes which records exist).
-    # Both seeds now ship enabled, so flip SPX OFF to register a genuine change.
+    # SX5E ships enabled (SPX is parked OFF), so flip SX5E OFF to register a genuine change.
     new_indices = {
-        symbol: ({**dict(entry), "enabled": False} if symbol == "SPX" else dict(entry))
+        symbol: ({**dict(entry), "enabled": False} if symbol == "SX5E" else dict(entry))
         for symbol, entry in config.universe.indices.items()
     }
     moved_universe = config.universe.model_copy(update={"indices": new_indices})

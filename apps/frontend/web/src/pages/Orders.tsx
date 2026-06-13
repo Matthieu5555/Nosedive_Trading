@@ -1,12 +1,16 @@
 // Tab 3 — Orders (execution sketch, roadmap Phase 3). Antho's ticket / preview / history
 // layout, restored verbatim, but READ-ONLY: execution is explicitly out of scope until an
-// owner gate (the orders/paper-trading backend was dropped on purpose). Nothing here calls the
-// network — the ticket is local state, the preview is an indicative client-side estimate, and
-// the history is an empty sketch state. The "Submit" action is disabled and self-labels why.
+// owner gate (the orders/paper-trading backend was dropped on purpose). It submits NO orders —
+// the ticket is local state, the preview is an indicative client-side estimate, the history is
+// an empty sketch state, and "Submit" is disabled and self-labels why. The only read is the
+// enabled-index list (GET /api/indices), to seed the ticket symbol from the registry rather
+// than a hard-coded ticker (it had defaulted to the now-parked SPX).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import type { IndicesResponse } from "../api";
 import { Metric } from "../components/Metric";
+import { useFetch } from "../hooks/useFetch";
 import { money, number } from "../lib/format";
 
 interface OrderTicket {
@@ -21,7 +25,7 @@ interface OrderTicket {
 
 const defaultTicket: OrderTicket = {
   side: "buy",
-  symbol: "SPX",
+  symbol: "",
   quantity: 2,
   limit_price: 47.5,
   expiry: "2026-06-19",
@@ -35,6 +39,13 @@ const CONTRACT_MULTIPLIER = 100;
 
 export function OrdersPage() {
   const [ticket, setTicket] = useState<OrderTicket>(defaultTicket);
+  // Seed the ticket symbol from the registry's first enabled index (never a hard-coded ticker).
+  // Read-only: this is the sketch's only network read; it submits nothing.
+  const indices = useFetch<IndicesResponse>("/api/indices");
+  useEffect(() => {
+    const first = indices.data?.indices[0]?.symbol;
+    if (first) setTicket((current) => (current.symbol ? current : { ...current, symbol: first }));
+  }, [indices.data]);
   const notional = ticket.quantity * ticket.limit_price * CONTRACT_MULTIPLIER;
 
   return (

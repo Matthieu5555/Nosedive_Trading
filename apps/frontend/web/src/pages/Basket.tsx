@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import type { BasketLegInput, BasketRequest, BasketRiskResponse } from "../api";
+import type { BasketLegInput, BasketRequest, BasketRiskResponse, IndicesResponse } from "../api";
 import { priceBasket, stressBasket } from "../api";
 import { BasketLegGrid } from "../components/BasketLegGrid";
 import { BasketRiskPanel } from "../components/BasketRiskPanel";
 import { Metric } from "../components/Metric";
 import { StressSurface } from "../components/StressSurface";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
+import { useFetch } from "../hooks/useFetch";
 import { signedMoney } from "../lib/format";
 import type { BasketScenariosResponse } from "../stressApi";
 
@@ -16,9 +17,20 @@ const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
 // picks an underlying, trade date and tenor, builds legs (by hand or a one-click template), then
 // prices the basket — the panel shows the book-additive dollar Greeks and the per-leg breakdown.
 export function BasketPage() {
-  // Default to an index that actually has a captured option chain (the chain is captured at
-  // the index level — a single-stock default priced nothing and read as a broken page).
-  const [underlying, setUnderlying] = useState("SX5E");
+  // The underlying is chosen from the registry's enabled set (GET /api/indices) — never a
+  // hard-coded ticker. A basket can only be priced on a captured index (the chain is captured
+  // at the index level), so the picker is constrained to enabled indices.
+  const indices = useFetch<IndicesResponse>("/api/indices");
+  const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
+  const [underlying, setUnderlying] = useState("");
+  // Land on the first enabled index when the registry list arrives, and keep the selection
+  // valid if the enabled set changes (e.g. an index is parked) under it.
+  useEffect(() => {
+    if (indexOptions.length === 0) return;
+    if (!underlying || !indexOptions.some((o) => o.symbol === underlying)) {
+      setUnderlying(indexOptions[0].symbol);
+    }
+  }, [indexOptions, underlying]);
   const [tradeDate, setTradeDate] = useState("");
   const [tenor, setTenor] = useState("1m");
   const [legs, setLegs] = useState<BasketLegInput[]>([]);
@@ -90,8 +102,15 @@ export function BasketPage() {
       <div className="basket-controls">
         <label>
           Underlying{" "}
-          <input aria-label="underlying" value={underlying}
-            onChange={(e) => setUnderlying(e.target.value)} />
+          <select aria-label="underlying" value={underlying}
+            disabled={indexOptions.length === 0}
+            onChange={(e) => setUnderlying(e.target.value)}>
+            {indexOptions.map((item) => (
+              <option key={item.symbol} value={item.symbol}>
+                {item.name} ({item.symbol})
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           {/* Empty means "latest banked day": the BFF resolves it to the most recent analytics

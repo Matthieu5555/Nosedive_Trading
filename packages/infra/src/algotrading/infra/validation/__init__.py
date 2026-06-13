@@ -16,7 +16,7 @@ The fast path — score a run and get its triage list:
     )
 
     outcome = run_validation(
-        run_id=run_id, underlying="AAPL", as_of=as_of,
+        run_id=run_id, underlying="SX5E", as_of=as_of,
         current_metrics={"n_iv_points": 412.0, "max_slice_rmse": 0.004, ...},
         baselines={"n_iv_points": [...recent history...], ...},
         thresholds=AnomalyThresholds(),

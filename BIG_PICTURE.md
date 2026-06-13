@@ -1,7 +1,7 @@
 # The big picture
 
-Plain-language summary of the Volatility Infrastructure roadmap (the ThomasOssen
-document, `ThomasOssen/1780037915_industrial_roadmap_volatility_infrastructure_v4.pdf`),
+Plain-language summary of the Volatility Infrastructure roadmap (the ThomasHossen
+document, `ThomasHossen/industrial_vol_roadmap.pdf`),
 plus how we intend to build it with the least code.
 
 Where this is all going — the end-state capability map and the current end-of-week
@@ -109,8 +109,8 @@ catalog the engine replays.
 
 ## Library leverage — forward view (2026-06-07)
 
-A library-by-library audit (see [`tasks/AUDIT-library-leverage-2026-06-07.md`](tasks/AUDIT-library-leverage-2026-06-07.md),
-which carries the actionable REP0–REP8 backlog) confirmed the principle above is real in the
+A library-by-library audit (the 2026-06-07 `AUDIT-library-leverage` review and its REP0–REP8
+backlog, now retired to git history) confirmed the principle above is real in the
 tree, and mapped where each proven library should *grow* as the roadmap advances. The guiding
 rule holds: lean on libraries for plumbing; keep the deterministic analytics math our own.
 

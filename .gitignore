@@ -58,3 +58,6 @@ Test Lenny/
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+
+# Documentation folder — removed intentionally; ignored so agents don't recreate it
+documentation/

@@ -124,6 +124,37 @@ record is [`archive/ibkr-rest-api-evaluation.md`](archive/ibkr-rest-api-evaluati
 
 ## What's next — the index-analytics build
 
+### Strategy-book & course-gap lanes (created 2026-06-13, from TARGET §7 + the course transcript)
+
+> **The ordered build sequence is [`TARGET.md`](../TARGET.md) §7** (the single roadmap's pre-ordered
+> gap list). These 12 task specs were cut from the 2026-06-13 task audit (TARGET §7 + the
+> `transcripts/AlgoTradingCourse2-Greeks-et-strategies-vol.md` requirements) — the gaps that had no
+> tracking task. Grouped by phase below; TARGET §7 is the authority on order.
+
+| Lane (group) | Task | TARGET / transcript | Note |
+|---|---|---|---|
+| **Week — attribution + book** | [T-second-order-greeks](T-second-order-greeks.md) | §7.2 / #3,#8 | **highest leverage** — Vanna/Volga/Charm emission unblocks attribution completion + the course 2nd-order req |
+| | [T-fills-position-store](T-fills-position-store.md) | §7.1 / §5.1 | the book built from fills (write side of 3A/3B), password-gated |
+| **S1 dispersion path** | [T-constituent-option-capture](T-constituent-option-capture.md) | §7.4 | "the single biggest new lane" — S1 blocker + R3 input |
+| | [T-signal-layer](T-signal-layer.md) | §7.7 / R3 | implied correlation ρ̄ + IV rank + RV−IV + term slope, persisted daily |
+| | [T-delta-hedge-band](T-delta-hedge-band.md) | #9 | band-based re-hedge (|Δ|±0.06), used by S1/S3/S4 |
+| **Rulings (ADR + blueprint)** | [T-rates-curve-ingest](T-rates-curve-ingest.md) | R1 / §7.5 | external Euribor/€STR + SOFR curves; Rho rework; implied−riskfree QC |
+| | [T-per-side-surfaces](T-per-side-surfaces.md) | R2 / §7.6 / #1 | put/call/combined fit + `surface_side`; put−call spread QC. **NOT** the same as [T-mirror-greeks-putcall](T-mirror-greeks-putcall.md) (greeks-only) |
+| **Course analytics completeness** | [T-rt-vega](T-rt-vega.md) | #5 | annualised vega per strike |
+| | [T-option-volume-capture](T-option-volume-capture.md) | #7 | per-strike volume (bid/ask already landed) |
+| | [T-sigfig-scientific-display](T-sigfig-scientific-display.md) | #6 | ≥6 sig-figs scientific on the front |
+| **Later phase** | [T-backtester](T-backtester.md) | §7.8 | research + production-shadow; S2 over banked history first |
+| | [T-operational-hardening](T-operational-hardening.md) | §7.9 | margin forecast / kill switch / broker recon / alert delivery |
+
+> **Audit notes (2026-06-13, not yet actioned to avoid shared-tree collision):**
+> (a) **Archive-ready** (landed, clear their rows + move to `archive/` when the tree is calm):
+> T-index-only-refactor, T-capture-config-coherence, T-tenor-selection, T-delta-window,
+> T-delta-step-2, T-vol-surface-correctness, ohlc-constituent-backfill.
+> (b) **Cross-link clusters** (not duplicates — sequence/scope differ): rate = T-explicit-rate-parameter
+> → T-scenario-rate-axis → T-rates-curve-ingest(R1); per-side = T-mirror-greeks-putcall (greeks) vs
+> T-per-side-surfaces (R2 fit). (c) Fold the `DEFAULT_MONEYNESS_BUCKETS` literal (driver.py:124) into
+> T-pricing-config-completeness (same ADR-0028 class), not a new task.
+
 The detailed per-workstream `tasks/` specs (C-series style) are written **per phase as Phase 0
 closes**, per [`roadmap-index-analytics.md`](../documentation/roadmap-index-analytics.md) §6. The
 sequence; **Phase 0 and Phase 1 are now fully specced** (per-workstream files, linked below), behind the library ADRs [0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)–[0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md). Critical path: P0 → 1J → 1A+1B → 1C → 1F → 1G+1H → 1I (1J foundational — index registry; 1D gated on P0.4, parallel; 1E folded into P0/1C).

@@ -41,9 +41,9 @@ land asymmetrically (surface without grid; snapshots without raw). This is exact
 The blueprint forbids all three: it mandates "persist every event to the raw layer" (Step 3),
 "no downstream layer may silently overwrite an upstream observation" and determinism (Part I),
 and "do not hide fallback … that fact must be queryable" (Part XIX). No current ADR records
-these as invariants — [[0020-market-data-actor-wiring]] (which assumed raw off the raw layer)
-is superseded, and [[0027-collection-seam-push-canonical]] fixes the *push seam* but not the
-*persist ordering*. So this is **ungoverned drift**, and this ADR records the missing decision.
+these as invariants — the superseded actor-wiring decision (ADR 0020, removed — git history)
+assumed raw off the raw layer, and [[0027-collection-seam-push-canonical]] fixes the *push seam*
+but not the *persist ordering*. So this is **ungoverned drift**, and this ADR records the missing decision.
 
 ## Decision
 

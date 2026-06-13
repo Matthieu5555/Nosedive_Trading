@@ -6,8 +6,8 @@
 > (`documentation/transcripts/AlgoTradingCourse2-Greeks-et-strategies-vol.md`). `.agent/` must
 > therefore hold **only important, useful RULES + routing** — never a second copy of domain
 > knowledge, never merge-era archaeology. Minimum vital, so a fresh agent orients fast and is not
-> drowned. **Git is the archive; ADRs are never deleted — superseded/merge-only ones move OUT of
-> the default read path (an `archive/` subfolder), they are not erased.**
+> drowned. **Git history is the archive — owner ruling 2026-06-13: superseded/merge-only ADRs are
+> UNTRACKED (`git rm`), not kept in an in-tree `archive/` folder ("au pire on remonte dans git").**
 
 ## Why (the diagnosis)
 
@@ -35,19 +35,24 @@ ADRs were Matthieu's lane). The roadmap (strategy) is a separate deliverable liv
 **Principle:** `.agent/` = *process rules + routing + decisions genuinely not derivable from
 blueprint/transcript/code*. If the blueprint or transcript already says it, link — don't restate.
 
-1. **`decisions/` — the main lever. Split, don't delete.**
-   - Add `decisions/archive/` and move the **superseded / merge-process / dead-machinery** ADRs
-     there (history preserved, out of the default read path). High-confidence archive set (verified
-     this session, zero live load):
-     **0013** (deribit, superseded), **0014** (saxo, superseded), **0020** (actor wiring, superseded
-     by 0023), **0022** (M5 vendored slice, reversed by 0023/0042).
-   - Review-then-archive (merge-convergence archaeology — the merge is **closed**; confirm each
-     still has no live load before moving): **0007** (decision 1 superseded by 0023), **0008**
-     (superseded by 0024/0025), **0016** (EventSource — YAGNI, **0 code refs**), **0018** (M0
-     keystone), **0021** (M2 analytics merge). Keep any whose *frozen-seam* clause is still
-     enforced by import-linter/tests — if so, fold that one clause into the live ADR that cites it.
+1. **`decisions/` — the main lever. UNTRACK the dead, don't keep an in-tree archive.**
+   - **Owner ruling 2026-06-13: untrack (`git rm`), not an `archive/` folder — git history is the
+     archive ("au pire on remonte dans git").** Removing a superseded/dead ADR from the tree is the
+     intended end state; recover from history if ever needed.
+   - **DONE (this session):** `git rm` of the verified-dead set with zero live load and no markdown
+     `[](path)` referent in the gate-checked docs — **0013** (deribit, superseded), **0014** (saxo,
+     superseded), **0020** (actor wiring, superseded by 0023). Their dangling `[[…]]` *wiki* mentions
+     in other ADRs are cosmetic (doc-freshness checks only `[](path)` links in map/READMEs, not
+     `decisions/*` cross-links) — sweep them when the holding actor next commits.
+   - **DEFERRED:** **0022** (M5 vendored slice, reversed) — Matthieu holds it uncommitted; untrack it
+     after his commit (or hand it to him).
+   - **Review-then-untrack** (merge-convergence archaeology — the merge is **closed**; confirm each
+     has no live load first): **0007** (decision 1 superseded by 0023), **0008** (superseded by
+     0024/0025), **0016** (EventSource — YAGNI, **0 code refs**), **0018** (M0 keystone), **0021** (M2
+     analytics merge). Keep any whose *frozen-seam* clause is still enforced by import-linter/tests —
+     if so, fold that one clause into the live ADR that cites it before untracking.
    - **Add `decisions/README.md` — a one-line index of the LIVE ADRs only** (number → one-line
-     current rule), with a short "Archived (history): see `archive/`" footer. This is the single
+     current rule), with a short "Removed/superseded ADRs live in git history" footer. This is the single
      highest-leverage change: an agent reads a ~30-line index, not 3606 lines. Keep it generated/
      curated so it cannot drift (a test already guards doc links).
    - Live set to keep in `decisions/` (operational rules the blueprint does not pin): the analytics/
@@ -111,15 +116,16 @@ are held uncommitted by him; flag the nuance to him rather than editing directly
 ## Acceptance
 
 - `.agent/decisions/` active set is the live ADRs only, with a one-line `README.md` index; superseded/
-  merge-only ADRs are in `decisions/archive/` (moved, **not deleted**; git history intact).
+  merge-only ADRs are **untracked** (`git rm`; recoverable from git history), not kept in-tree.
 - `.agent/glossary.md` carries no term the blueprint/transcript already defines and no dead-seam vocab.
 - No `.agent/` file restates blueprint/transcript domain content; each instead links to it.
 - Part-B pollution items fixed or filed (the code-default one coordinated with the owning lane).
 - The universe-model rule (Part C) is encoded as the **registry-driven, index-now/constituents-later**
   nuance — never the "never" absolute.
-- Gate green — in particular `packages/infra/tests/test_doc_freshness.py` (no dead relative link after
-  ADR moves: fix every `[[NNNN-…]]`/path referent of a moved ADR, or keep the link valid by pointing
-  at `archive/`). Staged by explicit path; nothing outside the lane touched.
+- Gate green — in particular `packages/infra/tests/test_doc_freshness.py` (it checks only `[](path)`
+  links in map.md + READMEs, not `decisions/*` cross-links nor `[[wiki]]` refs, so untracking an ADR
+  is gate-safe provided no map/README `[](path)` points at it; sweep dangling `[[…]]` text when the
+  holding actor commits). Staged by explicit path; nothing outside the lane touched.
 
 ## Done criteria
 

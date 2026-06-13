@@ -32,9 +32,15 @@ grid:
   # window (WS 1B). Edges come from config, never from the data under test.
   band_low_delta: -0.30
   band_high_delta: 0.30
+  # The projection's delta-band emission spacing — the prof's ±30Δ *pas-2* grid (ADR 0028).
+  # The WS-1F projection builds its axis from these three numbers via
+  # ProjectionConfig.from_band, so the grid emitted and the grid validated cannot drift.
+  band_step: 0.02
   # The largest acceptable gap between consecutive selected deltas inside the band; a hole
-  # wider than this is a completeness breach.
-  max_delta_step: 0.25
+  # wider than this is a completeness breach. Set equal to band_step so the QC *forces* the
+  # pas-2 grid: a dropped point opens a 0.04 hole (2·band_step) and fails (was 0.25 — a
+  # coarser grid passed silently, the intent-vs-delivery bug this fix closes).
+  max_delta_step: 0.02
 
 # Collector-continuity cut-offs (C7 increment 2). Economic — they decide whether a capture
 # session is continuous enough to trust — so hashed here, never `.py` literals (ADR 0028).

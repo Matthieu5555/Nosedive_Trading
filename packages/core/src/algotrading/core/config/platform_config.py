@@ -258,8 +258,15 @@ class GridQcConfig(_ConfigModel):
       The edges come from config, never from the data under test, so a thin chain *fails*
       rather than silently defining its own band. Require
       ``-1 <= band_low_delta < band_high_delta <= 1``.
+    - ``band_step`` — the projection's delta-band *emission* spacing: the WS-1F grid is built
+      at ``[band_low_delta … −band_step, ATM, +band_step … band_high_delta]`` (e.g. the prof's
+      ±30Δ *pas-2* grid). It lives here so the grid the projection **emits** and the grid this
+      QC **validates** read one band definition and cannot drift — the projection axis is built
+      via :meth:`ProjectionConfig.from_band` from these same three numbers (ADR 0028).
     - ``max_delta_step`` — the largest acceptable gap between consecutive selected deltas
-      inside the band; a hole wider than this is a completeness breach.
+      inside the band; a hole wider than this is a completeness breach. Set equal to
+      ``band_step`` so the QC actually *forces* the emission step (a dropped point opens a
+      ``2·band_step`` hole and fails) rather than tolerating a coarser grid.
 
     Held as a nested model on :class:`QcThresholdConfig` so it folds into
     ``config_hashes["qc"]`` with no separate hash. The default is for in-memory/test
@@ -283,12 +290,15 @@ class GridQcConfig(_ConfigModel):
     )
     band_low_delta: float = Field(default=-0.30, ge=-1.0)
     band_high_delta: float = Field(default=0.30, le=1.0)
+    band_step: float = Field(default=0.02, gt=0.0)
     max_delta_step: float = Field(default=0.25, gt=0.0)
 
     @model_validator(mode="after")
     def _check_band(self) -> GridQcConfig:
         if not self.band_low_delta < self.band_high_delta:
             raise ValueError("require band_low_delta < band_high_delta")
+        if self.band_step > self.band_high_delta - self.band_low_delta:
+            raise ValueError("band_step must be no wider than the band it samples")
         return self
 
     def floor_for(self, tenor: str) -> int:

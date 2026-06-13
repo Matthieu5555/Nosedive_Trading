@@ -979,11 +979,16 @@ def _grid_config() -> PlatformConfig:
 
 
 class _GridCell:
-    """A minimal projected grid cell satisfying qc.GridPointInput (underlying/tenor/delta)."""
+    """A minimal projected grid cell satisfying qc.GridPointInput.
+
+    The Δ-band check spans ``target_delta`` (the signed band coordinate, ATM at 0.0); the
+    realized greek ``delta`` mirrors it here since these fixtures pass band positions.
+    """
 
     def __init__(self, underlying: str, tenor: str, delta: float) -> None:
         self.underlying = underlying
         self.tenor_label = tenor
+        self.target_delta = delta
         self.delta = delta
 
 

@@ -119,13 +119,21 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # constituents, never option underlyings). Dropping the field moved the `universe` bundle
     # hash — and so the folded whole-config hash — BY DESIGN; `qc`/`pricing`/`scenarios` stay
     # byte-identical (section isolation). Pre-capture dev change: no banked record carries the old hash.
+    #
+    # T-delta-step-2 (2026-06-13, ADR 0028): the projection's delta-band *emission* step joined
+    # the hashed `qc` block as `GridQcConfig.band_step` (the grid the projection emits and the grid
+    # this plane validates now read one band definition — they cannot drift), and `qc.yaml`
+    # tightened `max_delta_step` 0.25→0.02 so the QC forces the prof's ±30Δ pas-2 grid. The `qc`
+    # bundle hash — and so the folded whole-config hash — moved BY DESIGN; `universe`/`pricing`/
+    # `scenarios` stay byte-identical (section isolation). Pre-capture dev change: no banked record
+    # carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "4b1a82a621001ea199aec272df28b8a6866b71c69ee2597c683b756be8fafa92"
+        "c9814c7e6c87e385dfce821cf24ee8038623bb4f98f2638affd042c0265ca5b0"
     )
     assert config_hashes(config) == {
         "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
-        "qc": "c660e955677d5df53d104bf0b0ac24fc5182fc20230d63dbc4ab5458290672a8",
+        "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
         "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",
     }

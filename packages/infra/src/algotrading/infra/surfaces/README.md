@@ -69,11 +69,17 @@ slice flat outside the fitted range — the standard calendar-consistent rule.
 `fit_slice` fits one smile per *listed* maturity and `surface_grid_cells` projects a single
 slice onto a log-moneyness bucket grid, `project_grid` takes the *whole* set of per-maturity
 fits and produces, for one underlying at one snapshot, a deterministic grid over the
-**pinned tenor set** (`10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y`) crossed with a **delta band**
-(the 30Δ-put → ATM → 30Δ-call window: `30dp,20dp,10dp,atm,atmp,10dc,20dc,30dc`). The ATM
+**pinned tenor set** (`10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y`) crossed with a **delta band** —
+the 30Δ-put → ATM → 30Δ-call window, sampled at a configured step. The band is **not** a `.py`
+literal: it is expanded from `(band_low_delta, band_high_delta, band_step)` in typed config
+(`qc_threshold.grid`, ADR 0028) by `ProjectionConfig.from_band` / `delta_band_axis`, so the grid
+the projection **emits** and the grid the WS-1H QC **validates** read one band definition and
+cannot drift. The pinned default is the prof's **±30Δ *pas-2*** grid: `30dp,28dp,…,02dp,atm,atmp,
+02dc,…,30dc` — 15 puts + the two ATM pillars + 15 calls = **32 cells** per spanned tenor. The ATM
 pillar is **two** cells at the one ATM-forward strike — the call `atm` and the put `atmp` — so
 the two legs of an ATM straddle are both in the grid (the option right comes from the label's
-side suffix, `…p`/`…c`; see `_option_right_for_band`). Each cell is a stamped `ProjectedOptionAnalytics`
+side suffix, `…p`/`…c`; see `_option_right_for_band`). A deep-OTM band point that lands outside
+the fitted strike span is a labeled `ProjectionGap`, never a guessed strike. Each cell is a stamped `ProjectedOptionAnalytics`
 contract carrying the fitted IV, the model price, and the Greeks in **both** representations
 side by side — the decimal per-unit Greeks (source of truth) and the dollar Greeks, each
 dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).

@@ -693,12 +693,19 @@ def check_delta_band_completeness(
 ) -> QcResult:
     """Do each pinned tenor's selected strikes span the Δ-band with no interior hole.
 
-    For each pinned tenor it takes the selected cells' (signed) deltas and asserts they
-    span the configured band — from ``band_low_delta`` (the 30Δ-put edge) through ATM to
-    ``band_high_delta`` (the 30Δ-call edge) — with no interior gap wider than
-    ``max_delta_step``. The band edges and max-step come from **config**, never from the
-    points themselves, so a thin chain *fails* rather than silently defining its own
-    (narrower) band — the look-ahead-style trap the spec calls out.
+    For each pinned tenor it takes the selected cells' **signed band-axis** deltas
+    (``target_delta``) and asserts they span the configured band — from ``band_low_delta``
+    (the 30Δ-put edge) through ATM to ``band_high_delta`` (the 30Δ-call edge) — with no
+    interior gap wider than ``max_delta_step``. The band edges and max-step come from
+    **config**, never from the points themselves, so a thin chain *fails* rather than
+    silently defining its own (narrower) band — the look-ahead-style trap the spec calls out.
+
+    It spans ``target_delta`` (the band coordinate), **not** the realized greek ``delta``:
+    the two ATM pillars sit at ``0.0`` on the band axis (their realized deltas are ≈ ±0.5),
+    so only the band coordinate fills the ATM centre — spanning the realized delta would open
+    a ``2·band_step`` hole across ATM and could never enforce the configured step. This is
+    what makes ``max_delta_step == band_step`` actually *force* the emission grid (a dropped
+    point opens a ``2·band_step`` gap and fails).
 
     Three degenerate shapes are explicit breaches, labelled, never a silent pass or a
     crash: an **empty** tenor (no cells), a **single-strike** tenor (cannot span a band),
@@ -711,7 +718,7 @@ def check_delta_band_completeness(
     by_tenor: dict[str, list[float]] = {tenor: [] for tenor in tenor_grid}
     for point in points:
         if point.tenor_label in by_tenor:
-            by_tenor[point.tenor_label].append(point.delta)
+            by_tenor[point.tenor_label].append(point.target_delta)
     band_low = thresholds.grid.band_low_delta
     band_high = thresholds.grid.band_high_delta
     max_step = thresholds.grid.max_delta_step

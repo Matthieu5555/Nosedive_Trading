@@ -134,11 +134,12 @@ _DAYS_PER_YEAR = 365.0
 # portfolio-level net per underlying — the coarsest coherent net (ADR 0006 §2).
 _AGGREGATE_DIMENSION = "underlying"
 
-# The default projection-axes version stamped onto the grid's `projection` config hash when the
-# caller does not pass an explicit ProjectionConfig. A label only (the axes themselves are the
-# pinned P0.1 tenor set + 30Δ band defaults); it enters config_hashes["projection"] so the grid
-# is reproducible. Bump only on a deliberate change to the default axes.
-PROJECTION_AXES_VERSION = "projection-axes-1.1.0"  # 1.1.0: + ATM-put pillar (atmp) for the straddle
+# The default projection-axes version stamped onto the grid's `projection` config hash. A label
+# only — the axis itself is built by `ProjectionConfig.from_band` from the typed `qc_threshold.grid`
+# band (edges + step, ADR 0028), not from this string; it enters config_hashes["projection"] so the
+# grid is reproducible. Bump only on a deliberate change to the default axes.
+# 1.2.0: ±30Δ pas-2 grid (band_step from config; 15 puts + atm + atmp + 15 calls per spanned tenor).
+PROJECTION_AXES_VERSION = "projection-axes-1.2.0"
 
 # Maturity matching tolerance, kept in lockstep with the valuation join so the
 # forward/slice indexed by a derived maturity resolves the contract built from the
@@ -773,7 +774,13 @@ def _build_projected_analytics(
     if provider is None or not slice_fits:
         return ()
 
-    axes = projection or ProjectionConfig(version=PROJECTION_AXES_VERSION)
+    grid_qc = config.qc_threshold.grid
+    axes = projection or ProjectionConfig.from_band(
+        version=PROJECTION_AXES_VERSION,
+        band_low_delta=grid_qc.band_low_delta,
+        band_high_delta=grid_qc.band_high_delta,
+        band_step=grid_qc.band_step,
+    )
     spot_by_underlying = _usable_spot_by_underlying(batch)
     discounts_by_underlying: dict[str, dict[float, float]] = {}
     for estimate in forwards:

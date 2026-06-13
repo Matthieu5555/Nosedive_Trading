@@ -1065,12 +1065,16 @@ class _GridPoint:
     """A minimal projected grid cell satisfying ``qc.GridPointInput``.
 
     WS 1F's ``ProjectedOptionAnalytics`` is the real producer; the grid checks read it
-    through the structural Protocol, so this carries exactly the three fields they touch.
+    through the structural Protocol, so this carries the fields they touch. The third
+    positional is ``target_delta`` — the signed *band-axis* coordinate the Δ-band check
+    spans (ATM at ``0.0``); the realized greek ``delta`` is on the contract but unused by the
+    band check, so it defaults here.
     """
 
     underlying: str
     tenor_label: str
-    delta: float
+    target_delta: float
+    delta: float = 0.0
 
 
 def _full_tenor(underlying: str, tenor: str) -> list[_GridPoint]:
@@ -1162,6 +1166,38 @@ def test_delta_band_completeness_passes_for_full_band() -> None:
     context = deserialize_context(result.context)
     assert context["gap_count"] == 0
     assert result.measured_value == pytest.approx(0.0)
+
+
+def test_delta_band_completeness_forces_the_pas2_step() -> None:
+    # The prof's ±30Δ pas-2 grid, validated with max_delta_step == band_step == 0.02: a complete
+    # band (targets -0.30…-0.02, ATM 0.0, +0.02…+0.30) passes, and dropping ONE interior point
+    # opens a 0.04 hole (2·band_step) that FAILS. This is why max_delta_step is tightened to the
+    # emission step — a coarser grid (the pre-fix 0.25) let dropped points pass silently.
+    pas2_grid = GridQcConfig(
+        version="grid-pas2", tenor_floors={t: 3 for t in GRID_TENORS},
+        band_low_delta=-0.30, band_high_delta=0.30, band_step=0.02, max_delta_step=0.02,
+    )
+    pas2_thresholds = QC_CONFIG.model_copy(update={"grid": pas2_grid})
+    pas2_targets = (
+        [-m / 100.0 for m in range(30, 1, -2)] + [0.0] + [m / 100.0 for m in range(2, 31, 2)]
+    )
+    complete = [_GridPoint("SPX", t, d) for t in GRID_TENORS for d in pas2_targets]
+    ok = check_delta_band_completeness(
+        complete, "SPX", GRID_TENORS, thresholds=pas2_thresholds, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert ok.qc_status == STATUS_PASS
+
+    # Drop the -0.16 put from "1m" only -> a 0.04 gap from -0.18 to -0.14, > max step 0.02.
+    holed = [p for p in complete if not (p.tenor_label == "1m" and p.target_delta == pytest.approx(-0.16))]
+    bad = check_delta_band_completeness(
+        holed, "SPX", GRID_TENORS, thresholds=pas2_thresholds, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert bad.qc_status == STATUS_FAIL
+    gaps = {g["tenor"]: g for g in deserialize_context(bad.context)["band_gaps"]}
+    assert set(gaps) == {"1m"}
+    interior = next(m for m in gaps["1m"]["missing"] if m["region"] == "interior_gap")
+    assert interior["from_delta"] == pytest.approx(-0.18)
+    assert interior["to_delta"] == pytest.approx(-0.14)
 
 
 def test_delta_band_completeness_flags_interior_gap() -> None:

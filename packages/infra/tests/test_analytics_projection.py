@@ -54,7 +54,11 @@ from algotrading.infra.surfaces import (
     project_grid,
     tenor_years,
 )
-from algotrading.infra.surfaces.projection import ProjectionConfig, ProjectionConfigError
+from algotrading.infra.surfaces.projection import (
+    ProjectionConfig,
+    ProjectionConfigError,
+    delta_band_axis,
+)
 from fixtures.library import SURFACE_CONFIG
 from fixtures.synthetic import (
     SyntheticTermSurface,
@@ -253,6 +257,101 @@ def test_iv_used_to_price_equals_iv_at_solved_strike() -> None:
         expected_iv = math.sqrt(max(w, 0.0) / c.maturity_years)
         assert c.implied_vol == pytest.approx(expected_iv, rel=1e-9)
         assert c.total_variance == pytest.approx(c.implied_vol ** 2 * c.maturity_years, rel=1e-9)
+
+
+# --------------------------------------------------------------------------- #
+# Delta band — the ±30Δ pas-2 grid (band_step from typed config, ADR 0028)     #
+# --------------------------------------------------------------------------- #
+def test_band_axis_is_the_30d_pas2_grid() -> None:
+    # Independent oracle: the generator must expand (-0.30, +0.30, 0.02) into the prof's
+    # 30Δ-put → ATM → 30Δ-call window at step 2 — hand-listed here, not read from the code.
+    labels, targets = delta_band_axis(band_low_delta=-0.30, band_high_delta=0.30, band_step=0.02)
+    expected_puts = tuple(f"{m:02d}dp" for m in range(30, 1, -2))   # 30dp,28dp,…,02dp (15)
+    expected_calls = tuple(f"{m:02d}dc" for m in range(2, 31, 2))   # 02dc,…,30dc (15)
+    assert labels == expected_puts + ("atm", "atmp") + expected_calls
+    assert len(labels) == 32
+    assert len(set(labels)) == len(labels)  # labels unique
+    # Targets: puts strictly increasing -0.30…-0.02, the two ATM pillars at 0.0, calls 0.02…0.30.
+    assert targets[:15] == tuple(pytest.approx(-m / 100.0) for m in range(30, 1, -2))
+    assert targets[15:17] == (0.0, 0.0)
+    assert targets[17:] == tuple(pytest.approx(m / 100.0) for m in range(2, 31, 2))
+
+
+def test_band_axis_rejects_off_grid_or_inverted_bands() -> None:
+    # A step that does not divide the edge, a non-hundredth value, and an inverted band each
+    # fail loudly (no silent off-grid axis) — ADR 0028.
+    with pytest.raises(ProjectionConfigError):
+        delta_band_axis(band_low_delta=-0.30, band_high_delta=0.30, band_step=0.025)  # 30 % 2.5
+    with pytest.raises(ProjectionConfigError):
+        delta_band_axis(band_low_delta=-0.301, band_high_delta=0.30, band_step=0.02)  # off 0.01
+    with pytest.raises(ProjectionConfigError):
+        delta_band_axis(band_low_delta=0.10, band_high_delta=0.30, band_step=0.02)  # low not < 0
+
+
+def test_default_projection_offers_the_pas2_grid() -> None:
+    # The default config's axis IS the prof's 32-cell pas-2 band (15 puts + atm + atmp + 15
+    # calls) — the config offers every point.
+    expected_labels, _ = delta_band_axis(band_low_delta=-0.30, band_high_delta=0.30, band_step=0.02)
+    assert ProjectionConfig(version="v").band_labels == expected_labels
+    assert len(expected_labels) == 32
+    # End-to-end at an interior tenor (12m): the produced bands are a subset of the 32 (no
+    # stray label), and the band core — both 30Δ edges and the two ATM pillars — is present.
+    # The deepest 2Δ wings can fall outside the fitted strike span (labeled gaps, see
+    # test_step2_deep_otm_extremes_are_labeled_gaps_not_nans), so completeness is a subset, not
+    # the full set, on a finite strike ladder.
+    result = _project(build_synthetic_term_surface())
+    bands_12m = {c.delta_band for c in result.cells if c.tenor_label == "12m"}
+    assert bands_12m <= set(expected_labels)
+    assert {"30dp", "atm", "atmp", "30dc"} <= bands_12m
+
+
+def test_solved_cells_realize_their_target_delta() -> None:
+    # Independent oracle (norm-free, all 30 non-ATM points): the inversion solves the strike so
+    # the option's realized spot delta is DF·|target| with the right sign — |Δput| and |Δcall|
+    # at the configured band targets. DF = exp(-r·T) from the generator's flat rate; this uses
+    # only put-call parity and the definition of delta, never the projection's own solver loop.
+    term = build_synthetic_term_surface()
+    result = _project(term)
+    checked = 0
+    for c in result.cells:
+        if c.delta_band in {"atm", "atmp"}:
+            continue
+        df = math.exp(-term.rate * c.maturity_years)
+        expected_abs = df * abs(c.target_delta)
+        assert abs(c.delta) == pytest.approx(expected_abs, rel=1e-4, abs=1e-9), c.delta_band
+        assert (c.delta < 0.0) == (c.target_delta < 0.0)  # put target → negative realized delta
+        checked += 1
+    assert checked >= 30  # every interior tenor carries the full 30 non-ATM points
+
+
+def test_strikes_are_monotone_in_target_nd1() -> None:
+    # N(d1) is monotone decreasing in strike, so ordering the cells of one tenor by their
+    # target N(d1) (descending) must give non-decreasing strikes — an independent monotonicity
+    # oracle over the whole 32-point band. The two ATM pillars share N(d1)=0.5 and one strike.
+    result = _project(build_synthetic_term_surface())
+    cells_12m = [c for c in result.cells if c.tenor_label == "12m"]
+
+    def target_nd1(t: float) -> float:
+        return 0.5 if t == 0.0 else (t if t > 0.0 else 1.0 + t)
+
+    ordered = sorted(cells_12m, key=lambda c: target_nd1(c.target_delta), reverse=True)
+    strikes = [c.strike for c in ordered]
+    assert strikes == sorted(strikes)  # non-decreasing (strict but for the atm/atmp tie)
+
+
+def test_step2_deep_otm_extremes_are_labeled_gaps_not_nans() -> None:
+    # On a narrow strike ladder the deepest-OTM pas-2 bands (the 2Δ wings — lowest/highest
+    # strikes) fall outside the fitted strike span and must be labeled delta_out_of_band gaps,
+    # never NaN cells. The near-ATM bands still produce.
+    result = _project(build_synthetic_term_surface(strikes=(95.0, 100.0, 105.0)))
+    for c in result.cells:
+        assert math.isfinite(c.strike) and math.isfinite(c.implied_vol)
+    deep_gaps = {g.delta_band for g in result.gaps if g.reason_code == "delta_out_of_band"}
+    assert {"02dp", "02dc"} & deep_gaps  # at least one 2Δ wing is an out-of-band gap
+    assert all(
+        g.reason_code in {"delta_out_of_band", "tenor_beyond_span", "no_curve"}
+        for g in result.gaps
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -830,14 +929,18 @@ def test_projection_config_hash_is_stable_across_processes() -> None:
 
 
 def test_projection_config_hashes_match_the_pinned_golden_digests() -> None:
-    # Golden-hash pins (M14/M25): captured from the committed pre-refactor code
-    # (audit-fixes-batch1, 2026-06-12), before the inline sha256(canonical_json(...))
-    # copies were routed through core.config.object_config_hash. They freeze the bytes
-    # of the `projection` and `scenarios` bundle hashes that enter every cell's
-    # provenance config_hashes. If one moves, revert — never regenerate.
+    # Golden-hash pins (M14/M25) that freeze the bytes of the `projection` and `scenarios`
+    # bundle hashes entering every cell's provenance config_hashes. Normally: if one moves,
+    # revert — never regenerate.
+    #
+    # The `projection` digest was regenerated ONCE, by design, on 2026-06-13: the owner
+    # (Vincent) ruled the default band to the prof's ±30Δ *pas-2* grid (band_step in typed
+    # config; 15 puts + atm + atmp + 15 calls). This is a pre-capture economic change with NO
+    # banked record to protect (ADR 0028 / C7 pattern, same as the delta-window/universe regen).
+    # The `scenarios` digest is unchanged — MonetizationConfig did not move.
     pinned = ProjectionConfig(version="proj-pin-1")
     assert pinned.config_hash() == (
-        "9f0ebf55ee12c42c62845363fb298d1b5550cb9c6789b107957ef1636bf64b74"
+        "147281d6ac424124a216d0e3901dc1cf58ab72aef38999112ace46362ffd6205"
     )
     merged = merged_config_hashes(
         {"universe": "u"},
@@ -846,7 +949,7 @@ def test_projection_config_hashes_match_the_pinned_golden_digests() -> None:
     )
     assert merged == {
         "universe": "u",
-        "projection": "9f0ebf55ee12c42c62845363fb298d1b5550cb9c6789b107957ef1636bf64b74",
+        "projection": "147281d6ac424124a216d0e3901dc1cf58ab72aef38999112ace46362ffd6205",
         "scenarios": "7fc8935ae8ddc4be16c0fabaaedc1ebde6e7baa260a0583e994d36d3bf4a1327",
     }
 

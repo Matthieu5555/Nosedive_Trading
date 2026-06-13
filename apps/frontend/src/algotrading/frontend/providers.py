@@ -2,8 +2,9 @@
 
 Today the platform ships one fully offline, verifiable provider (``SAMPLE``, backed by
 the committed ``synthetic_known_answer`` chain fixture and driven through the exact
-actor pipeline) plus declared-but-unavailable live providers. Saxo/Deribit/IBKR are
-declared here and will become ``ready`` when their broker leaf packages land.
+actor pipeline) plus the declared-but-unavailable live provider ``IBKR``. IBKR becomes
+``ready`` when its Client-Portal gateway is authenticated. (Saxo/Deribit were removed in
+T-index-only-refactor — the app is index-options-only and IBKR is the sole live broker.)
 
 ``capabilities()`` drives the UI provider selector; ``is_runnable`` gates the run endpoint.
 """
@@ -54,22 +55,6 @@ _CAPABILITIES: tuple[ProviderCapability, ...] = (
         status="unavailable",
         note="Live IBKR rides the Client-Portal REST adapter (packages/infra-ibkr); "
         "needs an authenticated CP gateway.",
-    ),
-    ProviderCapability(
-        provider="SAXO",
-        asset_class="equity",
-        auth_required=True,
-        data_latency="live",
-        status="unavailable",
-        note="OAuth2 flow wired (see /api/oauth/saxo); token exchange needs packages/infra-saxo.",
-    ),
-    ProviderCapability(
-        provider="DERIBIT",
-        asset_class="crypto",
-        auth_required=False,
-        data_latency="live",
-        status="unavailable",
-        note="Public API available; needs packages/infra-deribit.",
     ),
 )
 

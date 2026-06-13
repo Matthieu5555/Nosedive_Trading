@@ -1,8 +1,16 @@
 # 0014 — `infra-saxo`: Saxo Bank OpenAPI adapter, OAuth2, equity-first
 
-- **Status:** accepted
+- **Status:** superseded (2026-06-13, T-index-only-refactor)
 - **Date:** 2026-06-02
 - **Source:** Vincent's ADR-017; merged 2026-06-05
+
+> **SUPERSEDED 2026-06-13** — the `infra-saxo` package was removed from the tree
+> (`T-index-only-refactor`). The app is now index-options-only with IBKR as the sole live
+> broker (focus EuroStoxx 50; see memory `index-only-app-scope`). The adapter was a leaf with
+> no core coupling; its code remains recoverable from git history (last present at the commit
+> before this ADR's status flip). The `BrokerSession` seam and the generic provider dimension
+> (ADR 0017) are unchanged, so a Saxo sub-block could rejoin later. This reverses the "keep
+> Saxo/Deribit" line of ADR 0023.
 
 ## Context
 

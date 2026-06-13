@@ -7,18 +7,18 @@ inside the factory so the module stays importable even while individual routers 
 The BFF reads only ``packages/infra`` seams (down-layer): ``ParquetStore`` for the
 persisted contract tables, the pure ``surfaces``/``risk`` engines, and
 ``orchestration.build_dashboard``. It never reaches into ``backend``. The routers —
-``health``, ``surfaces``, ``risk``, ``run``, ``config``, ``oauth``, the Tab-1 front-page
+``health``, ``surfaces``, ``risk``, ``run``, ``config``, the Tab-1 front-page
 seams ``price-history``, ``constituents``, ``analytics``, and ``recorded-dates`` (WS 1I), and the
 Tab-2 ``basket`` composer (WS 2A) — each call infra and serialize; no business logic lives
 in them. The 1I routers read the real
 ``daily_bar`` / ``index_constituents`` / ``projected_option_analytics`` tables and the 1G run
 ledger back through the read-only store (ADR 0034 §1).
 
-App-lifetime state hangs off ``app.state`` (never module globals): the context (``ctx``),
-the pipeline job runner (``runner`` — its worker pool is shut down by the lifespan
-handler), the OAuth CSRF store (``oauth_states``), and the Saxo OAuth settings
-(``saxo_oauth``, read from the environment here, not at import). Routers reach all of it
-through the dependencies in :mod:`algotrading.frontend.deps`.
+App-lifetime state hangs off ``app.state`` (never module globals): the context (``ctx``)
+and the pipeline job runner (``runner`` — its worker pool is shut down by the lifespan
+handler). Routers reach all of it through the dependencies in
+:mod:`algotrading.frontend.deps`. (The Saxo OAuth router + CSRF store were removed in
+T-index-only-refactor along with the Saxo broker package.)
 
 Malformed-request errors travel as :class:`~algotrading.frontend.deps.BadRequestError`
 (carrying the exact labelled payload) or :class:`ContractValidationError` (a basket leg
@@ -44,7 +44,6 @@ from fastapi.responses import JSONResponse
 
 from .context import AppContext
 from .deps import BadRequestError
-from .oauth_state import OAuthStateStore
 from .runner import PipelineRunner
 
 # Dev (Vite) and prod origins both come from one env var so CORS is not hard-coded.
@@ -74,7 +73,6 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app = FastAPI(title="AlgoTrading Dashboard (BFF)", version="0.1.0", lifespan=lifespan)
     app.state.ctx = ctx
     app.state.runner = runner
-    app.state.oauth_states = OAuthStateStore()
 
     frontend_origin = os.getenv("FRONTEND_BASE_URL", _DEFAULT_FRONTEND_ORIGIN)
     app.add_middleware(
@@ -102,21 +100,17 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import constituents as constituents_router  # noqa: PLC0415
     from .routers import coverage as coverage_router  # noqa: PLC0415
     from .routers import health as health_router  # noqa: PLC0415
-    from .routers import oauth as oauth_router  # noqa: PLC0415
     from .routers import price_history as price_history_router  # noqa: PLC0415
     from .routers import recorded_dates as recorded_dates_router  # noqa: PLC0415
     from .routers import risk as risk_router  # noqa: PLC0415
     from .routers import run as run_router  # noqa: PLC0415
     from .routers import surfaces as surfaces_router  # noqa: PLC0415
 
-    app.state.saxo_oauth = oauth_router.SaxoOAuthSettings.from_env()
-
     app.include_router(health_router.router)
     app.include_router(surfaces_router.router)
     app.include_router(risk_router.router)
     app.include_router(run_router.router)
     app.include_router(config_router.router)
-    app.include_router(oauth_router.router)
     app.include_router(price_history_router.router)
     app.include_router(constituents_router.router)
     app.include_router(analytics_router.router)

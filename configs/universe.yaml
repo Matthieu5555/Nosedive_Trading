@@ -57,7 +57,9 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 #     instant = a look-ahead bug).
 #   - currency: 3-letter uppercase ISO code.
 #   - ibkr: the provider-specific sub-block (conid/secType/exchange). The other fields are
-#     provider-agnostic; a future saxo:/deribit: sibling joins under the same key (ADR 0023).
+#     provider-agnostic; the provider dimension (ADR 0017) stays generic so another broker
+#     sub-block could rejoin under the same key, but IBKR is the sole live broker today
+#     (Saxo/Deribit removed in T-index-only-refactor).
 #   - enabled: the scheduler's on/off switch.
 #
 # SX5E is `enabled: true` (the single live focus pipeline); SPX is `enabled: false` (parked,

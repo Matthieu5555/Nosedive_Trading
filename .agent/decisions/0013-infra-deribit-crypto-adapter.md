@@ -1,8 +1,15 @@
 # 0013 — `infra-deribit`: Deribit as the first end-to-end broker, USD settlement
 
-- **Status:** accepted
+- **Status:** superseded (2026-06-13, T-index-only-refactor)
 - **Date:** 2026-06-02
 - **Source:** Vincent's ADR-016 (renamed infra-crypto → infra-deribit per ADR-018); merged 2026-06-05
+
+> **SUPERSEDED 2026-06-13** — the `infra-deribit` package was removed from the tree
+> (`T-index-only-refactor`). The app is now index-options-only (equity indices: EuroStoxx 50
+> focus, S&P 500 parked) with IBKR as the sole live broker; crypto options are out of scope.
+> See memory `index-only-app-scope`. The adapter was a leaf with no core coupling and is
+> recoverable from git history. The `BrokerSession` seam and the generic provider dimension
+> (ADR 0017) are unchanged. Reverses the "keep Saxo/Deribit" line of ADR 0023.
 
 ## Context
 

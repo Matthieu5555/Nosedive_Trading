@@ -30,7 +30,9 @@ def test_providers_lists_sample_as_ready(infra_client: TestClient) -> None:
     by_name = {p["provider"]: p for p in payload["providers"]}
     assert by_name["SAMPLE"]["status"] == "ready"
     assert by_name["IBKR"]["status"] == "unavailable"
-    assert by_name["SAXO"]["auth_required"] is True
+    # Saxo/Deribit removed in T-index-only-refactor — IBKR is the sole live broker.
+    assert "SAXO" not in by_name
+    assert "DERIBIT" not in by_name
 
 
 def test_run_rejects_unknown_provider(infra_client: TestClient) -> None:

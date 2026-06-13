@@ -2,8 +2,8 @@
 #
 # NOT hashed (operational). Reconnect/retry behaviour and the client-id convention are
 # how the platform talks to a gateway, not what it computes. Per-broker hosts/ports and
-# credentials live in each broker package's own config (infra-saxo, infra-ibkr, …) and
-# in the gitignored `.env`, never here.
+# credentials live in the broker package's own config (infra-ibkr) and in the gitignored
+# `.env`, never here.
 #
 # Loaded by the connectivity supervisor via `load_broker_config(configs/)` →
 # `BrokerConfig` (C7). The backoff overflow guard (`_MAX_BACKOFF_EXPONENT`) stays a code

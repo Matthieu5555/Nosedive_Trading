@@ -13,8 +13,6 @@ members = [
     "packages/core",
     "packages/infra",
     "packages/infra-ibkr",
-    "packages/infra-saxo",
-    "packages/infra-deribit",
     "packages/strategy",
     "packages/execution",
     "apps/frontend",
@@ -76,7 +74,7 @@ explicit_package_bases = true
 namespace_packages = true
 # Map files under each package's src/ to the `algotrading.*` name (not a
 # `packages.core.src...` alias), so `mypy .` resolves each source file once.
-mypy_path = "packages/core/src:packages/infra/src:packages/infra-ibkr/src:packages/infra-saxo/src:packages/infra-deribit/src:packages/strategy/src:packages/execution/src:apps/frontend/src"
+mypy_path = "packages/core/src:packages/infra/src:packages/infra-ibkr/src:packages/strategy/src:packages/execution/src:apps/frontend/src"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 warn_unused_ignores = true
@@ -159,13 +157,14 @@ root_packages = ["algotrading"]
 name = "Layered architecture: a layer never imports a layer above it"
 type = "layers"
 # Upper layers are optional (parentheses): the contract holds with only core+infra
-# present and auto-tightens as strategy/execution/frontend fill in. Broker leaf
-# packages sit above infra and below the alpha layers.
+# present and auto-tightens as strategy/execution/frontend fill in. The broker leaf
+# package (IBKR — Saxo/Deribit removed in T-index-only-refactor) sits above infra and
+# below the alpha layers.
 layers = [
     "(algotrading.frontend)",
     "(algotrading.execution)",
     "(algotrading.strategy)",
-    "(algotrading.infra_ibkr) | (algotrading.infra_saxo) | (algotrading.infra_deribit)",
+    "(algotrading.infra_ibkr)",
     "algotrading.infra",
     "algotrading.core",
 ]
@@ -193,8 +192,6 @@ testpaths = [
     "packages/core/tests",
     "packages/infra/tests",
     "packages/infra-ibkr/tests",
-    "packages/infra-saxo/tests",
-    "packages/infra-deribit/tests",
     "apps/frontend/tests",
 ]
 

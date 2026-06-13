@@ -106,6 +106,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import risk as risk_router  # noqa: PLC0415
     from .routers import run as run_router  # noqa: PLC0415
     from .routers import surfaces as surfaces_router  # noqa: PLC0415
+    from .routers import ticket as ticket_router  # noqa: PLC0415
 
     app.include_router(health_router.router)
     app.include_router(surfaces_router.router)
@@ -119,6 +120,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(recorded_dates_router.router)
     app.include_router(basket_router.router)
     app.include_router(coverage_router.router)
+    app.include_router(ticket_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

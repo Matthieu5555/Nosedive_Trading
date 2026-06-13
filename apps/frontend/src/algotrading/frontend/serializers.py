@@ -21,6 +21,7 @@ from algotrading.infra.contracts import (
     ScenarioResult,
     SurfaceParameters,
 )
+from algotrading.infra.orders import Limit, OrderTicket
 from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.risk import BasketRisk, LegRisk
 from algotrading.infra.surfaces import DenseSurface, SlicePlotSeries, degeneracy_reasons
@@ -494,4 +495,50 @@ def dashboard_status_to_dict(status: DashboardStatus) -> dict[str, object]:
         ),
         "backlog": list(status.backlog),
         "is_healthy": status.is_healthy,
+    }
+
+
+def _price_spec_to_dict(spec: object) -> dict[str, object]:
+    """A price spec as a tagged dict: ``{"kind": "market"}`` or ``{"kind": "limit", "price": …}``.
+
+    Mirrors the closed :data:`~algotrading.infra.orders.PriceSpec` set; the ``kind`` tag is the
+    discriminator the web client switches on (the HTTP shape is the seam)."""
+    if isinstance(spec, Limit):
+        return {"kind": "limit", "price": spec.price}
+    return {"kind": "market"}
+
+
+def ticket_to_dict(ticket: OrderTicket) -> dict[str, object]:
+    """Serialize a built :class:`~algotrading.infra.orders.OrderTicket` for preview (WS 3A).
+
+    Read-only/paper by construction: the payload carries an explicit ``gated`` flag stating that
+    transmission (sign-and-send) is WS 3B behind an owner gate — there is no transmit field and no
+    code path from this payload to a broker. Each leg mirrors the basket's grid identity
+    (``tenor_label``/``delta_band`` for options, ``None`` for stock) plus the order side/qty/price
+    spec; the concrete contract is bound later, at 3B."""
+    return {
+        "source_basket_id": ticket.source_basket_id,
+        "trade_date": ticket.trade_date.isoformat(),
+        "underlying": ticket.underlying,
+        "target_broker": ticket.target_broker.value,
+        "time_in_force": ticket.time_in_force.value,
+        "mode": ticket.mode,
+        "legs": [
+            {
+                "instrument_kind": leg.instrument_kind,
+                "underlying": leg.underlying,
+                "side": leg.side.value,
+                "quantity": leg.quantity,
+                "price_spec": _price_spec_to_dict(leg.price_spec),
+                "tenor_label": leg.tenor_label,
+                "delta_band": leg.delta_band,
+            }
+            for leg in ticket.legs
+        ],
+        "n_legs": len(ticket.legs),
+        # The gate, made explicit in the payload: nothing here transmits; sending is 3B.
+        "gated": {
+            "transmit": False,
+            "reason": "3B — sign-and-send is behind an explicit owner gate",
+        },
     }

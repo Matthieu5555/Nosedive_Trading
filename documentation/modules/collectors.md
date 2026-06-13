@@ -1,0 +1,1 @@
+../../packages/infra/src/algotrading/infra/collectors/README.md

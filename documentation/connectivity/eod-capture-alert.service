@@ -1,0 +1,21 @@
+# eod-capture-alert.service — the OnFailure= target for a failed close-capture (WS 1G).
+#
+# A minimal one-shot the eod-capture@.service routes to on failure. It emits a single
+# notification naming the failed unit and its run so the operator can pull the trace:
+#   journalctl --user -u eod-capture@XEUR.service --since today    # find the correlation_id
+# Keep it dependency-light (ADR 0032: zero new deps): it uses systemd-cat to write a labeled
+# line into journald. Swap the ExecStart for a real channel (mail, a webhook curl, ntfy) on the
+# server without touching the runner or the timer.
+#
+# Install: copy alongside eod-capture@.service (see that file's header).
+
+[Unit]
+Description=AlgoTrading EOD close-capture FAILURE alert
+
+[Service]
+Type=oneshot
+# A failure notification: the failed unit name reaches the operator; the run's correlation_id is
+# in that unit's own journald trace (one id per fire, recorded on the start log line).
+ExecStart=/usr/bin/env sh -c 'echo "EOD close-capture FAILED — inspect: journalctl --user -u eod-capture@*.service --since today" | systemd-cat -t eod-capture-alert -p err'
+StandardOutput=journal
+StandardError=journal

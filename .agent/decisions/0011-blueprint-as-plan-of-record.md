@@ -4,14 +4,27 @@
 - **Date:** 2026-05-30
 - **Source:** Vincent's ADR-009; merged into our stream 2026-06-05
 
-> **AMENDED 2026-06-13 — the blueprint was retired.** The founding blueprint (the old
-> `documentation/` tree) went out of date and was deleted. **`TARGET.md` (repo root) is now the
-> plan of record and the domain authority** — what we build, why, in what order, and the ruling on
-> any formula/contract conflict. The *principle* of this ADR is unchanged and still binding: there
-> is **one** domain source of truth, the code conforms to it, and `AGENTS.md` governs process while
-> the plan of record governs domain. Only the document holding that authority changed (blueprint →
-> TARGET.md). The body below is kept as the historical "why we dissolved the V1/V2 split" record;
-> read every "the blueprint" in it as "the plan of record (now TARGET.md)".
+> **AMENDED 2026-06-13 (b) — the blueprint is restored; it coexists with TARGET.md.**
+> An earlier same-day amendment (commit `bacec40`) retired the blueprint and deleted the
+> `documentation/` tree in a "context-minimization" pass. **That deletion is reverted** — the
+> owner (Vincent) restored `documentation/` in full. The blueprint and `TARGET.md` now hold
+> **two distinct, complementary authorities**:
+>
+> - **The blueprint (`documentation/blueprint/`) is the detailed *domain* reference** — formulas,
+>   the math framework, data schemas/dictionary, field naming, vocabulary, and the per-step
+>   implementation guides. On any *domain-detail* question, the blueprint governs and the code
+>   conforms to it.
+> - **`TARGET.md` is the *roadmap & scope* authority** — what we build now, in what order, the
+>   end-state capability map, and the current owner rulings.
+>
+> **Conflict resolution:** on **scope/universe/brokers**, `TARGET.md` and the later scope ADRs
+> win — decisively, **ADR 0042 (index-options-only, IBKR sole broker, SX5E sole live index)
+> overrides the blueprint** wherever the blueprint still assumes multi-broker (Saxo/Deribit),
+> equity underlyings, or wider scope. Restoring the blueprint does **not** re-open that scope. On
+> **domain detail** (formulas, contracts, naming), the blueprint wins unless a later ADR
+> explicitly supersedes it. The unchanged founding principle: there is one domain source of truth
+> per concern, the code conforms, and `AGENTS.md` governs process. The body below is the
+> historical "why we dissolved the V1/V2 split" record.
 
 ## Context
 

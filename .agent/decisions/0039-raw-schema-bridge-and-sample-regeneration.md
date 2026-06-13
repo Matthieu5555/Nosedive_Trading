@@ -1,5 +1,10 @@
 # 0039 — Raw-schema bridge: close the broker-raw ↔ contracts seam and make samples reproducible
 
+> **AMENDED 2026-06-13 (index-only, [[0042-index-options-only-scope-ibkr-sole-broker]]).** The
+> decision stands and is live; only a path label is dated — the committed samples now live under
+> `packages/infra-ibkr/samples/` only (`infra-saxo` was removed; IBKR is the sole live broker). The
+> raw-schema bridge and the broker-agnostic `RawMarketEvent` shape are unchanged.
+
 - **Status:** accepted, 2026-06-10 (owner ruled OQ-A/OQ-B 2026-06-10). Closes the bridge
   deferral named in [[0021-analytics-core-merge]]. Lands **WS T-bridge**
   ([`../../tasks/T-bridge.md`](../../tasks/T-bridge.md)).

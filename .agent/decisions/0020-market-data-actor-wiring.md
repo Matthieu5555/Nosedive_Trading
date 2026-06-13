@@ -1,5 +1,11 @@
 # 0020 — Market-data actor wiring: raw-layer replay, and the seam M5 implements
 
+> **AMENDED 2026-06-13 (index-only, [[0042-index-options-only-scope-ibkr-sole-broker]]).**
+> Doubly-dead, historical record only: this ADR was already superseded by
+> [[0023-nautilus-runtime-spine-and-library-leverage]] (2026-06-05), and the multi-broker premise
+> it argues over ("three brokers IBKR/Saxo/Deribit") is now moot — Saxo and Deribit were removed
+> entirely; IBKR is the sole live broker. Read it for history, not for current wiring.
+
 - **Status:** **superseded by [[0023-nautilus-runtime-spine-and-library-leverage]]** (2026-06-05)
   — Nautilus is now the runtime spine and Saxo/Deribit keep their own adapters; the
   no-`nautilus_trader` decision (§1) and the "all three brokers on the scalar `BrokerSession`" seam

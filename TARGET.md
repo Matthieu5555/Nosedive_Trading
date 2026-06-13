@@ -1,15 +1,33 @@
-# TARGET — what done looks like, and how it makes money
+# TARGET — the single roadmap: what done looks like, how it makes money, and the order we build it
 
-This is the destination document and the design standard. It records the owner's brief of
-2026-06-12: how this infrastructure is supposed to make money, the strategy book it runs,
-the analytics rulings that follow, the end-of-week deliverable, and the full capability map
-a professional stack is measured against. The next person designing work reads **this file
-plus `tasks/TASKBOARD.md`**, diffs the target against what exists, and cuts the next specs
-from the gap (§7 is that gap list, pre-ordered).
+This is **the one roadmap** — the destination, the money thesis, the strategy book, the
+analytics rulings, the full capability map, and the pre-ordered gap list that sequences the
+build. It is the **STRATEGY agents follow to orient** (where we go, in what order, why); the
+tactical "how" of each step lives in `tasks/`. It absorbed the earlier
+`documentation/vision-medium-term.md` (the "why") and `documentation/roadmap-index-analytics.md`
+(the phase sequence) — both are now stubs pointing here. The next person designing work reads
+**this file plus `tasks/TASKBOARD.md`**, diffs the target against what exists, and cuts the
+next specs from the gap (§7 is that gap list, pre-ordered).
 
 Authority: the blueprint (`documentation/blueprint/`, ADR 0011) overrides on any formula,
 field, or domain definition — the rulings in §4 that touch domain contracts need an ADR +
 blueprint amendment before build, and say so. `AGENTS.md` governs process.
+
+## 0. Scope & universe model (frozen 2026-06-13, ADR 0042)
+
+**Index options only, EuroStoxx-50-first.** The live focus pipeline is **SX5E**; **SPX is
+parked** (`enabled:false`, kept in the registry as the multi-index proof — re-enable is one
+flag). **Saxo and Deribit were removed**; **IBKR is the sole live broker** (Client-Portal REST,
+ruling R4). All of this is registry-driven — adding/parking an index is config, never code.
+
+**Universe model — one enabled index + its top-N constituents.** The index carries an option
+chain **today**; the top-N constituents carry **OHLC bars today and their own option chains at
+the dispersion phase** (§3 S1, §7.4 — the single biggest new lane). Single-name tickers are
+**index constituents, never hand-set standalone underlyings** — when dispersion needs straddles
+on the top-10, those underlyings come from the enabled index's point-in-time top-N (1A
+membership), never a maintained list. The basket model is already dispersion-ready (`BasketLeg`
+carries a per-leg `underlying`; the analytics engine is underlying-generic); the only extension
+is widening the **capture scope** to the constituents' chains.
 
 ---
 
@@ -52,8 +70,14 @@ What we demo at the end of the week, all of it real (no mock data, no dead butto
 
 1. **A hella clean frontend.** Every panel answers "what am I looking at", wired to the
    real pipeline. The front is the proof the rest exists.
-2. **Several days of harvested data.** The EOD capture (SX5E + SPX) has run unattended and
-   banked a gap-free, QC-clean history of close snapshots, surfaces, and Greeks.
+2. **Several days of harvested data.** The EOD capture (**SX5E**; SPX parked) has run
+   unattended and banked a gap-free, QC-clean history of close snapshots, surfaces, and Greeks.
+   **Operational cadence:** the daily close snapshot must run **with all the recent fixes
+   applied** (tenor-bracket selection, delta-driven discovery window, ±30Δ step-2 grid,
+   SX5E-only scope) — and we **verify Monday before the close** that a real run produces the
+   expected term structure + delta band, so the unattended week of capture is trustworthy, not
+   assumed. A green local gate is not the same as a correct delivered capture (the
+   intent-vs-delivery audit class) — confirm on real banked data.
 3. **Enter a strategy.** Compose a position (legs from the captured chain), book it, and
    hold it as *the current position* of the book. The flagship to enter is the dispersion
    book (§3, S1).
@@ -364,8 +388,11 @@ Each row is roughly one spec.
 
 ## 8. How to use this file
 
-Reference it, don't restate it. `BIG_PICTURE.md` says how we build the backbone with the
-least code; the roadmap (`documentation/roadmap-index-analytics.md`) sequences the current
-phase; this file holds the finish line and the money thesis both point at. When a target
-item lands, update its *state* line here in the same change — a stale target is worse than
-none. When the owner moves the goal, this file moves first.
+Reference it, don't restate it. This is now **the single roadmap** — it holds both the finish
+line (the money thesis + capability map) *and* the build order (§7, pre-sequenced); the former
+`documentation/roadmap-index-analytics.md` and `documentation/vision-medium-term.md` were merged
+in and are stubs pointing here. `BIG_PICTURE.md` (how we build the backbone with least code) and
+the blueprint (`documentation/blueprint/`, domain authority) stay separate by design. When a
+target item lands, update its *state* line here in the same change — a stale target is worse than
+none. When the owner moves the goal, this file moves first. Resolved open-questions live in
+`.agent/open-questions.md`; per-workstream tactics live in `tasks/`.

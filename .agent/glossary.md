@@ -170,10 +170,12 @@ instead.
 ### Broker protocols and adapter layer (Workstreams M4 / M5)
 
 - **Broker-seam direction ([ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md)):**
-  Nautilus is the runtime spine; **IBKR rides Nautilus's adapter**, **Saxo/Deribit keep the
-  `MarketDataAdapter` below** (Nautilus ships neither) — all three normalize to `RawMarketEvent` in
-  the catalog the engine replays. The scalar pull `contracts.BrokerSession` is being retired;
-  restore content-addressed event ids over the vendored running counter.
+  Nautilus is the runtime spine; **IBKR rides Nautilus's adapter** plus a custom Client-Portal REST
+  transport, normalizing to `RawMarketEvent` in the catalog the engine replays. **IBKR is the sole
+  live broker** (Saxo/Deribit removed — index-only,
+  [ADR 0042](decisions/0042-index-options-only-scope-ibkr-sole-broker.md)); the `MarketDataAdapter`
+  seam stays generic so another broker could rejoin. The scalar pull `contracts.BrokerSession` is
+  retired; content-addressed event ids run over the vendored running counter.
 - **`BrokerTransport`** — the broker-agnostic Protocol for a live connection: sends subscription
   requests and delivers raw wire frames. Lives in `infra/`; never imported by `strategy`.
 - **`MarketDataAdapter`** — the Protocol that normalizes a broker's wire frames into `BrokerTick`
@@ -193,37 +195,12 @@ instead.
 
 ### Provider and exchange identity
 
-- **Provider** — the data source leaf: `DERIBIT`, `SAXO`, `IBKR`. Identifies *who supplied the
-  data*, not where it is listed. A first-class partition segment in all stores (ADR 0017).
-- **Exchange** — the market listing venue: `DERIBIT`, `AMS`, `NASDAQ`, etc. Identifies *where the
-  instrument is listed*. For crypto on Deribit, provider and exchange coincide; for equity they
-  can differ (same option from Saxo or IBKR on the same Euronext listing).
-- **`ProviderCapabilities`** — a frozen dataclass describing a broker leaf's capabilities:
-  `asset_class`, supported underlyings, auth requirements, data latency, entitlement status.
-
-### Deribit / crypto specifics
-
-- **Mark IV** — Deribit's implied-volatility mark price for each option contract, published via
-  the WebSocket tick stream. Used as input to the `mark_iv_divergence` QC check.
-- **BTC / ETH underlying** — the two Deribit-listed underlyings in scope. Options are USD-settled;
-  no native-coin accounting complexity.
-- **Perpetual** — a crypto futures contract with no expiry; rolls continuously via a periodic
-  **funding rate** (the fee paid by longs to shorts, or vice versa, to keep the perpetual price
-  anchored to spot). Not an option; not in the surface fitting scope, but appears in Deribit market
-  data and must be filtered before passing ticks to the IV/surface engine.
-- **Funding rate** — the periodic cost of holding a perpetual position. Deribit publishes it as a
-  tick field; it is a gap/metadata field for the purposes of the observation stream filter
-  (`is_observation`).
-
-### Saxo Bank / OAuth specifics
-
-- **Access token (Saxo)** — OAuth2 bearer token valid for 20 minutes. Rotated automatically by
-  `auth/token_manager.py` using the refresh token.
-- **Refresh token (Saxo)** — OAuth2 token valid for 40 minutes, used to obtain new access tokens
-  without re-authenticating.
-- **`OptionsChain` endpoint** — the Saxo REST endpoint that returns a complete IV matrix and
-  Greeks for a given underlying and expiry in a single call. Architecturally superior to IBKR's
-  per-contract subscription for surface collection.
+- **Provider** — the data-source leaf that supplied the data (not where it is listed); a
+  first-class partition segment in all stores (ADR 0017). Today the only live provider is `IBKR`;
+  the dimension stays generic so another could rejoin (the column still carries historical labels).
+- **Exchange** — the market listing venue: `EUREX`, `CBOE`, `XPAR`, etc. Identifies *where the
+  instrument is listed*, distinct from the provider. They can differ — e.g. provider `IBKR` with
+  exchange `EUREX` for SX5E, or a constituent listed on `XPAR` captured via IBKR.
 
 ### Other domains
 

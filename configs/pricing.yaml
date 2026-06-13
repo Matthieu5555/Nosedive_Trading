@@ -22,6 +22,9 @@ surface:                       # SVI calibration (SurfaceConfig)
   svi_sigma_bounds: [1.0e-8, 10.0]   # curvature, strictly > 0
   svi_bound_hit_tol: 1.0e-5          # "at the bound" detection, relative to each range
   svi_max_iterations: 200            # least-squares evaluation budget per parameter
+  min_points_per_slice: 5            # distinct strikes required before SVI is trusted; below it
+                                     # the slice routes to the nonparametric fallback. Floored at
+                                     # 5 = SVI's parameter count; raise to demand more points.
 
 forward:                       # parity forward-estimate confidence heuristics (ForwardConfig)
   version: "2026.05.31"

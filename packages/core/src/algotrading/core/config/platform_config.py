@@ -518,6 +518,12 @@ class SurfaceConfig(_ConfigModel):
     svi_sigma_bounds: _FloatPair
     svi_bound_hit_tol: float = Field(gt=0.0)
     svi_max_iterations: int = Field(ge=1)
+    # Min distinct strikes a slice needs before SVI is trusted; below it, the fit routes to
+    # the labeled nonparametric fallback (blueprint 07 `min_points_per_slice`, ADR 0028 — the
+    # routing threshold gets a typed home instead of the `MIN_POINTS_FOR_SVI` .py literal).
+    # Floored at 5 = SVI's five parameters (the identifiability minimum, a math invariant that
+    # stays the hard floor in `surfaces.svi`); set higher to demand more points before SVI.
+    min_points_per_slice: int = Field(default=5, ge=5)
 
     @model_validator(mode="after")
     def _check_bound_pairs(self) -> SurfaceConfig:

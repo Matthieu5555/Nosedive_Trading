@@ -34,7 +34,7 @@ from algotrading.infra.contracts import (
 )
 
 from .arbitrage import butterfly_violations
-from .svi import MIN_POINTS_FOR_SVI, SURFACE_VERSION, SviFit, SviParams, fit_svi
+from .svi import SURFACE_VERSION, SviFit, SviParams, fit_svi
 
 # Method labels: every slice says how its curve was built, never implied.
 METHOD_SVI = "svi"
@@ -152,13 +152,14 @@ def fit_slice(
     """Fit one maturity slice, choosing SVI or a labeled nonparametric fallback.
 
     Total and pure: an empty slice returns a labeled ``insufficient`` fit rather than
-    raising. With at least :data:`~surfaces.svi.MIN_POINTS_FOR_SVI` distinct strikes
-    it calibrates SVI under the ``config`` bounds and runs the butterfly check; with
-    fewer it falls back to interpolation, labeled ``nonparametric``.
+    raising. With at least ``config.min_points_per_slice`` distinct strikes (floored at
+    SVI's five-parameter identifiability minimum) it calibrates SVI under the ``config``
+    bounds and runs the butterfly check; with fewer it falls back to interpolation, labeled
+    ``nonparametric``.
     """
     ks, ws = _distinct_sorted_points(points)
 
-    if len(ks) >= MIN_POINTS_FOR_SVI:
+    if len(ks) >= config.min_points_per_slice:
         svi_fit: SviFit = fit_svi(ks, ws, config=config)
         breaches = butterfly_violations(svi_fit.params, _arb_grid(ks))
         return SliceFit(

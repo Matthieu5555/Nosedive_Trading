@@ -140,12 +140,18 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # values are unchanged). The `pricing` bundle hash — and so the folded whole-config hash —
     # moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical (section isolation).
     # Pre-capture dev change: no banked record carries the old hash.
+    #
+    # T-pricing-config-completeness (2026-06-13): `SurfaceConfig.min_points_per_slice` joined the
+    # hashed `surface` block in `pricing.yaml` — the SVI-trust routing threshold gets a typed home
+    # instead of the `MIN_POINTS_FOR_SVI` .py literal (ADR 0028). Default 5 = unchanged routing.
+    # The `pricing` bundle hash — and so the folded whole-config hash — moved BY DESIGN;
+    # `universe`/`qc`/`scenarios` stay byte-identical (section isolation). Pre-capture dev change.
     config = _config()
     assert config_hash(config) == (
-        "ad24d6c1c8dd7e45117f4afa4446ac473913a26e25a75df3645544a4de1616d7"
+        "393e9812259791ec3660009c9579c8f1176ebc1901c9b40db287801dd2d7268d"
     )
     assert config_hashes(config) == {
-        "pricing": "9968f42b9f266bcd3d21e199222e9c5e593ca18bffe3ca6b6ce44339c1b157d5",
+        "pricing": "99dc3752841c3003c4ea427dc3b823c9a607af74603d46b81faa8dcd73ae096d",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
         "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",

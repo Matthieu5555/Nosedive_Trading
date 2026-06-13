@@ -20,6 +20,8 @@ import math
 from datetime import UTC, date, datetime
 
 import pytest
+from algotrading.core.config import SurfaceConfig
+from algotrading.core.config.platform_config import ConfigFieldError
 from algotrading.core.provenance import source_ref, stamp
 from algotrading.infra.contracts import (
     IvDiagnostics,
@@ -167,6 +169,32 @@ def test_fit_recovers_known_svi_parameters() -> None:
 def test_fit_svi_needs_five_points() -> None:
     with pytest.raises(ValueError, match="at least 5"):
         fit_svi((0.0, 0.1, 0.2), (0.04, 0.05, 0.06), config=SURFACE_CONFIG)
+
+
+def test_min_points_per_slice_config_drives_the_svi_vs_fallback_routing() -> None:
+    # T-pricing-config-completeness (ADR 0028): the SVI-trust threshold is a typed config value,
+    # not the old MIN_POINTS_FOR_SVI .py literal. The default (5) fits a well-populated slice with
+    # SVI; raising the threshold above the available distinct-strike count routes the SAME slice to
+    # the labeled nonparametric fallback — the config drives the routing, proving it is read.
+    points = _synthetic_points()
+    n_distinct = len({p.log_moneyness for p in points})
+    assert n_distinct >= MIN_POINTS_FOR_SVI  # enough for SVI under the default threshold
+    assert _fit(points).method == METHOD_SVI
+
+    demanding = SurfaceConfig.model_validate(
+        {**SURFACE_CONFIG.model_dump(), "min_points_per_slice": n_distinct + 1}
+    )
+    routed = fit_slice(
+        "AAPL", _SURFACE.maturity_years, points, expiry_date=EXPIRY, day_count="ACT/365",
+        config=demanding,
+    )
+    assert routed.method == METHOD_NONPARAMETRIC
+
+
+def test_min_points_per_slice_is_floored_at_the_svi_parameter_count() -> None:
+    # The config threshold cannot go below SVI's five-parameter identifiability minimum.
+    with pytest.raises(ConfigFieldError, match="greater than or equal to 5"):
+        SurfaceConfig.model_validate({**SURFACE_CONFIG.model_dump(), "min_points_per_slice": 4})
 
 
 def test_bound_hit_flags_are_set_when_a_parameter_pins() -> None:

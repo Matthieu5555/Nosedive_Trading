@@ -21,9 +21,9 @@
   **[ADR 0030](../.agent/decisions/0030-frontend-visualization-and-ui-library-stack.md)** (Plotly.js
   for the combined PnL surface; shadcn/ui + TanStack Table for the compose shell), and
   **[ADR 0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)** (storage).
-- **Depends on:** **2A** ([2A-basket-builder.md](2A-basket-builder.md) — the frozen `Basket`/`BasketLeg`
+- **Depends on:** **2A** ([2A-basket-builder.md](archive/2A-basket-builder.md) — the frozen `Basket`/`BasketLeg`
   contract + `risk/multileg.py` book-additive risk a book layers; **landed** `b2b6a06`), **2B**
-  ([2B-stress-scenario.md](2B-stress-scenario.md) — the ±50%/±50% spot×vol `StressSurfaceConfig` grid
+  ([2B-stress-scenario.md](archive/2B-stress-scenario.md) — the ±50%/±50% spot×vol `StressSurfaceConfig` grid
   + the `GET /api/risk/scenarios` `surface` seam the combined PnL surface reprices over; **landed,
   full-stack**), and **2C** ([2C-pnl-attribution.md](2C-pnl-attribution.md) — the per-Greek
   `ScenarioAttribution` shape the combined view drills into; **landed** `4e3f50f`). All three are

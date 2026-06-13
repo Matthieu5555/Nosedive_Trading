@@ -15,18 +15,13 @@ touching what right now" and "what is open to pick up." Finished specs move to
 > capability map and the ordered build sequence (§7 is the pre-ordered gap list). New work is
 > designed by diffing TARGET against this board.
 
-## Scope — read first (ADR [0042](../.agent/decisions/0042-index-options-only-scope-ibkr-sole-broker.md))
+## Scope guardrail
 
-The app is **index-options-only, EuroStoxx-50-first**. **IBKR is the sole live broker**; **SX5E
-is the single live index** (SPX parked `enabled:false`). Single names are index *constituents*,
-sourced from the registry — chosen from the enabled index's top-N at the dispersion phase, never
-a hand-set option underlying. If any older spec, ADR, or README still says "Saxo", "Deribit",
-"three brokers", or "equity underlying", **the index-only pivot wins** — do not resurrect it.
-
-**Ground truth:** one tree (`packages/` + `apps/`). The only gate is
-`uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q` — **green**
-(1507 passed, 12 skipped, 2026-06-13). The three tests that broke when the stale `documentation/`
-tree was removed are fixed; the systemd deployment units it held were restored to `scripts/systemd/`.
+Scope + universe model live in ADR [0042](../.agent/decisions/0042-index-options-only-scope-ibkr-sole-broker.md)
+and [`TARGET.md §0`](../TARGET.md) — **index-options-only, IBKR sole broker, SX5E sole live index**.
+The reminder that earns its place here: if any older spec, ADR, or README still says "Saxo",
+"Deribit", "three brokers", or "equity underlying", **the index-only pivot wins** — do not resurrect
+it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-13 (1507 passed, 12 skipped).
 
 ## Active claims
 
@@ -35,7 +30,6 @@ tree was removed are fixed; the systemd deployment units it held were restored t
 | claude (matthieu) | `tasks/TASKBOARD.md`, `AGENTS.md`; archive 2 landed specs | 2026-06-13 | context-pollution cleanup ([T-agent-context-minimization](T-agent-context-minimization.md) Part A/B) |
 | Claude (vincent) | [T-front-currency-and-bands](T-front-currency-and-bands.md) — front display wiring (`api.ts`, `DollarGreeks.tsx`, `MaturityAccordion`, `format.ts`) + un-hardcode `BasketLegGrid` band list | 2026-06-13 | backend `/api/indices` currency single-source already landed; front half remains |
 | Claude (anthony) | Basket/Risk tab operator-flow fixes — `routers/basket.py` (empty `trade_date` → latest banked day), web `pages/Basket.tsx`, `pages/RiskScenarios.tsx` | 2026-06-12 | drop the duplicated stress composer from the Risk tab; on-demand stress lives on Basket |
-| claude (matthieu) | web frontend e2e — NEW files only: `web/e2e/**`, `web/playwright.config.ts`; additive: `web/package.json` scripts+devDep, `web/.gitignore`, `web/vite.config.ts` (vitest exclude), `apps/frontend/README.md` | 2026-06-13 | Playwright real-browser suite: nav/button flows + layout-collision/overflow. No edits to page/component source (disjoint from vincent/anthony) |
 
 ## Ready queue — unclaimed, pick one and claim a row above
 

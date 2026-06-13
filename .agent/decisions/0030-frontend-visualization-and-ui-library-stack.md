@@ -47,6 +47,11 @@ genuinely justified, and the fewest that cover the need.**
 - New web dependencies: `plotly.js`, `lightweight-charts`, `shadcn/ui` (+ Radix + Tailwind),
   `@tanstack/react-table`. The front gate (`npm run lint && npm test`) covers them; the root Python
   gate is unchanged.
+- *Amendment (2026-06-13):* because these chart libraries render only in a real browser (jsdom has
+  no layout engine), an **opt-in Playwright end-to-end suite** (`npm run e2e`, see
+  `apps/frontend/README.md`) backstops them with navigation/button-flow and layout-collision /
+  overflow checks. It is not part of the front gate, but it is the regression net for visual/layout
+  breakage these libraries can introduce — extend it when you add or restyle a chart or panel.
 - 1I wires the real pipeline into these components, replacing the deleted mock; dollar Greeks come
   from the risk contract per [[0011-blueprint-as-plan-of-record]] and the $-unit pins (roadmap P0.2).
 - Plotly is heavier than a purpose-built financial chart, so daily bars and Greek term-structure

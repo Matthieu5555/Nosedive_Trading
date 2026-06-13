@@ -14,9 +14,8 @@ import-linter enforces that this is the bottom of the stack.
   (`config_hash`, `object_config_hash`, `composite_config_hash` — digests via
   `core.hashing`). The
   config standard this implements is
-  [ADR 0028](../../.agent/decisions/0028-configuration-and-reproducibility-standard.md) /
-  `documentation/configuration-and-reproducibility.md`; the application work
-  ([C7](../../tasks/archive/C7-config-hardening.md)) landed in full.
+  [ADR 0028](../../.agent/decisions/0028-configuration-and-reproducibility-standard.md); the
+  application work ([C7](../../tasks/archive/C7-config-hardening.md)) landed in full.
   `UniverseConfig.indices` carries the raw, *unvalidated* index-registry block (ADR 0035)
   so it folds into `config_hashes["universe"]` with no separate hash; the typed parse +
   calendar-code validation deliberately lives one layer up (`algotrading.infra.universe`,

@@ -76,7 +76,12 @@ Branch coverage on the analytics/risk core is a separate, deliberate step:
 excludes the read-only reference checkout, notebooks, and scratch dirs.
 
 **frontend/** (Vite/JS): the React/Vite web app under `apps/frontend/web` verifies with
-`npm run lint && npm test` once scaffolded; its Python BFF is covered by the root gate.
+`npm run lint && npm test` (ESLint + Vitest component tests); its Python BFF is covered by the
+root gate. There is **also** a real-browser **Playwright** end-to-end suite — `npm run e2e` — that
+covers what jsdom structurally cannot: navigation/button flows and layout-collision / overflow
+checks. It is deliberately **opt-in** (needs a browser binary + a dev server), not in the gate —
+but it exists, so don't reinvent it: when you touch a page, a route, or shared layout, run it and
+keep it green, and extend it for new UI. How to run and write it lives in `apps/frontend/README.md`.
 
 If a gate cannot run because the tooling is absent, say so plainly. Do not claim
 verification you did not perform.

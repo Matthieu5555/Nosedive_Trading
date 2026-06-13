@@ -23,7 +23,7 @@ sample-replay path — not a notebook itself). Verified to execute end-to-end ag
 | `apps/vol_surface_studio.py` | Flagship. Tab 1: interactive SVI slice calibration. Tab 2: full offline replay of a committed broker sample through `reconstruct_day` → spread, forward basis, per-expiry smile, fitted-SVI overlay, 3D IV surface, summary table. | synthetic + committed IBKR/Saxo samples |
 | `apps/risk_scenario.py` | Risk & scenario explorer: a small option book priced with `position_risk`, net-Greek KPIs, `scenario_grid`/`build_scenario_report` PnL, worst-case, Taylor attribution. | synthetic, no credentials |
 | `apps/qc_observability.py` | QC & observability panel: anomaly detection (`validation`), QC checks on a synthetic slice, the five orchestration alerts, dashboard render, Prometheus metrics readout. | synthetic, no credentials |
-| `apps/vol_surface_pedagogique.py` | Pedagogy: vol-surface intuition, smile anatomy, the five Greeks, term structure, 3D surfaces, calendar-arb — with sliders. numpy/scipy/plotly only (no engine calls). Companion to `documentation/vol-surface/`. | synthetic, no credentials |
+| `apps/vol_surface_pedagogique.py` | Pedagogy: vol-surface intuition, smile anatomy, the five Greeks, term structure, 3D surfaces, calendar-arb — with sliders. numpy/scipy/plotly only (no engine calls). | synthetic, no credentials |
 
 ```bash
 uv run --group notebooks marimo run  notebooks/apps/vol_surface_studio.py   # launch as an app (read-only)
@@ -37,7 +37,7 @@ uv run --group notebooks marimo export html notebooks/apps/pricing_greeks.py -o 
 |---|---|
 | `demo_pipeline_ibkr.ipynb` | Full IBKR pipeline end to end on a **committed** real sample (ASML options, EUREX) — 100% offline replay through `orchestration.reconstruction.reconstruct_day` (snapshots → QC → forward → IV inversion → SVI surface), no Gateway/token. A `RUN_LIVE=False` credential-gated cell uses the unified collector for a real feed. |
 | `vol_surface_mock.ipynb` | Vol-surface render mock on **real captured** SX5E analytics — validates the front's 3D nappe before touching `charts.tsx`: log-moneyness axis, dense SVI-sampled surface, and palette/colour-range comparisons. |
-| `vol_surface_pedagogique.ipynb` | Interactive pedagogy: vol surface intuition, smile anatomy, Greeks, no-arb diagnostics. Companion to `documentation/vol-surface/vol_surface_pedagogique.md`. |
+| `vol_surface_pedagogique.ipynb` | Interactive pedagogy: vol surface intuition, smile anatomy, Greeks, no-arb diagnostics. |
 
 > The `.ipynb` demos import and call the high-level orchestration use-cases (`reconstruct_day` /
 > `build_surface`), never re-stitched low-level engines. Per ADR 0023 Nautilus is the runtime

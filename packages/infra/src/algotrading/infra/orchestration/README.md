@@ -66,8 +66,8 @@ so a session resolves to the jobs it fed.
     identity), recorded for both a clean and a failed fire so each is reproducible from its record.
 
   `main` exits non-zero on any stage failure so `Restart=on-failure`/`OnFailure=` engage. The
-  unit files (`eod-capture.service`, `eod-capture@{XEUR,XNYS}.timer`, `eod-capture-alert.service`)
-  live under `documentation/connectivity/`.
+  unit files (`eod-capture@.service`, `eod-capture@{XEUR,XNYS}.timer`, `eod-capture-alert.service`)
+  live under `scripts/systemd/`.
 - **reconstruction/** — historical replay/backfill over a date range; see its own README.
 
 ## Gotchas

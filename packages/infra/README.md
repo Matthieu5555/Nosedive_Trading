@@ -5,8 +5,8 @@ the pure analytics core, risk, QC, the Nautilus-hosted actor, orchestration, and
 Built on `algotrading.core` and the frozen `infra.contracts` seam. **This layer never
 imports a layer above it** (strategy, execution, frontend); import-linter enforces it.
 
-This README is a routing hop. Each module below has its own `README.md` next to its code
-(mirrored under `documentation/modules/`); read that for the detail.
+This README is a routing hop. Each module below has its own `README.md` next to its code;
+read that for the detail.
 
 ## The frozen seam
 
@@ -29,8 +29,8 @@ This README is a routing hop. Each module below has its own `README.md` next to 
 `snapshots/` → `forwards/` → `iv/` → `surfaces/` → `pricing/` are the bespoke math: raw
 events to a quality-labeled market state, the parity forward, the IV solve, the SVI
 surface fit with no-arb checks, and Black-76/American pricing + Greeks. All pure — no I/O,
-no clock, no RNG; everything is injected and stamped. Read
-`documentation/vol-surface/` before touching `iv`/`surfaces`. `utils/` holds shared
+no clock, no RNG; everything is injected and stamped. Read `iv/README.md` and
+`surfaces/README.md` before touching them. `utils/` holds shared
 numeric helpers.
 
 ## Risk

@@ -3,15 +3,16 @@
 This is **the one roadmap** — the destination, the money thesis, the strategy book, the
 analytics rulings, the full capability map, and the pre-ordered gap list that sequences the
 build. It is the **STRATEGY agents follow to orient** (where we go, in what order, why); the
-tactical "how" of each step lives in `tasks/`. It absorbed the earlier
-`documentation/vision-medium-term.md` (the "why") and `documentation/roadmap-index-analytics.md`
-(the phase sequence) — both are now stubs pointing here. The next person designing work reads
+tactical "how" of each step lives in `tasks/`. It absorbed and replaced the earlier
+vision/roadmap notes (the "why" and the phase sequence), which were removed with the
+`documentation/` tree. The next person designing work reads
 **this file plus `tasks/TASKBOARD.md`**, diffs the target against what exists, and cuts the
 next specs from the gap (§7 is that gap list, pre-ordered).
 
-Authority: the blueprint (`documentation/blueprint/`, ADR 0011) overrides on any formula,
-field, or domain definition — the rulings in §4 that touch domain contracts need an ADR +
-blueprint amendment before build, and say so. `AGENTS.md` governs process.
+Authority: **this file is the domain authority** on any formula, field, or definition — it
+absorbed the retired blueprint (ADR 0011; the `documentation/` tree is gone, git history is the
+archive). The rulings in §4 that touch domain contracts need a new ADR before build, and say so.
+`AGENTS.md` governs process.
 
 ## 0. Scope & universe model (frozen 2026-06-13, ADR 0042)
 
@@ -258,8 +259,23 @@ Daily P&L decomposes into the named terms of §2.5, per position, per strategy, 
 drillable; full reprice is the oracle; the residual is the honesty meter. Attribution is
 what *enforces the strategy contracts* of §3.
 
+**The residual is not only a gate — it is the next signal.** Today the residual is a
+scalar stop-light: large → "we don't understand our book" → cut. The destination is to
+*diagnose* it. Once realized dPnL is decomposed against every term we know how to price
+deterministically (through Volga), what is left is the part of the book's P&L the Greek
+model cannot name — and that leftover is itself data. Regress the residual time series
+against candidate **unmodeled exposures** — skew/vanna dynamics, liquidity and execution
+slippage, jump/gap risk, vol-of-vol, regime — to name *which* exposure the book is silently
+carrying, and feed it back into the surface/Greek model. This is the rigorous form of the
+§1 differentiator: not just "is the P&L from the Greek we intended", but "what is the
+exposure we never named". It is the **one place attribution crosses from deterministic
+decomposition into statistical inference**, so it carries the full §6 quant-guard bar
+(as-of, out-of-sample, no data-snooping) that the closed-form terms do not need.
+
 *State:* seam landed (2C — Δ/Γ/Vega/Θ + residual on a scenario shock). Missing: Rho, Vanna,
-Volga terms; attribution of *realized* day-over-day dPnL; strategy-level grouping (2D).
+Volga terms; attribution of *realized* day-over-day dPnL; strategy-level grouping (2D);
+**residual diagnosis** (regress ε against unmodeled factors — §7), the post-deterministic
+destination, gated behind realized attribution + banked P&L.
 
 ### 5.3 Market data & surface engine — usually the hardest
 
@@ -385,14 +401,20 @@ Each row is roughly one spec.
    is the first case.
 9. **Operational hardening:** margin forecasting (S2), alert delivery, kill switch,
    reconciliation (§5.9 + autonomy audit).
+10. **Residual diagnosis (destination):** once realized attribution (#2) and a week-plus of
+    banked realized P&L exist, regress the attribution residual against candidate unmodeled
+    exposures (skew/vanna dynamics, liquidity, jump/gap, vol-of-vol, regime) to name what the
+    Greek model misses and fold it back into the surface/Greek model (§5.2). The deliberate
+    step from deterministic decomposition into **statistical inference** — carries the §6
+    quant-guard bar; sequenced after #1–#2 and real banked P&L, not before.
 
 ## 8. How to use this file
 
 Reference it, don't restate it. This is now **the single roadmap** — it holds both the finish
 line (the money thesis + capability map) *and* the build order (§7, pre-sequenced); the former
-`documentation/roadmap-index-analytics.md` and `documentation/vision-medium-term.md` were merged
-in and are stubs pointing here. `BIG_PICTURE.md` (how we build the backbone with least code) and
-the blueprint (`documentation/blueprint/`, domain authority) stay separate by design. When a
+roadmap and vision notes were merged in and removed. `BIG_PICTURE.md` (how we build the backbone
+with least code) stays separate by design; the retired blueprint's domain content was absorbed
+here (this file is the domain authority now). When a
 target item lands, update its *state* line here in the same change — a stale target is worse than
 none. When the owner moves the goal, this file moves first. Resolved open-questions live in
 `.agent/open-questions.md`; per-workstream tactics live in `tasks/`.

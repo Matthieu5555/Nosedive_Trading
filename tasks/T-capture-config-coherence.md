@@ -1,5 +1,17 @@
 # T-capture-config-coherence — retire/reconcile the orphaned capture.yaml (+ stale log-only underlyings)
 
+> **✅ DONE 2026-06-13 (T-index-only-refactor Phase 4).** Both halves resolved:
+> - **`capture.yaml` retired** — verified fully orphaned before deleting: no Python loader binds
+>   it (the sibling `ibkr_history.yaml` *has* a real `load_ibkr_history_config`; capture.yaml had
+>   no equivalent), the `strike_selection` collector module its header cited does not exist, and the
+>   live CP-REST path builds `ChainSelection` from `universe.yaml` via `_selection_from_config`
+>   (`cp_rest_close_capture.py`). The capture span now has ONE source: `universe.yaml`
+>   (`tenor_grid` + `strike_selection`). File deleted; no two configs can disagree.
+> - **Stale `underlyings` list** — removed at the root in Phase 3 (the whole `UniverseConfig.underlyings`
+>   field is gone, not just the log bind). The index registry is the single universe source.
+>
+> Original write-up (the 2026-06-12 intent-vs-delivery audit, findings Cap-3 / Lane-0) below.
+
 > **From the 2026-06-12 intent-vs-delivery audit** ([report](AUDIT-INTENT-VS-DELIVERY-2026-06-12.md),
 > findings Cap-3 / Lane-0). **LATENT MINE, not an active bug** — these values do not drive the live
 > capture today; the danger is that a reader (or the legacy streaming collector) honors them, or a

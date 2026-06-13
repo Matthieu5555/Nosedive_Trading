@@ -226,8 +226,9 @@ QC-3's remediation is re-aimed: **not** "align with the 8-point band" but `max_d
   are no longer in the tree.
 - **SPX** → **parked** (`enabled:false`, kept as the multi-index proof; Phase 2, commit `7cc6d73`).
   The live capture/projection scope is **SX5E alone** while the app is stabilised.
-- **#7 / Cap-3 `capture.yaml` orphan (HIGH)** → still open as `T-capture-config-coherence`, but now
-  scoped index-only: retire the orphan `collection:` block as part of the index-only cleanup.
+- **#7 / Cap-3 `capture.yaml` orphan (HIGH)** → **RESOLVED 2026-06-13** (`T-capture-config-coherence`,
+  T-index-only-refactor Phase 4): the orphan file is deleted (verified no loader binds it; the cited
+  `strike_selection` module never existed). Capture span now has ONE source — `universe.yaml`.
 - **"top-10 ATM constituents has no typed home" (ADR-0028 gap)** → unchanged, still un-tracked;
   flag for the typed-config pass once the equity-index path is stable.
 

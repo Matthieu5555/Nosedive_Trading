@@ -24,12 +24,15 @@ router = APIRouter(prefix="/api/indices", tags=["indices"])
 
 @router.get("")
 def get_indices(ctx: CtxDep) -> JSONResponse:
-    """Return the enabled indices (symbol + display name), in canonical registry order.
+    """Return the enabled indices (symbol + display name + currency), in registry order.
 
     The symbol is the platform-wide vocabulary key (e.g. ``SX5E``); ``name`` is the display
-    label (e.g. ``EURO STOXX 50``). The list is the registry's ``enabled`` set — the single
-    source of which indices exist — so the front selector cannot list an index the backend is
-    not capturing.
+    label (e.g. ``EURO STOXX 50``); ``currency`` is the index's ISO quote currency (e.g.
+    ``EUR``), the single source the front uses to render monetized Greeks/PnL in the right
+    currency symbol — never a hard-coded ``$`` (the blueprint requires the *correct* currency
+    on monetized Greeks, 05-math-notes). The list is the registry's ``enabled`` set — the
+    single source of which indices exist — so the front selector cannot list (or mis-label
+    the currency of) an index the backend is not capturing.
 
     A registry that cannot be loaded (no ``configs/`` bundle on this deployment) yields a
     labeled empty payload (``indices == []``), never a 500 — the selector then renders empty
@@ -40,7 +43,7 @@ def get_indices(ctx: CtxDep) -> JSONResponse:
     except ConfigError:
         return JSONResponse({"indices": []})
     indices = [
-        {"symbol": entry.symbol, "name": entry.name}
+        {"symbol": entry.symbol, "name": entry.name, "currency": entry.currency}
         for entry in enabled_indices(registry)
     ]
     return JSONResponse({"indices": indices})

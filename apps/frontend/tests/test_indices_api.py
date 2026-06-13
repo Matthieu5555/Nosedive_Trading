@@ -42,6 +42,9 @@ def test_indices_lists_only_the_enabled_registry_set(shipped_configs_client: Tes
     # Each entry carries a display name for the selector label.
     assert all(item.get("name") for item in payload["indices"])
     assert payload["indices"][0]["name"] == "EURO STOXX 50"
+    # And its ISO quote currency (the single source the front renders monetized Greeks in —
+    # EUR for the EURO STOXX 50, never a hard-coded "$").
+    assert payload["indices"][0]["currency"] == "EUR"
 
 
 def test_indices_is_empty_not_500_when_no_registry(infra_client: TestClient) -> None:

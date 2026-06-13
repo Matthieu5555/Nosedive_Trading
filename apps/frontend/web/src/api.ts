@@ -408,3 +408,58 @@ export async function priceBasket(body: BasketRequest): Promise<BasketRiskRespon
 export async function stressBasket(body: BasketRequest): Promise<BasketScenariosResponse> {
   return postJson<BasketScenariosResponse>("/api/basket/scenarios", body);
 }
+
+// --- WS 3A: order ticket — build + preview from a composed basket (preview-only, paper) -------
+// The ticket mirrors the basket's leg identity (grid cell for options, underlying for stock) and
+// maps the basket side long/short -> order side buy/sell. NOTHING transmits: the response carries
+// an explicit `gated` flag stating sign-and-send is WS 3B behind an owner gate. The HTTP shape is
+// the seam — these interfaces stay in lockstep with ticket_to_dict on the BFF.
+export type OrderSide = "buy" | "sell";
+
+export interface TicketPriceSpec {
+  kind: "market" | "limit";
+  price?: number | null;
+}
+
+export interface TicketPreviewRequest {
+  basket_id: string;
+  underlying: string;
+  trade_date: string;
+  target_broker: string;
+  time_in_force: string;
+  price_spec: TicketPriceSpec;
+  legs: BasketLegInput[];
+}
+
+export interface OrderTicketLeg {
+  instrument_kind: InstrumentKind;
+  underlying: string;
+  side: OrderSide;
+  quantity: number;
+  price_spec: TicketPriceSpec;
+  tenor_label: string | null;
+  delta_band: string | null;
+}
+
+export interface OrderTicketGate {
+  transmit: boolean;
+  reason: string;
+}
+
+export interface OrderTicketResponse {
+  source_basket_id: string;
+  trade_date: string;
+  underlying: string;
+  target_broker: string;
+  time_in_force: string;
+  mode: string;
+  legs: OrderTicketLeg[];
+  n_legs: number;
+  gated: OrderTicketGate;
+}
+
+// Build + preview an order ticket from a composed basket (3A). A malformed request is a 400 whose
+// labelled detail the ApiError surfaces; nothing is transmitted (sign-and-send is 3B).
+export async function previewTicket(body: TicketPreviewRequest): Promise<OrderTicketResponse> {
+  return postJson<OrderTicketResponse>("/api/ticket/preview", body);
+}

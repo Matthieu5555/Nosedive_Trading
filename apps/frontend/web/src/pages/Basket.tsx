@@ -6,6 +6,7 @@ import { BasketLegGrid } from "../components/BasketLegGrid";
 import { BasketRiskPanel } from "../components/BasketRiskPanel";
 import { Metric } from "../components/Metric";
 import { StressSurface } from "../components/StressSurface";
+import { TicketPanel } from "../components/TicketPanel";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { useFetch } from "../hooks/useFetch";
 import { signedMoney } from "../lib/format";
@@ -151,6 +152,15 @@ export function BasketPage() {
           {stressLoading ? "Stressing…" : "Stress basket"}
         </button>
       </div>
+
+      {legs.length > 0 && (
+        <TicketPanel
+          basketId={`basket-${underlying}-${tradeDate || "latest"}`}
+          underlying={underlying}
+          tradeDate={tradeDate}
+          legs={legs}
+        />
+      )}
 
       {error !== null && (
         <p role="alert" className="error">

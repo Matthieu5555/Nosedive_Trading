@@ -115,7 +115,7 @@ def test_handover_new_engineer_path_end_to_end(tmp_path: Path) -> None:
     # The runbooks open with `load_platform_config(configs/)` (the six Part VII bundles)
     # and a ParquetStore on a data root. Both must produce a real, hashable object.
     config: PlatformConfig = load_platform_config(_CONFIGS_DIR)
-    assert config.universe.underlyings, "the shipped config must name underlyings to trade"
+    assert config.universe.indices, "the shipped config must name the indices to trade"
     cfg_hashes = config_hashes(config)
     assert cfg_hashes and all(cfg_hashes.values()), "config_hashes must name every bundle"
 

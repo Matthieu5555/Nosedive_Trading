@@ -64,7 +64,7 @@ def _forward(version: str = "fwd-1") -> ForwardConfig:
 
 def _config() -> PlatformConfig:
     return PlatformConfig(
-        universe=UniverseConfig(version="u-1", underlyings=("SPX", "NDX"), exchange="CBOE"),
+        universe=UniverseConfig(version="u-1", exchange="CBOE"),
         qc_threshold=QcThresholdConfig(
             version="qc-1", max_spread_pct=0.05, max_quote_age_seconds=30.0, min_chain_count=5
         ),
@@ -113,15 +113,21 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # `qc` bundle hash — and so the folded whole-config hash — BY DESIGN; `universe`/`pricing`/
     # `scenarios` stay byte-identical (section isolation). Pre-capture dev change: no banked record
     # carries the old hash.
+    #
+    # T-index-only-refactor (2026-06-13): the stale `underlyings` list was removed from
+    # `UniverseConfig` (one universe source = the index registry; single-names are index
+    # constituents, never option underlyings). Dropping the field moved the `universe` bundle
+    # hash — and so the folded whole-config hash — BY DESIGN; `qc`/`pricing`/`scenarios` stay
+    # byte-identical (section isolation). Pre-capture dev change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "a9ed58bfe77c3d0814c24ebf7770701dc4d22ce73468c61ff8ce555ea8d56efc"
+        "4b1a82a621001ea199aec272df28b8a6866b71c69ee2597c683b756be8fafa92"
     )
     assert config_hashes(config) == {
         "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
         "qc": "c660e955677d5df53d104bf0b0ac24fc5182fc20230d63dbc4ab5458290672a8",
         "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
-        "universe": "d41c8d2d840f7f6de4267018cc1bc451692891055dc5e5513e6c37aab4e2e70c",
+        "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",
     }
 
 
@@ -249,7 +255,7 @@ def test_config_hash_is_stable_across_processes() -> None:
         " SolverConfig, SurfaceConfig, ForwardConfig, ScenarioConfig, MonetizationConfig,"
         " config_hash);"
         "print(config_hash(PlatformConfig("
-        "universe=UniverseConfig(version='u-1', underlyings=('SPX','NDX'), exchange='CBOE'),"
+        "universe=UniverseConfig(version='u-1', exchange='CBOE'),"
         "qc_threshold=QcThresholdConfig(version='qc-1', max_spread_pct=0.05,"
         " max_quote_age_seconds=30.0, min_chain_count=5),"
         "solver=SolverConfig(version='s-1', iv_tolerance=1e-8, max_iterations=100),"
@@ -292,7 +298,6 @@ def test_yaml_overlay_merges_deterministically(tmp_path) -> None:
 _BASE_ECONOMIC_YAML = """\
 universe:
   version: u-base
-  underlyings: [SPX, NDX]
   exchange: CBOE
   tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 qc_threshold:
@@ -363,15 +368,15 @@ def test_from_config_builds_typed_platform_config_over_a_yaml_overlay(tmp_path) 
     overlay = tmp_path / "single_name.yaml"
     base.write_text(_BASE_ECONOMIC_YAML, encoding="utf-8")
     overlay.write_text(
-        "universe:\n  underlyings: [AAPL]\nqc_threshold:\n  max_spread_pct: 0.02\n",
+        'universe:\n  tenor_grid: ["1m"]\nqc_threshold:\n  max_spread_pct: 0.02\n',
         encoding="utf-8",
     )
 
     config = from_config(load_yaml_config(overlay, base=base))
 
     assert isinstance(config, PlatformConfig)
-    # List value replaced wholesale by the overlay (not ["SPX","NDX","AAPL"]), as a tuple.
-    assert config.universe.underlyings == ("AAPL",)
+    # List value replaced wholesale by the overlay (not the base 8-tenor grid), as a tuple.
+    assert config.universe.tenor_grid == ("1m",)
     # Scalar overridden by the overlay.
     assert config.qc_threshold.max_spread_pct == 0.02
     # Untouched fields inherited from the base, with the dataclasses' coerced types.
@@ -392,7 +397,7 @@ def test_from_config_rejects_a_missing_section(tmp_path) -> None:
 
     incomplete = tmp_path / "incomplete.yaml"
     incomplete.write_text(
-        "universe:\n  version: u\n  underlyings: [SPX]\n  exchange: CBOE\n"
+        "universe:\n  version: u\n  exchange: CBOE\n"
         '  tenor_grid: ["1m"]\n',
         "utf-8",
     )
@@ -420,7 +425,7 @@ def test_config_hash_collapses_signed_zero() -> None:
 # the hashed typed config — the loader ignores them.
 _BUNDLES = {
     "universe.yaml": (
-        "version: u-1\nunderlyings: [SPX, NDX]\nexchange: CBOE\n"
+        "version: u-1\nexchange: CBOE\n"
         'tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]\n'
     ),
     "qc.yaml": (
@@ -468,14 +473,14 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
     config = load_platform_config(tmp_path)
 
     assert isinstance(config, PlatformConfig)
-    assert config.universe.underlyings == ("SPX", "NDX")        # universe.yaml
+    assert config.universe.exchange == "CBOE"                   # universe.yaml
     assert config.qc_threshold.min_chain_count == 5             # qc.yaml
     assert config.solver.iv_tolerance == 1e-8                   # pricing.yaml → solver section
     assert config.scenario.spot_shocks == (-0.1, 0.0, 0.1)     # scenarios.yaml
     # Hashable and equal to the same config built directly: layout does not change content.
     assert config_hash(config) == config_hash(
         PlatformConfig(
-            universe=UniverseConfig(version="u-1", underlyings=("SPX", "NDX"), exchange="CBOE"),
+            universe=UniverseConfig(version="u-1", exchange="CBOE"),
             qc_threshold=QcThresholdConfig(
                 version="qc-1", max_spread_pct=0.05, max_quote_age_seconds=30.0, min_chain_count=5
             ),
@@ -537,7 +542,9 @@ def test_load_platform_config_loads_the_shipped_bundles() -> None:
 
     repo_root = Path(__file__).resolve().parents[3]
     config = load_platform_config(repo_root / "configs")
-    assert config.universe.underlyings, "the shipped universe bundle must name underlyings"
+    # The shipped universe bundle names the indices it tracks (the single universe source —
+    # there is no separate underlyings list anymore, T-index-only-refactor).
+    assert config.universe.indices, "the shipped universe bundle must name the indices it tracks"
     assert isinstance(config_hash(config), str)
 
 

@@ -83,8 +83,8 @@ def test_universe_config_rejects_an_empty_or_duplicate_grid() -> None:
     from algotrading.core.config import ConfigFieldError
 
     with pytest.raises(ConfigFieldError):
-        UniverseConfig(version="u", underlyings=("AAPL",), exchange="SMART", tenor_grid=())
+        UniverseConfig(version="u", exchange="SMART", tenor_grid=())
     with pytest.raises(ConfigFieldError):
         UniverseConfig(
-            version="u", underlyings=("AAPL",), exchange="SMART", tenor_grid=("1m", "1m")
+            version="u", exchange="SMART", tenor_grid=("1m", "1m")
         )

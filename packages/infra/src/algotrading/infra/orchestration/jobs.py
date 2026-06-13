@@ -125,7 +125,6 @@ def refresh_universe(
         correlation_id=correlation_id,
         job="universe_refresh",
         trade_date=trade_date.isoformat(),
-        underlyings=list(config.universe.underlyings),
     )
     log.info("orchestration.universe_refresh.start", master_count=len(masters))
     if persist and masters:

@@ -56,7 +56,7 @@ CONFIG_HASH = {"cfg": "cfg-hash-replay"}
 
 def _config() -> PlatformConfig:
     return PlatformConfig(
-        universe=UniverseConfig(version="u-1", underlyings=("AAPL",), exchange="SMART"),
+        universe=UniverseConfig(version="u-1", exchange="SMART"),
         qc_threshold=QcThresholdConfig(
             version="qc-1", max_spread_pct=0.5, max_quote_age_seconds=30.0, min_chain_count=1
         ),

@@ -72,7 +72,7 @@ _STRIKES = (70.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 130
 def _config() -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(
-            version="u-1", underlyings=("SPX",), exchange="CBOE",
+            version="u-1", exchange="CBOE",
             strike_selection=StrikeSelectionConfig(version="ss-1"),
         ),
         qc_threshold=QcThresholdConfig(

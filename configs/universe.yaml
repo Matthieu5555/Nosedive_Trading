@@ -7,7 +7,6 @@
 # Increment 1 carries the UniverseConfig fields; the strike-selection delta band
 # (`ChainSelection`) and capture cadence join here in C7 increment 2.
 version: "2026.05.31"
-underlyings: [AAPL, MSFT, SPY]
 exchange: SMART
 
 # Delta-band strike selection (WS 1B, ADR 0028). The 30Δ bound is economic — it decides

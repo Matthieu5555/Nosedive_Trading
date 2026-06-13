@@ -79,7 +79,6 @@ def _config() -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(
             version="u-1",
-            underlyings=("SPX",),
             exchange="SMART",
             strike_selection=StrikeSelectionConfig(version="ss-1"),
         ),

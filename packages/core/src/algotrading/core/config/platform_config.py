@@ -200,7 +200,10 @@ class UniverseConfig(_ConfigModel):
     model_config = _SECTION_CONFIG
 
     version: str = Field(min_length=1)
-    underlyings: _StrTuple
+    # NOTE: there is no `underlyings` list — the index registry below is the single source
+    # of which instruments the platform tracks (T-index-only-refactor, owner coherence
+    # principle: one universe source, no stale parallel list). Single-name tickers are index
+    # constituents (data/reference/index_constituents), never standalone option underlyings.
     exchange: str = Field(min_length=1)
     # The default is for in-memory/test construction only: the YAML loader requires the
     # field present in universe.yaml, so the grid is never silently defaulted on the load

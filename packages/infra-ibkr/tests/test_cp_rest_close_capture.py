@@ -79,7 +79,6 @@ def _config() -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(
             version="u-1",
-            underlyings=("SPX",),
             exchange="CBOE",
             tenor_grid=("1m", "3m"),
             strike_selection=StrikeSelectionConfig(version="ss-1", min_strikes_per_side=3),

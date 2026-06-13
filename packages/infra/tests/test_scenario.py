@@ -179,6 +179,67 @@ def test_grid_without_shocks_has_only_the_time_roll() -> None:
     assert [s.scenario_id for s in grid] == ["roll_1d"]
 
 
+# --- Rate-shock axis (T-scenario-rate-axis, the course's 3rd stress axis) -----
+def test_rate_family_ids_and_ordering_are_fixed() -> None:
+    config = ScenarioConfig(
+        version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,), rate_shocks=(-0.0025, 0.0025)
+    )
+    grid = scenario_grid(config)
+    ids = [s.scenario_id for s in grid]
+    # The rate family sits between vol and the combined crash, in config order.
+    assert ids == [
+        "spot_-0.0500",
+        "vol_+0.0500",
+        "rate_-0.0025",
+        "rate_+0.0025",
+        "crash_spot-0.0500_vol+0.0500",
+        "roll_1d",
+    ]
+    rate_scenarios = [s for s in grid if s.family == "rate"]
+    assert [s.rate_shock for s in rate_scenarios] == [-0.0025, 0.0025]
+    # The rate scenarios move ONLY the rate axis (spot/vol/time held).
+    assert all(s.spot_shock == 0.0 and s.vol_shock == 0.0 and s.time_shock == 0.0 for s in rate_scenarios)
+
+
+def test_empty_rate_axis_adds_no_family_and_does_not_move_the_version() -> None:
+    base = ScenarioConfig(version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,))
+    with_rate = ScenarioConfig(
+        version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,), rate_shocks=(0.0025,)
+    )
+    # Empty rate axis: no 'rate' family, and the persisted version is unchanged from a
+    # grid built before the axis existed (the strictly-additive-construction guarantee).
+    assert not any(s.family == "rate" for s in scenario_grid(base))
+    # Adding a rate axis is tamper-evident: it moves effective_scenario_version.
+    assert scenario_mod.effective_scenario_version(base) != scenario_mod.effective_scenario_version(
+        with_rate
+    )
+
+
+def test_rate_shock_applies_additively_to_the_implied_rate() -> None:
+    val = RISK_VALUATIONS["AAPL|OPT|C|100"]
+    scn = Scenario("rate_+25bp", "rate", 0.0, 0.0, 0.0, 0.0025)
+    shocked = scenario_mod.shock_valuation(val, scn)
+    # Additive in rate units; forward-fixed (spot/carry/vol/maturity unchanged).
+    assert shocked.implied_rate == pytest.approx(val.implied_rate + 0.0025)
+    assert shocked.spot == val.spot
+    assert shocked.volatility == val.volatility
+    assert shocked.maturity_years == val.maturity_years
+
+
+def test_rate_scenario_drives_the_rho_term_and_the_full_reprice_agrees() -> None:
+    # End-to-end: a small pure rate shock makes the (previously dormant) rho term fire, and
+    # the full reprice agrees with it to first order — the rate axis closing the §7.2 loop.
+    line = pf_lines()[0]
+    scn = Scenario("rate_+10bp", "rate", 0.0, 0.0, 0.0, 0.0010)
+    approx = local_approx_pnl(line, scn)
+    # The local approximation IS the rho term for a pure rate move (rho per 1.00 rate).
+    assert approx == pytest.approx(line.greeks.rho * 0.0010 * line.scale)
+    assert approx != 0.0
+    full = scenario_line_pnls([line], [scn])[0].full_reprice_pnl
+    # Small shock: the rho term explains the reprice (forward-fixed rho is exact to O(dr²)).
+    assert full == pytest.approx(approx, rel=1e-3)
+
+
 def test_duplicate_configured_shocks_do_not_collapse_or_double_count_cells() -> None:
     # A duplicate shock must not mint a duplicate scenario id: that would silently
     # collapse cells in an id-keyed map and double-count the scenario in the total.

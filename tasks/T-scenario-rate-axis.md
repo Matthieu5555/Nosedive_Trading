@@ -1,6 +1,6 @@
 # T-scenario-rate-axis — scenarios.yaml has no rate-shock axis the course prescribed
 
-> **From the 2026-06-12 intent-vs-delivery audit** ([report](AUDIT-INTENT-VS-DELIVERY-2026-06-12.md),
+> **From the 2026-06-12 intent-vs-delivery audit** ([report](T-intent-vs-delivery-audit.md),
 > finding Rk-1 / Lane-0). **NOT-IN-CONFIG drift.** The stress surface cannot cover the rate moves the
 > course asked for because the axis is simply absent from config. Coverage caveat: no 2026-06-11
 > risk partition exists on disk, so this is config-and-code only, not verified on delivered output.
@@ -33,3 +33,20 @@ The delivered stress surface therefore omits the rate dimension entirely.
 
 `scenarios.yaml` has a typed rate-shock axis; the engine consumes it; a risk run produces
 rate-shocked results; scenarios config-hash golden regenerated; gate green.
+
+## Landed — engine + config (compute only; BFF/front deferred)
+`ScenarioConfig.rate_shocks` (additive absolute rate moves, default `()` → backward-compatible,
+no rate family when empty). `scenarios.yaml`: `rate_shocks: [-0.0025, 0, 0.0025]` (±25 bp,
+owner-tunable; version bumped 2026.06.13). Engine (`risk/scenarios.py`): `Scenario.rate_shock`,
+a `rate` family in `scenario_grid` (order spot→vol→rate→combined→time, added only when
+configured), `shock_valuation` shifts the rate **additively, forward-fixed** (only the discount
+factor responds — matches the pricer's forward-fixed rho), and `taylor_terms` now passes
+`d_rate = scenario.rate_shock` so the **Rho attribution term fires under a rate scenario** (the
+loop §7.2 left open). Construction hash folds `rate_shocks` **only when non-empty**, so every
+rate-less grid hashes byte-identically; the config-hash golden moved by design (rate axis added).
+
+**Grid-shape ruling (chosen, blueprint-grounded):** the rate axis is a **separate parallel
+family** (a rate *sweep*), not a 3-D spot×vol×rate cross-product — the architecture-preserving
+form `documentation/blueprint/05-math-notes.md §5` endorses ("layered in without changing the
+architecture"). The full 3-D `stress_surface` expansion (and the BFF/front wiring of the rate
+axis) stays **deferred / owner-ruled** — front-adjacent, disjoint from this compute lane.

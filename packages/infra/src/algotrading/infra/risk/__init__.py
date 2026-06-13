@@ -31,8 +31,14 @@ from .attribution import (
     LEVEL_POSITION,
     BookAttribution,
     LineAttribution,
+    RealizedAttributionError,
+    RealizedBookAttribution,
+    RealizedLineAttribution,
+    RealizedMove,
     attribute_book,
     attribute_line,
+    attribute_realized_book,
+    attribute_realized_line,
     book_attribution_result,
     line_attribution_result,
 )
@@ -91,6 +97,7 @@ from .scenarios import (
     scenario_totals,
     shock_valuation,
     taylor_terms,
+    terms_from_move,
     worst_case,
 )
 from .snapshot import (
@@ -169,6 +176,7 @@ __all__ = [
     "GRID_CONSTRUCTION_VERSION",
     "TaylorTerms",
     "taylor_terms",
+    "terms_from_move",
     # attribution (by-Greek axis, 2C)
     "AttributionConfig",
     "LineAttribution",
@@ -180,6 +188,13 @@ __all__ = [
     "BOOK_CONTRACT_KEY",
     "LEVEL_POSITION",
     "LEVEL_BOOK",
+    # realized day-over-day attribution (TARGET §5.2)
+    "RealizedMove",
+    "RealizedLineAttribution",
+    "RealizedBookAttribution",
+    "RealizedAttributionError",
+    "attribute_realized_line",
+    "attribute_realized_book",
     # reconciliation
     "BrokerGreeks",
     "GreekDiscrepancy",

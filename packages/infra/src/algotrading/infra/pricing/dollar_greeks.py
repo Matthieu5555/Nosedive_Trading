@@ -13,6 +13,17 @@ conversions and of the two genuine convention forks, driven by
   (the default), or per trading day with ``day_count=252``.
 * **Rho\\$** ``= rho * 0.01 * mult`` — per **1% rate**.
 
+The second-order set (TARGET §7.2) is monetized in the *same* "raw Greek times one
+standard shock times multiplier" style, each in an explicit unit:
+
+* **Vanna\\$** ``= vanna * S * 0.01 * mult`` — the change in **Delta\\$ per 1 vol point**
+  (equivalently the change in Vega\\$ per a $1-of-underlying move): ``d(delta*S)/dsigma``
+  for a 0.01 vol step.
+* **Volga\\$** ``= volga * 0.01**2 * mult`` — the change in **Vega\\$ per 1 vol point**:
+  ``d(vega*0.01)/dsigma`` for a 0.01 vol step.
+* **Charm\\$** ``= charm * S * mult / day_count`` — the change in **Delta\\$ per day**
+  (``ddelta/dt`` monetized like delta and put on theta's calendar/trading day-count fork).
+
 Per-contract numbers (``mult``) scale to per-position by ``* quantity``, and per-position
 numbers are additive across a book — the Phase-2 basket builder sums positions without
 reworking this contract. Each value carries a matching unit string (:data:`UNIT_STRINGS`)
@@ -38,20 +49,37 @@ UNIT_STRINGS: dict[str, str] = {
     "dollar_theta_365": "$ per calendar day",
     "dollar_theta_252": "$ per trading day",
     "dollar_rho": "$ per 1% rate",
+    # Second-order set (TARGET §7.2). Vanna/Volga carry no convention fork (one unit
+    # each); Charm rides the same calendar/trading day-count fork as Theta.
+    "dollar_vanna": "$ delta per 1 vol point",
+    "dollar_volga": "$ vega per 1 vol point",
+    "dollar_charm_365": "$ delta per calendar day",
+    "dollar_charm_252": "$ delta per trading day",
 }
 
 
 @dataclass(frozen=True, slots=True)
 class DollarGreeks:
-    """The five monetized Greeks, each beside the unit string it is quoted in."""
+    """The monetized Greeks, each beside the unit string of its forked convention.
+
+    The five first-order numbers plus the three second-order ones (vanna/volga/charm,
+    TARGET §7.2). Only the *forked* units are carried as fields (``gamma_unit``,
+    ``theta_unit``, ``charm_unit`` — the conventions that a config flag can flip); the
+    unforked ones (delta/vega/rho, vanna/volga) are fixed and looked up in
+    :data:`UNIT_STRINGS`, so this object never carries a unit a caller could not derive.
+    """
 
     dollar_delta: float
     dollar_gamma: float
     dollar_vega: float
     dollar_theta: float
     dollar_rho: float
+    dollar_vanna: float
+    dollar_volga: float
+    dollar_charm: float
     gamma_unit: str
     theta_unit: str
+    charm_unit: str
 
 
 def dollar_delta(
@@ -91,6 +119,30 @@ def dollar_rho(rho: float, multiplier: float = 1.0, quantity: float = 1.0) -> fl
     return rho * 0.01 * multiplier * quantity
 
 
+def dollar_vanna(
+    vanna: float, spot: float, multiplier: float = 1.0, quantity: float = 1.0
+) -> float:
+    """Vanna\\$ = vanna·S·0.01·mult·qty — change in Delta\\$ per 1 vol point."""
+    return vanna * spot * 0.01 * multiplier * quantity
+
+
+def dollar_volga(volga: float, multiplier: float = 1.0, quantity: float = 1.0) -> float:
+    """Volga\\$ = volga·0.01²·mult·qty — change in Vega\\$ per 1 vol point."""
+    return volga * 0.01 * 0.01 * multiplier * quantity
+
+
+def dollar_charm(
+    charm: float,
+    spot: float,
+    multiplier: float = 1.0,
+    quantity: float = 1.0,
+    *,
+    day_count: int = 365,
+) -> float:
+    """Charm\\$ = charm·S·mult·qty / day_count — change in Delta\\$ per calendar/trading day."""
+    return charm * spot * multiplier * quantity / day_count
+
+
 def gamma_unit_string(normalisation: str) -> str:
     """The unit string for Gamma\\$ under the chosen normalisation."""
     return UNIT_STRINGS[f"dollar_gamma_{normalisation}"]
@@ -101,6 +153,11 @@ def theta_unit_string(day_count: int) -> str:
     return UNIT_STRINGS[f"dollar_theta_{day_count}"]
 
 
+def charm_unit_string(day_count: int) -> str:
+    """The unit string for Charm\\$ under the chosen day-count (the theta fork)."""
+    return UNIT_STRINGS[f"dollar_charm_{day_count}"]
+
+
 def dollar_greeks(
     *,
     delta: float,
@@ -109,6 +166,9 @@ def dollar_greeks(
     theta: float,
     rho: float,
     spot: float,
+    vanna: float = 0.0,
+    volga: float = 0.0,
+    charm: float = 0.0,
     multiplier: float = 1.0,
     quantity: float = 1.0,
     config: MonetizationConfig,
@@ -116,8 +176,11 @@ def dollar_greeks(
     """Monetize one contract/position's raw Greeks under the configured conventions.
 
     The two convention forks come from ``config``: ``gamma_normalisation`` and
-    ``theta_day_count``. Per-contract is ``quantity=1.0``; per-position passes the signed
-    held quantity; a book is the additive sum of per-position numbers.
+    ``theta_day_count`` (Charm\\$ rides the latter, since charm is a per-time Greek like
+    theta). Per-contract is ``quantity=1.0``; per-position passes the signed held
+    quantity; a book is the additive sum of per-position numbers. ``vanna``/``volga``/
+    ``charm`` default to ``0.0`` so a first-order-only caller is unchanged; the pricing
+    emission path passes the analytic second-order values (TARGET §7.2).
     """
     return DollarGreeks(
         dollar_delta=dollar_delta(delta, spot, multiplier, quantity),
@@ -127,6 +190,12 @@ def dollar_greeks(
         dollar_vega=dollar_vega(vega, multiplier, quantity),
         dollar_theta=dollar_theta(theta, multiplier, quantity, day_count=config.theta_day_count),
         dollar_rho=dollar_rho(rho, multiplier, quantity),
+        dollar_vanna=dollar_vanna(vanna, spot, multiplier, quantity),
+        dollar_volga=dollar_volga(volga, multiplier, quantity),
+        dollar_charm=dollar_charm(
+            charm, spot, multiplier, quantity, day_count=config.theta_day_count
+        ),
         gamma_unit=gamma_unit_string(config.gamma_normalisation),
         theta_unit=theta_unit_string(config.theta_day_count),
+        charm_unit=charm_unit_string(config.theta_day_count),
     )

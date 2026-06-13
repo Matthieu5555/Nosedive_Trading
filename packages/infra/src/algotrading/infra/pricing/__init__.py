@@ -20,6 +20,7 @@ from .black76_vectorized import price_european_array
 from .dollar_greeks import (
     UNIT_STRINGS,
     DollarGreeks,
+    charm_unit_string,
     dollar_greeks,
     gamma_unit_string,
     theta_unit_string,
@@ -43,6 +44,7 @@ __all__ = [
     "PricingError",
     "PricingState",
     "bjerksund_stensland_price",
+    "charm_unit_string",
     "dollar_greeks",
     "from_forward",
     "from_spot",

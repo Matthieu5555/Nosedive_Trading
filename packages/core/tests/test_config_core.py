@@ -127,14 +127,20 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # bundle hash — and so the folded whole-config hash — moved BY DESIGN; `universe`/`pricing`/
     # `scenarios` stay byte-identical (section isolation). Pre-capture dev change: no banked record
     # carries the old hash.
+    #
+    # T-scenario-rate-axis (2026-06-13): `scenarios.yaml` gained the course's third stress axis —
+    # `ScenarioConfig.rate_shocks` (additive rate moves, ±25 bp) — and the section `version` bumped
+    # to 2026.06.13. The `scenarios` bundle hash — and so the folded whole-config hash — moved BY
+    # DESIGN; `universe`/`qc`/`pricing` stay byte-identical (section isolation). Pre-capture dev
+    # change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "c9814c7e6c87e385dfce821cf24ee8038623bb4f98f2638affd042c0265ca5b0"
+        "fcc96af1dad489e4419fd9a5ae45c436e08f3a1292236da500cfd6bb191af10a"
     )
     assert config_hashes(config) == {
         "pricing": "3e5b0b022fdbe26c5764f8c7d4207f995195c5de8be31af80ba67648707a3670",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
-        "scenarios": "7b8ec036300c52e5303141fdc2b685890068df2c992b344c57ad7954858824ac",
+        "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
         "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",
     }
 

@@ -30,20 +30,25 @@ from typing import Any
 import pytest
 from algotrading.core.provenance import ProvenanceStamp, source_ref
 from algotrading.infra.contracts import ContractValidationError, ScenarioAttribution
-from algotrading.infra.pricing import PriceGreeks
+from algotrading.infra.pricing import PriceGreeks, price
 from algotrading.infra.risk import (
     BOOK_CONTRACT_KEY,
     RISK_ENGINE_VERSION,
     AttributionConfig,
     PositionRisk,
+    RealizedAttributionError,
     Scenario,
     attribute_book,
     attribute_line,
+    attribute_realized_book,
+    attribute_realized_line,
     book_attribution_result,
     line_attribution_result,
     local_approx_pnl,
     position_risk,
+    pricing_state_for,
     taylor_terms,
+    terms_from_move,
 )
 from algotrading.infra.storage import ParquetStore
 from fixtures.positions import CALL_100, RISK_VALUATIONS, risk_positions
@@ -105,6 +110,139 @@ def test_each_term_matches_hand_value() -> None:
     assert terms.vega_pnl == pytest.approx(240.0)
     assert terms.theta_pnl == pytest.approx(-50.0)
     assert terms.total == pytest.approx(3815.0)
+    # The pure-spot scenario carries no rate/vol/cross move, so the second-order terms
+    # are exactly zero — which is why extending the split leaves the pure-spot golden put.
+    assert (terms.rho_pnl, terms.vanna_pnl, terms.volga_pnl) == (0.0, 0.0, 0.0)
+
+
+# --- Second-order + rate terms: hand value over an explicit move --------------
+def test_second_order_terms_match_hand_value() -> None:
+    # Hand-chosen Greeks and an explicit move with a vol, time AND rate component:
+    #   dS=5.0, dvol=0.02, dt=0.01yr, dr=0.001, scale=1000
+    #   Δ=0.6 Γ=0.05 Vega=12 Θ=-5 Rho=8.0 Vanna=0.4 Volga=2.0
+    #   rho_pnl   = 8.0 * 0.001 * 1000            =   8.0
+    #   vanna_pnl = 0.4 * 5.0 * 0.02 * 1000       =  40.0
+    #   volga_pnl = 0.5 * 2.0 * 0.02**2 * 1000    =   0.4
+    #   (first four as in the hand oracle above: 3000 + 625 + 240 - 50)
+    greeks = PriceGreeks(
+        price=10.0, delta=0.6, gamma=0.05, vega=12.0, theta=-5.0, rho=8.0,
+        vanna=0.4, volga=2.0, charm=-0.03,
+    )
+    terms = terms_from_move(
+        greeks, scale=1000.0, d_spot=5.0, d_vol=0.02, d_time=0.01, d_rate=0.001, config=DEFAULT_CFG
+    )
+    assert terms.rho_pnl == pytest.approx(8.0)
+    assert terms.vanna_pnl == pytest.approx(40.0)
+    assert terms.volga_pnl == pytest.approx(0.4)
+    assert terms.total == pytest.approx(3863.4)
+
+
+# --- A combined spot+vol scenario: the 2nd-order terms shrink the residual ----
+def test_combined_scenario_second_order_terms_shrink_the_residual() -> None:
+    # On a joint spot-and-vol move the Vanna and Volga terms are real and non-zero, so the
+    # 7-term split explains strictly more of the full reprice than the old 4-term split —
+    # the residual (the honesty meter) shrinks. The scenario grid holds rates fixed, so the
+    # rate term stays zero here (it is the realized path that drives it).
+    line = next(ln for ln in pf_lines() if ln.contract_key == "AAPL|OPT|C|100")
+    combined = Scenario("crash_spot_vol", "combined", -0.05, 0.03, 0.0)
+    la = attribute_line(line, combined, DEFAULT_CFG)
+    terms = la.terms
+    assert terms.vanna_pnl != 0.0
+    assert terms.volga_pnl != 0.0
+    assert terms.rho_pnl == 0.0
+    approx_first_order = terms.delta_pnl + terms.gamma_pnl + terms.vega_pnl + terms.theta_pnl
+    residual_first_order = la.full_reprice_pnl - approx_first_order
+    # Adding the second-order terms moves the explanation closer to the full-reprice oracle.
+    assert abs(la.residual) < abs(residual_first_order)
+
+
+# --- Realized day-over-day attribution (TARGET §5.2) -------------------------
+def _start_line() -> PositionRisk:
+    """A start-of-day (t-1) line for the long-10 C100 holding."""
+    return position_risk(portfolio_id="pf-risk", quantity=10.0, valuation=CALL_100)
+
+
+def test_realized_line_residual_is_full_reprice_minus_terms() -> None:
+    start = _start_line()
+    end = dataclasses.replace(
+        CALL_100,
+        spot=CALL_100.spot * 1.01,
+        volatility=CALL_100.volatility + 0.01,
+        maturity_years=CALL_100.maturity_years - 1.0 / 365.0,
+    )
+    realized = attribute_realized_line(start, end, DEFAULT_CFG)
+    # The oracle is the honest reprice of the HELD line, start price to end price.
+    end_price = price(pricing_state_for(end)).price
+    assert realized.full_reprice_pnl == pytest.approx((end_price - start.greeks.price) * start.scale)
+    assert realized.residual == pytest.approx(realized.full_reprice_pnl - realized.terms.total)
+
+
+def test_realized_terms_use_start_of_day_greeks_only() -> None:
+    # Look-ahead discipline: the decomposition is a pure function of the START-of-day
+    # Greeks and the realized move — never today's Greeks. Pinned by equality with the one
+    # arithmetic home evaluated on the start Greeks.
+    start = _start_line()
+    end = dataclasses.replace(
+        CALL_100,
+        spot=CALL_100.spot * 1.02,
+        volatility=CALL_100.volatility + 0.015,
+        maturity_years=CALL_100.maturity_years - 1.0 / 365.0,
+    )
+    realized = attribute_realized_line(start, end, DEFAULT_CFG)
+    expected = terms_from_move(
+        start.greeks,
+        scale=start.scale,
+        d_spot=end.spot - start.valuation.spot,
+        d_vol=end.volatility - start.valuation.volatility,
+        d_time=start.valuation.maturity_years - end.maturity_years,
+        d_rate=end.implied_rate - start.valuation.implied_rate,
+        config=DEFAULT_CFG,
+    )
+    assert realized.terms == expected
+    # delta_pnl uses the t-1 delta, not the end-of-day delta.
+    d_spot = end.spot - start.valuation.spot
+    assert realized.terms.delta_pnl == pytest.approx(start.greeks.delta * d_spot * start.scale)
+
+
+def test_realized_rho_term_is_driven_by_the_rate_move() -> None:
+    # A realized rate change (a different discount factor) drives the Rho term — the term
+    # the scenario grid can never produce because it holds rates fixed.
+    start = _start_line()
+    end = dataclasses.replace(CALL_100, discount_factor=CALL_100.discount_factor * 0.999)
+    realized = attribute_realized_line(start, end, DEFAULT_CFG)
+    d_rate = end.implied_rate - start.valuation.implied_rate
+    assert d_rate != 0.0
+    assert realized.terms.rho_pnl == pytest.approx(start.greeks.rho * d_rate * start.scale)
+    assert realized.terms.rho_pnl != 0.0
+
+
+def test_realized_line_rejects_a_mismatched_contract() -> None:
+    start = _start_line()
+    other = RISK_VALUATIONS["AAPL|OPT|P|100"]  # a different contract than the start line
+    with pytest.raises(RealizedAttributionError):
+        attribute_realized_line(start, other, DEFAULT_CFG)
+
+
+def test_realized_book_is_term_wise_sum_of_lines() -> None:
+    starts = pf_lines()
+    ends = {
+        ln.contract_key: dataclasses.replace(
+            RISK_VALUATIONS[ln.contract_key],
+            spot=RISK_VALUATIONS[ln.contract_key].spot * 1.01,
+            volatility=RISK_VALUATIONS[ln.contract_key].volatility + 0.01,
+        )
+        for ln in starts
+    }
+    book = attribute_realized_book(starts, ends, DEFAULT_CFG)
+    per_line = [attribute_realized_line(ln, ends[ln.contract_key], DEFAULT_CFG) for ln in starts]
+    assert book.terms.total == pytest.approx(math.fsum(a.terms.total for a in per_line))
+    assert book.full_reprice_pnl == pytest.approx(math.fsum(a.full_reprice_pnl for a in per_line))
+    assert book.residual == pytest.approx(book.full_reprice_pnl - book.terms.total)
+
+
+def test_realized_book_rejects_a_missing_end_state() -> None:
+    with pytest.raises(RealizedAttributionError):
+        attribute_realized_book(pf_lines(), {}, DEFAULT_CFG)
 
 
 # --- Residual vs full reprice: small within, large material ------------------

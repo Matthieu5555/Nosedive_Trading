@@ -135,13 +135,17 @@
       }
     },
     "pricing_results": {
+      "charm": null,
       "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
       "delta": 0.5,
+      "dollar_charm": null,
       "dollar_delta": 50.0,
       "dollar_gamma": 2.0,
       "dollar_rho": null,
       "dollar_theta": null,
+      "dollar_vanna": null,
       "dollar_vega": 10.0,
+      "dollar_volga": null,
       "gamma": 0.02,
       "price": 5.0,
       "pricer_version": "px-1",
@@ -154,7 +158,9 @@
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
       "theta": -0.01,
-      "vega": 0.1
+      "vanna": null,
+      "vega": 0.1,
+      "volga": null
     },
     "projected_option_analytics": {
       "delta": 0.3,
@@ -255,6 +261,7 @@
       "residual": -1.0,
       "residual_abs_tol": 2.0,
       "residual_rel_tol": 0.1,
+      "rho_pnl": null,
       "scenario_id": "spot-down-5",
       "scenario_version": "scn-1",
       "source_snapshot_ts": {
@@ -266,8 +273,10 @@
       "valuation_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
+      "vanna_pnl": null,
       "vega_pnl": 0.0,
       "vol_shock": 0.0,
+      "volga_pnl": null,
       "within_tolerance": true
     },
     "scenario_results": {

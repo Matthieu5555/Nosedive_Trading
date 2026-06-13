@@ -608,6 +608,15 @@ class ScenarioConfig(_ConfigModel):
     scenario; only the shock *values* are constrained (they must be finite, enforced by
     :func:`canonical_json`'s ``allow_nan=False`` at hash time).
 
+    ``rate_shocks`` carries the **rate-shock family** (the course's third stress axis —
+    ``AlgoTradingCourse2-Consignes`` l.117-120). Each value is an **additive** absolute
+    shift in the continuously-compounded rate (e.g. ``0.0025`` = +25 bp), the same additive
+    convention as ``vol_shocks`` and the natural unit for the forward-fixed rho (per 1.00 of
+    rate). Its default is the empty tuple — **no rate family**, so every grid built without
+    a configured rate axis is byte-identical to before this field existed (backward-compatible
+    construction). When non-empty it folds into the construction hash, so a rate axis cannot
+    be added without moving the persisted ``effective_scenario_version``.
+
     ``stress_surface`` is the 2B cartesian (spot × vol) surface grid (see
     :class:`StressSurfaceConfig`). Like ``roll_down_days`` its default is a placeholder for
     in-memory construction; the load path (``loader._build_scenario``) requires the
@@ -620,6 +629,7 @@ class ScenarioConfig(_ConfigModel):
     version: str = Field(min_length=1)
     spot_shocks: _FloatTuple
     vol_shocks: _FloatTuple
+    rate_shocks: _FloatTuple = ()
     roll_down_days: _IntTuple = (1,)
     stress_surface: StressSurfaceConfig = Field(
         default_factory=lambda: StressSurfaceConfig(version="stress-surface-default")

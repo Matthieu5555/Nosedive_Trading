@@ -223,6 +223,8 @@ def central_difference_greeks(
         - _price_of(with_maturity(valuation.maturity_years - h_t))
     ) / (2.0 * h_t)
 
+    # This is the first-order cross-check (delta/gamma/vega/theta); it does not
+    # difference the second-order set, so vanna/volga/charm stay explicitly 0.0 here.
     return PriceGreeks(
         price=base_price,
         delta=delta,
@@ -230,4 +232,7 @@ def central_difference_greeks(
         vega=vega,
         theta=theta,
         rho=-valuation.maturity_years * base_price,
+        vanna=0.0,
+        volga=0.0,
+        charm=0.0,
     )

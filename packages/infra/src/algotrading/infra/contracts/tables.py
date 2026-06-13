@@ -158,6 +158,16 @@ class PricingResult:
     ``dollar_rho`` are additive-nullable (``float | None``): they were added after the
     first three, so a partition written before they existed reads back with them
     ``None`` rather than failing the schema-evolution check (ADR 0036 / ADR 0029).
+
+    The second-order set (``vanna``/``volga``/``charm``, raw, and their ``dollar_*``
+    monetizations — TARGET §7.2) is carried in the *same* dual representation and is
+    additive-nullable for the same schema-evolution reason: a partition written before
+    this lane reads them back ``None``, the closed-form Black-76 path fills them. Their
+    unit strings are not stored here (the BFF looks them up in
+    :data:`~algotrading.infra.pricing.dollar_greeks.UNIT_STRINGS`, exactly as it does
+    for the first-order dollar Greeks — Vanna\\$/Volga\\$ per 1 vol point, Charm\\$ per
+    calendar day). Charm is emitted for risk display only; it is *not* one of the
+    P&L-attribution terms (those are Δ/Γ/Vega/Θ/Rho/Vanna/Volga — TARGET §2.5).
     """
 
     snapshot_ts: datetime
@@ -176,6 +186,12 @@ class PricingResult:
     provenance: ProvenanceStamp
     dollar_theta: float | None = None
     dollar_rho: float | None = None
+    vanna: float | None = None
+    volga: float | None = None
+    charm: float | None = None
+    dollar_vanna: float | None = None
+    dollar_volga: float | None = None
+    dollar_charm: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -364,10 +380,18 @@ class ScenarioAttribution:
 
     The cross-Greek axis (2C): the ADR-0006 full reprice is the truth, the Taylor split is
     its explanation, and ``residual = full_reprice_pnl - approx_pnl`` is the honest accuracy
-    of that explanation — always carried, never silently dropped. The four named
-    contributions (``delta_pnl``/``gamma_pnl``/``vega_pnl``/``theta_pnl``) are dollar PnL,
-    book-additive, so a book record's terms are the term-wise sum of its lines'.
-    ``approx_pnl`` is their lumped sum (the local Taylor number).
+    of that explanation — always carried, never silently dropped. The named contributions
+    (``delta_pnl``/``gamma_pnl``/``vega_pnl``/``theta_pnl`` and the second-order
+    ``rho_pnl``/``vanna_pnl``/``volga_pnl``) are dollar PnL, book-additive, so a book
+    record's terms are the term-wise sum of its lines'. ``approx_pnl`` is their lumped sum
+    (the local Taylor number — now through Volga, TARGET §2.5 / §7.2).
+
+    ``rho_pnl``/``vanna_pnl``/``volga_pnl`` are additive-nullable (``float | None``): they
+    were added after the first four, so a partition written before this lane reads them
+    back ``None`` (the schema-evolution rule), and ``approx_pnl`` already folds them in
+    when present. The rate term is non-zero only when the move carries a rate change (the
+    scenario grid holds rates fixed → ``rho_pnl == 0`` there; the realized day-over-day
+    path drives it); vanna needs a joint spot-and-vol move, volga a vol move.
 
     ``level`` is ``"position"`` for a per-line record or ``"book"`` for the aggregated
     record; a book record carries the book sentinel in ``contract_key`` so the two never
@@ -400,6 +424,9 @@ class ScenarioAttribution:
     attribution_version: str
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
+    rho_pnl: float | None = None
+    vanna_pnl: float | None = None
+    volga_pnl: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

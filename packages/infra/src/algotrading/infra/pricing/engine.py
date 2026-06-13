@@ -22,6 +22,9 @@ disagree on a monetized number for the same option. Under the pinned defaults
 * ``dollar_vega = vega * 0.01`` — dollar value change for a one-vol-point (1%) move.
 * ``dollar_theta = theta / 365`` — per calendar day (the pinned default day-count).
 * ``dollar_rho = rho * 0.01`` — per 1% rate.
+* ``dollar_vanna = vanna * spot * 0.01`` — change in Delta\\$ per 1 vol point.
+* ``dollar_volga = volga * 0.01**2`` — change in Vega\\$ per 1 vol point.
+* ``dollar_charm = charm * spot / 365`` — change in Delta\\$ per calendar day.
 """
 
 from __future__ import annotations
@@ -89,6 +92,9 @@ def pricing_result(
         theta=greeks.theta,
         rho=greeks.rho,
         spot=state.spot,
+        vanna=greeks.vanna,
+        volga=greeks.volga,
+        charm=greeks.charm,
         multiplier=1.0,
         quantity=1.0,
         config=_PRICING_RESULT_MONETIZATION,
@@ -108,6 +114,12 @@ def pricing_result(
         dollar_vega=monetized.dollar_vega,
         dollar_theta=monetized.dollar_theta,
         dollar_rho=monetized.dollar_rho,
+        vanna=greeks.vanna,
+        volga=greeks.volga,
+        charm=greeks.charm,
+        dollar_vanna=monetized.dollar_vanna,
+        dollar_volga=monetized.dollar_volga,
+        dollar_charm=monetized.dollar_charm,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
     )

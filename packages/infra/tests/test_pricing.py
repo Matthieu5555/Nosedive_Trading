@@ -287,6 +287,96 @@ def test_rho_matches_fd_in_rate_forward_fixed(right: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Second-order Greeks: vanna / volga / charm (TARGET §7.2)                     #
+# --------------------------------------------------------------------------- #
+# Oracle: a central difference of THIS engine's own first-order Greeks — a different
+# code path (re-pricing perturbed states) from the closed forms under test, so a sign
+# or unit error in the analytic formula cannot hide. Vanna == ddelta/dsigma,
+# Volga == dvega/dsigma, Charm == ddelta/dt == -ddelta/dT (theta's calendar clock).
+_SECOND_ORDER_POINTS = [
+    # (spot, vol, T, rate, carry) — ATM, ITM, OTM, short/long dated, with and without carry.
+    (100.0, 0.20, 0.50, 0.03, 0.00),   # ATM future (b == 0)
+    (110.0, 0.25, 0.75, 0.05, 0.05),   # ITM call / OTM put, b == r (no dividend)
+    (90.0, 0.15, 1.50, 0.04, 0.01),    # OTM call / ITM put, b == r - q (dividend)
+    (100.0, 0.30, 0.10, 0.02, 0.00),   # short-dated, high vol
+]
+
+
+def _spot_state(spot: float, vol: float, t: float, right: str, rate: float, carry: float) -> PricingState:
+    return from_spot(
+        spot=spot, strike=100.0, maturity_years=t, volatility=vol,
+        discount_factor=math.exp(-rate * t), option_right=right, carry=carry,
+    )
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+@pytest.mark.parametrize(("spot", "vol", "t", "rate", "carry"), _SECOND_ORDER_POINTS)
+def test_vanna_matches_fd_of_delta_in_vol(
+    right: str, spot: float, vol: float, t: float, rate: float, carry: float
+) -> None:
+    h = 1e-5
+    up = price_european(_spot_state(spot, vol + h, t, right, rate, carry)).delta
+    down = price_european(_spot_state(spot, vol - h, t, right, rate, carry)).delta
+    fd = (up - down) / (2.0 * h)
+    assert price_european(_spot_state(spot, vol, t, right, rate, carry)).vanna == pytest.approx(
+        fd, rel=1e-5, abs=1e-9
+    )
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+@pytest.mark.parametrize(("spot", "vol", "t", "rate", "carry"), _SECOND_ORDER_POINTS)
+def test_volga_matches_fd_of_vega_in_vol(
+    right: str, spot: float, vol: float, t: float, rate: float, carry: float
+) -> None:
+    h = 1e-5
+    up = price_european(_spot_state(spot, vol + h, t, right, rate, carry)).vega
+    down = price_european(_spot_state(spot, vol - h, t, right, rate, carry)).vega
+    fd = (up - down) / (2.0 * h)
+    assert price_european(_spot_state(spot, vol, t, right, rate, carry)).volga == pytest.approx(
+        fd, rel=1e-5, abs=1e-9
+    )
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+@pytest.mark.parametrize(("spot", "vol", "t", "rate", "carry"), _SECOND_ORDER_POINTS)
+def test_charm_matches_fd_of_delta_in_calendar_time(
+    right: str, spot: float, vol: float, t: float, rate: float, carry: float
+) -> None:
+    # charm == ddelta/dt == -ddelta/dT, with the discount factor tracking the implied
+    # rate as T varies (the same convention the theta cross-check uses).
+    h = 1e-5
+    up = price_european(_spot_state(spot, vol, t + h, right, rate, carry)).delta
+    down = price_european(_spot_state(spot, vol, t - h, right, rate, carry)).delta
+    fd = -(up - down) / (2.0 * h)
+    assert price_european(_spot_state(spot, vol, t, right, rate, carry)).charm == pytest.approx(
+        fd, rel=1e-5, abs=1e-9
+    )
+
+
+def test_vanna_and_volga_are_call_put_identical_but_charm_is_not() -> None:
+    # Vanna and Volga are right-independent (they differentiate N'(d1), shared by C/P);
+    # charm carries the (b - r)·N term, which differs between a call and a put.
+    call = price_european(ref_state("C"))
+    put = price_european(ref_state("P"))
+    assert call.vanna == pytest.approx(put.vanna, rel=1e-12)
+    assert call.volga == pytest.approx(put.volga, rel=1e-12)
+    # At the reference point carry == 0 and rate > 0, so (b - r) != 0 and the charms differ.
+    assert call.charm != pytest.approx(put.charm, rel=1e-6)
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+def test_degenerate_state_has_zero_second_order_greeks(right: str) -> None:
+    # No time value, no convexity: every second-order sensitivity is exactly zero, the
+    # same total-function behaviour as gamma/vega in the degenerate regime.
+    zero_vol = from_spot(
+        spot=100.0, strike=95.0, maturity_years=0.5, volatility=0.0,
+        discount_factor=0.99, option_right=right, carry=0.0,
+    )
+    g = price_european(zero_vol)
+    assert (g.vanna, g.volga, g.charm) == (0.0, 0.0, 0.0)
+
+
+# --------------------------------------------------------------------------- #
 # American engine                                                             #
 # --------------------------------------------------------------------------- #
 def test_american_call_no_dividend_equals_european() -> None:
@@ -463,6 +553,41 @@ def test_pricing_result_dollar_greeks_agree_with_the_canonical_home() -> None:
     assert result.dollar_rho == pytest.approx(canonical.dollar_rho, rel=1e-15)
 
 
+def test_pricing_result_carries_second_order_greeks_raw_and_cash() -> None:
+    # The PricingResult adapter carries vanna/volga/charm raw (straight from the engine)
+    # and monetized through the SAME canonical home as the first-order dollar Greeks, so
+    # the second-order cash layer cannot drift from the surface-projection path either.
+    state = ref_state("C")
+    greeks = price_european(state)
+    snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
+    a_stamp = stamp(
+        calc_ts=snap_ts,
+        code_version=PRICER_VERSION,
+        config_hashes={"cfg": "cfg-hash-0"},
+        source_records=(source_ref("market_state_snapshots", snap_ts, _option_key().canonical()),),
+        source_timestamps=(snap_ts,),
+    )
+    result = pricing_result(
+        state, greeks,
+        snapshot_ts=snap_ts,
+        contract_key=_option_key().canonical(),
+        source_snapshot_ts=snap_ts,
+        provenance=a_stamp,
+    )
+    canonical = dollar_greeks(
+        delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
+        rho=greeks.rho, spot=state.spot, vanna=greeks.vanna, volga=greeks.volga,
+        charm=greeks.charm, multiplier=1.0, quantity=1.0,
+        config=MonetizationConfig(version="monetization-default"),
+    )
+    assert result.vanna == greeks.vanna
+    assert result.volga == greeks.volga
+    assert result.charm == greeks.charm
+    assert result.dollar_vanna == pytest.approx(canonical.dollar_vanna, rel=1e-15)
+    assert result.dollar_volga == pytest.approx(canonical.dollar_volga, rel=1e-15)
+    assert result.dollar_charm == pytest.approx(canonical.dollar_charm, rel=1e-15)
+
+
 # --------------------------------------------------------------------------- #
 # Frozen-interface pin: a change here breaks D's suite loudly (by design)      #
 # --------------------------------------------------------------------------- #
@@ -476,7 +601,12 @@ def test_pricing_state_shape_is_frozen() -> None:
 
 def test_price_greeks_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PriceGreeks))
-    assert names == ("price", "delta", "gamma", "vega", "theta", "rho")
+    assert names == (
+        "price", "delta", "gamma", "vega", "theta", "rho",
+        # Second-order set (TARGET §7.2), appended with 0.0 defaults so the legacy
+        # six-field construction still type-checks.
+        "vanna", "volga", "charm",
+    )
 
 
 def test_public_surface_is_frozen() -> None:
@@ -491,6 +621,8 @@ def test_public_surface_is_frozen() -> None:
         # The $-Greek convention layer (P0.2 / OQ-1, ADR 0036).
         "UNIT_STRINGS", "DollarGreeks", "dollar_greeks", "gamma_unit_string",
         "theta_unit_string",
+        # The second-order set's forked unit string (TARGET §7.2).
+        "charm_unit_string",
     }
 
 

@@ -13,11 +13,15 @@ import pytest
 from algotrading.core.config import MonetizationConfig
 from algotrading.infra.pricing import dollar_greeks
 from algotrading.infra.pricing.dollar_greeks import (
+    charm_unit_string,
+    dollar_charm,
     dollar_delta,
     dollar_gamma,
     dollar_rho,
     dollar_theta,
+    dollar_vanna,
     dollar_vega,
+    dollar_volga,
     gamma_unit_string,
     theta_unit_string,
 )
@@ -101,6 +105,64 @@ def test_theta_day_count_flag_changes_theta_by_the_day_count_ratio() -> None:
     theta_252 = dollar_theta(THETA, MULT, day_count=252)
     assert theta_252 == pytest.approx(theta_365 * (365.0 / 252.0), abs=1e-9)
     assert theta_252 != pytest.approx(theta_365)  # the flag is not inert
+
+
+# Second-order hand fixture (TARGET §7.2). Vanna/Volga/Charm raw, monetized by hand from
+# the module's documented definitions, independent of the code under test.
+VANNA = 0.05
+VOLGA = 1.2
+CHARM = -0.03  # ddelta/dt per year
+# By hand (per-contract, mult=100):
+#   Vanna$ = vanna·S·0.01·mult   = 0.05 * 200 * 0.01 * 100      =  10.0
+#   Volga$ = volga·0.01²·mult    = 1.2 * 0.0001 * 100           =   0.012
+#   Charm$ = charm·S·mult/365    = -0.03 * 200 * 100 / 365      =  -1.643835616...
+VANNA_DOLLAR_PER_CONTRACT = 10.0
+VOLGA_DOLLAR_PER_CONTRACT = 0.012
+CHARM_DOLLAR_PER_CONTRACT = -0.03 * 200.0 * 100.0 / 365.0
+
+
+def test_second_order_dollar_unit_definitions_match_hand_values_per_contract() -> None:
+    assert dollar_vanna(VANNA, SPOT, MULT) == pytest.approx(VANNA_DOLLAR_PER_CONTRACT, abs=TOL)
+    assert dollar_volga(VOLGA, MULT) == pytest.approx(VOLGA_DOLLAR_PER_CONTRACT, abs=TOL)
+    assert dollar_charm(CHARM, SPOT, MULT, day_count=365) == pytest.approx(
+        CHARM_DOLLAR_PER_CONTRACT, abs=TOL
+    )
+
+
+def test_second_order_per_position_is_per_contract_times_quantity() -> None:
+    assert dollar_vanna(VANNA, SPOT, MULT, QTY) == pytest.approx(
+        VANNA_DOLLAR_PER_CONTRACT * QTY, abs=TOL
+    )
+    assert dollar_volga(VOLGA, MULT, QTY) == pytest.approx(VOLGA_DOLLAR_PER_CONTRACT * QTY, abs=TOL)
+    assert dollar_charm(CHARM, SPOT, MULT, QTY, day_count=365) == pytest.approx(
+        CHARM_DOLLAR_PER_CONTRACT * QTY, abs=TOL
+    )
+
+
+def test_charm_rides_the_theta_day_count_fork() -> None:
+    # Charm is a per-time Greek, so its $-figure scales with the day-count exactly as theta's.
+    charm_365 = dollar_charm(CHARM, SPOT, MULT, day_count=365)
+    charm_252 = dollar_charm(CHARM, SPOT, MULT, day_count=252)
+    assert charm_252 == pytest.approx(charm_365 * (365.0 / 252.0), abs=1e-9)
+    assert charm_252 != pytest.approx(charm_365)  # the flag is not inert
+
+
+def test_dollar_greeks_monetizes_the_second_order_set_and_forks_charm() -> None:
+    default_cfg = MonetizationConfig(version="m")  # one_pct, 365
+    cfg_252 = MonetizationConfig(version="m", theta_day_count=252)
+    base = dict(
+        delta=DELTA, gamma=GAMMA, vega=VEGA, theta=THETA, rho=RHO, spot=SPOT, multiplier=MULT,
+        vanna=VANNA, volga=VOLGA, charm=CHARM,
+    )
+    d1 = dollar_greeks(**base, config=default_cfg)
+    assert d1.dollar_vanna == pytest.approx(VANNA_DOLLAR_PER_CONTRACT, abs=TOL)
+    assert d1.dollar_volga == pytest.approx(VOLGA_DOLLAR_PER_CONTRACT, abs=TOL)
+    assert d1.dollar_charm == pytest.approx(CHARM_DOLLAR_PER_CONTRACT, abs=TOL)
+    # Vanna/Volga units are unforked; charm rides the theta day-count fork.
+    assert d1.charm_unit == charm_unit_string(365) == "$ delta per calendar day"
+    d2 = dollar_greeks(**base, config=cfg_252)
+    assert d2.dollar_charm == pytest.approx(d1.dollar_charm * (365.0 / 252.0), abs=1e-9)
+    assert d2.charm_unit == "$ delta per trading day"
 
 
 def test_dollar_greeks_reads_the_two_flags_from_the_config() -> None:

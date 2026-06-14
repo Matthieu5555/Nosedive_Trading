@@ -463,3 +463,27 @@ export interface OrderTicketResponse {
 export async function previewTicket(body: TicketPreviewRequest): Promise<OrderTicketResponse> {
   return postJson<OrderTicketResponse>("/api/ticket/preview", body);
 }
+
+// The password-gated booking commit (§7 #1): turn a previewed ticket into paper fill(s), but ONLY
+// behind the password write barrier. The request is the ticket-preview body plus a `password`; the
+// response is a decision — "commit" (fills written) or "block" (fail-closed, no fill, a labelled
+// reason). A block is HTTP 200 (a normal answer); a malformed request is a labelled 400. This is
+// the *paper* booking gate, NOT the 3B broker-send gate — nothing here transmits to a broker.
+export interface BookingCommitRequest extends TicketPreviewRequest {
+  password: string;
+}
+
+export interface BookingCommitResponse {
+  decision: "commit" | "block";
+  booking_id: string;
+  // Present on a commit:
+  fill_ids?: string[];
+  fill_count?: number;
+  // Present on a block:
+  reason?: string;
+  detail?: string;
+}
+
+export async function commitBooking(body: BookingCommitRequest): Promise<BookingCommitResponse> {
+  return postJson<BookingCommitResponse>("/api/booking/commit", body);
+}

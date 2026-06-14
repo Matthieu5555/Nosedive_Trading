@@ -87,3 +87,57 @@ test("the build button is disabled when there are no legs to build from", () => 
   renderPanel([]);
   expect(screen.getByRole("button", { name: "Build ticket" })).toBeDisabled();
 });
+
+// --- the password-gated booking affordance (§7 #1) --------------------------------------
+
+async function previewThenReveal() {
+  server.use(jsonPost("/api/ticket/preview", TICKET));
+  renderPanel();
+  await userEvent.click(screen.getByRole("button", { name: "Build ticket" }));
+  await screen.findByRole("table", { name: "order ticket legs" });
+}
+
+test("the Book button is disabled until a password is entered (the write barrier)", async () => {
+  await previewThenReveal();
+  const book = screen.getByRole("button", { name: "Book (paper)" });
+  // No password yet — the gate cannot be invoked.
+  expect(book).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("booking password"), "secret-pw");
+  expect(book).toBeEnabled();
+});
+
+test("a verified booking surfaces the committed fills", async () => {
+  await previewThenReveal();
+  server.use(
+    jsonPost("/api/booking/commit", {
+      decision: "commit",
+      booking_id: "bkg-abc",
+      fill_ids: ["bkg-abc-fill-0"],
+      fill_count: 1,
+    }),
+  );
+  await userEvent.type(screen.getByLabelText("booking password"), "right-pw");
+  await userEvent.click(screen.getByRole("button", { name: "Book (paper)" }));
+
+  const status = await screen.findByRole("status");
+  expect(status).toHaveTextContent(/Booked: 1 fill\(s\) written/);
+  expect(status).toHaveTextContent(/bkg-abc/);
+});
+
+test("a blocked booking surfaces the labelled reason, fail-closed", async () => {
+  await previewThenReveal();
+  server.use(
+    jsonPost("/api/booking/commit", {
+      decision: "block",
+      booking_id: "bkg-xyz",
+      reason: "wrong_password",
+      detail: "the supplied booking password did not match",
+    }),
+  );
+  await userEvent.type(screen.getByLabelText("booking password"), "nope");
+  await userEvent.click(screen.getByRole("button", { name: "Book (paper)" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/wrong_password/);
+  expect(alert).toHaveTextContent(/did not match/);
+});

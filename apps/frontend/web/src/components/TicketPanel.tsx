@@ -9,8 +9,14 @@
 
 import { useState } from "react";
 
-import type { BasketLegInput, OrderTicketLeg, OrderTicketResponse, TicketPriceSpec } from "../api";
-import { previewTicket } from "../api";
+import type {
+  BasketLegInput,
+  BookingCommitResponse,
+  OrderTicketLeg,
+  OrderTicketResponse,
+  TicketPriceSpec,
+} from "../api";
+import { commitBooking, previewTicket } from "../api";
 
 const BROKERS = ["ibkr"] as const;
 const TIFS = ["day", "gtc"] as const;
@@ -41,11 +47,22 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Booking-commit state: the password (the write barrier), the in-flight flag, and the decision.
+  const [password, setPassword] = useState<string>("");
+  const [booking, setBooking] = useState<BookingCommitResponse | null>(null);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  function priceSpec(): TicketPriceSpec {
+    return priceKind === "limit" ? { kind: "limit", price: Number(limitPrice) } : { kind: "market" };
+  }
+
   async function build() {
     setError(null);
     setLoading(true);
-    const price_spec: TicketPriceSpec =
-      priceKind === "limit" ? { kind: "limit", price: Number(limitPrice) } : { kind: "market" };
+    // A fresh preview invalidates any prior booking decision shown below.
+    setBooking(null);
+    setBookingError(null);
     try {
       setTicket(
         await previewTicket({
@@ -54,7 +71,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
           trade_date: tradeDate,
           target_broker: broker,
           time_in_force: tif,
-          price_spec,
+          price_spec: priceSpec(),
           legs,
         }),
       );
@@ -63,6 +80,31 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function bookPaper() {
+    setBookingError(null);
+    setBookingLoading(true);
+    try {
+      const result = await commitBooking({
+        basket_id: basketId,
+        underlying,
+        trade_date: tradeDate,
+        target_broker: broker,
+        time_in_force: tif,
+        price_spec: priceSpec(),
+        legs,
+        password,
+      });
+      setBooking(result);
+      // The password never lingers in component state past the commit attempt.
+      setPassword("");
+    } catch (err) {
+      setBooking(null);
+      setBookingError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBookingLoading(false);
     }
   }
 
@@ -161,6 +203,47 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
               ))}
             </tbody>
           </table>
+
+          <div className="ticket-book" role="group" aria-label="book position">
+            <p>
+              <strong>Book this ticket</strong> into the paper position book. This is the{" "}
+              <strong>password write barrier</strong> — booking mutates the book and requires the
+              gate password. It is <strong>paper</strong>: nothing is transmitted to a broker.
+            </p>
+            <label>
+              Booking password{" "}
+              <input
+                aria-label="booking password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={bookPaper}
+              disabled={bookingLoading || password.length === 0}
+            >
+              {bookingLoading ? "Booking…" : "Book (paper)"}
+            </button>
+
+            {bookingError !== null && (
+              <p role="alert" className="error">
+                Booking failed: {bookingError}
+              </p>
+            )}
+
+            {booking !== null && booking.decision === "commit" && (
+              <p role="status" className="booking-committed">
+                Booked: {booking.fill_count} fill(s) written ({booking.booking_id}).
+              </p>
+            )}
+            {booking !== null && booking.decision === "block" && (
+              <p role="alert" className="booking-blocked">
+                Blocked ({booking.reason}): {booking.detail}
+              </p>
+            )}
+          </div>
 
           <div className="ticket-gate" role="note" aria-label="transmission gate">
             <button type="button" disabled aria-label="Sign and send order">

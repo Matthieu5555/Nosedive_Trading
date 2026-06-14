@@ -5,6 +5,12 @@
 # the forward-confidence heuristics change computed values, so they are reproducibility
 # inputs. Three sections live here side by side: `solver:` (the IV inversion),
 # `surface:` (the SVI calibration), and `forward:` (the parity forward estimate).
+#
+# OPTIONAL `effective_from: YYYY-MM-DD` at this file root dates the bundle (ADR 0028 as-of
+# resolution): a replay `load_platform_config(configs/, as_of=D)` refuses a bundle whose
+# `effective_from` is after D, so a past day can never silently pick up config authored
+# later (look-ahead). It is dating metadata, not economics — stripped before validation,
+# absent from the reproducibility hash. Omit it (as shipped) for "current".
 
 solver:                        # IV inversion (SolverConfig)
   version: "2026.05.31"

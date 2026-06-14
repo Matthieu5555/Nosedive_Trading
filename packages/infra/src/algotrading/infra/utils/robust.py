@@ -75,17 +75,24 @@ def robust_zscore_vs_baseline(value: float, baseline: Sequence[float]) -> float:
     return diff / scale
 
 
-def outlier_flags(residuals: Sequence[float], *, scale_floor: float = 0.0) -> tuple[bool, ...]:
+def outlier_flags(
+    residuals: Sequence[float],
+    *,
+    scale_floor: float = 0.0,
+    rejection_z: float = _MAD_REJECTION_Z,
+) -> tuple[bool, ...]:
     """Per-residual rejection flags via the robust MAD z-score (Eq 24).
 
-    A point is flagged (``True`` = reject) when ``|r_i - median(r)| / scale > 3.5``, where
-    ``scale`` is ``max(1.4826 * MAD, scale_floor)``. The floor matters: when most points lie
-    on the line, the MAD of residuals collapses to floating-point noise (not a real spread),
-    and an unfloored z-score would divide by ~1e-15 and spuriously flag clean points.
+    A point is flagged (``True`` = reject) when ``|r_i - median(r)| / scale > rejection_z``,
+    where ``scale`` is ``max(1.4826 * MAD, scale_floor)``. The floor matters: when most points
+    lie on the line, the MAD of residuals collapses to floating-point noise (not a real
+    spread), and an unfloored z-score would divide by ~1e-15 and spuriously flag clean points.
     ``scale_floor`` is the quote-noise scale below which a deviation is rounding, not an
-    outlier — the caller sets it from the price level. With fewer than three residuals
-    nothing is flagged (too few to estimate spread); the caller additionally guards the
-    minimum surviving count.
+    outlier — the caller sets it from the price level. ``rejection_z`` is the cut-off in
+    scaled-MAD units; it defaults to the library's Iglewicz-Hoaglin 3.5 so existing callers
+    are unchanged, and a caller (e.g. the forward engine, from typed config) may tighten or
+    loosen it. With fewer than three residuals nothing is flagged (too few to estimate
+    spread); the caller additionally guards the minimum surviving count.
     """
     if len(residuals) < 3:
         return tuple(False for _ in residuals)
@@ -93,7 +100,7 @@ def outlier_flags(residuals: Sequence[float], *, scale_floor: float = 0.0) -> tu
     scale = max(MAD_SCALE * median_absolute_deviation(residuals), scale_floor)
     if scale <= 0.0:
         return tuple(False for _ in residuals)
-    return tuple(abs(residual - center) / scale > _MAD_REJECTION_Z for residual in residuals)
+    return tuple(abs(residual - center) / scale > rejection_z for residual in residuals)
 
 
 def theil_sen_line(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float]:

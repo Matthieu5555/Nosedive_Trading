@@ -154,8 +154,10 @@ def fit_slice(
     Total and pure: an empty slice returns a labeled ``insufficient`` fit rather than
     raising. With at least ``config.min_points_per_slice`` distinct strikes (floored at
     SVI's five-parameter identifiability minimum) it calibrates SVI under the ``config``
-    bounds and runs the butterfly check; with fewer it falls back to interpolation, labeled
-    ``nonparametric``.
+    bounds and runs the butterfly check; with fewer it falls back to interpolation. The
+    primary and fallback method labels are read from ``config.model`` /
+    ``config.fallback_model`` (defaults ``svi`` / ``nonparametric``) rather than hardwired,
+    so the method choice has a typed config home (ADR 0028).
     """
     ks, ws = _distinct_sorted_points(points)
 
@@ -164,7 +166,7 @@ def fit_slice(
         breaches = butterfly_violations(svi_fit.params, _arb_grid(ks))
         return SliceFit(
             underlying=underlying, maturity_years=maturity_years, expiry_date=expiry_date,
-            day_count=day_count, method=METHOD_SVI, svi=svi_fit.params, rmse=svi_fit.rmse,
+            day_count=day_count, method=config.model, svi=svi_fit.params, rmse=svi_fit.rmse,
             n_points=svi_fit.n_points, arb_free=not breaches, bound_hits=svi_fit.bound_hits,
             butterfly_violations=breaches, nonparametric_ks=ks, nonparametric_ws=ws,
             raw_points=points, converged=svi_fit.converged,
@@ -173,7 +175,7 @@ def fit_slice(
     if len(ks) >= 1:
         return SliceFit(
             underlying=underlying, maturity_years=maturity_years, expiry_date=expiry_date,
-            day_count=day_count, method=METHOD_NONPARAMETRIC, svi=None, rmse=0.0,
+            day_count=day_count, method=config.fallback_model, svi=None, rmse=0.0,
             n_points=len(ks), arb_free=all(w > 0.0 for w in ws), bound_hits=(),
             butterfly_violations=(), nonparametric_ks=ks, nonparametric_ws=ws,
             raw_points=points,

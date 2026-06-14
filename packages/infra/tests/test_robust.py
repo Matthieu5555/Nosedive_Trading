@@ -94,6 +94,16 @@ def test_outlier_flags_too_few_points_flags_nothing():
     assert outlier_flags([0.0, 100.0]) == (False, False)
 
 
+def test_outlier_flags_rejection_z_tunes_the_cutoff():
+    # The same residual set the default 3.5 cut flags: a high rejection_z flags nothing, and a
+    # tight one flags the same gross outlier. The cut-off is now a caller-supplied knob
+    # (forward engine's max_robust_zscore) with the 3.5 default preserved.
+    residuals = [0.0, 0.1, -0.1, 0.05, -0.05, 5.0]
+    assert outlier_flags(residuals) == outlier_flags(residuals, rejection_z=3.5)  # default
+    assert outlier_flags(residuals, rejection_z=1000.0) == (False,) * 6  # loosened past it
+    assert outlier_flags(residuals, rejection_z=1.0)[-1] is True  # tightened, still catches
+
+
 # --- theil_sen_line -----------------------------------------------------------------------
 
 

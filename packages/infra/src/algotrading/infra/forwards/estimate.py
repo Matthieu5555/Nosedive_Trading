@@ -269,10 +269,11 @@ def estimate_forward(
     Pure and total: every terminal state (a clean fit, a single-pair fallback, no
     pairs, or a degenerate fit) returns a labeled :class:`ForwardEstimate`, never a
     raise. With two or more positively-weighted strikes it fits the parity line,
-    rejects MAD outliers, and refits; with a single pair it falls back to
-    ``fallback_discount_factor`` if one is given; with none it reports the reason.
+    rejects outliers (``config.outlier_method``), and refits; with a single pair it falls
+    back to ``fallback_discount_factor`` if one is given; with none it reports the reason.
+    ``config.max_candidate_count`` optionally caps how many pairs feed the regression.
     """
-    valid = _valid_pairs(pairs)
+    valid = _cap_candidates(_valid_pairs(pairs), config.max_candidate_count)
     candidate_count = len(valid)
 
     if candidate_count == 0:
@@ -287,7 +288,8 @@ def estimate_forward(
         )
 
     works = [_Work(pair=pair, parity_spread=pair.call_mid - pair.put_mid) for pair in valid]
-    _flag_outliers(works)
+    if config.outlier_method != "none":
+        _flag_outliers(works, rejection_z=config.max_robust_zscore)
     line = _fit_inliers_or_all(works)
     if line is None:
         points = tuple(_point(work) for work in works)
@@ -407,14 +409,32 @@ def _apply_residuals(works: list[_Work], line: ParityLine) -> None:
         work.residual = work.parity_spread - (line.intercept + line.slope * work.pair.strike)
 
 
-def _flag_outliers(works: list[_Work]) -> None:
+def _cap_candidates(valid: list[ForwardPair], max_count: int | None) -> list[ForwardPair]:
+    """Keep at most ``max_count`` candidate pairs, the most liquid first.
+
+    ``None`` (the default) keeps every pair — byte-identical to the uncapped engine, so a
+    config that does not set the cap is unchanged. When a cap is set and binds, the pairs are
+    ranked by liquidity (descending), ties broken by strike (ascending) for determinism, and
+    the top ``max_count`` are kept. The survivors are returned in the original input order so
+    downstream point order and provenance stay stable. Ranking on indices (not the frozen
+    pairs themselves) so two value-equal pairs are never collapsed.
+    """
+    if max_count is None or len(valid) <= max_count:
+        return valid
+    order = sorted(range(len(valid)), key=lambda i: (-valid[i].liquidity, valid[i].strike))
+    keep = set(order[:max_count])
+    return [pair for i, pair in enumerate(valid) if i in keep]
+
+
+def _flag_outliers(works: list[_Work], *, rejection_z: float) -> None:
     """Mark MAD outliers (Eq 24), detected off a robust Theil-Sen line.
 
     Detection uses Theil-Sen residuals, not least-squares residuals, so a
     high-leverage wing strike cannot mask itself by dragging the fitting line onto
-    it. Rejection is skipped when fewer than three weighted points exist (too few to
-    estimate spread) or when it would leave fewer than two distinct strikes (which
-    would starve the downstream regression).
+    it. ``rejection_z`` is the scaled-MAD cut-off (``config.max_robust_zscore``). Rejection
+    is skipped when fewer than three weighted points exist (too few to estimate spread) or
+    when it would leave fewer than two distinct strikes (which would starve the downstream
+    regression).
     """
     weighted = [work for work in works if work.pair.liquidity > 0.0]
     if len(weighted) < 3:
@@ -430,7 +450,7 @@ def _flag_outliers(works: list[_Work]) -> None:
         work.parity_spread - (intercept + slope * work.pair.strike) for work in weighted
     )
     scale_floor = _RESIDUAL_REL_FLOOR * max(abs(intercept), 1.0)
-    flags = outlier_flags(robust_residuals, scale_floor=scale_floor)
+    flags = outlier_flags(robust_residuals, scale_floor=scale_floor, rejection_z=rejection_z)
     if not any(flags):
         return
     survivors = {work.pair.strike for work, flag in zip(weighted, flags, strict=True) if not flag}

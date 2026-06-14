@@ -29,13 +29,14 @@ from datetime import UTC, date, datetime
 
 from algotrading.execution import (
     BookingCommitted,
-    ConcretizationError,
     JsonlBookingAuditLog,
     JsonlFillsLedger,
     ResolvedLeg,
     book,
 )
-from algotrading.execution.booking import LegResolver
+# The booking seam's labelled ConcretizationError (carries field/value) — distinct from the
+# concretization engine's ConcretizationError re-exported at the package top level (ADR 0043).
+from algotrading.execution.booking import ConcretizationError, LegResolver
 from algotrading.infra.contracts import ContractValidationError
 from algotrading.infra.orders import TicketError, build_ticket
 from fastapi import APIRouter, Request

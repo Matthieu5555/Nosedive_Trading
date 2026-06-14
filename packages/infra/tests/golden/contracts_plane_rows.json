@@ -3,6 +3,7 @@
   "rows": {
     "baskets": {
       "basket_id": "rr-aapl-1m",
+      "strategy_id": null,
       "legs": "[{\"delta_band\":\"30dc\",\"instrument_kind\":\"option\",\"quantity\":1.0,\"side\":\"long\",\"tenor_label\":\"1m\",\"underlying\":\"AAPL\"},{\"delta_band\":\"30dp\",\"instrument_kind\":\"option\",\"quantity\":-1.0,\"side\":\"short\",\"tenor_label\":\"1m\",\"underlying\":\"AAPL\"},{\"delta_band\":null,\"instrument_kind\":\"stock\",\"quantity\":25.0,\"side\":\"long\",\"tenor_label\":null,\"underlying\":\"AAPL\"}]",
       "provider": "IBKR",
       "trade_date": {

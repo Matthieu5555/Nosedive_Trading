@@ -27,7 +27,6 @@ import pytest
 from algotrading.execution import (
     BookingBlocked,
     BookingCommitted,
-    ConcretizationError,
     Fill,
     InMemoryBookingAuditLog,
     InMemoryFillsLedger,
@@ -41,6 +40,7 @@ from algotrading.execution.booking import (
     UNCONFIGURED_GATE,
     UNRESOLVABLE_LEG,
     WRONG_PASSWORD,
+    ConcretizationError,
     verify_password,
 )
 from algotrading.execution.booking.password_gate import ENV_GATE_HASH, ENV_GATE_SALT

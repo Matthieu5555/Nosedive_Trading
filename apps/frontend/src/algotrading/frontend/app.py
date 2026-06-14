@@ -95,6 +95,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
         return JSONResponse({"error": "bad_basket", "detail": str(exc)}, status_code=400)
 
     from .routers import analytics as analytics_router  # noqa: PLC0415
+    from .routers import attribution as attribution_router  # noqa: PLC0415
     from .routers import basket as basket_router  # noqa: PLC0415
     from .routers import booking as booking_router  # noqa: PLC0415
     from .routers import config as config_router  # noqa: PLC0415
@@ -123,6 +124,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(coverage_router.router)
     app.include_router(ticket_router.router)
     app.include_router(booking_router.router)
+    app.include_router(attribution_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

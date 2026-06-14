@@ -495,6 +495,50 @@ class BookGreeks:
 
 
 @dataclass(frozen=True, slots=True)
+class StrategySignal:
+    """One daily, as-of, contract-typed strategy-entry signal reading (TARGET §4 R3 / §3).
+
+    The persisted product of the signal layer: the ρ̄ / IV-rank / RV−IV / term-slope readings
+    the §3 strategy book triggers on, derived once a day from the as-of surfaces, price history,
+    and index weights, and read back by a strategy as its entry input (the §6 no-look-ahead bar
+    is the partition: a reading lives under the ``trade_date`` it was computed *as of*).
+
+    The grain is one scalar reading per ``(snapshot_ts, provider, signal_kind, subject,
+    tenor_label)``:
+
+    * ``underlying`` is the **book context** — the index whose strategy reads this signal
+      (e.g. ``"SX5E"``); it is the partition's grouping symbol, so a strategy reads the whole
+      day's signal set for its index in one partition. It is *not* the name the reading is
+      about — that is ``subject``.
+    * ``signal_kind`` is the signal family, the string value of the strategy-layer
+      ``SignalKind`` (``"implied_correlation"`` / ``"iv_rank"`` / ``"iv_vs_realized"`` /
+      ``"term_structure_slope"``). Carried as a plain ``str`` because the contracts seam is
+      blind to the alpha layer that owns the enum.
+    * ``subject`` is *what* the reading is on — the index symbol for an index-level reading
+      (book-wide ρ̄), a single-name ticker for a per-name reading (a constituent's IV-rank).
+    * ``tenor_label`` is the tenor the reading was taken at (``"3m"``), or a ``"front:back"``
+      pillar pair for a term-structure slope. Per-tenor by construction (ρ̄ is a per-tenor
+      signal); a signal with no tenor still names the pillar it used so the row is self-describing.
+    * ``value`` is the scalar — not sign-constrained: ρ̄ can fall outside ``[-1, 1]`` and an
+      RV−IV or term slope is signed; a constraint would hide a real diagnostic.
+
+    Derived (``requires_provenance`` / ``requires_source_snapshot_ts``): every reading carries
+    the stamp naming the analytics rows and bars it was computed from, and the source snapshot
+    timestamp it is as-of.
+    """
+
+    snapshot_ts: datetime
+    provider: str
+    underlying: str
+    signal_kind: str
+    subject: str
+    tenor_label: str
+    value: float
+    source_snapshot_ts: datetime
+    provenance: ProvenanceStamp
+
+
+@dataclass(frozen=True, slots=True)
 class QcResult:
     """The outcome of one named quality check against one target.
 

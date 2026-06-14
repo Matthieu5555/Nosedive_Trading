@@ -298,6 +298,21 @@
       },
       "vol_shock": 0.0
     },
+    "strategy_signals": {
+      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provider": "IBKR",
+      "signal_kind": "implied_correlation",
+      "snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "subject": "SX5E",
+      "tenor_label": "3m",
+      "underlying": "SX5E",
+      "value": 0.62
+    },
     "surface_grid": {
       "maturity_years": 0.25,
       "model_version": "svi-1",

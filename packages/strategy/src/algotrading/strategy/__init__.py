@@ -30,6 +30,7 @@ from .s1_dispersion import (
     DispersionMarketData,
     DispersionStrategy,
 )
+from .signal_data import signal_snapshot_from_store
 from .signals import (
     SignalReading,
     SignalSnapshot,
@@ -56,6 +57,7 @@ __all__ = [
     "SignalSnapshot",
     "SignalReading",
     "signal_snapshot",
+    "signal_snapshot_from_store",
     # strategy protocol + decision types
     "Strategy",
     "EntryAction",

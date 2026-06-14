@@ -1,3 +1,15 @@
+> **LANDED 2026-06-14** (branch `infra-signal-layer`, merged to `main`). The signal layer is
+> built: `packages/infra/src/algotrading/infra/signals/` — pure math (`correlation.py` inverse
+> Eq-23 ρ̄, `term_structure.py`, `realized_volatility.py`, `iv_history.py`) + an as-of orchestrator
+> (`signal_set.py`) that persists `StrategySignal` rows (new contract in `contracts/{tables,registry}`,
+> table `strategy_signals`, layer `signals`, provider-partitioned). The strategy reads them via
+> `packages/strategy/src/.../signal_data.py::signal_snapshot_from_store`, which took S1's ρ̄ entry
+> from fixture-fed to live. Look-ahead clean (every read gated by `as_of`, live partition only).
+> Gate green (2026 passed). **Still open:** the *realized*-correlation kill reading (S1 uses the
+> net-vega proxy until then); the daily batch wiring that calls `persist_signal_set` at the
+> `run_analytics` choke; ρ̄ coverage-bias hardening (incomplete per-name surfaces understate cross).
+> Original spec below.
+
 # T-signal-layer — persist the strategy-entry signals daily (implied correlation R3, IV rank, RV−IV, term slope)
 
 > **Source:** TARGET §4 ruling **R3** + §7.7 + §1 (the edge chain). The signals are the strategy

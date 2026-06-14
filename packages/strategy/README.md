@@ -101,10 +101,17 @@ single-name vol and short the index monetises the gap as the names decorrelate.
   `basket_risk` over a `trade_date`-narrowed grid read; it adds no risk math. Build a ready-to-run
   object with `dispersion_strategy(store, config, provider="ibkr")`.
 
+- **`signal_snapshot_from_store`** (`signal_data.py`) — the as-of bridge from the persisted infra
+  signal layer to the `SignalSnapshot` the strategy reads. It reads one day's `strategy_signals`
+  partition for an index and surfaces the reference-tenor readings (ρ̄ on the index, plus per-name
+  IV-rank / RV−IV / term-slope), preserving each reading's `subject`. This is what took S1's ρ̄
+  entry from fixture-fed to live; it lives here, not in infra, because it touches both layers.
+
 **v1 boundary:** v1 shorts the *forward* (delta only) and stays net long vol; v2 (short the index
-*straddle* → a pure correlation spread) is the explicit upgrade, out of scope. The realized-
-correlation entry/kill reading arrives with the infra signal layer — S1 reads ρ̄ from the
-`SignalSnapshot` today and uses the net-vega-collapse proxy for the position-side kill.
+*straddle* → a pure correlation spread) is the explicit upgrade, out of scope. S1 reads ρ̄ from
+the `SignalSnapshot`, now sourced from the persisted infra signal layer via
+`signal_snapshot_from_store`; the *realized*-correlation kill reading is still future, so
+`decide_exit` uses the net-vega-collapse proxy for the position-side kill until then.
 
 ## Testing
 
@@ -126,7 +133,9 @@ the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two
   strategy-agnostic; `s1_dispersion.py` + `dispersion_data.py` are the first concrete strategy.
   S2–S5's construction/entry/exit rules are still owned by their S-tasks.
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
-  layer derives it. Until that lane lands, callers build the snapshot from their own source.
+  layer (`algotrading.infra.signals`) derives and persists it, and `signal_snapshot_from_store`
+  bridges the two. A caller can still build a snapshot from any source (research/backtest);
+  paper/live source it from the persisted `strategy_signals`.
 - **Enforcement and booking are not here.** `decide_exit` *emits* a flatten; the execution
   kill switch *enforces* it, and the booker turns the emitted basket into fills (execution
   layer, above this one).

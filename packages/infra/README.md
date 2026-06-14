@@ -39,6 +39,14 @@ numeric helpers.
   broker reconciliation, and the versioned scenario grid (ADR 0006). It never prices — it
   calls the frozen pricer.
 
+## Signals
+
+- **`signals/`** — the daily strategy-entry signal layer (TARGET §4 R3 / §3): average implied
+  correlation ρ̄ (inverse Eq. 23), IV rank/percentile, the realized-vs-implied spread, and the
+  term-structure slope, computed off the as-of surfaces + price history + index weights and
+  persisted as `strategy_signals`. Pure math + an as-of orchestrator; blind to alpha — a
+  strategy *reads* the persisted signals, it is not imported here. Read `signals/README.md`.
+
 ## QC and validation
 
 - **`qc/`** — the ten named checks + anomaly detection; a failure names the exact failing

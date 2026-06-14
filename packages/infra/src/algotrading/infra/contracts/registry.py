@@ -37,6 +37,7 @@ from .tables import (
     RiskAggregate,
     ScenarioAttribution,
     ScenarioResult,
+    StrategySignal,
     SurfaceGrid,
     SurfaceParameters,
     TriageRecord,
@@ -301,6 +302,26 @@ REGISTRY: dict[str, TableSpec] = {
         # Net and dollar Greeks are all signed; the registry only guards finiteness.
         positive_fields=(),
         non_negative_fields=(),
+    ),
+    "strategy_signals": TableSpec(
+        name="strategy_signals",
+        contract=StrategySignal,
+        # One reading per (snapshot, source, kind, subject, tenor). The source provider is in
+        # the key because two providers' surfaces yield two genuinely distinct ρ̄ readings.
+        primary_key=("snapshot_ts", "provider", "signal_kind", "subject", "tenor_label"),
+        layer="signals",
+        # Recompute-friendly: a re-run of a past day's signals (a surface restatement upstream)
+        # replaces that day's partition rather than appending a duplicate reading.
+        append_only=False,
+        requires_provenance=True,
+        requires_source_snapshot_ts=True,
+        # ρ̄ can fall outside [-1, 1]; RV−IV and term slopes are signed — the registry only
+        # guards finiteness here, the signal math owns the domain.
+        positive_fields=(),
+        non_negative_fields=(),
+        # Derived from a specific provider's surfaces/bars, so partition by source (ADR 0017 /
+        # 0034 §4): two providers' signal sets for the same (index, day) stay disjoint.
+        provider_partitioned=True,
     ),
     "qc_results": TableSpec(
         name="qc_results",

@@ -118,10 +118,10 @@ from .valuation_join import default_exercise_style, resolve_valuation_inputs
 
 _LOGGER = structlog.get_logger("actor")
 
-# Default moneyness buckets for the regularized surface grid, in log-moneyness.
-# At-the-money-centered and symmetric so the persisted grid is comparable across
-# underlyings; overridable per run.
-DEFAULT_MONEYNESS_BUCKETS: tuple[float, ...] = (-0.2, -0.1, 0.0, 0.1, 0.2)
+# The moneyness grid the regularized surface is projected/persisted onto is an economic policy
+# with a typed home on `SurfaceConfig.moneyness_buckets` (ADR 0028); the entry points below take
+# `moneyness_buckets=None` and resolve it from `config.surface` at the single choke point, so a
+# run uses the configured grid and an explicit caller (a test probing a custom grid) still wins.
 
 # The one day-count the actor derives maturity in years under, matching the rest of
 # the suite (the C seam and golden pipeline use "ACT/365"). It is threaded into the
@@ -199,7 +199,7 @@ def run_analytics(
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
+    moneyness_buckets: tuple[float, ...] | None = None,
     session_open: bool = True,
     provider: str | None = None,
     projection: ProjectionConfig | None = None,
@@ -259,7 +259,7 @@ def run_analytics_with_qc(
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
+    moneyness_buckets: tuple[float, ...] | None = None,
     session_open: bool = True,
     provider: str | None = None,
     projection: ProjectionConfig | None = None,
@@ -277,6 +277,11 @@ def run_analytics_with_qc(
     table, or stamped into a manifest — so producing it changes nothing on disk and the
     replay/provenance goldens are unchanged.
     """
+    # The projection grid is config (ADR 0028): resolve it from `config.surface` unless a caller
+    # passed an explicit grid (a test probing a custom grid). This is the single choke point every
+    # entry layer funnels through, so the configured grid governs without each layer re-resolving.
+    if moneyness_buckets is None:
+        moneyness_buckets = config.surface.moneyness_buckets
     masters_by_key = {master.instrument_key: master.instrument for master in masters}
 
     # 1. Snapshots over the observed events (gaps are absence-of-data, not quotes).
@@ -1073,7 +1078,7 @@ def run_day(
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
+    moneyness_buckets: tuple[float, ...] | None = None,
     correlation_id: str = "",
     persist: bool = True,
     provider: str | None = None,

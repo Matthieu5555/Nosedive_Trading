@@ -518,15 +518,17 @@ class SolverConfig(_ConfigModel):
 
 
 class SurfaceConfig(_ConfigModel):
-    """Bounds and tolerances for the SVI surface fit.
+    """Bounds and tolerances for the SVI surface fit, plus the projection grid.
 
     The five parameter feasible ranges constrain the calibration search and back the
     bound-hit diagnostic; ``svi_bound_hit_tol`` is how close (relative to a range) a
     fitted parameter must sit to count as "at the bound"; ``svi_max_iterations`` caps the
     least-squares budget. Each ``*_bounds`` is a finite, strictly-increasing
-    ``(low, high)`` pair. Authored in ``pricing.yaml`` under ``surface:``. (The
-    minimum-points floor for SVI is a mathematical invariant — five parameters need five
-    points — and stays a code constant, not a tunable.)
+    ``(low, high)`` pair. ``moneyness_buckets`` is the log-moneyness grid the regularized
+    surface is projected and persisted onto — surface output, so it lives here. Authored
+    in ``pricing.yaml`` under ``surface:``. (The minimum-points floor for SVI is a
+    mathematical invariant — five parameters need five points — and stays a code
+    constant, not a tunable.)
     """
 
     model_config = _SECTION_CONFIG
@@ -545,6 +547,13 @@ class SurfaceConfig(_ConfigModel):
     # Floored at 5 = SVI's five parameters (the identifiability minimum, a math invariant that
     # stays the hard floor in `surfaces.svi`); set higher to demand more points before SVI.
     min_points_per_slice: int = Field(default=5, ge=5)
+    # The log-moneyness grid the regularized surface is projected and persisted onto — one
+    # SurfaceGrid cell per bucket. An economic policy, not a technical constant: it sets which
+    # strike points every persisted surface is sampled at, kept strictly increasing and symmetric
+    # about the ATM forward (0.0) so the grid is comparable across underlyings (ADR 0028 — the
+    # projection grid gets a typed home instead of the `DEFAULT_MONEYNESS_BUCKETS` .py literal;
+    # folds into config_hashes["pricing"], so a change to it now moves a hash that flags drift).
+    moneyness_buckets: _FloatTuple = (-0.2, -0.1, 0.0, 0.1, 0.2)
 
     @model_validator(mode="after")
     def _check_bound_pairs(self) -> SurfaceConfig:
@@ -561,6 +570,20 @@ class SurfaceConfig(_ConfigModel):
             low, high = pair
             if not low < high:
                 raise ValueError(f"{name} need low < high")
+        return self
+
+    @model_validator(mode="after")
+    def _check_moneyness_buckets(self) -> SurfaceConfig:
+        buckets = self.moneyness_buckets
+        if not buckets:
+            raise ValueError("moneyness_buckets must be non-empty")
+        if list(buckets) != sorted(buckets) or len(set(buckets)) != len(buckets):
+            raise ValueError("moneyness_buckets must be strictly increasing")
+        if 0.0 not in buckets:
+            raise ValueError("moneyness_buckets must include 0.0 (the ATM/forward point)")
+        # Negation is exact for IEEE floats, so a symmetric grid maps onto itself exactly.
+        if tuple(sorted(-k for k in buckets)) != tuple(buckets):
+            raise ValueError("moneyness_buckets must be symmetric about 0.0")
         return self
 
 

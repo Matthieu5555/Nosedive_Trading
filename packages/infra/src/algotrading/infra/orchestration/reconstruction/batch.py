@@ -23,7 +23,6 @@ from datetime import date, datetime, timedelta
 import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.actor import ActorOutputs, persist_outputs, run_analytics
-from algotrading.infra.actor.driver import DEFAULT_MONEYNESS_BUCKETS
 from algotrading.infra.actor.valuation_join import default_exercise_style
 from algotrading.infra.collectors import replay_day
 from algotrading.infra.contracts import (
@@ -90,7 +89,7 @@ def reconstruct_day(
     as_of: datetime,
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
+    moneyness_buckets: tuple[float, ...] | None = None,
     version: str | None = None,
     persist: bool = True,
     correlation_id: str = "",
@@ -178,7 +177,7 @@ def reconstruct_range(
     as_of_for: Callable[[date], datetime],
     calc_ts_for: Callable[[date], datetime],
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS,
+    moneyness_buckets: tuple[float, ...] | None = None,
     version: str | None = None,
     persist: bool = True,
     correlation_id: str = "",

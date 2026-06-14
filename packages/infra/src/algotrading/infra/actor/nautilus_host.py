@@ -42,7 +42,6 @@ from nautilus_trader.model.data import CustomData, DataType
 from nautilus_trader.model.identifiers import ClientId
 
 from .driver import (
-    DEFAULT_MONEYNESS_BUCKETS,
     default_exercise_style,
     persist_outputs,
     run_analytics,
@@ -150,7 +149,8 @@ class RunRequest:
     store: ParquetStore | None = None
     persist: bool = False
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style
-    moneyness_buckets: tuple[float, ...] = DEFAULT_MONEYNESS_BUCKETS
+    # None → the projection grid resolves from `config.surface.moneyness_buckets` (ADR 0028).
+    moneyness_buckets: tuple[float, ...] | None = None
     session_open: bool = True
 
 

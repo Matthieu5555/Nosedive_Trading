@@ -155,12 +155,19 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # `scenarios` stay byte-identical (section isolation). The universe/full values below are
     # regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked record
     # carries the old hash.
+    #
+    # core-projection-moneyness-grid (2026-06-14, ADR 0028): `SurfaceConfig.moneyness_buckets` joined
+    # the hashed `surface` block in `pricing.yaml` — the surface-projection log-moneyness grid gets a
+    # typed home instead of the `DEFAULT_MONEYNESS_BUCKETS` .py literal. Default
+    # [-0.2,-0.1,0,0.1,0.2] = byte-identical projection. The `pricing` bundle hash — and so the folded
+    # whole-config hash — moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical (section
+    # isolation). Pre-capture dev change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "f5644a4e2ca3bf9598d7d4332d652b03a04f61d4205fd6f90e251e9cd9e94e0e"
+        "0c39029dc276fa39a5b3c0ffd3c73cf337d9b645d5fa20d354b3d81f56b8f019"
     )
     assert config_hashes(config) == {
-        "pricing": "99dc3752841c3003c4ea427dc3b823c9a607af74603d46b81faa8dcd73ae096d",
+        "pricing": "c78c40d6cc0a7970dab5d1c24d621af87155b15476780a89b2ebff8188dc6850",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
         "universe": "a557c26b5d97d8a077c02406e3ec4ce783fcb0fc20c7e9956e771d875087ce97",
@@ -199,6 +206,61 @@ def test_anomaly_block_enforces_band_ordering() -> None:
 
     with pytest.raises(ConfigFieldError):
         AnomalyQcConfig(version="bad", warn_z=5.0, fail_z=3.0)
+
+
+def _surface_with_grid(buckets: tuple[float, ...]) -> SurfaceConfig:
+    """A SurfaceConfig with the standard bounds and a caller-chosen moneyness grid.
+
+    Built through the constructor (not ``model_copy``/``model_validate``) so the after-validator
+    runs and a bad grid surfaces as the labelled ``ConfigFieldError`` the loader raises too.
+    """
+    return SurfaceConfig(
+        version="surf-1",
+        svi_a_bounds=(0.0, 10.0),
+        svi_b_bounds=(1e-8, 10.0),
+        svi_rho_bounds=(-0.999, 0.999),
+        svi_m_bounds=(-5.0, 5.0),
+        svi_sigma_bounds=(1e-8, 10.0),
+        svi_bound_hit_tol=1e-5,
+        svi_max_iterations=200,
+        moneyness_buckets=buckets,
+    )
+
+
+def test_moneyness_buckets_default_is_the_canonical_symmetric_grid() -> None:
+    # The shipped default (no override) is the ATM-centered ±0.1/±0.2 log-moneyness grid.
+    assert _surface().moneyness_buckets == (-0.2, -0.1, 0.0, 0.1, 0.2)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        (),  # empty
+        (0.1, 0.0, -0.1),  # not strictly increasing (descending)
+        (-0.1, -0.1, 0.0, 0.1),  # duplicate → not strictly increasing
+        (-0.2, -0.1, 0.1, 0.2),  # missing the ATM 0.0 point
+        (-0.2, -0.1, 0.0, 0.1, 0.3),  # not symmetric about 0.0
+    ],
+)
+def test_moneyness_buckets_reject_unordered_asymmetric_or_atm_less_grids(
+    bad: tuple[float, ...],
+) -> None:
+    from algotrading.core.config import ConfigFieldError
+
+    with pytest.raises(ConfigFieldError):
+        _surface_with_grid(bad)
+
+
+def test_moneyness_buckets_folds_into_the_pricing_hash() -> None:
+    # Changing the grid moves ONLY the pricing bundle hash (section isolation), proving it is a
+    # hashed economic input — the drift the ADR-0028 audit class exists to flag.
+    base = _config()
+    moved = base.model_copy(update={"surface": _surface_with_grid((-0.1, 0.0, 0.1))})
+    base_h, moved_h = config_hashes(base), config_hashes(moved)
+    assert moved_h["pricing"] != base_h["pricing"]
+    assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
+        k: base_h[k] for k in ("universe", "qc", "scenarios")
+    }
 
 
 def test_config_hash_moves_when_any_field_moves() -> None:

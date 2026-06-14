@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from .basket import DEFAULT_PROVIDER, IndexBasket
 from .driver import (
-    DEFAULT_MONEYNESS_BUCKETS,
     AnalyticsRun,
     persist_outputs,
     run_analytics,
@@ -35,7 +34,6 @@ from .valuation_join import (
 
 __all__ = [
     "DEFAULT_EXERCISE_STYLE",
-    "DEFAULT_MONEYNESS_BUCKETS",
     "DEFAULT_PROVIDER",
     "ActorOutputs",
     "AnalyticsRun",

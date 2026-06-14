@@ -25,6 +25,10 @@ surface:                       # SVI calibration (SurfaceConfig)
   min_points_per_slice: 5            # distinct strikes required before SVI is trusted; below it
                                      # the slice routes to the nonparametric fallback. Floored at
                                      # 5 = SVI's parameter count; raise to demand more points.
+  moneyness_buckets: [-0.2, -0.1, 0.0, 0.1, 0.2]   # log-moneyness grid the regularized surface is
+                                     # projected/persisted onto (one grid cell per bucket). Strictly
+                                     # increasing + symmetric about 0.0 (the ATM forward) so the
+                                     # persisted grid is comparable across underlyings.
 
 forward:                       # parity forward-estimate confidence heuristics (ForwardConfig)
   version: "2026.05.31"

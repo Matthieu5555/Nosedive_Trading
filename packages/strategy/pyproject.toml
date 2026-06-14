@@ -1,7 +1,7 @@
 [project]
 name = "algotrading-strategy"
 version = "0.1.0"
-description = "algotrading.strategy — skeleton layer above infra. Imports infra/core only; never imported by them."
+description = "algotrading.strategy — the Strategy spine (contract + protocol + 4-context harness) above infra. Imports infra/core only; never imported by them."
 requires-python = ">=3.13"
 dependencies = [
     "algotrading-infra",

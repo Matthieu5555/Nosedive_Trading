@@ -1,6 +1,6 @@
 # frontend-scenario-rate-axis-wiring — surface the rate-shock stress axis on the BFF + front
 
-> **Front/BFF slice of [infra-scenario-rate-axis](infra-scenario-rate-axis.md).** The
+> **Front/BFF slice of [infra-scenario-rate-axis](archive/infra-scenario-rate-axis.md) (landed/archived 2026-06-14).** The
 > engine + config landed: `ScenarioConfig.rate_shocks`, a `rate` family in the scenario
 > grid (separate parallel sweep, not a 3-D spot×vol×rate cross-product — owner-ruled), and
 > the Rho attribution term now fires under a rate scenario. The parent left the **BFF/front

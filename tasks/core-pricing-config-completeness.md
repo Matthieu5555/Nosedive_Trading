@@ -1,6 +1,6 @@
 # T-pricing-config-completeness — pricing.yaml missing surface model/fallback + forward_engine (ADR-0028 gap)
 
-> **From the 2026-06-12 intent-vs-delivery audit** ([report](T-intent-vs-delivery-audit.md),
+> **From the 2026-06-12 intent-vs-delivery audit** ([report](platform-intent-vs-delivery-audit.md),
 > findings An-4 / Lane-0). **Config-completeness drift, not an active bug** — the values exist as
 > `.py` literals, so behaviour is correct today but the **economic intent has no typed config home**,
 > which is exactly the ADR-0028 ("economic inputs live in versioned config, never as scattered

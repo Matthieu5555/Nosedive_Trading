@@ -68,6 +68,8 @@ and labeled 3B-gated. Root gate green (`ruff && mypy && lint-imports && pytest`)
   accumulates in the store) even if v1 only synthesizes full fills.
 
 ## Depends on / pairs with
-[[execution-order-ticket]] (the previewed ticket booked) → **this** → [[execution-fills-position-store]]
-(ingests the fills). Sibling, separate gate: [[execution-order-sign-and-send]] (3B broker send — off
-this week). Read `tasks/TESTING.md`.
+[[execution-order-ticket]] (the previewed ticket booked, **landed**) → [[execution-fill-concretization]]
+(**blocker** — resolves the abstract grid-cell ticket into a concrete `(strike, expiry, right)` +
+paper mark; without it there is no concrete, priced fill for this task to synthesize) → **this** →
+[[execution-fills-position-store]] (ingests the fills). Sibling, separate gate:
+[[execution-order-sign-and-send]] (3B broker send — off this week). Read `tasks/TESTING.md`.

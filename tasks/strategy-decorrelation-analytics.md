@@ -5,7 +5,7 @@
 > named strategies can secretly be the same trade"). The analytic 2D deliberately does **not** do.
 
 ## The gap
-2D ([[2D-strategy-composition]]) composes and **additively aggregates** what the operator picks —
+2D ([[strategy-composition]]) composes and **additively aggregates** what the operator picks —
 "decorrelated" there is operator *intent*, and an optimiser is explicitly guarded out. So nothing
 yet **measures** whether the composed book is actually diversified. §3 names the test data: S1/S3
 share a failure mode (low realized vol) **on purpose** so the book view must prove it can see the
@@ -24,7 +24,7 @@ overlap — that proof has no home.
   out-of-scope boundary 2D's `test_no_decorrelation_optimiser` guards).
 
 ## Depends on / sequence
-- [[2D-strategy-composition]] (the composed book + combined PnL surface + per-layer breakdown) —
+- [[strategy-composition]] (the composed book + combined PnL surface + per-layer breakdown) —
   this layers diagnostics **on top of** 2D's frozen book contract; depends on it landing first.
 - The §3 strategy book (S1–S5 objects) for real test data; banked realized P&L for the realized
   correlation (vs the stressed-only view). **Post-week per §5.8** — not a this-week deliverable.

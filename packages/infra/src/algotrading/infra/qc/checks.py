@@ -33,7 +33,7 @@ from algotrading.infra.surfaces import CalendarViolation, SliceFit
 from algotrading.infra.utils import robust_zscore_vs_baseline
 
 from .errors import ContractKeyMismatchError, EmptyBaselineError
-from .inputs import CollectorContinuityInput, GridPointInput
+from .inputs import CollectorContinuityInput, GridPointInput, IvSpreadInput
 from .result import (
     SEVERITY_CRITICAL,
     SEVERITY_WARNING,
@@ -60,6 +60,7 @@ CHECK_SCENARIO_COMPLETENESS = "scenario_completeness"
 CHECK_TENOR_COVERAGE_FLOOR = "tenor_coverage_floor"
 CHECK_DELTA_BAND_COMPLETENESS = "delta_band_completeness"
 CHECK_ANOMALY = "anomaly_detection"
+CHECK_PUT_CALL_IV_SPREAD = "put_call_iv_spread"
 
 CHECK_NAMES: tuple[str, ...] = (
     CHECK_COLLECTOR_CONTINUITY,
@@ -74,6 +75,7 @@ CHECK_NAMES: tuple[str, ...] = (
     CHECK_SCENARIO_COMPLETENESS,
     CHECK_TENOR_COVERAGE_FLOOR,
     CHECK_DELTA_BAND_COMPLETENESS,
+    CHECK_PUT_CALL_IV_SPREAD,
 )
 
 # The quote-QC status (snapshots.QUOTE_STATUSES) that means a quote passed and may
@@ -781,6 +783,64 @@ def check_delta_band_completeness(
         severity=SEVERITY_CRITICAL,
         measured_value=float(len(gaps)),
         threshold_version=thresholds.version,
+        context=context,
+        run_id=run_id,
+        run_ts=run_ts,
+    )
+
+
+def check_put_call_iv_spread(
+    spreads: Sequence[IvSpreadInput],
+    underlying: str,
+    *,
+    max_abs_spread: float,
+    threshold_version: str,
+    run_id: str,
+    run_ts: datetime,
+) -> QcResult:
+    """Flag cells whose put−call IV spread blows out past the configured bound (ADR 0048).
+
+    The put and call surfaces price the same strike, so ``iv_spread = put_iv − call_iv`` is a
+    wing-vs-wing diagnostic per cell. A persistent *moderate* spread is tradable information (a
+    forward/dividend/borrow mis-estimate or a funding skew); a **blowout** is bad data that must
+    be quarantined before it reaches a strategy. This check is that quarantine gate: any cell
+    with ``|iv_spread| > max_abs_spread`` is a breach, named with its ``(tenor, delta_band)`` and
+    spread so an operator sees which wing diverged. ``max_abs_spread`` is config (the caller's
+    QC bound), never read from the data under test. Measured value is the breach count (0 on a
+    clean grid).
+    """
+    breaches = [
+        {
+            "tenor": point.tenor_label,
+            "delta_band": point.delta_band,
+            "iv_spread": point.iv_spread,
+        }
+        for point in spreads
+        if abs(point.iv_spread) > max_abs_spread
+    ]
+    status = STATUS_PASS if not breaches else STATUS_FAIL
+    context = {
+        "underlying": underlying,
+        "max_abs_spread": max_abs_spread,
+        "point_count": len(spreads),
+        "breach_count": len(breaches),
+        "breaches": breaches,
+    }
+    if status == STATUS_FAIL:
+        _log.warning(
+            "qc put_call_iv_spread fail: underlying=%s breaches=%d max_abs_spread=%g",
+            underlying,
+            len(breaches),
+            max_abs_spread,
+            extra={"underlying": underlying, "breaches": breaches},
+        )
+    return build_result(
+        check_name=CHECK_PUT_CALL_IV_SPREAD,
+        target_key=underlying,
+        status=status,
+        severity=SEVERITY_CRITICAL,
+        measured_value=float(len(breaches)),
+        threshold_version=threshold_version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,

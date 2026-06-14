@@ -39,7 +39,7 @@ Pure throughout: ``calc_ts`` and the snapshot timestamps are injected, no wall-c
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -49,7 +49,7 @@ from algotrading.core.config import (
     object_config_hash,
 )
 from algotrading.core.provenance import ProvenanceStamp, snapshot_stamp, source_ref
-from algotrading.infra.contracts import ProjectedOptionAnalytics
+from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
 from algotrading.infra.pricing import (
     PRICER_VERSION,
     UNIT_STRINGS,
@@ -516,10 +516,26 @@ def merged_config_hashes(
     return merged
 
 
+def _side_iv(slices: Sequence[SliceFit], k: float, maturity_years: float) -> float | None:
+    """A surface side's IV at ``(k, maturity)``, or ``None`` if that side has no curve there.
+
+    The combined surface (fit over both rights) is the most complete; a put- or call-only
+    surface can lack a curve at a maturity where its wing had too few points. That is a
+    labelled per-(cell, side) gap, never a guess — so a missing side curve resolves to ``None``
+    rather than raising (ADR 0048).
+    """
+    try:
+        return _iv_at(slices, k, maturity_years)
+    except ValueError:
+        return None
+
+
 def project_grid(
     slices: Sequence[SliceFit],
     market: SnapshotMarketState,
     *,
+    put_slices: Sequence[SliceFit] = (),
+    call_slices: Sequence[SliceFit] = (),
     snapshot_ts: datetime,
     source_snapshot_ts: datetime,
     calc_ts: datetime,
@@ -527,20 +543,28 @@ def project_grid(
     monetization: MonetizationConfig,
     config_hashes: Mapping[str, str],
 ) -> ProjectionResult:
-    """Project one underlying's fitted surface onto the pinned tenor × delta-band grid.
+    """Project one underlying's fitted surface(s) onto the pinned tenor × delta-band grid.
 
     The 1F entrypoint, a pure function of the snapshot's fits + market state + config. For
     each pinned tenor it regrids the smile in total-variance space (calendar-no-arb, Eq 22)
-    and, for each delta-band point, inverts the option delta to a strike against the fitted
-    IV (spot-delta convention), prices the cell with Black-76, takes the decimal Greeks as
-    source of truth and derives the dollar layer (gamma/theta flags from ``monetization``,
-    unit strings attached). A tenor beyond the fitted maturity span, or a delta target
-    outside the fitted strike span, is a labeled :class:`ProjectionGap`, never a silent
-    extrapolation or a bare NaN. The cell ordering is a pure function of the config axes
-    (tenor order, then band order), independent of the order the input slices arrive in.
+    and, for each delta-band point, inverts the option delta to a strike **against the combined
+    surface** (``slices``, spot-delta convention), prices the cell with Black-76, takes the
+    decimal Greeks as source of truth and derives the dollar layer (gamma/theta flags from
+    ``monetization``, unit strings attached). A tenor beyond the fitted maturity span, or a
+    delta target outside the fitted strike span, is a labeled :class:`ProjectionGap`, never a
+    silent extrapolation or a bare NaN.
 
-    No look-ahead: every cell uses only ``slices`` (this snapshot's fits) and ``market``
-    (this snapshot's state); the function reads no wall clock and no later observation.
+    Per-side surfaces (ADR 0048): ``put_slices``/``call_slices`` are the put-only and call-only
+    fits. When supplied, each solved cell additionally emits a ``put`` and a ``call`` row at the
+    **same** combined-solved strike, reading that side's IV at the strike — this is what makes
+    the put−call IV spread well-defined per ``(tenor, strike)``. A side with no curve at a
+    maturity is a labelled gap for that ``(cell, side)``, not a guess. With neither supplied
+    (the default) only ``combined`` rows are emitted — the legacy single-surface grid, unchanged.
+    The cell ordering is a pure function of the config axes (tenor, then band, then side),
+    independent of input slice order.
+
+    No look-ahead: every cell uses only the supplied ``slices`` (this snapshot's fits) and
+    ``market`` (this snapshot's state); the function reads no wall clock and no later observation.
     """
     full_hashes = merged_config_hashes(
         config_hashes, projection=projection, monetization=monetization
@@ -550,6 +574,14 @@ def project_grid(
     )
     span = _usable_span(slices)
     strike_span = _strike_span(slices)
+
+    # Combined first (always), then the per-side fits when supplied. Fixed order → deterministic
+    # cell ordering (tenor, band, side). The strike is solved off the combined surface only.
+    side_sets: list[tuple[str, Sequence[SliceFit]]] = [(SURFACE_SIDE_COMBINED, slices)]
+    if put_slices:
+        side_sets.append(("put", put_slices))
+    if call_slices:
+        side_sets.append(("call", call_slices))
 
     cells: list[ProjectedOptionAnalytics] = []
     gaps: list[ProjectionGap] = []
@@ -595,19 +627,30 @@ def project_grid(
                     ),
                 ))
                 continue
-            cells.append(_build_cell(
-                slices, market=market, tenor_label=tenor_label, maturity=maturity,
-                discount_factor=discount_factor, forward=forward, k=k,
-                delta_band=label, target_delta=target, monetization=monetization,
-                snapshot_ts=snapshot_ts, source_snapshot_ts=source_snapshot_ts,
-                provenance=provenance,
-            ))
+            for surface_side, side_slices in side_sets:
+                vol = _side_iv(side_slices, k, maturity)
+                if vol is None:
+                    gaps.append(ProjectionGap(
+                        underlying=market.underlying, tenor_label=tenor_label, delta_band=label,
+                        target_delta=target, reason_code="side_no_curve",
+                        detail=(
+                            f"{market.underlying} {tenor_label} {label}: the {surface_side} "
+                            "surface has no fitted curve at this maturity — labeled gap, no guess"
+                        ),
+                    ))
+                    continue
+                cells.append(_build_cell(
+                    market=market, tenor_label=tenor_label, maturity=maturity,
+                    discount_factor=discount_factor, forward=forward, k=k, vol=vol,
+                    surface_side=surface_side, delta_band=label, target_delta=target,
+                    monetization=monetization, snapshot_ts=snapshot_ts,
+                    source_snapshot_ts=source_snapshot_ts, provenance=provenance,
+                ))
 
     return ProjectionResult(cells=tuple(cells), gaps=tuple(gaps))
 
 
 def _build_cell(
-    slices: Sequence[SliceFit],
     *,
     market: SnapshotMarketState,
     tenor_label: str,
@@ -615,6 +658,8 @@ def _build_cell(
     discount_factor: float,
     forward: float,
     k: float,
+    vol: float,
+    surface_side: str,
     delta_band: str,
     target_delta: float,
     monetization: MonetizationConfig,
@@ -622,19 +667,20 @@ def _build_cell(
     source_snapshot_ts: datetime,
     provenance: ProvenanceStamp,
 ) -> ProjectedOptionAnalytics:
-    """Price one solved (tenor, delta-band) cell and emit its stamped contract.
+    """Price one solved (tenor, delta-band, surface-side) cell and emit its stamped contract.
 
-    The cell's option right follows the band label's side suffix
+    The strike ``k`` is solved once off the combined surface (the caller owns that), so every
+    surface side prices the *same* strike; ``vol`` is the IV that side's surface gives at that
+    strike (ADR 0048). The cell's option right follows the band label's side suffix
     (:func:`_option_right_for_band`): a ``…p`` band is a put, a ``…c`` band a call, and the two
     ATM pillars are the call (``atm``) and the put (``atmp``) at the one ATM-forward strike. It is
-    priced at the IV read off the surface at the solved strike — so the IV used to price equals
-    the IV the strike was solved against (no mismatch). The decimal Greeks are the engine's
+    priced at ``vol`` — so the IV used to price equals the IV the strike was solved against on the
+    combined surface, and the per-side IV is the wing's own. The decimal Greeks are the engine's
     per-unit Greeks (source of truth); the
     dollar layer is derived once via :func:`pricing.dollar_greeks` with the configured
     flags and unit strings (one dollar-Greek home, no second code path).
     """
     strike = forward * math.exp(k)
-    vol = _iv_at(slices, k, maturity)
     total_variance = vol * vol * maturity
     option_right = _option_right_for_band(delta_band, target_delta)
     state = from_forward(
@@ -679,4 +725,64 @@ def _build_cell(
         dollar_rho=monetized.dollar_rho,
         dollar_theta_unit=monetized.theta_unit,
         dollar_rho_unit=UNIT_STRINGS["dollar_rho"],
+        surface_side=surface_side,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class IvSpreadPoint:
+    """The put−call implied-vol spread at one grid cell (ADR 0048, R2 signal).
+
+    Derived from the per-side grid rows of one ``(provider, snapshot, underlying, tenor,
+    delta_band)`` cell: the put and call rows price the **same** combined-solved ``strike``, so
+    ``iv_spread = put_iv − call_iv`` is the spread *at a strike*, not across two strikes. A
+    persistent spread is a forward/dividend/borrow mis-estimate or a funding skew (tradable); a
+    blowout is bad data to quarantine — both read off this point. The combined surface stays the
+    reference; this is the wing-vs-wing diagnostic on top of it.
+    """
+
+    provider: str
+    underlying: str
+    tenor_label: str
+    delta_band: str
+    strike: float
+    put_iv: float
+    call_iv: float
+    iv_spread: float
+
+
+def put_call_iv_spread(
+    cells: Iterable[ProjectedOptionAnalytics],
+) -> tuple[IvSpreadPoint, ...]:
+    """Pair each cell's put and call rows into the put−call IV spread (ADR 0048).
+
+    Pure: groups the projected grid by cell key and emits one :class:`IvSpreadPoint` per cell
+    that carries **both** a put and a call row. Cells with only one side (a wing that had no
+    fitted curve) are skipped — there is nothing to difference. Combined rows are ignored here;
+    they remain the forward-backing / attribution reference. Output is sorted by
+    ``(underlying, tenor_label, delta_band)`` for determinism.
+    """
+    puts: dict[tuple[str, str, str, str], ProjectedOptionAnalytics] = {}
+    calls: dict[tuple[str, str, str, str], ProjectedOptionAnalytics] = {}
+    for cell in cells:
+        key = (cell.provider, cell.underlying, cell.tenor_label, cell.delta_band)
+        if cell.surface_side == "put":
+            puts[key] = cell
+        elif cell.surface_side == "call":
+            calls[key] = cell
+
+    out: list[IvSpreadPoint] = []
+    for key in puts.keys() & calls.keys():
+        put_cell, call_cell = puts[key], calls[key]
+        out.append(IvSpreadPoint(
+            provider=put_cell.provider,
+            underlying=put_cell.underlying,
+            tenor_label=put_cell.tenor_label,
+            delta_band=put_cell.delta_band,
+            strike=put_cell.strike,
+            put_iv=put_cell.implied_vol,
+            call_iv=call_cell.implied_vol,
+            iv_spread=put_cell.implied_vol - call_cell.implied_vol,
+        ))
+    out.sort(key=lambda p: (p.underlying, p.tenor_label, p.delta_band))
+    return tuple(out)

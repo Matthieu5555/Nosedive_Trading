@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.connectivity import Clock
-from algotrading.infra.contracts import ProjectedOptionAnalytics
+from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
 from algotrading.infra.storage import ParquetStore
 
 from .eod_planning import EOD_JOB_NAME, FiredIndex
@@ -376,6 +376,11 @@ def default_stages_builder(
             outputs = run.outputs
             persist_outputs(store, outputs)
             for cell in outputs.projected_analytics:
+                # Grid coverage / Δ-band completeness QC is about the combined surface — the
+                # reference grid (ADR 0048). The per-side put/call rows are an additive
+                # diagnostic; counting them would triple the coverage and skew the band span.
+                if cell.surface_side != SURFACE_SIDE_COMBINED:
+                    continue
                 grid_cells.setdefault(cell.underlying, []).append(cell)
             analytics_results.extend(
                 analytics_qc_results(

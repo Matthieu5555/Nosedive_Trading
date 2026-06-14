@@ -213,7 +213,8 @@ parity-implied rate stays the pricing-consistency rate; the external curve is th
 rate. Contract: a `rates` table (currency, pillar tenor, rate, as-of); config names the
 source per currency.
 
-**R2 — Two vol surfaces: puts and calls fitted separately.** Today one surface is fitted
+**R2 — Two vol surfaces: puts and calls fitted separately.** *(Infra core landed 2026-06-14,
+ADR 0048; BFF/front toggle pending — frontend-per-side-surfaces-toggle.)* Today one surface is fitted
 per underlying per day. Ruling: fit **three** — put-side, call-side, and the combined
 reference surface — and carry `surface_side ∈ {put, call, combined}` through the surface
 contract, projection, BFF, and front (side toggle on the 3D surface and smiles). Why this
@@ -394,7 +395,9 @@ Each row is roughly one spec.
 5. **Rates curves (R1):** Euribor/€STR + SOFR ingestion, as-of table, Rho rework, the
    implied-vs-riskfree spread QC. ADR + blueprint amendment.
 6. **Per-side surfaces (R2):** put/call/combined fit + `surface_side` through contract →
-   BFF → front; put−call spread QC + signal. ADR + blueprint amendment.
+   BFF → front; put−call spread QC + signal. **Infra core landed 2026-06-14 (ADR 0048):**
+   per-side fit, `surface_side` in the grid PK (combined = the legacy surface), put−call IV
+   spread signal + QC. Remaining: the BFF/front `surface_side` toggle (frontend-per-side-surfaces-toggle).
 7. **Signal layer:** implied correlation (R3), IV rank/percentile per name, realized-vs-
    implied spread, term slope — persisted daily, the strategy entry inputs (§1's chain).
 8. **Backtester:** research first, production shadow second (§5.7); S2 on banked history

@@ -27,7 +27,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 
-from algotrading.infra.contracts import Basket, BasketLeg, ProjectedOptionAnalytics
+from algotrading.infra.contracts import (
+    SURFACE_SIDE_COMBINED,
+    Basket,
+    BasketLeg,
+    ProjectedOptionAnalytics,
+)
 from algotrading.infra.pricing import UNIT_STRINGS
 
 # The five dollar-Greek names, in display order. delta/gamma/vega are always present on a
@@ -142,6 +147,12 @@ def _index_rows_by_cell(
     by_cell: dict[CellKey, ProjectedOptionAnalytics] = {}
     ambiguous: set[CellKey] = set()
     for row in rows:
+        # A basket sums the combined surface — the forward-backing / attribution reference
+        # (ADR 0048). The per-side put/call rows are an additive diagnostic, not part of the
+        # book sum; skip them so the basket number is the combined book and the cross-provider
+        # ambiguity check is not confused by a cell's three surface sides.
+        if row.surface_side != SURFACE_SIDE_COMBINED:
+            continue
         key = analytics_cell_key(row.underlying, row.tenor_label, row.delta_band)
         if key in by_cell and by_cell[key].provider != row.provider:
             ambiguous.add(key)

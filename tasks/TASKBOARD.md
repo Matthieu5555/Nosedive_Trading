@@ -29,6 +29,7 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | claude (matthieu) | core-fleet integration → `main`: `packages/{execution,strategy}`, `apps/frontend` (attribution + booking + orders-reconcile), `infra/universe`, IBKR top-N capture; 8 specs archived | 2026-06-14 | done — booking chain + strategy spine + attribution view landed, gate green |
+| claude (matthieu) | [infra-per-side-surfaces](archive/infra-per-side-surfaces.md) (R2 infra core) — branch `infra-per-side-surfaces`: `infra/{surfaces,contracts,risk,qc,actor,orchestration}`, `execution/concretization`, `apps/frontend` BFF grid readers (combined-default), ADR 0048, goldens | 2026-06-14 | done — `surface_side` ∈ {put,call,combined} in grid PK; combined byte-identical; put−call IV spread signal+QC; gate green (1924 passed). Front toggle → frontend-per-side-surfaces-toggle |
 | Claude (vincent) | [T-front-currency-and-bands](T-front-currency-and-bands.md) — front display wiring (`api.ts`, `DollarGreeks.tsx`, `MaturityAccordion`, `format.ts`) + un-hardcode `BasketLegGrid` band list | 2026-06-13 | backend `/api/indices` currency single-source already landed; front half remains |
 | Claude (anthony) | Basket/Risk tab operator-flow fixes — `routers/basket.py` (empty `trade_date` → latest banked day), web `pages/Basket.tsx`, `pages/RiskScenarios.tsx` | 2026-06-12 | drop the duplicated stress composer from the Risk tab; on-demand stress lives on Basket |
 
@@ -63,13 +64,14 @@ planning pass.**
 - ★ [core-config-effective-dating](core-config-effective-dating.md) (§0/ADR 0028 — the unbuilt as-of/effective-dated half of config; a real look-ahead hole — replay of an old `as_of` silently resolves *today's* config)
 
 **`infra-` — analytics / risk / surface / storage compute**
-- [infra-rates-curve-ingest](infra-rates-curve-ingest.md) (R1) · [infra-per-side-surfaces](infra-per-side-surfaces.md) (R2 — put/call/combined fit) · [infra-mirror-greeks-putcall](infra-mirror-greeks-putcall.md) (greeks-only; *not* the per-side fit)
+- [infra-rates-curve-ingest](infra-rates-curve-ingest.md) (R1) · [infra-mirror-greeks-putcall](infra-mirror-greeks-putcall.md) (greeks-only; *not* the per-side fit)
 - [infra-signal-layer](infra-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope; consumes [ibkr-constituent-option-capture](archive/ibkr-constituent-option-capture.md), **landed**) · [infra-rt-vega](infra-rt-vega.md) (#5)
 - [infra-strike-window-pct-clip](infra-strike-window-pct-clip.md) (latent mine — labelling + delivery test) · [infra-daily-bar-compaction](infra-daily-bar-compaction.md) (971k one-row `daily_bar` files)
 - ★ [infra-named-scenarios-and-corr-shock](infra-named-scenarios-and-corr-shock.md) (§5.4 — named historical stress 2008/COVID + correlation-shock axis; reuses the 2B grid + landed rate-axis pattern)
 - ★ [infra-tail-risk-var-es](infra-tail-risk-var-es.md) (§5.9 — VaR/ES off the full-reprice distribution + liquidity/concentration; **post-week**, substrate built) · ★ [infra-residual-diagnosis](infra-residual-diagnosis.md) (§7 #10 — regress the attribution residual against unmodeled exposures; **deferred**, gated behind booking + banked realized P&L)
 
 > **Landed & archived (2026-06-14, infra-coverage audit):** [infra-pnl-attribution](archive/infra-pnl-attribution.md) (2C by-Greek attribution), [infra-second-order-greeks](archive/infra-second-order-greeks.md) (Vanna/Volga/Charm + Rho/Vanna/Volga + realized day-over-day — compute landed), [infra-scenario-rate-axis](archive/infra-scenario-rate-axis.md) (rate-shock engine+config landed). The front remainders live in [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) and [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md).
+> **R2 per-side surfaces (2026-06-14):** [infra-per-side-surfaces](archive/infra-per-side-surfaces.md) **infra core landed** (ADR 0048 — per-side fit, `surface_side` grid PK, put−call IV spread signal + QC). Front remainder: [frontend-per-side-surfaces-toggle](frontend-per-side-surfaces-toggle.md).
 
 **`ibkr-` — IBKR capture lane & connectivity**
 - [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
@@ -92,6 +94,7 @@ planning pass.**
 - [frontend-page1-cdc-buildout](frontend-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards) · [frontend-sigfig-scientific-display](frontend-sigfig-scientific-display.md) (#6)
 - [frontend-capture-coverage-panel](frontend-capture-coverage-panel.md) (capture-quality table; BFF + `CoverageTable` landed **and the panel drop is mounted** at `Market.tsx:172` — only the phase-2 quote-completeness add remains)
 - ★ [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) (step 3 of infra-second-order-greeks; after 3A + sigfig) · ★ [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md) (BFF/front slice of infra-scenario-rate-axis)
+- ★ [frontend-per-side-surfaces-toggle](frontend-per-side-surfaces-toggle.md) (R2 front half — put/call/combined toggle on the 3D surface + smiles, put−call IV-spread view; infra core landed ADR 0048)
 - ✓ **Landed 2026-06-14 (core-fleet):** [frontend-attribution-view](archive/frontend-attribution-view.md) (§7 #2 — BFF router + attribution waterfall over `ScenarioAttribution`, wired on Basket) · [frontend-orders-booking-reconcile](archive/frontend-orders-booking-reconcile.md) (§7 #1 coherence — dead `Orders.tsx` retired, `/orders` redirects to the one booking home on Basket)
 
 **`platform-` — CI/CD, deploy, security, ops & audits (cross-cutting; not a package)**

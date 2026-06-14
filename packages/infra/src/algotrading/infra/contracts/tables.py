@@ -268,6 +268,13 @@ class IndexConstituent:
     weight: float | None = None
 
 
+# Which fitted vol surface a grid cell's IV was read from (ADR 0048, R2). ``combined`` is the
+# legacy single surface (fit over both rights) and the forward-backing / attribution reference;
+# ``put``/``call`` are the per-side fits used by the put−call IV spread and wing-aware strategies.
+SURFACE_SIDES = ("put", "call", "combined")
+SURFACE_SIDE_COMBINED = "combined"
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectedOptionAnalytics:
     """One cell of the pinned tenor × delta-band analytics grid (WS 1F).
@@ -329,6 +336,18 @@ class ProjectedOptionAnalytics:
     dollar_rho: float | None = None
     dollar_theta_unit: str | None = None
     dollar_rho_unit: str | None = None
+    # Which fitted surface supplied this cell's IV (ADR 0048). Part of the primary key. Defaults
+    # to ``combined`` so every pre-per-side row and fixture reads back as the legacy single
+    # surface unchanged; ``put``/``call`` rows are additive, emitted only where the per-side fits
+    # are supplied.
+    surface_side: str = SURFACE_SIDE_COMBINED
+
+    def __post_init__(self) -> None:
+        if self.surface_side not in SURFACE_SIDES:
+            raise ContractValidationError(
+                "projected_option_analytics", "surface_side", self.surface_side,
+                f"must be one of {SURFACE_SIDES}",
+            )
 
 
 @dataclass(frozen=True, slots=True)

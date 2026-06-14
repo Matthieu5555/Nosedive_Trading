@@ -1,8 +1,18 @@
 # T-per-side-surfaces (R2) — fit put/call/combined surfaces; carry surface_side; put−call spread QC
 
+> **STATUS: infra core LANDED 2026-06-14** (branch `infra-per-side-surfaces`, ADR
+> [0048](../../.agent/decisions/0048-per-side-vol-surfaces.md)). Delivered: per-side fit
+> (put/call/combined) in the actor; `surface_side` in the `ProjectedOptionAnalytics` grid PK
+> (combined byte-identical to the legacy single surface); `put_call_iv_spread` signal +
+> `check_put_call_iv_spread` QC; every combined-only consumer (basket risk, booking, grid QC,
+> CDC view) filters to combined; goldens regenerated; full gate green (1924 passed).
+> **The front/BFF `surface_side` toggle + per-side SVI-param persistence are the remaining
+> half → [frontend-per-side-surfaces-toggle](../frontend-per-side-surfaces-toggle.md).**
+>
 > **Source:** TARGET §4 ruling **R2** + §7.6 + §5.3; course transcript req #1 (IV per option,
-> never mutualised). **Needs an ADR + blueprint amendment before build** (R2 changes the surface
-> contract, ADR 0011).
+> never mutualised). The R2 contract change is recorded as ADR 0048 (the "blueprint amendment" in
+> the original spec is moot — `documentation/` is the dead tree; TARGET §4 + ADR 0048 are the
+> authority).
 
 ## The gap
 Today **one** surface is fitted per underlying per day (parity → one IV per strike). The course

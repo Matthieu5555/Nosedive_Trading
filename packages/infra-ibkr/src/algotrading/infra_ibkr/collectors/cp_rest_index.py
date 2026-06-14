@@ -156,3 +156,44 @@ def resolve_index(transport: SupportsRestGet, *, symbol: str, exchange: str) -> 
     )
     conid = parse_index_conid(results, symbol=symbol, exchange=exchange)
     return ResolvedIndex(conid=conid, option_months=parse_option_months(results, symbol=symbol))
+
+
+def parse_option_months_by_conid(results: object, *, conid: int) -> tuple[str, ...]:
+    """The option-chain months for the row whose ``conid`` matches — a conid-keyed sibling.
+
+    :func:`parse_option_months` matches a row by *symbol*, which a pinned constituent cannot use
+    (the pin exists precisely because the bare ticker resolves ambiguously). When the underlying is
+    already pinned to a unique conid, the month list must be read from the row that *is* that conid,
+    not the row that shares a (shared) ticker. Same ``OPT``-section parsing, keyed on the conid;
+    ``()`` when the conid lists no option section.
+    """
+    for row in parse_secdef_search_rows(results):
+        if row.conid != conid:
+            continue
+        for section in row.sections:
+            if section.sec_type.upper() != "OPT":
+                continue
+            seen: list[str] = []
+            for token in section.months.replace(",", ";").split(";"):
+                month = token.strip()
+                if month and month not in seen:
+                    seen.append(month)
+            return tuple(seen)
+    return ()
+
+
+def option_months_for_conid(transport: SupportsRestGet, *, conid: int) -> tuple[str, ...]:
+    """The option-chain months a *known-conid* underlying lists, via one conid-keyed secdef search.
+
+    The constituent lane resolves an equity conid up front (a verified pin, or
+    :meth:`CpRestDiscovery.underlying_conid`), so it does not need to *re-resolve* the conid the
+    way :func:`resolve_index` does — it only needs the listed option months to drive discovery.
+    This fires one ``/secdef/search`` keyed by the **conid** (the unambiguous identifier, so a
+    pinned constituent whose bare ticker resolves to two listings still reads the right months) and
+    reads the ``OPT`` section's months from the row that is that conid
+    (:func:`parse_option_months_by_conid`). An underlying with no option section yields ``()`` (a
+    name with no listed options — the caller degrades to a clean per-name no-capture, never a
+    crash). The conid is *not* re-derived here; the caller already holds the verified one.
+    """
+    results = transport.get("/iserver/secdef/search", params={"conid": conid})
+    return parse_option_months_by_conid(results, conid=conid)

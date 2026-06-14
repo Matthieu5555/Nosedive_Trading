@@ -157,13 +157,13 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "393e9812259791ec3660009c9579c8f1176ebc1901c9b40db287801dd2d7268d"
+        "f5644a4e2ca3bf9598d7d4332d652b03a04f61d4205fd6f90e251e9cd9e94e0e"
     )
     assert config_hashes(config) == {
         "pricing": "99dc3752841c3003c4ea427dc3b823c9a607af74603d46b81faa8dcd73ae096d",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
-        "universe": "881ef3c654d42f39b3f20f211cd0352bdd1bb51037e9c1d54bfdf3e931a74959",
+        "universe": "a557c26b5d97d8a077c02406e3ec4ce783fcb0fc20c7e9956e771d875087ce97",
     }
 
 

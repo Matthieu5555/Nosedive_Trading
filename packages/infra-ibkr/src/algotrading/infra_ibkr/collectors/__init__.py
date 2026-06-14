@@ -10,7 +10,13 @@ same observation (ADR 0024's equivalence bar).
 """
 
 from .cp_rest_adapter import CpInstrument, CpRestMarketDataAdapter
-from .cp_rest_close_capture import CloseCaptureError, collect_live_basket
+from .cp_rest_close_capture import (
+    CaptureTarget,
+    CloseCaptureError,
+    collect_live_basket,
+    collect_target_basket,
+)
+from .cp_rest_constituent_capture import collect_index_and_constituents_basket
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
 from .cp_rest_history import (
     BackfillResult,
@@ -57,6 +63,9 @@ __all__ = [
     "ResolvedIndex",
     "IndexConidError",
     "collect_live_basket",
+    "collect_target_basket",
+    "CaptureTarget",
+    "collect_index_and_constituents_basket",
     "CloseCaptureError",
     # Historical OHLC backfill (ADR 0031)
     "CpRestHistoryCollector",

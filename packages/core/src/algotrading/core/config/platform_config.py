@@ -237,6 +237,15 @@ class UniverseConfig(_ConfigModel):
     strike_selection: StrikeSelectionConfig = Field(
         default_factory=lambda: StrikeSelectionConfig(version="strike-selection-default")
     )
+    # How many of an index's constituents the capture widens its option-chain scope to —
+    # the point-in-time top-N *by index weight* (T-constituent-option-capture, TARGET §0/§7.4).
+    # Economic: it decides which constituent names land option chains/surfaces each close, so it
+    # changes which records exist and folds into config_hashes["universe"]. The course value is
+    # top-10, the theory value top-50 (the dispersion-book sizing). The default is for in-memory/
+    # test construction; the YAML carries the operative value. Must be >= 1 — a zero would mean
+    # "capture no constituents", which is the index-only lane, expressed by not running the
+    # constituent capture at all, never by a 0 here.
+    constituent_top_n: int = Field(default=10, ge=1)
 
     @model_validator(mode="after")
     def _check_tenor_grid_and_freeze_indices(self) -> UniverseConfig:

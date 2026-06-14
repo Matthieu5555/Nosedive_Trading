@@ -112,16 +112,34 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
 - `collectors/cp_rest_index.py` — `resolve_index` / `resolve_index_conid`: resolve an index's
   conid (and its listed option months) from its symbol via `GET /iserver/secdef/search`
   (`secType=IND`, matched to the routing exchange CBOE/EUREX). The live path resolves the conid
-  itself, so the registry's `conid: 0` placeholder is **unused** on the live path
-  (`test_cp_rest_index.py`).
-- `collectors/cp_rest_close_capture.py` — `collect_live_basket`: the capture **orchestration**.
-  Resolve conid → snapshot the index spot → discover + `plan_chain` the option chain → cap with
+  itself, so the registry's `conid: 0` placeholder is **unused** on the live path. The sibling
+  `option_months_for_conid` reads the listed option months for an *already-resolved* underlying
+  conid (a pinned constituent, or one resolved by a `STK` search) by a **conid-keyed** search, so
+  a pinned ambiguous ticker still reads the right months (`test_cp_rest_index.py`).
+- `collectors/cp_rest_close_capture.py` — `collect_target_basket` (the underlying-generic capture
+  body) + `collect_live_basket` (the index wrapper) + the `CaptureTarget` descriptor. The capture
+  **orchestration**, factored over a small `CaptureTarget` (symbol / search-symbol / exchange /
+  currency / sec-type / conid) so the index lane and the constituent lane share it byte-for-byte:
+  resolve conid → snapshot spot → discover + `plan_chain` the option chain → cap with
   `select_capture_keys` → snapshot the selected contracts at the close → assemble the
   `IndexBasket` `run_analytics` consumes. Every event is stamped at the index's own
   `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
   (`test_cp_rest_close_capture.py`). The economic 30Δ delta-band selection runs downstream in the
   analytics over the captured set. The snapshot mechanics live in `cp_rest_snapshot.py` (above);
   the window policy lives in `cp_rest_chain_window.py` (below).
+- `collectors/cp_rest_constituent_capture.py` — `collect_index_and_constituents_basket`: widens
+  the close capture to the index's **point-in-time top-N constituents by index weight** (the S1
+  dispersion / implied-correlation input, TARGET §7.4). It captures the index leg (the spine), then
+  resolves the top-N by weight (`UniverseConfig.constituent_top_n`, from 1A membership — never a
+  hand-set list), resolves each constituent's equity conid (verified `constituent_conids` pins
+  first, then a `STK` search — the OHLC-backfill pattern), and captures each constituent's chain
+  over the *same* grid / close instant via `collect_target_basket`, merging all underlyings into
+  one `IndexBasket`. A constituent that lists no options or fails to resolve is logged and
+  **skipped** — one bad name never aborts the fire. The analytics engine is already
+  underlying-generic, so this is a *capture-scope* widening with no engine change. The membership
+  **top-N seam** is currently a local stand-in (`_top_n_by_weight`) pending the parallel
+  `infra-sx5e-weighted-membership` resolver — see the WIRING note in the module
+  (`test_cp_rest_constituent_capture.py`).
 - `collectors/cp_rest_chain_window.py` — the discovery-window policy: `MMMYY` month-token
   parsing/bracketing (tenor-targeted discovery reaching the 2y/3y long end) and the
   **delta-driven, tenor-aware strike qualification** (T-delta-window): per expiry it qualifies
@@ -134,9 +152,13 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
 - `live_capture.py` — `live_basket_source`: the explicit, logged live-vs-empty selection. A
   credentialed environment acquires an LST, builds the OAuth-signed transport, opens the
   brokerage session, and returns a `collect_live`-backed `BasketSource`; a non-credentialed one
-  returns `None` so the runner falls back to its empty no-capture source (clean exit 0). The
+  returns `None` so the runner falls back to its empty no-capture source (clean exit 0). When a
+  `store` is passed (the production shim threads the runner's store) the bound source captures the
+  **index + its top-N constituents** (`collect_index_and_constituents_basket`, reading the as-of
+  membership from the store); with no store it captures the index only (the prior behaviour). The
   full path (auth-from-env → conid → capture → persisted grid) and the fallback are pinned in
-  `test_live_capture_spine.py`.
+  `test_live_capture_spine.py`; the store-wired constituent routing in
+  `test_cp_rest_constituent_capture.py`.
 - `live_capture.py` — `gateway_basket_source`: the **local CP Gateway** counterpart for when the
   Self-Service OAuth portal will not enrol (the "Enable OAuth Access → 400 not authenticated"
   wall). Keyed on the `IBKR_CP_GATEWAY` opt-in flag (not the `IBKR_CP_*` artifacts): it builds +

@@ -30,7 +30,7 @@ Usage:
 
 from __future__ import annotations
 
-from algotrading.core.paths import load_env_file
+from algotrading.core.paths import data_root, load_env_file
 from algotrading.infra.observability import configure_logging
 from algotrading.infra.orchestration.eod_runner import (
     BasketSource,
@@ -38,10 +38,11 @@ from algotrading.infra.orchestration.eod_runner import (
     build_default_deps,
     main,
 )
+from algotrading.infra.storage import ParquetStore
 from algotrading.infra_ibkr.live_capture import gateway_basket_source, live_basket_source
 
 
-def _select_basket_source() -> BasketSource | None:
+def _select_basket_source(store: ParquetStore) -> BasketSource | None:
     """Pick the 1C close-capture source: local Gateway first, then hosted OAuth, then empty.
 
     Two live CP REST authentications exist (`packages/infra-ibkr/README.md`). The operator opts
@@ -51,17 +52,25 @@ def _select_basket_source() -> BasketSource | None:
     ``live_basket_source()`` returns the **hosted OAuth** source when the ``IBKR_CP_*`` artifacts
     are present, else ``None``. Both ``None`` leaves the runner on its empty no-capture default (a
     clean exit-0 day).
+
+    ``store`` is threaded into the source so the capture widens to the index's point-in-time top-N
+    constituents' option chains (T-§7.4, the S1 dispersion input): the source reads the as-of
+    membership weights from it. It is the same store the runner persists into (the canonical
+    ``data_root``), so the membership the source reads is the membership the platform banked.
     """
-    return gateway_basket_source() or live_basket_source()
+    return gateway_basket_source(store=store) or live_basket_source(store=store)
 
 
 def _deps_factory() -> RunnerDeps:
     """Build the production deps with the selected live IBKR basket source (or the empty default).
 
     ``build_default_deps(basket_source=...)`` threads whichever source :func:`_select_basket_source`
-    picks into the stage wiring; ``None`` leaves the runner on its empty no-capture default.
+    picks into the stage wiring; ``None`` leaves the runner on its empty no-capture default. The
+    source and the runner share one canonical-``data_root`` store so the constituent capture reads
+    the membership the platform actually banked.
     """
-    return build_default_deps(basket_source=_select_basket_source())
+    store = ParquetStore(data_root())
+    return build_default_deps(basket_source=_select_basket_source(store))
 
 
 if __name__ == "__main__":

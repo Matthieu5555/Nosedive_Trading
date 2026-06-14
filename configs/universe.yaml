@@ -51,6 +51,14 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 # / C7). Set to the theory's top-50 (the SX5E carries 50 names); the course's top-10 is the model
 # default and the smaller live sub-basket a caller can ask for explicitly. Must be >= 1.
 dispersion_top_n: 50
+# How many of an enabled index's constituents the option-chain capture widens to — the
+# point-in-time top-N BY INDEX WEIGHT (ibkr-constituent-option-capture, ADR 0045; TARGET §0/§7.4;
+# the S1 dispersion book input). Economic: it decides which constituent names land option chains /
+# surfaces / Greeks each close, so it changes which records exist and travels inside
+# config_hashes["universe"]. Course value is top-10; the theory/dispersion sizing is top-50.
+# The top-N is resolved point-in-time from 1A membership weights (never a hand-set list) and
+# rejects a basket with missing weights — you cannot rank what you do not know.
+constituent_top_n: 10
 
 # Index registry (ADR 0035): which indices the platform tracks. Keyed by index symbol —
 # the same `index` key 1A membership, 1C capture, 1G cron, and the 1I picker consume.

@@ -31,9 +31,11 @@ import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.orchestration.eod_runner import FiredIndex
+from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
+from .collectors.cp_rest_constituent_capture import collect_index_and_constituents_basket
 from .connectivity.cp_rest_transport import SupportsRestGet
 from .session_factory import (
     build_credentialed_session,
@@ -56,16 +58,23 @@ def live_basket_source(
     config: PlatformConfig | None = None,
     selection: ChainSelection | None = None,
     now: Callable[[], date] | None = None,
+    store: ParquetStore | None = None,
 ) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     """Build the credentialed live ``BasketSource``, or ``None`` when not configured.
 
     The production live-vs-empty selection, in one place and logged. When the environment carries
     every required IBKR CP OAuth artifact (:func:`credentials_present`), this acquires a Live
     Session Token, builds the OAuth-signed CP REST transport, opens + waits for the brokerage
-    session, and returns a ``(FiredIndex, trade_date) -> IndexBasket | None`` source that captures
-    each fired index's EOD close basket (:func:`collect_live_basket`). When the environment is not
-    credentialed it returns ``None`` — the caller falls back to the runner's empty no-capture
-    source, so the gate and any non-secret runner stay green.
+    session, and returns a ``(FiredIndex, trade_date) -> IndexBasket | None`` source. When the
+    environment is not credentialed it returns ``None`` — the caller falls back to the runner's
+    empty no-capture source, so the gate and any non-secret runner stay green.
+
+    **Constituent scope (T-§7.4, S1 dispersion).** When ``store`` is given, the bound source
+    captures each fired index *and* its point-in-time top-N constituents' option chains
+    (:func:`collect_index_and_constituents_basket`, reading the as-of membership from ``store``) —
+    the widened scope the dispersion / implied-correlation books need. When ``store`` is ``None``
+    it captures the index only (:func:`collect_live_basket`), the prior behaviour. The production
+    shim passes the runner's store; an index-only caller (or a test) omits it.
 
     **No look-ahead.** The CP REST path is a *snapshot of current quotes*; it cannot reconstruct a
     past session's chain (CP REST has no historical option-quote endpoint). So the bound source
@@ -107,6 +116,16 @@ def live_basket_source(
                 "(no look-ahead) — option capture skipped, use the /history OHLC backfill",
             )
             return None
+        if store is not None:
+            return collect_index_and_constituents_basket(
+                transport,
+                store=store,
+                index=fired.entry,
+                as_of=fired.as_of,
+                next_open=fired.next_open,
+                config=resolved_config,
+                selection=selection,
+            )
         return collect_live_basket(
             transport,
             index=fired.entry,
@@ -116,7 +135,11 @@ def live_basket_source(
             selection=selection,
         )
 
-    _LOGGER.info("ibkr.live_capture.credentialed", reason="collect_live basket source bound")
+    _LOGGER.info(
+        "ibkr.live_capture.credentialed",
+        reason="basket source bound",
+        scope="index+constituents" if store is not None else "index-only",
+    )
     return source
 
 
@@ -127,6 +150,7 @@ def gateway_basket_source(
     config: PlatformConfig | None = None,
     selection: ChainSelection | None = None,
     now: Callable[[], date] | None = None,
+    store: ParquetStore | None = None,
 ) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     """Build the live ``BasketSource`` over the local CP Gateway, or ``None`` when not requested.
 
@@ -154,7 +178,12 @@ def gateway_basket_source(
         transport, _session = build_gateway_session(resolved_env)
     _LOGGER.info("ibkr.live_capture.gateway_requested", reason="local CP Gateway capture path")
     return live_basket_source(
-        env=resolved_env, transport=transport, config=config, selection=selection, now=now
+        env=resolved_env,
+        transport=transport,
+        config=config,
+        selection=selection,
+        now=now,
+        store=store,
     )
 
 

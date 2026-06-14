@@ -4,8 +4,8 @@ This is the seam WS 3A deliberately deferred (its ``# 3B:`` marker) and
 [[execution-booking-commit]] (TARGET §7 #1) assumes is already done: the transform from
 **grid-cell space** — a :class:`~algotrading.infra.orders.TicketLeg` naming
 ``(underlying, tenor_label, delta_band)`` — into **concrete space**, a real
-``(strike, expiry, right)`` contract carrying a price. It is ruled by
-[ADR 0043](../../../../../.agent/decisions/0043-fills-are-concrete-contracts-resolved-at-booking.md):
+``(strike, expiry, right)`` contract carrying a price. It is ruled by ADR 0043
+(``.agent/decisions/0043-fills-are-concrete-contracts-resolved-at-booking.md``):
 *a booked fill is a concrete contract, resolved at booking time*.
 
 Design (per ADR 0043 and the task spec):

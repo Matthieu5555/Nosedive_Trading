@@ -50,6 +50,9 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0036** — $-Greek units + monetization conventions (raw is truth, dollar is derived).
 - **0038** — By-Greek PnL attribution (`ScenarioAttribution`) — transcript §7.
 
+## Execution & booking
+- **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*
+
 ## Frontend
 - **0030** — Visualization/UI stack: Plotly.js charts; shadcn/ui + TanStack Table.
 

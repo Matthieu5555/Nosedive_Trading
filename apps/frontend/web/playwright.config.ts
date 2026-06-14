@@ -16,7 +16,10 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 5173;
+// Port is env-overridable so the suite can run alongside another worktree's dev server on this
+// shared host (each agent/worktree may hold its own Vite on the default 5173); E2E_PORT picks a
+// free one without disturbing them. Defaults to Vite's 5173 for the ordinary single-tree run.
+const PORT = Number(process.env.E2E_PORT) || 5173;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
@@ -31,7 +34,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev",
+    command: `npm run dev -- --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

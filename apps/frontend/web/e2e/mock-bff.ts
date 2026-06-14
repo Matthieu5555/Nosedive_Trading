@@ -48,6 +48,26 @@ const COVERAGE_AAA: CoverageData = {
   delta_band_status: "pass",
 };
 
+// The order-ticket preview the Basket booking home posts to (POST /api/ticket/preview). It comes
+// back gated (transmit:false), so the "Sign & send" affordance must stay disabled — the e2e
+// asserts that. Two option legs, long->BUY mapped, magnitude quantities.
+const TICKET_AAA = {
+  source_basket_id: "basket-SPX-latest",
+  trade_date: "",
+  underlying: "SPX",
+  target_broker: "ibkr",
+  time_in_force: "day",
+  mode: "paper",
+  legs: [
+    { instrument_kind: "option", underlying: "SPX", side: "buy", quantity: 1,
+      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atm" },
+    { instrument_kind: "option", underlying: "SPX", side: "buy", quantity: 1,
+      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atmp" },
+  ],
+  n_legs: 2,
+  gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },
+};
+
 // Pathname → default response body. Query strings are ignored (the page sends ?index=, etc.);
 // method is not branched because no two live endpoints share a pathname across GET/POST.
 const ROUTES: Record<string, unknown> = {
@@ -63,6 +83,7 @@ const ROUTES: Record<string, unknown> = {
   "/api/risk/portfolios": PORTFOLIOS_ONE,
   "/api/risk/scenarios": SCENARIOS_EMPTY,
   "/api/basket/risk": BASKET_RISK_AAA,
+  "/api/ticket/preview": TICKET_AAA,
 };
 
 export interface BffMock {

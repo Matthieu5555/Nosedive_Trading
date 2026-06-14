@@ -11,11 +11,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { expectNoCollisions, expectNoHorizontalOverflow, expectWithinViewport } from "./helpers";
 import { mockBff } from "./mock-bff";
 
+// Orders is retired (frontend-orders-booking-reconcile, ruling (b)) — the booking surface is the
+// ticket panel on Basket, so the Basket route covers the booking home's collision/overflow check.
 const ROUTES = [
   { name: "Market", path: "/", heading: "Market" },
   { name: "Basket", path: "/basket", heading: "Basket Builder" },
   { name: "Risk Scenarios", path: "/risk", heading: "Risk Scenarios" },
-  { name: "Orders", path: "/orders", heading: "Orders" },
 ] as const;
 
 const VIEWPORTS = [

@@ -7,23 +7,27 @@ import { collectPageErrors } from "./helpers";
 import { mockBff } from "./mock-bff";
 
 // Each nav button, the page heading it should land on, and the URL path it should produce.
+// The Orders sketch tab is retired (frontend-orders-booking-reconcile, ruling (b)): the booking
+// chain lives only on Basket, so there is no Orders nav button. The legacy /orders path still
+// redirects to /basket — covered by its own test below.
 const TABS = [
   { button: "Market", heading: "Market", path: "/" },
   { button: "Basket", heading: "Basket Builder", path: "/basket" },
   { button: "Risk Scenarios", heading: "Risk Scenarios", path: "/risk" },
-  { button: "Orders", heading: "Orders", path: "/orders" },
 ] as const;
 
 test.beforeEach(async ({ page }) => {
   await mockBff(page);
 });
 
-test("the four nav buttons are present and Market is active on load", async ({ page }) => {
+test("the nav buttons are present and Market is active on load", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
   for (const tab of TABS) {
     await expect(nav.getByRole("link", { name: tab.button })).toBeVisible();
   }
+  // The retired Orders sketch has no nav button — never a dead link.
+  await expect(nav.getByRole("link", { name: "Orders" })).toHaveCount(0);
   // react-router's NavLink sets aria-current="page" on the active link.
   await expect(nav.getByRole("link", { name: "Market" })).toHaveAttribute("aria-current", "page");
 });
@@ -58,4 +62,10 @@ test("/market legacy path redirects to /", async ({ page }) => {
   await page.goto("/market");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
+});
+
+test("/orders legacy path redirects to the Basket booking home (retired sketch)", async ({ page }) => {
+  await page.goto("/orders");
+  await expect(page).toHaveURL(/\/basket$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
 });

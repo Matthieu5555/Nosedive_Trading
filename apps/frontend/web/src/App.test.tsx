@@ -20,19 +20,36 @@ afterEach(() => {
   window.history.pushState({}, "", "/");
 });
 
-test("top navigation reaches Market, Risk Scenarios, and Orders", async () => {
+test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
   const user = userEvent.setup();
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
 
+  await user.click(screen.getByRole("link", { name: "Basket" }));
+  expect(await screen.findByRole("heading", { name: "Basket Builder" })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/basket"));
+
   await user.click(screen.getByRole("link", { name: "Risk Scenarios" }));
   expect(await screen.findByRole("heading", { name: "Risk Scenarios" })).toBeInTheDocument();
   await waitFor(() => expect(window.location.pathname).toBe("/risk"));
+});
 
-  await user.click(screen.getByRole("link", { name: "Orders" }));
-  expect(await screen.findByRole("heading", { name: "Orders" })).toBeInTheDocument();
-  expect(window.location.pathname).toBe("/orders");
+// The Orders sketch is retired (frontend-orders-booking-reconcile, ruling (b)): no nav button,
+// and the legacy /orders path redirects to the real booking home on Basket — never a dead link.
+test("there is no Orders nav button — the booking chain lives only on Basket", () => {
+  render(<App />);
+
+  expect(screen.queryByRole("link", { name: "Orders" })).not.toBeInTheDocument();
+});
+
+test("the retired /orders path redirects to the Basket booking home", async () => {
+  window.history.pushState({}, "", "/orders");
+  render(<App />);
+
+  // The old route lands on the real booking surface (Basket), not a 404 or a dead sketch.
+  expect(await screen.findByRole("heading", { name: "Basket Builder" })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/basket"));
 });
 
 test("risk scenarios is directly addressable", async () => {

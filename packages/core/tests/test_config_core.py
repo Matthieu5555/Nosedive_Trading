@@ -646,6 +646,85 @@ def test_load_platform_config_loads_the_shipped_bundles() -> None:
     assert isinstance(config_hash(config), str)
 
 
+# -- as-of / effective-dated config resolution (core-config-effective-dating, ADR 0028) -
+
+# A bundle dates itself with a top-level `effective_from:` beside its section blocks. The
+# loader pops it (the section models forbid an unknown key) and uses it only to guard a
+# replay against look-ahead. Dating pricing.yaml exercises the multi-section file; dating
+# universe.yaml exercises the whole-file (`subkey is None`) section.
+_DATED_PRICING = "effective_from: 2026-01-01\n" + _BUNDLES["pricing.yaml"]
+_DATED_UNIVERSE = "effective_from: 2026-01-01\n" + _BUNDLES["universe.yaml"]
+
+
+def test_load_platform_config_resolves_a_bundle_in_force_on_the_as_of(tmp_path) -> None:
+    # A replay whose as_of is on/after a bundle's effective_from resolves it — the config
+    # WAS in force then. And effective_from is metadata, not economics: the resolved config
+    # is byte-identical (same per-bundle hashes) to the same bundles without the dating key,
+    # so dating a bundle never moves a reproducibility hash.
+    from datetime import date
+
+    from algotrading.core.config import load_platform_config
+
+    _write_bundles(tmp_path, extra={"pricing.yaml": _DATED_PRICING})
+    dated = load_platform_config(tmp_path, as_of=date(2026, 6, 10))
+
+    undated_dir = tmp_path / "undated"
+    _write_bundles(undated_dir)
+    undated = load_platform_config(undated_dir)
+
+    assert config_hashes(dated) == config_hashes(undated)
+    # The boundary day (as_of == effective_from) is "in force", not look-ahead.
+    assert load_platform_config(tmp_path, as_of=date(2026, 1, 1)) is not None
+
+
+def test_load_platform_config_rejects_config_authored_after_the_as_of(tmp_path) -> None:
+    # The look-ahead guard: replaying a day before a bundle's effective_from must fail —
+    # that bundle did not exist on the replayed day, so using it would leak future config.
+    from datetime import date
+
+    from algotrading.core.config import ConfigError, load_platform_config
+
+    _write_bundles(tmp_path, extra={"pricing.yaml": _DATED_PRICING})
+    with pytest.raises(ConfigError, match="pricing.yaml.*after the as_of"):
+        load_platform_config(tmp_path, as_of=date(2025, 12, 31))
+
+
+def test_load_platform_config_guards_a_whole_file_section_bundle(tmp_path) -> None:
+    # universe.yaml is a `subkey is None` bundle (the whole file root is the section), so
+    # its effective_from must be popped before UniverseConfig (extra="forbid") sees it —
+    # both that it loads clean when in force, and that the guard still fires when not.
+    from datetime import date
+
+    from algotrading.core.config import ConfigError, load_platform_config
+
+    _write_bundles(tmp_path, extra={"universe.yaml": _DATED_UNIVERSE})
+    assert load_platform_config(tmp_path, as_of=date(2026, 6, 10)) is not None
+    with pytest.raises(ConfigError, match="universe.yaml.*after the as_of"):
+        load_platform_config(tmp_path, as_of=date(2025, 1, 1))
+
+
+def test_load_platform_config_without_as_of_ignores_effective_from(tmp_path) -> None:
+    # Absence of as_of is the live "current" path: a dated bundle loads exactly as an
+    # undated one, never guarded — the zero-churn default for every existing caller.
+    from algotrading.core.config import load_platform_config
+
+    _write_bundles(tmp_path, extra={"pricing.yaml": _DATED_PRICING})
+    assert load_platform_config(tmp_path) is not None
+
+
+def test_load_platform_config_rejects_a_malformed_effective_from(tmp_path) -> None:
+    # A dating key that is not an ISO date fails loudly naming the bundle — never a silent
+    # default (the ADR-0028 discipline applies to the dating metadata too).
+    from datetime import date
+
+    from algotrading.core.config import ConfigError, load_platform_config
+
+    bad_pricing = 'effective_from: "not-a-date"\n' + _BUNDLES["pricing.yaml"]
+    _write_bundles(tmp_path, extra={"pricing.yaml": bad_pricing})
+    with pytest.raises(ConfigError, match="pricing.yaml.*malformed effective_from"):
+        load_platform_config(tmp_path, as_of=date(2026, 6, 10))
+
+
 def test_mapping_hash_collapses_signed_zero() -> None:
     from algotrading.core.config import mapping_config_hash
 

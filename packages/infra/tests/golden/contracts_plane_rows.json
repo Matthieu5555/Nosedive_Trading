@@ -1,5 +1,5 @@
 {
-  "non_utc_provenance_column": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"487600f528979a744f1c3a08798031af6f139d122f425d9bebfb743e4dc3a43e\"}",
+  "non_utc_provenance_column": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"487600f528979a744f1c3a08798031af6f139d122f425d9bebfb743e4dc3a43e\"}",
   "rows": {
     "baskets": {
       "basket_id": "rr-aapl-1m",
@@ -31,7 +31,7 @@
       "net_gamma": 0.2,
       "net_theta": -0.1,
       "net_vega": 1.0,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "source_snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -45,7 +45,7 @@
       "high": 191.5,
       "low": 188.5,
       "open": 189.0,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "provider": "IBKR",
       "source": "cp-rest-history",
       "trade_date": {
@@ -62,7 +62,7 @@
       },
       "forward_price": 191.0,
       "maturity_years": 0.25,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -97,7 +97,7 @@
       "diagnostics": "{\"converged\":true,\"iterations\":4,\"residual\":1e-09,\"status\":\"converged\"}",
       "implied_vol": 0.2,
       "log_moneyness": 0.0,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -114,7 +114,7 @@
       "flags": "[\"open\"]",
       "instrument_key": "AAPL|STK|SMART|USD|1|u-AAPL|||",
       "last": 190.5,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "reference_spot": 190.5,
       "reference_type": "mid",
       "snapshot_ts": {
@@ -150,7 +150,7 @@
       "gamma": 0.02,
       "price": 5.0,
       "pricer_version": "px-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "rho": 0.03,
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
@@ -184,7 +184,7 @@
       "model_version": "svi-1",
       "price": 1.25,
       "pricer_version": "px-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "provider": "IBKR",
       "rho": 0.01,
       "snapshot_ts": {
@@ -242,7 +242,7 @@
       "net_theta": -0.1,
       "net_vega": 1.0,
       "portfolio_id": "pf-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "source_snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -259,7 +259,7 @@
       "gamma_pnl": -4.0,
       "level": "position",
       "portfolio_id": "pf-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "residual": -1.0,
       "residual_abs_tol": 2.0,
       "residual_rel_tol": 0.1,
@@ -284,7 +284,7 @@
     "scenario_results": {
       "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
       "portfolio_id": "pf-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "scenario_id": "spot-down-5",
       "scenario_pnl": -25.0,
       "scenario_version": "scn-1",
@@ -302,7 +302,7 @@
       "maturity_years": 0.25,
       "model_version": "svi-1",
       "moneyness_bucket": 0.0,
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -320,7 +320,7 @@
       },
       "maturity_years": 0.25,
       "model_version": "svi-1",
-      "provenance": "{\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },

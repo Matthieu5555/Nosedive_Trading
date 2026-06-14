@@ -154,6 +154,68 @@ def test_stamp_hash_matches_the_pinned_golden_digest() -> None:
     )
 
 
+# -- as-of / effective-dated lineage (core-config-effective-dating, ADR 0028) ---------
+
+
+def _stamp_with(as_of):
+    """A one-source stamp identical in every input but ``as_of`` — the controlled variable."""
+    return stamp(
+        calc_ts=_CALC,
+        code_version="algotrading-infra-0.1.0",
+        config_hashes={"pricing": "p-1"},
+        source_records=(source_ref("iv_points", "k-1"),),
+        source_timestamps=(_T1,),
+        as_of=as_of,
+    )
+
+
+def test_as_of_is_recorded_on_the_stamp_and_validates() -> None:
+    # A replay stamps which dated config it ran under: the as_of is carried on the stamp
+    # and a stamp built with one validates (it is part of the canonical hash by construction).
+    from datetime import date
+
+    replayed = date(2026, 6, 10)
+    s = _stamp_with(replayed)
+    assert s.as_of == replayed
+    validate_stamp(s)  # raises on failure; reaching here is the assertion
+
+
+def test_as_of_folds_into_the_stamp_hash_only_when_set() -> None:
+    # Lineage discipline: a dated record can never collide with the live one — adding an
+    # as_of moves the hash. And "current" (None) is byte-identical to before the field
+    # existed: a None as_of omits the key, so its hash equals the no-arg default's.
+    from datetime import date
+
+    current = _stamp_with(None)
+    dated = _stamp_with(date(2026, 6, 10))
+    other_day = _stamp_with(date(2026, 6, 11))
+
+    assert current.as_of is None
+    assert dated.stamp_hash != current.stamp_hash  # the as_of key changes the canonical bytes
+    assert dated.stamp_hash != other_day.stamp_hash  # different days never collide
+    # None is the zero-churn path: explicit None == the no-arg default, byte for byte.
+    default = stamp(
+        calc_ts=_CALC,
+        code_version="algotrading-infra-0.1.0",
+        config_hashes={"pricing": "p-1"},
+        source_records=(source_ref("iv_points", "k-1"),),
+        source_timestamps=(_T1,),
+    )
+    assert current.stamp_hash == default.stamp_hash
+
+
+def test_tampered_as_of_breaks_validation() -> None:
+    # A stamp whose as_of is mutated without recomputing its hash is rejected — the dated
+    # config a record claims is part of its determinism handle, not free-floating metadata.
+    import dataclasses
+    from datetime import date
+
+    s = _stamp_with(date(2026, 6, 10))
+    tampered = dataclasses.replace(s, as_of=date(2026, 6, 11))  # same stored hash, new date
+    with pytest.raises(ProvenanceValidationError):
+        validate_stamp(tampered)
+
+
 def test_snapshot_stamp_equals_stamp_with_the_timestamp_repeated_per_source() -> None:
     # snapshot_stamp is sugar for the one-snapshot emission shape (M31): every source
     # shares one observation timestamp. The independent expectation is stamp() itself,

@@ -101,6 +101,14 @@ class ProvenanceStamp:
             order.
         source_timestamps: timestamps of those sources, in canonical order.
         stamp_hash: content hash of all of the above; the determinism handle.
+        as_of: the effective date the config was resolved *as of* — i.e. *which dated
+            config* the record was computed under (ADR 0028 / TARGET §0). ``None`` means
+            "current" (the config in force now, no as-of replay), so a record produced on
+            the live path is byte-identical to before this field existed: ``None`` is
+            **omitted** from the hash payload, never folded in as ``null``. A non-``None``
+            value (a replay of a past day) folds into ``stamp_hash``, so a record knows it
+            was computed under a *dated* config, closing the lineage gap the per-bundle
+            hash alone leaves open.
 
     ``config_hashes`` is excluded from the dataclass ``__hash__`` (a ``Mapping`` is
     unhashable) but kept in equality; the ``stamp_hash`` is the value handle, and it
@@ -114,6 +122,7 @@ class ProvenanceStamp:
     source_records: tuple[SourceRecordRef, ...]
     source_timestamps: tuple[datetime, ...]
     stamp_hash: str
+    as_of: date | None = None
 
 
 def _as_utc_iso(value: datetime) -> str:
@@ -190,6 +199,7 @@ def _canonical_stamp_hash(
     config_hashes: Mapping[str, str],
     source_records: tuple[SourceRecordRef, ...],
     source_timestamps: tuple[datetime, ...],
+    as_of: date | None = None,
 ) -> str:
     """SHA-256 of the canonical JSON of a stamp's contents.
 
@@ -197,6 +207,11 @@ def _canonical_stamp_hash(
     :func:`_sorted_sources`); this function only renders and hashes them. The
     per-bundle ``config_hashes`` are folded in as a sorted mapping (``sort_keys``
     canonicalizes the nested dict), so the stamp hash moves when any bundle moves.
+
+    ``as_of`` is folded in **only when not ``None``**: a current-config record omits the
+    key entirely, so its hash is byte-identical to one produced before the field existed
+    (the zero-churn contract). A dated replay carries ``"as_of": <ISO date>`` and so gets
+    a distinct hash — a record under a *dated* config can never collide with the live one.
     """
     payload = {
         "calc_ts": _as_utc_iso(calc_ts),
@@ -205,6 +220,8 @@ def _canonical_stamp_hash(
         "source_records": [_ref_payload(ref) for ref in source_records],
         "source_timestamps": [_as_utc_iso(ts) for ts in source_timestamps],
     }
+    if as_of is not None:
+        payload["as_of"] = as_of.isoformat()
     return sha256_hex(canonical_dumps(payload))
 
 
@@ -215,14 +232,20 @@ def stamp(
     config_hashes: Mapping[str, str],
     source_records: tuple[SourceRecordRef, ...],
     source_timestamps: tuple[datetime, ...],
+    as_of: date | None = None,
 ) -> ProvenanceStamp:
     """Build a provenance stamp with a canonical, order-independent content hash.
 
     ``config_hashes`` is the per-bundle ``{bundle: hash}`` mapping that shaped the
-    record (blueprint manifest form). The source references and source timestamps are
-    sorted into canonical order before anything is stored or hashed, so the resulting
-    stamp does not depend on the order the caller passed them in. The stored mapping is
-    copied into a plain ``dict`` so the stamp does not alias a caller's mutable map.
+    record (blueprint manifest form). ``as_of`` is the effective date the config was
+    resolved as of — ``None`` (the default) on the live path, a past date on a replay;
+    it records *which dated config* the record ran under and folds into ``stamp_hash``
+    only when set (see :func:`_canonical_stamp_hash`), so a current-config stamp is
+    byte-identical to one built before the field existed. The source references and
+    source timestamps are sorted into canonical order before anything is stored or
+    hashed, so the resulting stamp does not depend on the order the caller passed them
+    in. The stored mapping is copied into a plain ``dict`` so the stamp does not alias a
+    caller's mutable map.
     """
     sorted_records, sorted_ts = _sorted_sources(source_records, source_timestamps)
     frozen_hashes = dict(config_hashes)
@@ -232,6 +255,7 @@ def stamp(
         config_hashes=frozen_hashes,
         source_records=sorted_records,
         source_timestamps=sorted_ts,
+        as_of=as_of,
     )
     return ProvenanceStamp(
         calc_ts=calc_ts,
@@ -240,6 +264,7 @@ def stamp(
         source_records=sorted_records,
         source_timestamps=sorted_ts,
         stamp_hash=stamp_hash,
+        as_of=as_of,
     )
 
 
@@ -250,6 +275,7 @@ def snapshot_stamp(
     config_hashes: Mapping[str, str],
     source_snapshot_ts: datetime,
     source_records: tuple[SourceRecordRef, ...],
+    as_of: date | None = None,
 ) -> ProvenanceStamp:
     """Build a stamp for a record derived from **one snapshot**: every source shares one ts.
 
@@ -258,7 +284,8 @@ def snapshot_stamp(
     all observed at the same snapshot timestamp. This helper pairs that single timestamp
     with every reference and delegates to :func:`stamp`, so the result — including
     ``stamp_hash`` — is byte-identical to hand-building the repeated timestamp tuple
-    (``stamp`` sorts its inputs either way; golden-pinned at the call sites).
+    (``stamp`` sorts its inputs either way; golden-pinned at the call sites). ``as_of``
+    threads through unchanged (``None`` on the live path; a past date on a replay).
     """
     return stamp(
         calc_ts=calc_ts,
@@ -266,6 +293,7 @@ def snapshot_stamp(
         config_hashes=config_hashes,
         source_records=source_records,
         source_timestamps=tuple(source_snapshot_ts for _ in source_records),
+        as_of=as_of,
     )
 
 
@@ -316,6 +344,7 @@ def validate_stamp(candidate: ProvenanceStamp) -> None:
         config_hashes=candidate.config_hashes,
         source_records=sorted_records,
         source_timestamps=sorted_ts,
+        as_of=candidate.as_of,
     )
     if expected != candidate.stamp_hash:
         raise ProvenanceValidationError(

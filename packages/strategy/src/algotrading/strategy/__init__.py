@@ -17,11 +17,18 @@ from .contract import (
     StrategyContract,
     StrategyContractError,
 )
+from .dispersion_data import StoreBackedDispersionData, dispersion_strategy
 from .harness import (
     StrategyContext,
     StrategyStep,
     UnstampedBasketError,
     run_strategy,
+)
+from .s1_dispersion import (
+    DispersionConfig,
+    DispersionConstructionError,
+    DispersionMarketData,
+    DispersionStrategy,
 )
 from .signals import (
     SignalReading,
@@ -62,4 +69,11 @@ __all__ = [
     "StrategyContext",
     "StrategyStep",
     "UnstampedBasketError",
+    # S1 dispersion strategy (the flagship; first ADR-0048 per-side consumer)
+    "DispersionStrategy",
+    "DispersionConfig",
+    "DispersionMarketData",
+    "DispersionConstructionError",
+    "StoreBackedDispersionData",
+    "dispersion_strategy",
 ]

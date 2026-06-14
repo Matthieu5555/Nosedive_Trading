@@ -27,10 +27,15 @@ by tests:
 * ``multiplier`` / ``currency`` — from the underlying's ``instrument_master`` option row,
   supplied by the caller.
 
+Each option leg reprices off the surface side it names (``combined`` by default, or a ``put`` /
+``call`` wing — ADR 0048), resolved through the same shared indexer the summed
+:func:`~algotrading.infra.risk.multileg.basket_risk` uses, so the stress surface and the summed
+Greeks agree on which wing a leg priced off.
+
 Stock legs are a linear overlay (``qty * spot * spot_shock``, vol-independent), added to the
 option surface rather than forced through the option pricer. A leg that resolves to no grid cell
-(ambiguous provider, missing spot, or missing instrument master) is a labelled
-:class:`~algotrading.infra.risk.BasketGap`, never a silent zero.
+(ambiguous provider, missing spot, missing instrument master, or a requested wing with no curve)
+is a labelled :class:`~algotrading.infra.risk.BasketGap`, never a silent zero.
 """
 
 from __future__ import annotations
@@ -43,13 +48,16 @@ from datetime import date
 
 from algotrading.core.config import ScenarioConfig
 from algotrading.infra.contracts import (
-    SURFACE_SIDE_COMBINED,
     Basket,
     ProjectedOptionAnalytics,
 )
 from algotrading.infra.pricing import price
 from algotrading.infra.risk import BasketGap, ContractValuationInput, PositionRisk, position_risk
-from algotrading.infra.risk.multileg import CellKey, analytics_cell_key
+from algotrading.infra.risk.multileg import (
+    analytics_cell_key,
+    index_rows_by_cell_and_side,
+    resolve_cell_side,
+)
 from algotrading.infra.risk.stress_surface import stress_surface
 from algotrading.infra.risk.valuation import pricing_state_for
 
@@ -122,29 +130,6 @@ def reconstruct_valuation(
     return dataclasses.replace(base, discount_factor=discount_factor)
 
 
-def _index_rows(
-    rows: Iterable[ProjectedOptionAnalytics],
-) -> tuple[dict[CellKey, ProjectedOptionAnalytics], set[CellKey]]:
-    """Index analytics rows by cell key, flagging any cell seeded by more than one provider.
-
-    Mirrors :func:`multileg._index_rows_by_cell` (a cross-provider read can carry two rows for
-    one ``(underlying, tenor_label, delta_band)``; resolving one silently would be a hidden
-    non-deterministic pick, so the cell is recorded ambiguous and any leg on it becomes a gap).
-    """
-    by_cell: dict[CellKey, ProjectedOptionAnalytics] = {}
-    ambiguous: set[CellKey] = set()
-    for row in rows:
-        # Reprice off the combined surface (ADR 0048) — the per-side put/call rows are an
-        # additive diagnostic, not the book reference; skip them here as multileg does.
-        if row.surface_side != SURFACE_SIDE_COMBINED:
-            continue
-        key = analytics_cell_key(row.underlying, row.tenor_label, row.delta_band)
-        if key in by_cell and by_cell[key].provider != row.provider:
-            ambiguous.add(key)
-        by_cell[key] = row
-    return by_cell, ambiguous
-
-
 def _worst_cell(
     spot_axis: tuple[float, ...],
     vol_axis: tuple[float, ...],
@@ -176,7 +161,7 @@ def basket_stress(
     fully-unresolved basket still yields a valid (flat-zero + overlay) surface over the config
     axes, never a 500.
     """
-    by_cell, ambiguous = _index_rows(analytics_rows)
+    by_cell_side, ambiguous = index_rows_by_cell_and_side(analytics_rows)
     lines: list[PositionRisk] = []
     gaps: list[BasketGap] = []
     stock_notional: float = 0.0  # sum(qty * spot) over resolved stock legs (linear delta base)
@@ -193,16 +178,15 @@ def basket_stress(
             continue
 
         key = analytics_cell_key(leg.underlying, leg.tenor_label, leg.delta_band)
-        if key in ambiguous:
-            gaps.append(
-                BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, "provider_ambiguous")
-            )
-            continue
-        row = by_cell.get(key)
+        row, reason = resolve_cell_side(
+            by_cell_side, ambiguous, key=key, surface_side=leg.surface_side
+        )
         if row is None:
-            gaps.append(
-                BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, "no_analytics_row")
-            )
+            # reason is non-None whenever row is None (resolve_cell_side's contract). The
+            # reprice honours the leg's surface_side so the stress surface and the summed
+            # basket_risk agree on which wing a leg priced off (ADR 0048).
+            assert reason is not None
+            gaps.append(BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, reason))
             continue
         if multiplier is None or currency is None:
             gaps.append(

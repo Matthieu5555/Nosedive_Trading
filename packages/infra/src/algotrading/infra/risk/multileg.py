@@ -15,9 +15,13 @@ must not be conflated.
 
 An option leg resolves to one analytics cell by its grid coordinate
 ``(underlying, tenor_label, delta_band)`` (the grid is addressed by that, not by a canonical
-instrument key). A stock leg resolves to its underlying's spot. A leg that resolves to nothing
-is a **labelled gap** carrying the missing coordinate — never a silent zero, never a bare NaN —
-and the basket aggregate reports the gap rather than absorbing it.
+instrument key), then to the surface side the leg names — ``combined`` by default (the
+forward-backing / attribution reference, so an unspecified leg is unchanged), or a wing
+(``put`` / ``call``) for a wing-aware strategy that prices its put leg off the put surface and
+its call leg off the call surface (ADR 0048). A stock leg resolves to its underlying's spot. A
+leg that resolves to nothing — no cell, an ambiguous cell, or a requested wing with no curve at
+that cell — is a **labelled gap** carrying the missing coordinate, never a silent zero, never a
+bare NaN; the basket aggregate reports the gap rather than absorbing it.
 """
 
 from __future__ import annotations
@@ -28,7 +32,6 @@ from dataclasses import dataclass
 from datetime import date
 
 from algotrading.infra.contracts import (
-    SURFACE_SIDE_COMBINED,
     Basket,
     BasketLeg,
     ProjectedOptionAnalytics,
@@ -43,6 +46,11 @@ _ALWAYS_PRESENT = ("dollar_delta", "dollar_gamma", "dollar_vega")
 
 # A cell key is the analytics grid coordinate. tenor_label/delta_band are None for a stock leg.
 CellKey = tuple[str, str | None, str | None]
+
+# A cell now carries up to three surface sides (put / call / combined, ADR 0048). The index is
+# therefore two-level: cell coordinate -> {surface_side -> row}. A leg names one side and reads
+# the row at (its cell, its side); the sides of one cell never collide.
+SideCellIndex = dict[CellKey, dict[str, ProjectedOptionAnalytics]]
 
 
 def analytics_cell_key(
@@ -61,10 +69,13 @@ def analytics_cell_key(
 class BasketGap:
     """A leg that could not be priced, named by its coordinate and a machine-readable reason.
 
-    Reasons: ``"no_analytics_row"`` (no matching grid cell), ``"provider_ambiguous"`` (the cell
-    is seeded by more than one provider in the read scope — never silently pick one),
-    ``"no_spot_for_stock_leg"`` (no spot for the underlying), ``"theta_unavailable"`` /
-    ``"rho_unavailable"`` (the matched row's additive-nullable dollar-theta/rho is None).
+    Reasons: ``"no_analytics_row"`` (no matching grid cell), ``"surface_side_unavailable"``
+    (the cell exists but the requested wing — ``put`` / ``call`` — has no fitted curve at it,
+    ADR 0048 §3; never silently fall back to combined, which would re-mutualise the IV the wing
+    selection exists to separate), ``"provider_ambiguous"`` (the cell+side is seeded by more
+    than one provider in the read scope — never silently pick one), ``"no_spot_for_stock_leg"``
+    (no spot for the underlying), ``"theta_unavailable"`` / ``"rho_unavailable"`` (the matched
+    row's additive-nullable dollar-theta/rho is None).
     """
 
     underlying: str
@@ -134,30 +145,60 @@ class BasketRisk:
     gaps: tuple[BasketGap, ...]
 
 
-def _index_rows_by_cell(
+def index_rows_by_cell_and_side(
     rows: Iterable[ProjectedOptionAnalytics],
-) -> tuple[dict[CellKey, ProjectedOptionAnalytics], set[CellKey]]:
-    """Index analytics rows by cell key, flagging any cell seeded by more than one provider.
+) -> tuple[SideCellIndex, set[tuple[CellKey, str]]]:
+    """Index analytics rows by ``(cell, surface_side)``, flagging any seeded by >1 provider.
 
     The grid is provider-partitioned, so a cross-provider read can carry two rows for the same
-    ``(underlying, tenor_label, delta_band)``. Those are genuinely distinct sources; picking one
-    silently would be a hidden, non-deterministic choice. So an ambiguous cell is recorded and a
-    leg that lands on it becomes a labelled gap rather than resolving to an arbitrary provider.
+    ``(underlying, tenor_label, delta_band, surface_side)``. Those are genuinely distinct
+    sources; picking one silently would be a hidden, non-deterministic choice. So an ambiguous
+    ``(cell, side)`` is recorded and a leg that lands on it becomes a labelled gap rather than
+    resolving to an arbitrary provider. The three sides of one cell are *not* mutually ambiguous
+    — they are distinct surfaces (ADR 0048), so ambiguity is tracked per ``(cell, side)``.
+
+    Shared by the summed-Greeks basket (this module) and the BFF live-reprice
+    (``basket_scenarios``) so both resolve a leg's side identically off one indexer.
     """
-    by_cell: dict[CellKey, ProjectedOptionAnalytics] = {}
-    ambiguous: set[CellKey] = set()
+    by_cell_side: SideCellIndex = {}
+    ambiguous: set[tuple[CellKey, str]] = set()
     for row in rows:
-        # A basket sums the combined surface — the forward-backing / attribution reference
-        # (ADR 0048). The per-side put/call rows are an additive diagnostic, not part of the
-        # book sum; skip them so the basket number is the combined book and the cross-provider
-        # ambiguity check is not confused by a cell's three surface sides.
-        if row.surface_side != SURFACE_SIDE_COMBINED:
-            continue
         key = analytics_cell_key(row.underlying, row.tenor_label, row.delta_band)
-        if key in by_cell and by_cell[key].provider != row.provider:
-            ambiguous.add(key)
-        by_cell[key] = row
-    return by_cell, ambiguous
+        side_rows = by_cell_side.setdefault(key, {})
+        existing = side_rows.get(row.surface_side)
+        if existing is not None and existing.provider != row.provider:
+            ambiguous.add((key, row.surface_side))
+        side_rows[row.surface_side] = row
+    return by_cell_side, ambiguous
+
+
+def resolve_cell_side(
+    by_cell_side: SideCellIndex,
+    ambiguous: set[tuple[CellKey, str]],
+    *,
+    key: CellKey,
+    surface_side: str,
+) -> tuple[ProjectedOptionAnalytics | None, str | None]:
+    """Resolve one ``(cell, surface_side)`` to its row, or to a labelled gap reason.
+
+    Returns ``(row, None)`` on a clean resolve, else ``(None, reason)`` where ``reason`` is a
+    :class:`BasketGap` reason string:
+
+    * ``"provider_ambiguous"`` — that ``(cell, side)`` is seeded by more than one provider.
+    * ``"no_analytics_row"`` — the cell has no row at any side (it is simply not in the grid).
+    * ``"surface_side_unavailable"`` — the cell exists but the requested wing has no fitted curve
+      at it (ADR 0048 §3). Never silently fall back to combined: that would re-mutualise the IV
+      the wing selection exists to keep separate, defeating the point of asking for the wing.
+    """
+    if (key, surface_side) in ambiguous:
+        return None, "provider_ambiguous"
+    side_rows = by_cell_side.get(key)
+    if not side_rows:
+        return None, "no_analytics_row"
+    row = side_rows.get(surface_side)
+    if row is None:
+        return None, "surface_side_unavailable"
+    return row, None
 
 
 def _unresolved_leg(leg: BasketLeg, reason: str) -> LegRisk:
@@ -228,7 +269,7 @@ def basket_risk(
     :class:`BasketRisk` whose aggregates are ``math.fsum`` over the resolved legs (order-free)
     and whose :class:`BasketGap` list names every leg that could not be fully priced.
     """
-    by_cell, ambiguous = _index_rows_by_cell(analytics_rows)
+    by_cell_side, ambiguous = index_rows_by_cell_and_side(analytics_rows)
 
     leg_risks: list[LegRisk] = []
     gaps: list[BasketGap] = []
@@ -243,18 +284,14 @@ def basket_risk(
             continue
 
         key = analytics_cell_key(leg.underlying, leg.tenor_label, leg.delta_band)
-        if key in ambiguous:
-            leg_risks.append(_unresolved_leg(leg, "provider_ambiguous"))
-            gaps.append(
-                BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, "provider_ambiguous")
-            )
-            continue
-        row = by_cell.get(key)
+        row, reason = resolve_cell_side(
+            by_cell_side, ambiguous, key=key, surface_side=leg.surface_side
+        )
         if row is None:
-            leg_risks.append(_unresolved_leg(leg, "no_analytics_row"))
-            gaps.append(
-                BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, "no_analytics_row")
-            )
+            # reason is non-None whenever row is None (resolve_cell_side's contract).
+            assert reason is not None
+            leg_risks.append(_unresolved_leg(leg, reason))
+            gaps.append(BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, reason))
             continue
         leg_risks.append(_option_leg_risk(leg, row))
 

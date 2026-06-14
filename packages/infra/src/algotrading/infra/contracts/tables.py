@@ -565,6 +565,14 @@ class BasketLeg:
     malformed contract, rejected with a structured :class:`ContractValidationError` that
     carries the offending value — never silently normalised. ``quantity`` is already signed
     by the side, so downstream code multiplies by it directly and never re-applies the side.
+
+    ``surface_side`` selects which fitted vol surface this leg's analytics cell is read from
+    (ADR 0048): ``"combined"`` (the default — the forward-backing / attribution reference, so
+    an unspecified leg is unchanged) or a wing, ``"put"`` / ``"call"``. The wing is the
+    explicit opt-in a wing-aware strategy uses to price its put leg off the put surface and its
+    call leg off the call surface (an S1 dispersion straddle) instead of mutualising one IV.
+    It is **not** the option right — the right is still fixed by the band's ``…p`` / ``…c``
+    suffix; ``surface_side`` only picks the surface the cell's IV comes from.
     """
 
     instrument_kind: str
@@ -573,6 +581,7 @@ class BasketLeg:
     underlying: str
     tenor_label: str | None = None
     delta_band: str | None = None
+    surface_side: str = SURFACE_SIDE_COMBINED
 
     def __post_init__(self) -> None:
         table = "baskets"
@@ -584,6 +593,10 @@ class BasketLeg:
         if self.side not in LEG_SIDES:
             raise ContractValidationError(
                 table, "side", self.side, f"must be one of {LEG_SIDES}",
+            )
+        if self.surface_side not in SURFACE_SIDES:
+            raise ContractValidationError(
+                table, "surface_side", self.surface_side, f"must be one of {SURFACE_SIDES}",
             )
         if not self.underlying.strip():
             raise ContractValidationError(

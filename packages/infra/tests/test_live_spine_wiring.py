@@ -42,6 +42,7 @@ from algotrading.core.config import (
     PlatformConfig,
     QcThresholdConfig,
     ScenarioConfig,
+    SignalEntryConfig,
     SolverConfig,
     StrikeSelectionConfig,
     UniverseConfig,
@@ -482,3 +483,97 @@ def test_collection_raw_landing_is_idempotent_on_prelanded_events(tmp_path: Path
     after = store.read("raw_market_events")
     assert {event.event_id for event in after} == before
     assert len(after) == len(prelanded)  # no duplicate rows appended
+
+
+# =========================================================================== #
+# 6. The analytics stage derives + persists the daily strategy-entry signal set #
+#    from the just-persisted grid (infra-signal-eod-wiring).                     #
+# =========================================================================== #
+def test_real_eod_fire_persists_the_strategy_entry_signal_set(tmp_path: Path) -> None:
+    """The production EOD analytics stage derives and persists the daily as-of signal set.
+
+    Pre-wiring ``persist_signal_set`` had no production caller: ``strategy_signals`` was written
+    by nothing and S1's ρ̄ entry read an empty partition every day. This drives the production
+    wiring (``default_stages_builder`` + the 1C basket source) and asserts the captured index's
+    signal partition lands, stamped to the index's own session close (look-ahead clean), with the
+    term-structure slope equal to the back-minus-front combined-ATM IV read straight from the
+    PERSISTED grid — an independent oracle, never the signal math under test.
+    """
+    store = ParquetStore(tmp_path / "data")
+    # This single-index basket fits a surface at the 1m and 3m pinned tenors (the longer pillars
+    # have no usable slice), so the signal pillars are set to the two tenors the grid actually
+    # emits — the slope is then answerable. reference_tenor=3m yields no IV-rank/RV−IV here (no
+    # banked history/bars on a one-day fire) and ρ̄ needs constituents (none) — both correctly
+    # omitted; the index's own term slope is the one reading this fire can answer.
+    base = _config()
+    config = base.model_copy(
+        update={
+            "universe": base.universe.model_copy(
+                update={
+                    "signals": SignalEntryConfig(
+                        version="sig-1",
+                        reference_tenor="3m",
+                        term_slope_front="1m",
+                        term_slope_back="3m",
+                    )
+                }
+            )
+        }
+    )
+    clock = ManualClock(start=CLOCK_NOW)
+
+    def basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+        return _grid_basket(fired.entry.symbol, fired.as_of)
+
+    deps = RunnerDeps(
+        store=store,
+        config=config,
+        registry=_registry(),
+        resolver=CalendarResolver(_registry(), as_of=clock),
+        run_repository=RunRegistry(tmp_path / "runs"),
+        stages_builder=functools.partial(default_stages_builder, basket_source=basket_source),
+        clock=clock,
+        code_identity="deadbeef",
+        environment="test",
+    )
+
+    result = run_fire(deps, trade_date=TRADE_DATE, index="SPX")
+    assert result is not None
+    assert "analytics" in result.ran
+
+    signals = store.read(
+        "strategy_signals", trade_date=TRADE_DATE, underlying="SPX", provider=PROVIDER
+    )
+    assert signals, "the live fire must persist a non-empty strategy_signals partition"
+    # Every reading is finite, stamped to the index's own close, under the close-capture provider
+    # — the same as-of the grid carries (the signal layer reads it gated to that instant).
+    for row in signals:
+        assert math.isfinite(row.value)
+        assert row.snapshot_ts == SPX_CLOSE
+        assert row.source_snapshot_ts == SPX_CLOSE
+        assert row.provider == PROVIDER
+        assert row.underlying == "SPX"
+
+    # Independent oracle: the term-structure slope at the configured pillars equals the
+    # back-minus-front combined-ATM IV read from the persisted grid (not from the signal code).
+    entry = config.universe.signals
+    grid = store.read(
+        "projected_option_analytics", trade_date=TRADE_DATE, underlying="SPX", provider=PROVIDER
+    )
+    atm = {
+        row.tenor_label: row.implied_vol
+        for row in grid
+        if row.surface_side == "combined" and row.delta_band == "atm"
+    }
+    assert entry.term_slope_front in atm and entry.term_slope_back in atm, (
+        "both slope pillars must be present in the persisted combined-ATM grid for this basket "
+        f"(emitted tenors: {sorted(atm)})"
+    )
+    expected_slope = atm[entry.term_slope_back] - atm[entry.term_slope_front]
+    slope_label = f"{entry.term_slope_front}:{entry.term_slope_back}"
+    slopes = {
+        (row.subject, row.tenor_label): row.value
+        for row in signals
+        if row.signal_kind == "term_structure_slope"
+    }
+    assert slopes[("SPX", slope_label)] == pytest.approx(expected_slope)

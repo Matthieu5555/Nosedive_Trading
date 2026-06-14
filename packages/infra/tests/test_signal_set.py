@@ -14,7 +14,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from algotrading.infra.signals import SignalConfig, persist_signal_set
+from algotrading.core.config import SignalEntryConfig
+from algotrading.infra.signals import SignalConfig, persist_signal_set, signal_config_for
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import MembershipChange, ingest_membership_changes
 from fixtures.records import make_record
@@ -154,6 +155,33 @@ def test_unanswerable_signal_is_omitted_not_fabricated(tmp_path: Path) -> None:
     # undefined, so they are absent — a labelled absence, never a fabricated 0.
     assert ("iv_rank", "BBB", "3m") not in signals
     assert ("iv_vs_realized", "BBB", "3m") not in signals
+
+
+def test_signal_config_for_maps_the_typed_universe_block() -> None:
+    # The EOD batch's single config→DTO seam: signal_config_for joins the fired index identity
+    # onto the typed universe `signals` block, carrying every economic param through unchanged.
+    entry = SignalEntryConfig(
+        version="sig-1",
+        reference_tenor="3m",
+        term_slope_front="1m",
+        term_slope_back="12m",
+        iv_history_lookback_days=200,
+        realized_vol_lookback_days=21,
+        periods_per_year=260.0,
+        basket_size=7,
+    )
+    built = signal_config_for(entry, index="SX5E", provider="IBKR")
+    assert built == SignalConfig(
+        index="SX5E",
+        provider="IBKR",
+        reference_tenor="3m",
+        term_slope_front="1m",
+        term_slope_back="12m",
+        iv_history_lookback_days=200,
+        realized_vol_lookback_days=21,
+        periods_per_year=260.0,
+        basket_size=7,
+    )
 
 
 def test_no_surface_day_writes_nothing(tmp_path: Path) -> None:

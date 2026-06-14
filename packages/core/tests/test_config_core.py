@@ -172,15 +172,24 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # behaviour (byte-identical fits and forwards), so only the `pricing` bundle hash — and so the
     # folded whole-config hash — moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical
     # (section isolation). Pre-capture dev change: no banked record carries the old hash.
+    #
+    # infra-signal-eod-wiring (2026-06-14, ADR 0028): the strategy-entry signal-computation params
+    # (`UniverseConfig.signals`, a `SignalEntryConfig` nested block — reference tenor, slope pillars,
+    # lookback windows, ρ̄ basket size) joined the hashed `universe` bundle, authored in
+    # `universe.yaml`, so the daily signal layer reads typed config instead of a bare hand-built
+    # dataclass. The `universe` bundle hash — and so the folded whole-config hash — moved BY DESIGN;
+    # `qc`/`pricing`/`scenarios` stay byte-identical (section isolation). The universe/full values
+    # below are regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked
+    # record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "c3899b7d79c7ce8de6b4d109158168ffa2aabe67a973c9d1e5efacd27ce84935"
+        "d645e2550804e9806d02424202dd08a1fa8eaeccfb91633d4e6fd6cce4128500"
     )
     assert config_hashes(config) == {
         "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
-        "universe": "a557c26b5d97d8a077c02406e3ec4ce783fcb0fc20c7e9956e771d875087ce97",
+        "universe": "6d278adf21aa0ce33e8f6a8cf7a93055efafd8ecab16359ebf6a8c2f33264172",
     }
 
 
@@ -769,6 +778,45 @@ def test_load_platform_config_loads_the_shipped_bundles() -> None:
     # there is no separate underlyings list anymore, T-index-only-refactor).
     assert config.universe.indices, "the shipped universe bundle must name the indices it tracks"
     assert isinstance(config_hash(config), str)
+    # The shipped universe bundle authors the strategy-entry signal params (infra-signal-eod-wiring):
+    # the daily signal layer reads these from config, never a hand-built dataclass. The pillars must
+    # be members of the projected tenor grid and differ (the slope spans two pillars).
+    signals = config.universe.signals
+    assert signals.reference_tenor in config.universe.tenor_grid
+    assert signals.term_slope_front in config.universe.tenor_grid
+    assert signals.term_slope_back in config.universe.tenor_grid
+    assert signals.term_slope_front != signals.term_slope_back
+
+
+def test_signal_params_fold_into_only_the_universe_bundle_hash() -> None:
+    # infra-signal-eod-wiring (ADR 0028): the signal-entry params are a nested block on the
+    # `universe` section, so moving one moves ONLY the `universe` bundle hash — `qc`/`pricing`/
+    # `scenarios` stay byte-identical (section isolation). Independent oracle: bump a signals
+    # field and assert exactly the universe hash changes.
+    base = _config()
+    hashes = config_hashes(base)
+    moved_signals = base.universe.signals.model_copy(update={"reference_tenor": "12m"})
+    moved = base.model_copy(
+        update={"universe": base.universe.model_copy(update={"signals": moved_signals})}
+    )
+    moved_hashes = config_hashes(moved)
+    assert moved_hashes["universe"] != hashes["universe"]
+    assert {k: moved_hashes[k] for k in ("qc", "pricing", "scenarios")} == {
+        k: hashes[k] for k in ("qc", "pricing", "scenarios")
+    }
+
+
+def test_signal_entry_config_rejects_degenerate_params() -> None:
+    # The validator refuses a slope with one pillar (front == back) and a sub-1 basket size —
+    # a labelled config error, never a silent default (ADR 0028). `None` basket_size is valid
+    # (the full as-of basket) and is the no-restriction default.
+    from algotrading.core.config import ConfigFieldError, SignalEntryConfig
+
+    with pytest.raises(ConfigFieldError, match="term_slope"):
+        SignalEntryConfig(version="x", term_slope_front="3m", term_slope_back="3m")
+    with pytest.raises(ConfigFieldError, match="basket_size"):
+        SignalEntryConfig(version="x", basket_size=0)
+    assert SignalEntryConfig(version="x", basket_size=None).basket_size is None
 
 
 # -- as-of / effective-dated config resolution (core-config-effective-dating, ADR 0028) -

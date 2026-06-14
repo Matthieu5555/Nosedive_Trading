@@ -57,9 +57,13 @@ so a session resolves to the jobs it fed.
   - **eod_dependencies** — the injectable `RunnerDeps` bundle and its production default wiring
     (`build_default_deps`: store, config + hashes, registry, resolver, run repository, stages
     builder, code identity resolved once at the entrypoint).
-  - **eod_stages** — the live `default_stages_builder` (capture → analytics(`project_grid`) →
-    persist → reconciliation → QC) and its QC-stage helpers (`analytics_qc_results`,
-    `persist_triage`). The 1C seam is the *basket source*: until the broker→raw-event bridge
+  - **eod_stages** — the live `default_stages_builder` (capture → analytics(`project_grid` +
+    `persist_signal_set`) → persist → reconciliation → QC) and its QC-stage helpers
+    (`analytics_qc_results`, `persist_triage`). The analytics stage, after persisting each
+    captured index's grid, derives and persists the daily as-of strategy-entry signal set
+    (`signals/` — ρ̄ + IV-rank/RV−IV/term-slope) at the index's own session close, so
+    `strategy_signals` lands every banked day; its params come from `config.universe.signals`
+    (`signal_config_for`). The 1C seam is the *basket source*: until the broker→raw-event bridge
     lands, `_empty_basket_source` returns `None` — a narrow, labeled no-capture gap (clean exit 0),
     not a raise; a credentialed caller injects a live `collect_live`-backed source.
   - **eod_manifest** — freezes the per-run lineage manifest (config snapshot + hashes + code

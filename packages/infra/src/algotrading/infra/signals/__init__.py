@@ -10,6 +10,8 @@ strategies *read* the persisted signals, they are not imported here.
 * :func:`realized_volatility` / :func:`realized_minus_implied` — the RV−IV spread legs (S2/S3).
 * :func:`iv_rank` / :func:`iv_percentile` — where a name's IV sits in its banked range (S3).
 * :func:`persist_signal_set` — read as-of, compute every answerable signal, persist the set.
+* :func:`signal_config_for` — build one index's ``SignalConfig`` from the typed universe
+  ``signals`` block (the EOD batch's single config→DTO seam).
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from .signal_set import (
     build_signals,
     persist_signal_set,
     read_signal_inputs,
+    signal_config_for,
 )
 from .term_structure import TermStructureError, term_structure_slope
 
@@ -55,5 +58,6 @@ __all__ = [
     "read_signal_inputs",
     "realized_minus_implied",
     "realized_volatility",
+    "signal_config_for",
     "term_structure_slope",
 ]

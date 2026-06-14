@@ -26,6 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
+from algotrading.core.config import SignalEntryConfig
 from algotrading.core.provenance import SourceRecordRef, snapshot_stamp, source_ref
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, StrategySignal
 from algotrading.infra.storage import ParquetStore
@@ -82,6 +83,30 @@ class SignalConfig:
     realized_vol_lookback_days: int
     periods_per_year: float = TRADING_DAYS_PER_YEAR
     basket_size: int | None = None
+
+
+def signal_config_for(
+    entry: SignalEntryConfig, *, index: str, provider: str
+) -> SignalConfig:
+    """Build one index's :class:`SignalConfig` from the typed universe ``signals`` block.
+
+    The economic signal params (reference tenor, slope pillars, lookback windows, ρ̄ basket
+    size) come from the hashed config — ``config.universe.signals`` — not from a caller's
+    literal (ADR 0028). The per-index identity (``index``/``provider``) is the fired index's
+    own, joined on here. This is the single seam the EOD batch and any replay use, so the
+    typed config maps to the compute DTO in exactly one place.
+    """
+    return SignalConfig(
+        index=index,
+        provider=provider,
+        reference_tenor=entry.reference_tenor,
+        term_slope_front=entry.term_slope_front,
+        term_slope_back=entry.term_slope_back,
+        iv_history_lookback_days=entry.iv_history_lookback_days,
+        realized_vol_lookback_days=entry.realized_vol_lookback_days,
+        periods_per_year=entry.periods_per_year,
+        basket_size=entry.basket_size,
+    )
 
 
 @dataclass(frozen=True, slots=True)

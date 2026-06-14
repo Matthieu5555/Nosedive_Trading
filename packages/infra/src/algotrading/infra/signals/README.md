@@ -67,6 +67,16 @@ provider-partitioned). One row per `(snapshot_ts, provider, signal_kind, subject
 | `periods_per_year` | realized-vol annualization (default 252, the trading-day convention) |
 | `basket_size` | the ρ̄ universe — `None` = the full as-of basket, an int = top-`n` by weight |
 
+The economic params have a **typed config home** (no `.py` literal a caller hand-passes, ADR
+0028): the nested `signals:` block of `configs/universe.yaml` → `config.universe.signals`
+(`core.config.SignalEntryConfig`), folded into `config_hashes["universe"]`. The per-index
+identity (`index`/`provider`) is the fired index's own; `signal_config_for(entry, index=…,
+provider=…)` joins the two into the `SignalConfig` the layer consumes — the single config→DTO
+seam the EOD batch and any replay use. The daily batch is wired at the EOD analytics choke
+(`orchestration/eod_stages.py::_analytics`): with each captured index's grid persisted, it fires
+`persist_signal_set` at the index's own session close, so `strategy_signals` lands every banked
+day (the seam that took S1's ρ̄ entry from "can fire" to "fires").
+
 ## As-of / look-ahead discipline
 
 Every read is gated by `as_of`: surfaces and bars at or before the date, the live partition only

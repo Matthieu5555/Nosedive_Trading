@@ -11,6 +11,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 
 ## Scope & brokers
 - **0042** — Index-options-only; IBKR sole broker; SX5E first, SPX parked. *(the scope record)*
+- **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(execution booking chain)*
 - **0012** — One `infra-<broker>` leaf package per broker (today only `infra-ibkr`).
 - **0017** — `provider` is a first-class field + partition key (generic; one live provider, IBKR).
 - **0024** — IBKR over the Client-Portal REST API (course requirement), under the Nautilus spine.

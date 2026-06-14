@@ -1,6 +1,6 @@
 # frontend-second-order-greeks-panels — carry Vanna/Volga/Charm through to the front panels
 
-> **Front slice (step 3) of [infra-second-order-greeks](infra-second-order-greeks.md).**
+> **Front slice (step 3) of [infra-second-order-greeks](archive/infra-second-order-greeks.md) (landed/archived 2026-06-14).**
 > Steps 1-2 (compute) landed: Vanna/Volga/Charm in `black76` / `dollar_greeks` /
 > `PricingResult` (raw + cash + unit strings), and attribution carrying Rho/Vanna/Volga +
 > realized day-over-day. Step 3 was deferred and explicitly marked "owned elsewhere" to

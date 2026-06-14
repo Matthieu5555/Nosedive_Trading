@@ -42,7 +42,11 @@ from dataclasses import dataclass
 from datetime import date
 
 from algotrading.core.config import ScenarioConfig
-from algotrading.infra.contracts import Basket, ProjectedOptionAnalytics
+from algotrading.infra.contracts import (
+    SURFACE_SIDE_COMBINED,
+    Basket,
+    ProjectedOptionAnalytics,
+)
 from algotrading.infra.pricing import price
 from algotrading.infra.risk import BasketGap, ContractValuationInput, PositionRisk, position_risk
 from algotrading.infra.risk.multileg import CellKey, analytics_cell_key
@@ -130,6 +134,10 @@ def _index_rows(
     by_cell: dict[CellKey, ProjectedOptionAnalytics] = {}
     ambiguous: set[CellKey] = set()
     for row in rows:
+        # Reprice off the combined surface (ADR 0048) — the per-side put/call rows are an
+        # additive diagnostic, not the book reference; skip them here as multileg does.
+        if row.surface_side != SURFACE_SIDE_COMBINED:
+            continue
         key = analytics_cell_key(row.underlying, row.tenor_label, row.delta_band)
         if key in by_cell and by_cell[key].provider != row.provider:
             ambiguous.add(key)

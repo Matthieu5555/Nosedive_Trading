@@ -84,6 +84,24 @@ contract carrying the fitted IV, the model price, and the Greeks in **both** rep
 side by side — the decimal per-unit Greeks (source of truth) and the dollar Greeks, each
 dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).
 
+### Per-side surfaces (`surface_side`, ADR 0048 / R2)
+
+Each cell carries a `surface_side ∈ {put, call, combined}`: which fitted surface its IV came
+from. `project_grid` takes the combined fits plus optional `put_slices` / `call_slices` (the
+wings fit over put-only / call-only IV points upstream in the actor). It **solves the strike
+once off the combined surface** and then emits a row per supplied side at that same strike,
+each reading its own wing's IV — so `combined` is bit-for-bit the legacy single-surface grid
+(the forward-backing / attribution reference) and `put`/`call` are additive. With no wings
+supplied the grid is `combined`-only, unchanged. A wing with no fitted curve at a maturity is a
+labeled `ProjectionGap` for that `(cell, side)`, never a guess.
+
+Because put and call price the **same** strike, `put_call_iv_spread(cells)` reads the
+put−call IV spread per cell (`put_iv − call_iv`) — a funding/dividend/borrow-skew signal and a
+data-quality instrument; `qc.check_put_call_iv_spread` quarantines a blowout past a configured
+bound. Every combined-only consumer (basket risk, booking, grid-coverage QC, the CDC view)
+filters to `surface_side == "combined"`, so per-side rows never perturb them. The front-end side
+toggle and persisted per-side SVI params are a follow-up.
+
 ```python
 from algotrading.infra.surfaces import (
     ProjectionConfig, SnapshotMarketState, project_grid,

@@ -310,8 +310,9 @@ def run_analytics_with_qc(
         config_hashes=config_hashes,
     )
 
-    # 4. Surface fits per (underlying, maturity); keep the rich SliceFit for the join.
-    slice_fits, surface_params, surface_cells = _build_surfaces(
+    # 4. Surface fits per (underlying, maturity); keep the rich SliceFit for the join. The
+    #    combined fit is the join/risk reference; the per-side wings (ADR 0048) feed the grid.
+    slice_fits, put_slice_fits, call_slice_fits, surface_params, surface_cells = _build_surfaces(
         iv_points,
         masters_by_key,
         as_of_date,
@@ -341,6 +342,8 @@ def run_analytics_with_qc(
     #    callers leave it off and the grid is empty).
     projected = _build_projected_analytics(
         slice_fits,
+        put_slice_fits=put_slice_fits,
+        call_slice_fits=call_slice_fits,
         batch=batch,
         forwards=forward_estimates,
         provider=provider,
@@ -706,14 +709,21 @@ def _build_surfaces(
     config_hashes: Mapping[str, str],
     surface: SurfaceConfig,
     moneyness_buckets: tuple[float, ...],
-) -> tuple[list[SliceFit], list[SurfaceParameters], list[SurfaceGrid]]:
-    """Fit a slice per (underlying, maturity); keep the rich fit, project the curves.
+) -> tuple[
+    list[SliceFit], list[SliceFit], list[SliceFit], list[SurfaceParameters], list[SurfaceGrid]
+]:
+    """Fit the combined slice plus the per-side wings per (underlying, maturity).
 
-    The rich :class:`SliceFit` is kept for every maturity (the join reads it). Projecting
-    a fit into the persisted ``surface_parameters`` / grid cells is delegated to
-    :func:`surfaces.project_surface_fit`, which owns the rule about which fit method emits
-    which contract — an ``insufficient`` slice projects nothing. Outputs are sorted by
-    (underlying, maturity) for determinism.
+    The rich combined :class:`SliceFit` is kept for every maturity (the join reads it) and is
+    what projects into the persisted ``surface_parameters`` / grid cells via
+    :func:`surfaces.project_surface_fit` — unchanged, an ``insufficient`` slice projects nothing.
+
+    Per-side surfaces (ADR 0048): the maturity's IV points are split by the option right of their
+    instrument into put-only and call-only sets, and a wing with any points is fit on its own. The
+    combined fit is bit-for-bit the legacy fit (same inputs, same call); the put/call fits are
+    additive and feed only the analytics grid's ``put``/``call`` rows — they are **not** persisted
+    as ``surface_parameters`` yet (no per-side consumer of raw SVI params exists; the front toggle
+    is a follow-up). Outputs are sorted by (underlying, maturity) for determinism.
     """
     by_maturity: dict[tuple[str, float, date], list[IvPoint]] = {}
     for point in iv_points:
@@ -725,6 +735,8 @@ def _build_surfaces(
         by_maturity.setdefault(key, []).append(point)
 
     slice_fits: list[SliceFit] = []
+    put_slice_fits: list[SliceFit] = []
+    call_slice_fits: list[SliceFit] = []
     params: list[SurfaceParameters] = []
     cells: list[SurfaceGrid] = []
     for (underlying, maturity_years, expiry) in sorted(by_maturity, key=lambda k: (k[0], k[1])):
@@ -734,6 +746,20 @@ def _build_surfaces(
             expiry_date=expiry, day_count=DAY_COUNT, config=surface,
         )
         slice_fits.append(fit)
+
+        put_points = tuple(p for p in points if _point_right(masters, p) == "P")
+        call_points = tuple(p for p in points if _point_right(masters, p) == "C")
+        if put_points:
+            put_slice_fits.append(fit_slice(
+                underlying, maturity_years, put_points,
+                expiry_date=expiry, day_count=DAY_COUNT, config=surface,
+            ))
+        if call_points:
+            call_slice_fits.append(fit_slice(
+                underlying, maturity_years, call_points,
+                expiry_date=expiry, day_count=DAY_COUNT, config=surface,
+            ))
+
         projection = project_surface_fit(
             fit,
             moneyness_buckets,
@@ -745,12 +771,20 @@ def _build_surfaces(
         if projection.parameters is not None:
             params.append(projection.parameters)
         cells.extend(projection.grid_cells)
-    return slice_fits, params, cells
+    return slice_fits, put_slice_fits, call_slice_fits, params, cells
+
+
+def _point_right(masters: Mapping[str, InstrumentKey], point: IvPoint) -> str | None:
+    """The option right (``C``/``P``) of an IV point's instrument, or ``None`` if unknown."""
+    instrument = masters.get(point.contract_key)
+    return None if instrument is None else instrument.option_right
 
 
 def _build_projected_analytics(
     slice_fits: Sequence[SliceFit],
     *,
+    put_slice_fits: Sequence[SliceFit] = (),
+    call_slice_fits: Sequence[SliceFit] = (),
     batch: SnapshotBatch,
     forwards: Sequence[ForwardEstimate],
     provider: str | None,
@@ -760,7 +794,7 @@ def _build_projected_analytics(
     calc_ts: datetime,
     projection: ProjectionConfig | None,
 ) -> tuple[ProjectedOptionAnalytics, ...]:
-    """Regrid each underlying's fitted surface onto the pinned tenor × delta-band grid.
+    """Regrid each underlying's fitted surface(s) onto the pinned tenor × delta-band grid.
 
     Returns an empty tuple when no ``provider`` is supplied (the grid is provider-partitioned,
     so a provider-less replay-equality run produces none) — so the change is inert for those
@@ -768,8 +802,11 @@ def _build_projected_analytics(
     :class:`SliceFit` set by underlying, builds the per-underlying :class:`SnapshotMarketState`
     from the batch's usable spot and the usable forward estimates' discount factors (carry == 0,
     forward == spot per the projection convention), and calls :func:`surfaces.project_grid` once
-    per underlying. The cell order is a pure function of the config axes, so the persisted grid
-    is deterministic. Cells across underlyings are concatenated in sorted-underlying order.
+    per underlying. The combined fits solve the strikes and emit the ``combined`` rows; the
+    per-side wings (``put_slice_fits``/``call_slice_fits``, ADR 0048) add the ``put``/``call``
+    rows at the same strikes. The cell order is a pure function of the config axes, so the
+    persisted grid is deterministic. Cells across underlyings are concatenated in
+    sorted-underlying order.
     """
     if provider is None or not slice_fits:
         return ()
@@ -790,9 +827,15 @@ def _build_projected_analytics(
             round(estimate.maturity_years, _MATURITY_MATCH_DECIMALS)
         ] = estimate.discount_factor
 
-    slices_by_underlying: dict[str, list[SliceFit]] = {}
-    for fit in slice_fits:
-        slices_by_underlying.setdefault(fit.underlying, []).append(fit)
+    def _by_underlying(fits: Sequence[SliceFit]) -> dict[str, list[SliceFit]]:
+        grouped: dict[str, list[SliceFit]] = {}
+        for fit in fits:
+            grouped.setdefault(fit.underlying, []).append(fit)
+        return grouped
+
+    slices_by_underlying = _by_underlying(slice_fits)
+    put_by_underlying = _by_underlying(put_slice_fits)
+    call_by_underlying = _by_underlying(call_slice_fits)
 
     cells: list[ProjectedOptionAnalytics] = []
     for underlying in sorted(slices_by_underlying):
@@ -810,6 +853,8 @@ def _build_projected_analytics(
         result = project_grid(
             slices_by_underlying[underlying],
             market,
+            put_slices=put_by_underlying.get(underlying, []),
+            call_slices=call_by_underlying.get(underlying, []),
             snapshot_ts=as_of,
             source_snapshot_ts=as_of,
             calc_ts=calc_ts,

@@ -40,6 +40,7 @@ from .checks import (
     CHECK_NAMES,
     CHECK_OPTION_CHAIN_COVERAGE,
     CHECK_PARITY_RESIDUAL,
+    CHECK_PUT_CALL_IV_SPREAD,
     CHECK_SCENARIO_COMPLETENESS,
     CHECK_SURFACE_FIT_ERROR,
     CHECK_TENOR_COVERAGE_FLOOR,
@@ -52,6 +53,7 @@ from .checks import (
     check_iv_solver_convergence,
     check_option_chain_coverage,
     check_parity_residual,
+    check_put_call_iv_spread,
     check_scenario_completeness,
     check_surface_fit_error,
     check_tenor_coverage_floor,
@@ -64,7 +66,7 @@ from .errors import (
     EmptyBaselineError,
     QcError,
 )
-from .inputs import CollectorContinuityInput, GridPointInput
+from .inputs import CollectorContinuityInput, GridPointInput, IvSpreadInput
 from .report import (
     ESCALATION_LEVELS,
     ESCALATION_NONE,
@@ -102,6 +104,7 @@ __all__ = [
     "CHECK_NAMES",
     "CHECK_OPTION_CHAIN_COVERAGE",
     "CHECK_PARITY_RESIDUAL",
+    "CHECK_PUT_CALL_IV_SPREAD",
     "CHECK_SCENARIO_COMPLETENESS",
     "CHECK_SURFACE_FIT_ERROR",
     "CHECK_TENOR_COVERAGE_FLOOR",
@@ -120,6 +123,7 @@ __all__ = [
     "STATUS_WARN",
     "CollectorContinuityInput",
     "GridPointInput",
+    "IvSpreadInput",
     "ContractKeyMismatchError",
     "EmptyBaselineError",
     "QcError",
@@ -135,6 +139,7 @@ __all__ = [
     "check_iv_solver_convergence",
     "check_option_chain_coverage",
     "check_parity_residual",
+    "check_put_call_iv_spread",
     "check_scenario_completeness",
     "check_surface_fit_error",
     "check_tenor_coverage_floor",

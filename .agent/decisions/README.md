@@ -50,6 +50,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0010** — QC + validation merged into one `triage_records` plane.
 - **0036** — $-Greek units + monetization conventions (raw is truth, dollar is derived).
 - **0038** — By-Greek PnL attribution (`ScenarioAttribution`) — transcript §7.
+- **0048** — Per-side vol surfaces (R2): fit put/call/combined; `surface_side` in the grid PK; combined is the reference; put−call IV spread = signal + QC.
 
 ## Execution & booking
 - **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*

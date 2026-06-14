@@ -204,7 +204,11 @@ REGISTRY: dict[str, TableSpec] = {
         # distinct rows that land in disjoint provider segments. Without provider in the key the
         # batch-global duplicate-key guard (adapter.write) false-rejects a single-batch write
         # carrying both providers' grids, even though they never share a partition (M4).
-        primary_key=("provider", "snapshot_ts", "underlying", "tenor_label", "delta_band"),
+        # ``surface_side`` (ADR 0048) is in the key: the put, call, and combined fits are three
+        # genuinely distinct rows for the same (tenor, delta_band) cell, not duplicates.
+        primary_key=(
+            "provider", "snapshot_ts", "underlying", "tenor_label", "delta_band", "surface_side",
+        ),
         layer="analytics",
         # Recompute-friendly derived analytic: a restatement lands as a version=<V>
         # sub-partition beside the live grid, never overwriting it (ADR 0019 at version

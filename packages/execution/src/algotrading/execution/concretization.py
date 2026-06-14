@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from algotrading.infra.contracts import (
+    SURFACE_SIDE_COMBINED,
     InstrumentKey,
     MarketStateSnapshot,
     ProjectedOptionAnalytics,
@@ -185,6 +186,10 @@ def _analytics_cell_index(
     by_cell: dict[CellKey, ProjectedOptionAnalytics] = {}
     ambiguous: set[CellKey] = set()
     for row in rows:
+        # Book against the combined surface (ADR 0048): a concrete fill marks off the
+        # forward-backing reference, not a per-side wing. Skip the additive put/call rows.
+        if row.surface_side != SURFACE_SIDE_COMBINED:
+            continue
         key = analytics_cell_key(row.underlying, row.tenor_label, row.delta_band)
         if key in by_cell and by_cell[key].provider != row.provider:
             ambiguous.add(key)

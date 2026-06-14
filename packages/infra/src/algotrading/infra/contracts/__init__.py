@@ -36,6 +36,8 @@ from .registry import (
     table_for_contract,
 )
 from .tables import (
+    SURFACE_SIDE_COMBINED,
+    SURFACE_SIDES,
     Basket,
     BasketLeg,
     BookGreeks,
@@ -85,6 +87,8 @@ __all__ = [
     "ScenarioAttribution",
     "ScenarioResult",
     "StorageRepository",
+    "SURFACE_SIDES",
+    "SURFACE_SIDE_COMBINED",
     "SurfaceFitDiagnostics",
     "SurfaceGrid",
     "SurfaceParameters",

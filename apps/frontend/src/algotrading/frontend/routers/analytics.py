@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 
 from algotrading.infra.contracts import (
+    SURFACE_SIDE_COMBINED,
     ProjectedOptionAnalytics,
     SurfaceGrid,
     SurfaceParameters,
@@ -59,6 +60,11 @@ def _group_by_maturity(
     slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
+        # The CDC grid view renders the combined surface (ADR 0048) — the reference smile. The
+        # per-side put/call rows are surfaced by the side-toggle follow-up, not here; including
+        # them now would triple every smile's points.
+        if cell.surface_side != SURFACE_SIDE_COMBINED:
+            continue
         grouped.setdefault(_maturity_key(cell.maturity_years), []).append(cell)
 
     entries: list[dict[str, object]] = []

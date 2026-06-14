@@ -75,3 +75,31 @@ class GridPointInput(Protocol):
 
     @property
     def delta(self) -> float: ...
+
+
+@runtime_checkable
+class IvSpreadInput(Protocol):
+    """One put−call IV spread point, as the spread blowout check (ADR 0048) reads it.
+
+    The spread QC needs only where the cell sits and how far the two wings' implied vols
+    diverged, so — like :class:`GridPointInput` — the QC plane declares the minimum surface as
+    a structural Protocol. ``surfaces.IvSpreadPoint`` satisfies it with no adapter:
+
+    - ``underlying`` — which underlying the cell belongs to (named on a breach);
+    - ``tenor_label`` / ``delta_band`` — the cell coordinate, so an operator sees *which* cell
+      blew out;
+    - ``iv_spread`` — the signed put−call IV spread (``put_iv − call_iv``) at the cell's strike;
+      its magnitude is what the check bounds.
+    """
+
+    @property
+    def underlying(self) -> str: ...
+
+    @property
+    def tenor_label(self) -> str: ...
+
+    @property
+    def delta_band(self) -> str: ...
+
+    @property
+    def iv_spread(self) -> float: ...

@@ -37,12 +37,14 @@ from .market_state import SnapshotMarketState
 from .projection import (
     PINNED_TENORS,
     PROJECTION_VERSION,
+    IvSpreadPoint,
     ProjectionConfig,
     ProjectionConfigError,
     ProjectionGap,
     ProjectionResult,
     merged_config_hashes,
     project_grid,
+    put_call_iv_spread,
     tenor_years,
 )
 from .reporting import (
@@ -70,6 +72,7 @@ __all__ = [
     "SURFACE_VERSION",
     "CalendarViolation",
     "DenseSurface",
+    "IvSpreadPoint",
     "ProjectionConfig",
     "ProjectionConfigError",
     "ProjectionGap",
@@ -91,6 +94,7 @@ __all__ = [
     "interpolate_total_variance",
     "merged_config_hashes",
     "project_grid",
+    "put_call_iv_spread",
     "project_surface_fit",
     "reconstruct_dense_surface",
     "slice_plot_series",

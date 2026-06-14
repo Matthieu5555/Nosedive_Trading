@@ -30,6 +30,7 @@ it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-13 (1507 passed
 | claude (matthieu) | `tasks/TASKBOARD.md`, `AGENTS.md`; archive 2 landed specs | 2026-06-13 | context-pollution cleanup ([T-agent-context-minimization](T-agent-context-minimization.md) Part A/B) |
 | Claude (vincent) | [T-front-currency-and-bands](T-front-currency-and-bands.md) — front display wiring (`api.ts`, `DollarGreeks.tsx`, `MaturityAccordion`, `format.ts`) + un-hardcode `BasketLegGrid` band list | 2026-06-13 | backend `/api/indices` currency single-source already landed; front half remains |
 | Claude (anthony) | Basket/Risk tab operator-flow fixes — `routers/basket.py` (empty `trade_date` → latest banked day), web `pages/Basket.tsx`, `pages/RiskScenarios.tsx` | 2026-06-12 | drop the duplicated stress composer from the Risk tab; on-demand stress lives on Basket |
+| claude (matthieu) | `packages/execution/**` (new `fills`/`ledger`/`book`), `pyproject.toml` testpaths | 2026-06-14 | [execution-fills-position-store](execution-fills-position-store.md) **store + readers landed** (branch `execution-fills-position-store`); the remaining half is the gated write path [execution-booking-commit](execution-booking-commit.md) |
 
 ## Layer ownership (planning pass, 2026-06-13)
 
@@ -74,7 +75,7 @@ planning pass.**
 
 **`execution-` — OMS / booking chain (packages/execution, empty)**
 - ★ [execution-booking-commit](execution-booking-commit.md) — **§7 #1, week's top priority**: the password-gated booking write barrier (previewed ticket → paper fill → fills-store + audit)
-- [execution-order-ticket](execution-order-ticket.md) · [execution-order-sign-and-send](execution-order-sign-and-send.md) (read-only / paper until an explicit owner gate) · [execution-fills-position-store](execution-fills-position-store.md) (§7.1 — the book built from fills; risk/attribution read it)
+- [execution-order-ticket](execution-order-ticket.md) · [execution-order-sign-and-send](execution-order-sign-and-send.md) (read-only / paper until an explicit owner gate) · [execution-fills-position-store](execution-fills-position-store.md) (§7.1 — **store + readers landed**: `Fill` + append-only `FillsLedger` (in-mem + durable JSONL) + `position_set_from_fills` folding into the `PositionSet` risk already reads; the gated *write* path is `execution-booking-commit`)
 - [execution-operational-hardening](execution-operational-hardening.md) (§7.9 umbrella — margin / kill switch / broker recon / alert delivery; margin sub-lane gates S2, rest post-week)
 
 **`frontend-` — BFF + web delivery (apps/frontend)**

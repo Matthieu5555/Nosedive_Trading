@@ -191,6 +191,7 @@ testpaths = [
     "packages/core/tests",
     "packages/infra/tests",
     "packages/infra-ibkr/tests",
+    "packages/execution/tests",
     "apps/frontend/tests",
 ]
 

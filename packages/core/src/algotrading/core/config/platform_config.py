@@ -517,6 +517,20 @@ class SolverConfig(_ConfigModel):
         return self
 
 
+# The surface-fit method vocabulary, mirrored from the labels the fitter emits
+# (`surfaces.fit.METHOD_SVI` / `METHOD_NONPARAMETRIC`). Core owns the *policy* (which model
+# is primary, which is the sparse-slice fallback); infra owns the *implementation*. The set is
+# the forward-compatible vocabulary the engine actually implements today — a real spline would
+# grow both this set and the fitter's dispatch together (ADR 0028).
+#
+# Naming note (blueprint 07 reconciliation): blueprint Part-07 names the fallback ``spline``,
+# but the shipped fallback is linear interpolation of total variance, labelled ``nonparametric``
+# — so that honest name is what is encoded here, never the aspirational ``spline`` (the config
+# must describe what the code does, not what a future model might).
+_SURFACE_MODELS = frozenset({"svi"})
+_SURFACE_FALLBACK_MODELS = frozenset({"nonparametric"})
+
+
 class SurfaceConfig(_ConfigModel):
     """Bounds and tolerances for the SVI surface fit, plus the projection grid.
 
@@ -525,8 +539,10 @@ class SurfaceConfig(_ConfigModel):
     fitted parameter must sit to count as "at the bound"; ``svi_max_iterations`` caps the
     least-squares budget. Each ``*_bounds`` is a finite, strictly-increasing
     ``(low, high)`` pair. ``moneyness_buckets`` is the log-moneyness grid the regularized
-    surface is projected and persisted onto — surface output, so it lives here. Authored
-    in ``pricing.yaml`` under ``surface:``. (The minimum-points floor for SVI is a
+    surface is projected and persisted onto — surface output, so it lives here. ``model`` /
+    ``fallback_model`` name the primary calibration model and the sparse-slice fallback the
+    fitter emits, giving that method choice a typed home instead of a ``.py`` label literal.
+    Authored in ``pricing.yaml`` under ``surface:``. (The minimum-points floor for SVI is a
     mathematical invariant — five parameters need five points — and stays a code
     constant, not a tunable.)
     """
@@ -541,6 +557,14 @@ class SurfaceConfig(_ConfigModel):
     svi_sigma_bounds: _FloatPair
     svi_bound_hit_tol: float = Field(gt=0.0)
     svi_max_iterations: int = Field(ge=1)
+    # The primary calibration model and the sparse-slice fallback the fitter emits — the method
+    # choice gets a typed home instead of the `METHOD_SVI` / `METHOD_NONPARAMETRIC` .py literals
+    # at the `fit_slice` emission sites (blueprint 07 `model` / `fallback_model`, ADR 0028).
+    # Constrained to the vocabulary the fitter implements; default = the shipped SVI-with-
+    # nonparametric-fallback, so the labels are byte-identical. `fallback_model` is honestly
+    # `nonparametric` (linear interp in total variance), not the blueprint's aspirational `spline`.
+    model: str = "svi"
+    fallback_model: str = "nonparametric"
     # Min distinct strikes a slice needs before SVI is trusted; below it, the fit routes to
     # the labeled nonparametric fallback (blueprint 07 `min_points_per_slice`, ADR 0028 — the
     # routing threshold gets a typed home instead of the `MIN_POINTS_FOR_SVI` .py literal).
@@ -586,15 +610,40 @@ class SurfaceConfig(_ConfigModel):
             raise ValueError("moneyness_buckets must be symmetric about 0.0")
         return self
 
+    @model_validator(mode="after")
+    def _check_models(self) -> SurfaceConfig:
+        if self.model not in _SURFACE_MODELS:
+            raise ValueError(
+                f"model must be one of {sorted(_SURFACE_MODELS)} (the implemented fits), "
+                f"got {self.model!r}"
+            )
+        if self.fallback_model not in _SURFACE_FALLBACK_MODELS:
+            raise ValueError(
+                f"fallback_model must be one of {sorted(_SURFACE_FALLBACK_MODELS)} "
+                f"(the implemented fallbacks), got {self.fallback_model!r}"
+            )
+        return self
+
+
+# The forward-engine outlier-rejection vocabulary, consumed by `forwards.estimate`. ``mad`` is
+# the shipped robust (median-absolute-deviation) screen; ``none`` disables rejection entirely
+# (every candidate feeds the regression) — a genuine second behaviour, not a placeholder, useful
+# for A/B-ing the screen's effect. The blueprint Part-07 `forward_engine.outlier_method: mad`
+# lands here; a future method (e.g. IQR) grows both this set and the estimator's dispatch.
+_FORWARD_OUTLIER_METHODS = frozenset({"mad", "none"})
+
 
 class ForwardConfig(_ConfigModel):
-    """Confidence/quality heuristics for the put-call-parity forward estimate.
+    """Confidence/quality heuristics and outlier policy for the parity forward estimate.
 
     These map a maturity's used-pair count and relative fit residual to a quality label
-    and a 0..1 confidence every downstream consumer trusts. Authored in ``pricing.yaml``
-    under ``forward:``. (The minimum-pairs floor for the regression — two unknowns need
-    two equations — and the residual float-noise floor are mathematical/precision
-    invariants and stay code constants.)
+    and a 0..1 confidence every downstream consumer trusts, and carry the forward engine's
+    candidate-cap and outlier-rejection policy (blueprint Part-07 ``forward_engine``: it has
+    no separate YAML section here — these are the forward engine's economic inputs, so they
+    live in the existing ``forward:`` block rather than fragmenting into a near-duplicate one).
+    Authored in ``pricing.yaml`` under ``forward:``. (The minimum-pairs floor for the
+    regression — two unknowns need two equations — and the residual float-noise floor are
+    mathematical/precision invariants and stay code constants.)
     """
 
     model_config = _SECTION_CONFIG
@@ -612,6 +661,34 @@ class ForwardConfig(_ConfigModel):
     # behaviour, byte-identical), so a config that does not set it is unchanged; a value
     # overrides the split's rate (a curve r(T) is the later form). Negative rates are valid.
     rate: float | None = None
+    # Cap on how many candidate call/put pairs feed one maturity's parity regression (blueprint
+    # 07 `max_candidate_count`). ``None`` = no cap (every valid pair is used — the prior
+    # behaviour, byte-identical); when set, the engine keeps the most-liquid N pairs (tie-break
+    # by strike) and drops the rest. A new guard behaviour, so it ships disabled (``None``); the
+    # blueprint's 12 is a value an owner enables once its golden move is blessed. Must be >= 2
+    # (the regression needs two pairs) when set.
+    max_candidate_count: int | None = None
+    # Which robust screen rejects outlier strikes before the refit, and how aggressive it is
+    # (blueprint 07 `outlier_method` / `max_robust_zscore`). ``outlier_method`` ∈ {mad, none}:
+    # `mad` is the shipped MAD z-score screen, `none` disables rejection. ``max_robust_zscore``
+    # is the scaled-MAD distance beyond which a residual is flagged (Eq 24) — it defaults to
+    # 3.5, the shared `robust.outlier_flags` default, so the screen is byte-identical until tuned.
+    outlier_method: str = "mad"
+    max_robust_zscore: float = Field(default=3.5, gt=0.0)
+
+    @model_validator(mode="after")
+    def _check_forward_engine(self) -> ForwardConfig:
+        if self.outlier_method not in _FORWARD_OUTLIER_METHODS:
+            raise ValueError(
+                f"outlier_method must be one of {sorted(_FORWARD_OUTLIER_METHODS)}, "
+                f"got {self.outlier_method!r}"
+            )
+        if self.max_candidate_count is not None and self.max_candidate_count < 2:
+            raise ValueError(
+                "max_candidate_count must be >= 2 (the parity regression needs two pairs) "
+                f"or None for no cap, got {self.max_candidate_count}"
+            )
+        return self
 
 
 class StressSurfaceConfig(_ConfigModel):

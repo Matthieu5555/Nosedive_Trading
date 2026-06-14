@@ -240,6 +240,89 @@ def test_clean_chain_rejects_nothing() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# core-pricing-config-completeness: forward-engine candidate cap + outlier     #
+# policy now typed config (max_candidate_count / outlier_method / z-cut)       #
+# --------------------------------------------------------------------------- #
+def _clean_chain_with_low_liquidity_wing() -> tuple[ForwardPair, ...]:
+    """15 strikes on a clean parity line (DF=0.95, F=100); strikes 102-104 are illiquid.
+
+    The line is the oracle (spread = DF*(F-K)); put_mid is pinned at 20 so call_mid =
+    20 + spread stays positive across 90..104. The three highest strikes carry low
+    liquidity, so a cap that keeps the most-liquid pairs drops exactly those three.
+    """
+    df, f = 0.95, 100.0
+    return tuple(
+        _pair(k, call_mid=20.0 + df * (f - k), put_mid=20.0,
+              liquidity=0.1 if k >= 102.0 else 1.0)
+        for k in (float(s) for s in range(90, 105))
+    )
+
+
+def test_max_candidate_count_keeps_the_most_liquid_pairs() -> None:
+    # A binding cap keeps the 12 most-liquid pairs and drops the 3 illiquid wing strikes;
+    # the clean line still recovers F=100 from the survivors.
+    pairs = _clean_chain_with_low_liquidity_wing()
+    capped = FORWARD_CONFIG.model_copy(update={"max_candidate_count": 12})
+    estimate = estimate_forward("IDX", 0.5, pairs, config=capped, spot=95.0)
+    assert estimate.candidate_count == 12
+    kept = {point.strike for point in estimate.points}
+    assert {102.0, 103.0, 104.0}.isdisjoint(kept)
+    assert estimate.forward == pytest.approx(100.0, rel=1e-9)
+
+
+def test_no_candidate_cap_uses_every_valid_pair() -> None:
+    # The shipped default (None) caps nothing — every valid pair feeds the regression.
+    pairs = _clean_chain_with_low_liquidity_wing()
+    estimate = estimate_forward("IDX", 0.5, pairs, config=FORWARD_CONFIG, spot=95.0)
+    assert estimate.candidate_count == 15
+
+
+def test_candidate_cap_above_the_pair_count_is_a_no_op() -> None:
+    pairs = _clean_chain_with_low_liquidity_wing()
+    big = FORWARD_CONFIG.model_copy(update={"max_candidate_count": 50})
+    estimate = estimate_forward("IDX", 0.5, pairs, config=big, spot=95.0)
+    assert estimate.candidate_count == 15
+
+
+def _single_outlier_chain(bump: float) -> tuple[ForwardPair, ...]:
+    """The clean synthetic chain with one gross call-mid corruption at K=100."""
+    surface = build_synthetic_surface()
+    return tuple(
+        ForwardPair(
+            strike=point.strike,
+            call_mid=point.call_price + (bump if point.strike == 100.0 else 0.0),
+            put_mid=point.put_price,
+            liquidity=1.0,
+            call_key=f"C@{point.strike:g}",
+            put_key=f"P@{point.strike:g}",
+        )
+        for point in surface.points
+    )
+
+
+def test_outlier_method_none_disables_rejection() -> None:
+    # The same corruption the MAD screen rejects is kept when the screen is turned off.
+    pairs = _single_outlier_chain(bump=3.0)
+    maturity = build_synthetic_surface().maturity_years
+    mad = estimate_forward("AAPL", maturity, pairs, config=FORWARD_CONFIG, spot=_SYNTH_SPOT)
+    assert mad.rejected_count == 1
+    off = FORWARD_CONFIG.model_copy(update={"outlier_method": "none"})
+    none = estimate_forward("AAPL", maturity, pairs, config=off, spot=_SYNTH_SPOT)
+    assert none.rejected_count == 0
+    assert all(not point.rejected for point in none.points)
+
+
+def test_max_robust_zscore_loosening_keeps_the_outlier() -> None:
+    # A very high z-cut makes the MAD screen flag nothing, even on the corrupted chain the
+    # default 3.5 cut rejects — the threshold is the typed-config knob driving the screen.
+    pairs = _single_outlier_chain(bump=3.0)
+    maturity = build_synthetic_surface().maturity_years
+    loose = FORWARD_CONFIG.model_copy(update={"max_robust_zscore": 1000.0})
+    estimate = estimate_forward("AAPL", maturity, pairs, config=loose, spot=_SYNTH_SPOT)
+    assert estimate.rejected_count == 0
+
+
+# --------------------------------------------------------------------------- #
 # Stability: small change in the eligible strike set -> small forward change   #
 # --------------------------------------------------------------------------- #
 def test_forward_is_stable_across_strike_subset_changes() -> None:

@@ -28,6 +28,11 @@ surface:                       # SVI calibration (SurfaceConfig)
   svi_sigma_bounds: [1.0e-8, 10.0]   # curvature, strictly > 0
   svi_bound_hit_tol: 1.0e-5          # "at the bound" detection, relative to each range
   svi_max_iterations: 200            # least-squares evaluation budget per parameter
+  model: svi                         # primary calibration model (the only implemented fit)
+  fallback_model: nonparametric      # sparse-slice fallback — linear interp in total variance.
+                                     # Honestly named for what the code does; blueprint 07 calls
+                                     # it "spline", but the shipped fallback is linear interp, so
+                                     # this is NOT encoded as "spline" (config describes the code).
   min_points_per_slice: 5            # distinct strikes required before SVI is trusted; below it
                                      # the slice routes to the nonparametric fallback. Floored at
                                      # 5 = SVI's parameter count; raise to demand more points.
@@ -47,3 +52,12 @@ forward:                       # parity forward-estimate confidence heuristics (
                                      # q = r − ln(F/S)/T (Eq 5). null = use the parity-DF-implied
                                      # rate −ln(DF)/T (unchanged); set a number (e.g. 0.0) to make
                                      # r an explicit, modifiable input (T-explicit-rate-parameter).
+  # Forward-engine policy (blueprint 07 `forward_engine`; lands in this block, not a separate one).
+  max_candidate_count: null          # cap on call/put pairs fed to one maturity's parity regression.
+                                     # null = no cap (every valid pair, unchanged); set an int >= 2 to
+                                     # keep the most-liquid N (tie-break strike). Blueprint's 12 is an
+                                     # owner-enabled value (it moves the analytics golden when binding).
+  outlier_method: mad                # robust outlier screen before refit: "mad" (MAD z-score, shipped)
+                                     # or "none" (disable rejection — every candidate feeds the fit).
+  max_robust_zscore: 3.5             # scaled-MAD cut-off a residual is flagged beyond (Eq 24); 3.5 =
+                                     # the shared robust default, so the screen is unchanged until tuned.

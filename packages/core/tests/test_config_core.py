@@ -162,12 +162,22 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # [-0.2,-0.1,0,0.1,0.2] = byte-identical projection. The `pricing` bundle hash — and so the folded
     # whole-config hash — moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical (section
     # isolation). Pre-capture dev change: no banked record carries the old hash.
+    #
+    # core-pricing-config-completeness (2026-06-14, ADR 0028 — the deferred slices): the surface-fit
+    # method choice (`SurfaceConfig.model` / `fallback_model`, defaults `svi` / `nonparametric`) and
+    # the forward-engine candidate/outlier policy (`ForwardConfig.max_candidate_count` / `outlier_method`
+    # / `max_robust_zscore`, defaults `None` / `mad` / `3.5`) joined the hashed `surface` / `forward`
+    # blocks in `pricing.yaml` — the method labels and the candidate/outlier policy get typed homes
+    # instead of the `METHOD_*` / `_MAD_REJECTION_Z` .py literals. Every default = the shipped
+    # behaviour (byte-identical fits and forwards), so only the `pricing` bundle hash — and so the
+    # folded whole-config hash — moved BY DESIGN; `universe`/`qc`/`scenarios` stay byte-identical
+    # (section isolation). Pre-capture dev change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "0c39029dc276fa39a5b3c0ffd3c73cf337d9b645d5fa20d354b3d81f56b8f019"
+        "c3899b7d79c7ce8de6b4d109158168ffa2aabe67a973c9d1e5efacd27ce84935"
     )
     assert config_hashes(config) == {
-        "pricing": "c78c40d6cc0a7970dab5d1c24d621af87155b15476780a89b2ebff8188dc6850",
+        "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
         "universe": "a557c26b5d97d8a077c02406e3ec4ce783fcb0fc20c7e9956e771d875087ce97",
@@ -256,6 +266,121 @@ def test_moneyness_buckets_folds_into_the_pricing_hash() -> None:
     # hashed economic input — the drift the ADR-0028 audit class exists to flag.
     base = _config()
     moved = base.model_copy(update={"surface": _surface_with_grid((-0.1, 0.0, 0.1))})
+    base_h, moved_h = config_hashes(base), config_hashes(moved)
+    assert moved_h["pricing"] != base_h["pricing"]
+    assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
+        k: base_h[k] for k in ("universe", "qc", "scenarios")
+    }
+
+
+# --------------------------------------------------------------------------- #
+# core-pricing-config-completeness: surface model/fallback + forward engine    #
+# (the ADR-0028 deferred slices — typed homes for the method labels and the    #
+# forward-engine candidate/outlier policy)                                     #
+# --------------------------------------------------------------------------- #
+def test_surface_model_defaults_are_the_shipped_svi_with_nonparametric_fallback() -> None:
+    # The shipped default (no override) is SVI primary with the honestly-named nonparametric
+    # fallback — NOT the blueprint's aspirational "spline" (the code does linear interp).
+    surface = _surface()
+    assert (surface.model, surface.fallback_model) == ("svi", "nonparametric")
+
+
+@pytest.mark.parametrize(
+    "field,bad",
+    [
+        ("model", "spline"),  # blueprint's name, but unimplemented -> rejected, never encoded
+        ("model", "nonparametric"),  # a fallback, not a primary model
+        ("fallback_model", "spline"),
+        ("fallback_model", "svi"),  # a primary model, not a fallback
+    ],
+)
+def test_surface_model_rejects_unimplemented_methods(field: str, bad: str) -> None:
+    # Built through the constructor (not model_copy, which skips validation) so the after-
+    # validator runs and a bad method surfaces as the labelled ConfigFieldError the loader raises.
+    from algotrading.core.config import ConfigFieldError
+
+    kwargs = dict(
+        version="surf-1",
+        svi_a_bounds=(0.0, 10.0),
+        svi_b_bounds=(1e-8, 10.0),
+        svi_rho_bounds=(-0.999, 0.999),
+        svi_m_bounds=(-5.0, 5.0),
+        svi_sigma_bounds=(1e-8, 10.0),
+        svi_bound_hit_tol=1e-5,
+        svi_max_iterations=200,
+    )
+    kwargs[field] = bad
+    with pytest.raises(ConfigFieldError):
+        SurfaceConfig(**kwargs)  # type: ignore[arg-type]
+
+
+def test_surface_model_choice_folds_into_the_pricing_hash() -> None:
+    # The method labels are a hashed economic input: a (hypothetical) alternate model moves
+    # ONLY the pricing bundle hash. Built via model_copy (which skips the vocabulary
+    # validator) — this test is about the hash plumbing, not the allowed values.
+    base = _config()
+    alt_surface = base.surface.model_copy(update={"model": "svi-variant"})
+    moved = base.model_copy(update={"surface": alt_surface})
+    base_h, moved_h = config_hashes(base), config_hashes(moved)
+    assert moved_h["pricing"] != base_h["pricing"]
+    assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
+        k: base_h[k] for k in ("universe", "qc", "scenarios")
+    }
+
+
+def test_forward_engine_defaults_are_byte_identical_policy() -> None:
+    # The shipped defaults are the prior behaviour: no candidate cap, MAD screen, 3.5 z-cut.
+    fwd = _forward()
+    assert (fwd.max_candidate_count, fwd.outlier_method, fwd.max_robust_zscore) == (
+        None,
+        "mad",
+        3.5,
+    )
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"outlier_method": "iqr"},  # unimplemented screen
+        {"outlier_method": ""},
+        {"max_candidate_count": 1},  # below the two-pair regression floor
+        {"max_candidate_count": 0},
+        {"max_robust_zscore": 0.0},  # must be > 0
+    ],
+)
+def test_forward_engine_rejects_bad_policy(update: dict[str, object]) -> None:
+    from algotrading.core.config import ConfigFieldError
+
+    with pytest.raises(ConfigFieldError):
+        ForwardConfig(
+            version="fwd-bad",
+            good_rel_residual=1e-3,
+            fair_rel_residual=1e-2,
+            full_credit_pairs=4.0,
+            rel_residual_halflife=1e-3,
+            single_pair_confidence=0.30,
+            **update,  # type: ignore[arg-type]
+        )
+
+
+def test_forward_engine_max_candidate_count_none_is_allowed() -> None:
+    # None is the explicit "no cap" sentinel and must pass validation.
+    assert _forward().model_copy(update={"max_candidate_count": None}).max_candidate_count is None
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"max_candidate_count": 12},
+        {"outlier_method": "none"},
+        {"max_robust_zscore": 2.5},
+    ],
+)
+def test_forward_engine_policy_folds_into_the_pricing_hash(update: dict[str, object]) -> None:
+    # Each forward-engine knob is a hashed economic input: moving it moves ONLY the pricing
+    # bundle hash (section isolation), the drift the ADR-0028 audit class flags.
+    base = _config()
+    moved = base.model_copy(update={"forward": base.forward.model_copy(update=update)})
     base_h, moved_h = config_hashes(base), config_hashes(moved)
     assert moved_h["pricing"] != base_h["pricing"]
     assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {

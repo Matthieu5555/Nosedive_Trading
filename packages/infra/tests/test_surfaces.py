@@ -299,6 +299,21 @@ def test_fit_slice_calibrates_svi_and_reproduces_points() -> None:
     assert {pt.contract_key for pt in fit.raw_points} == {f"K{p.strike:g}" for p in _SURFACE.points}
 
 
+def test_fit_slice_labels_are_read_from_config_not_hardwired() -> None:
+    # The emitted method labels come from config.model / config.fallback_model (ADR 0028 —
+    # the method choice has a typed home, not a .py literal). model_copy with custom labels
+    # (skipping the vocabulary validator) proves the labels flow through both fit branches.
+    relabelled = SURFACE_CONFIG.model_copy(
+        update={"model": "svi-tagged", "fallback_model": "interp-tagged"}
+    )
+    dense = fit_slice("AAPL", 0.5, _synthetic_points(), expiry_date=date(2026, 6, 19),
+                      day_count="ACT/365", config=relabelled)
+    sparse = fit_slice("AAPL", 0.5, _synthetic_points()[:3], expiry_date=date(2026, 6, 19),
+                       day_count="ACT/365", config=relabelled)
+    assert dense.method == "svi-tagged"
+    assert sparse.method == "interp-tagged"
+
+
 def test_sparse_slice_falls_back_to_labeled_nonparametric() -> None:
     # Three points cannot identify five SVI parameters, so the slice is interpolated
     # and labeled nonparametric (never dressed up as a calibrated model).

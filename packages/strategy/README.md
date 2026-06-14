@@ -11,8 +11,8 @@ code: a typed, frozen `StrategyContract` (the four §3 columns as inspectable da
 `Strategy` protocol every strategy object implements (entry / exit-kill decisions, a
 construction step that emits a *stamped* 2A `Basket`, and an optional band-rebalance hook), and
 the one-logic-four-contexts harness so research, backtest, paper, and live call the *same*
-object identically. It is the spine only — no individual strategy's rules live here; the S-tasks
-own those.
+object identically. On that spine sits the first concrete strategy — **S1 dispersion**
+(`s1_dispersion.py`, see its section below); S2–S5's rules are still owned by their S-tasks.
 
 ## What it does
 
@@ -78,6 +78,34 @@ A complete, hand-checkable implementor lives in `tests/reference_strategy.py` (`
 the fixture the seam and harness tests run against. It is **not** S1–S5; it exists only to prove
 the spine.
 
+## S1 — the dispersion strategy (the first strategy on the spine)
+
+`s1_dispersion.py` is the flagship strategy object (TARGET §3 S1) — the first thing to
+implement the `Strategy` protocol for real, and the first consumer of the ADR-0048 per-side
+vol surfaces. It harvests the **correlation premium**: when index ATM IV is rich relative to
+the constituent ATM IVs on the same tenor (high implied correlation ρ̄), a book that is long
+single-name vol and short the index monetises the gap as the names decorrelate.
+
+- **`DispersionStrategy`** — pure over an injected `DispersionConfig` (the economic parameters:
+  `index`, `top_n`, `straddle_tenor`, `entry_threshold`, …, sourced from typed platform config,
+  never `.py` literals) and a `DispersionMarketData` (the as-of I/O seam). Entry fires when ρ̄ ≥
+  the threshold; `construct` builds a long ATM straddle on each **point-in-time top-N
+  constituent** (resolved through `top_n_by_weight` — never a hand-set list), routing the
+  **call leg to the call wing and the put leg to the put wing** (ADR 0048), plus a **synthetic
+  short-forward index leg-pair** (short ATM call + long ATM put, `combined` wing) sized to
+  flatten the straddles' net dollar delta. A negligible hedge is omitted; an unpriceable leg is
+  refused (`DispersionConstructionError`), never silently dropped. Exit fires the §3 kill when
+  net dollar-vega collapses (the long-vol thesis gone); `rebalance` re-flattens net delta by band.
+- **`StoreBackedDispersionData`** (`dispersion_data.py`) — the store-backed implementor of
+  `DispersionMarketData` for paper/live: it composes the as-of membership resolver and the pure
+  `basket_risk` over a `trade_date`-narrowed grid read; it adds no risk math. Build a ready-to-run
+  object with `dispersion_strategy(store, config, provider="ibkr")`.
+
+**v1 boundary:** v1 shorts the *forward* (delta only) and stays net long vol; v2 (short the index
+*straddle* → a pure correlation spread) is the explicit upgrade, out of scope. The realized-
+correlation entry/kill reading arrives with the infra signal layer — S1 reads ρ̄ from the
+`SignalSnapshot` today and uses the net-vega-collapse proxy for the position-side kill.
+
 ## Testing
 
 From the repo root, the one gate:
@@ -94,8 +122,9 @@ the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two
 
 ## Known limitations / out of scope
 
-- **No strategy logic.** S1–S5's construction/entry/exit rules are owned by the S-tasks; this is
-  the shared shape only.
+- **S1 lives here; S2–S5 do not yet.** The spine (`contract`/`signals`/`strategy`/`harness`) is
+  strategy-agnostic; `s1_dispersion.py` + `dispersion_data.py` are the first concrete strategy.
+  S2–S5's construction/entry/exit rules are still owned by their S-tasks.
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
   layer derives it. Until that lane lands, callers build the snapshot from their own source.
 - **Enforcement and booking are not here.** `decide_exit` *emits* a flatten; the execution

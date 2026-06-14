@@ -1,5 +1,16 @@
 # strategy-s1-dispersion — S1 dispersion strategy object (flagship): top-10 straddles vs short-forward index leg
 
+> **STATUS: LANDED 2026-06-14** (branch `strategy-s1-dispersion`). The first concrete strategy on
+> the spine ([strategy-contract-base](strategy-contract-base.md)) and the first consumer of the
+> ADR-[0048](../../.agent/decisions/0048-per-side-vol-surfaces.md) per-side surfaces: each straddle
+> routes its call leg to the call wing and its put leg to the put wing. `DispersionStrategy`
+> (pure rules) + `StoreBackedDispersionData` (the as-of store I/O) in `packages/strategy`; entry on
+> ρ̄ ≥ threshold, top-N point-in-time straddles + a delta-flattening synthetic short-forward index
+> leg-pair, net-vega-collapse kill, band rebalance. v1 = forward-only (short delta), net long vol;
+> v2 (short index straddle → pure correlation spread) deferred. Full gate green (1960 passed, 12
+> skipped). The realized-correlation reading still arrives with [infra-signal-layer](../infra-signal-layer.md);
+> the productionised band rule is [strategy-delta-hedge-band](../strategy-delta-hedge-band.md).
+
 > **Source:** TARGET §3 (S1 — the owner's spec) + §0 universe model + §1 (the edge chain).
 > The flagship strategy; the end-of-week strategy to enter (§2.3). One strategy object,
 > four contexts (§6): research, backtest, paper, live call the same object.

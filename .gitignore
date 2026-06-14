@@ -57,3 +57,4 @@ Test Lenny/
 
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
+.claude/worktrees/

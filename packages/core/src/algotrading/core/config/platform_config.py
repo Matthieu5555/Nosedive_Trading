@@ -184,6 +184,60 @@ class StrikeSelectionConfig(_ConfigModel):
     discovery_working_vol: float = Field(default=0.40, gt=0.0)
 
 
+class SignalEntryConfig(_ConfigModel):
+    """The strategy-entry signal-computation params (R3 / §3, ADR 0028 — DI, no literals).
+
+    The daily signal layer (``infra/signals``) derives the readings the §3 book triggers on —
+    ρ̄ (S1), IV-rank/RV−IV (S3), the term-structure slope (S5) — and persists them as
+    ``StrategySignal`` rows. Those readings are shaped by economic choices (which tenor the
+    per-name range signals are taken at, which two pillars the slope spans, how long the
+    trailing windows are, how many heaviest names enter the ρ̄ basket). Each one decides which
+    signal records exist and at what value, so it is hashed config, never a ``.py`` literal a
+    caller hand-passes (the exact gap left when the signal layer landed with a bare dataclass).
+
+    Held as a nested block on :class:`UniverseConfig` — it sits beside the S1 dispersion sizing
+    (``dispersion_top_n``/``constituent_top_n``) the same book already configures there, and so
+    folds into ``config_hashes["universe"]`` with no separate bundle hash. The per-index
+    identity (``index``/``provider``) is **not** here: it is the fired index's own, joined onto
+    these shared params by the infra builder ``signal_config_for`` to make the per-index
+    ``SignalConfig`` the signal layer consumes.
+
+    * ``reference_tenor`` — the single tenor the per-name range signals (IV-rank, RV−IV) read.
+    * ``term_slope_front`` / ``term_slope_back`` — the two pillars the term-structure slope
+      spans (back minus front); they must differ.
+    * ``iv_history_lookback_days`` / ``realized_vol_lookback_days`` — the calendar-day trailing
+      windows for the IV-rank history read and the realized-vol close window.
+    * ``periods_per_year`` — the annualization factor for realized vol (252 trading days).
+    * ``basket_size`` — the ρ̄ universe: ``None`` uses the full as-of basket; an int uses the
+      top-``n`` constituents by index weight (the course's top-10 dispersion sub-basket). Must
+      be ``>= 1`` when set.
+
+    The defaults are non-production placeholders for in-memory / test construction only — the
+    operative values are authored in ``configs/universe.yaml`` under the ``signals:`` block.
+    """
+
+    model_config = _SECTION_CONFIG
+
+    version: str = Field(min_length=1)
+    reference_tenor: str = Field(default="3m", min_length=1)
+    term_slope_front: str = Field(default="1m", min_length=1)
+    term_slope_back: str = Field(default="6m", min_length=1)
+    iv_history_lookback_days: int = Field(default=365, gt=0)
+    realized_vol_lookback_days: int = Field(default=30, gt=0)
+    periods_per_year: float = Field(default=252.0, gt=0.0)
+    basket_size: int | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _check_pillars_and_basket(self) -> SignalEntryConfig:
+        if self.term_slope_front == self.term_slope_back:
+            raise ValueError(
+                "term_slope_front and term_slope_back must differ (the slope spans two pillars)"
+            )
+        if self.basket_size is not None and self.basket_size < 1:
+            raise ValueError("basket_size must be >= 1 when set (or null for the full basket)")
+        return self
+
+
 class UniverseConfig(_ConfigModel):
     """Which instruments the platform tracks, and the tenor grid analytics project to.
 
@@ -246,6 +300,14 @@ class UniverseConfig(_ConfigModel):
     # "capture no constituents", which is the index-only lane, expressed by not running the
     # constituent capture at all, never by a 0 here.
     constituent_top_n: int = Field(default=10, ge=1)
+    # The strategy-entry signal-computation params (R3 / §3) — a nested block authored in
+    # universe.yaml beside the dispersion sizing the same S1 book uses. Economic: its tenor /
+    # pillar / window / basket choices decide which signal records exist and at what value, so
+    # it folds into config_hashes["universe"] (ADR 0028), never a `.py` literal. The default is
+    # for in-memory/test construction; the YAML carries the operative `signals:` block.
+    signals: SignalEntryConfig = Field(
+        default_factory=lambda: SignalEntryConfig(version="signals-default")
+    )
 
     @model_validator(mode="after")
     def _check_tenor_grid_and_freeze_indices(self) -> UniverseConfig:

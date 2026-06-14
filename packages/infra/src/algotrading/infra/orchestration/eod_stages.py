@@ -285,6 +285,7 @@ def default_stages_builder(
     from algotrading.infra.actor.basket import DEFAULT_PROVIDER
     from algotrading.infra.collectors import summarize_session
     from algotrading.infra.qc import thresholds_from_config
+    from algotrading.infra.signals import persist_signal_set, signal_config_for
 
     log = _LOGGER.bind(correlation_id=correlation_id, job=EOD_JOB_NAME)
     trade_date = fired[0].as_of.date() if fired else clock.now().date()
@@ -388,6 +389,39 @@ def default_stages_builder(
                     thresholds=thresholds, run_id=correlation_id, run_ts=qc_ts,
                 )
             )
+
+        # Strategy-entry signal layer (R3 / §3): with every captured index's combined-surface
+        # grid now persisted, derive and persist the daily as-of signal set the §3 book triggers
+        # on (S1 ρ̄ + IV-rank/RV−IV/term-slope). This mirrors how the projection grid is persisted
+        # in this same stage — read the as-of inputs at the analytics choke, call
+        # persist_signal_set. Each index computes at its OWN session close (``fired_index.as_of``,
+        # the grid's calc_ts), so every read is gated to that instant (look-ahead clean) and the
+        # signal stamp is replay-stable. A signal the day cannot answer (no constituent surfaces
+        # for ρ̄, a flat IV window, too few bars) is omitted, never fabricated; an index-only
+        # capture still yields the index's own term slope. Without this the signal partition was
+        # written by nothing and S1's ρ̄ entry read an empty store every day.
+        signal_rows_written = 0
+        for _symbol, (fired_index, _basket) in sorted(baskets.items()):
+            persisted_signals = persist_signal_set(
+                store,
+                signal_config_for(
+                    config.universe.signals,
+                    index=fired_index.entry.symbol,
+                    provider=DEFAULT_PROVIDER,
+                ),
+                fired_index.as_of.date(),
+                calc_ts=fired_index.as_of,
+                config_hashes=dict(hashes),
+            )
+            signal_rows_written += len(persisted_signals)
+        if baskets:
+            log.info(
+                "orchestration.eod_run.signals_persisted",
+                captured_indices=sorted(baskets),
+                signal_row_count=signal_rows_written,
+                reason="daily as-of strategy-entry signals derived from the persisted grid (R3)",
+            )
+
         return AnalyticsResult(
             correlation_id=correlation_id,
             trade_date=trade_date,

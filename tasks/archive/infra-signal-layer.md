@@ -6,8 +6,10 @@
 > `packages/strategy/src/.../signal_data.py::signal_snapshot_from_store`, which took S1's ρ̄ entry
 > from fixture-fed to live. Look-ahead clean (every read gated by `as_of`, live partition only).
 > Gate green (2026 passed). **Still open:** the *realized*-correlation kill reading (S1 uses the
-> net-vega proxy until then); the daily batch wiring that calls `persist_signal_set` at the
-> `run_analytics` choke; ρ̄ coverage-bias hardening (incomplete per-name surfaces understate cross).
+> net-vega proxy until then); ρ̄ coverage-bias hardening (incomplete per-name surfaces understate
+> cross). ~~the daily batch wiring~~ **LANDED** (infra-signal-eod-wiring, 2026-06-14): the EOD
+> analytics stage fires `persist_signal_set` at each captured index's close, so `strategy_signals`
+> lands every banked day; the signal params got a typed home (`config.universe.signals`).
 > Original spec below.
 
 # T-signal-layer — persist the strategy-entry signals daily (implied correlation R3, IV rank, RV−IV, term slope)

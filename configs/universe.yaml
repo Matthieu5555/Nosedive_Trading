@@ -51,6 +51,33 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 # / C7). Set to the theory's top-50 (the SX5E carries 50 names); the course's top-10 is the model
 # default and the smaller live sub-basket a caller can ask for explicitly. Must be >= 1.
 dispersion_top_n: 50
+# Strategy-entry signal-computation params (R3 / §3, ADR 0028). The daily signal layer
+# (`infra/signals`) derives the readings the §3 book triggers on — ρ̄ (S1), IV-rank/RV−IV (S3),
+# the term-structure slope (S5) — and persists them as `strategy_signals`. Every choice below
+# decides which signal records exist and at what value, so it is HASHED here (folds into
+# config_hashes["universe"] with the rest of this bundle), never a `.py` literal a caller passes.
+# The per-index identity (index/provider) is the fired index's own; these are the shared params
+# the infra builder `signal_config_for` joins onto it. Tenor labels must be members of the
+# `tenor_grid` above (the grid the surface is projected onto), and front != back.
+signals:
+  version: "2026.06.14"
+  # The single tenor the per-name range signals (IV-rank, RV−IV) are read at.
+  reference_tenor: "3m"
+  # The two pillars the term-structure slope spans (back minus front).
+  term_slope_front: "1m"
+  term_slope_back: "6m"
+  # Trailing calendar-day windows: the IV-rank history read (a year of banked ATM IV) and the
+  # realized-vol close window (a month of daily bars).
+  iv_history_lookback_days: 365
+  realized_vol_lookback_days: 30
+  # Annualization factor for realized vol — 252 trading days (the daily-bar convention).
+  periods_per_year: 252.0
+  # The ρ̄ basket: how many of the index's heaviest constituents by weight enter the dispersion
+  # identity. Set to `constituent_top_n` (10) so the ρ̄ universe IS the set we actually land
+  # surfaces for that close — a full-basket ρ̄ would read the cross term over 50 names while only
+  # the top-10 have surfaces, biasing ρ̄ high. `null` = the full as-of basket.
+  basket_size: 10
+
 # How many of an enabled index's constituents the option-chain capture widens to — the
 # point-in-time top-N BY INDEX WEIGHT (ibkr-constituent-option-capture, ADR 0045; TARGET §0/§7.4;
 # the S1 dispersion book input). Economic: it decides which constituent names land option chains /

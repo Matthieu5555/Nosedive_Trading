@@ -45,6 +45,7 @@ from algotrading.infra.contracts import (
 from algotrading.infra.universe import BasketMember
 
 from .contract import GreekSign, IntendedGreeks, SignalKind, StrategyContract
+from .delta_hedge_band import DeltaHedgeBand, decide_delta_hedge
 from .signals import SignalSnapshot
 from .strategy import (
     EntryAction,
@@ -300,23 +301,19 @@ class DispersionStrategy:
     def rebalance(self, market: MarketState) -> RebalanceDecision:
         """Re-hedge when net dollar delta breaches the band — the delta-hedge-band hook.
 
-        Returns the signed quantity of the hedge instrument to trade to bring net delta back to
-        zero (``-net_delta``), or ``0.0`` (no trade) inside the band. The productionised band
-        rule is the shared ``strategy-delta-hedge-band`` lane; this is S1's uniform hook over
-        it, matching the spine's "zero quantity == no trade" convention.
+        Delegates to the shared :func:`~algotrading.strategy.delta_hedge_band.decide_delta_hedge`
+        rule (course req #9): S1 is delta-flat by construction (``target`` 0) and neutralises a
+        breach in delta units (``hedge_ratio`` −1, the booker maps that to synthetic-forward
+        units), so the only economic input is the band ``half_width`` carried on the config. The
+        rule returns ``0.0`` (no trade) inside the band and ``-net_delta`` on band exit — S1's
+        booker re-sizes the synthetic short-forward index leg by that amount.
         """
         if not market.position_lines:
             return RebalanceDecision(0.0, "flat; no delta to hedge")
         net_delta = sum(line.position_delta for line in market.position_lines)
-        if abs(net_delta) <= self.config.delta_band:
-            return RebalanceDecision(
-                0.0, f"net delta {net_delta} inside band {self.config.delta_band}; no hedge"
-            )
-        return RebalanceDecision(
-            -net_delta,
-            f"net delta {net_delta} outside band {self.config.delta_band}; "
-            f"hedging {-net_delta}",
-        )
+        band = DeltaHedgeBand(target=0.0, half_width=self.config.delta_band)
+        instruction = decide_delta_hedge(net_delta, band)
+        return RebalanceDecision(instruction.hedge_quantity, instruction.reason)
 
     def _straddle_legs(self, members: Sequence[BasketMember]) -> tuple[BasketLeg, ...]:
         """A long ATM straddle per name — the call pillar on the call wing, the put on the put."""

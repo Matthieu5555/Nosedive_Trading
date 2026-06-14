@@ -17,6 +17,12 @@ from .contract import (
     StrategyContract,
     StrategyContractError,
 )
+from .delta_hedge_band import (
+    DeltaHedgeBand,
+    DeltaHedgeBandError,
+    HedgeInstruction,
+    decide_delta_hedge,
+)
 from .dispersion_data import StoreBackedDispersionData, dispersion_strategy
 from .harness import (
     StrategyContext,
@@ -66,6 +72,11 @@ __all__ = [
     "ExitDecision",
     "MarketState",
     "RebalanceDecision",
+    # delta-hedge band (shared rule for S1/S3/S4)
+    "DeltaHedgeBand",
+    "DeltaHedgeBandError",
+    "HedgeInstruction",
+    "decide_delta_hedge",
     # harness
     "run_strategy",
     "StrategyContext",

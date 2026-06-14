@@ -33,6 +33,13 @@ The four pieces, each in its own module:
   `construct(as_of, basket_id)`, and an optional `rebalance(market)`. Every method is a **pure
   function of its injected arguments** — no clock, no live read, no store. That purity is what
   makes "research == backtest == paper == live" provable.
+- **`delta_hedge_band.py` — `decide_delta_hedge`.** The shared band rebalance rule (course req
+  #9, "Delta-hedge en bande") the `rebalance` hook delegates to, so S1/S3/S4 share **one** band
+  decision rather than three copies. Given a current net delta and a typed `DeltaHedgeBand`
+  (`target`, the economic-config `half_width` tolerance, and a `hedge_ratio` instrument
+  convention), it **holds** while net delta stays within `half_width` of `target` and re-hedges
+  **only on band exit**, sizing the hedge to return delta to target. A pure function — the
+  course's "don't pin delta continuously, it bleeds spread" rule as one inspectable call.
 - **`harness.py` — `run_strategy`.** The §6 calling convention: one function any of the four
   `StrategyContext`s invokes the same way on the same instance, returning a `StrategyStep`
   (the three decisions + the stamped `Basket` when entry fires). It adds no logic, so equal
@@ -95,7 +102,8 @@ single-name vol and short the index monetises the gap as the names decorrelate.
   short-forward index leg-pair** (short ATM call + long ATM put, `combined` wing) sized to
   flatten the straddles' net dollar delta. A negligible hedge is omitted; an unpriceable leg is
   refused (`DispersionConstructionError`), never silently dropped. Exit fires the §3 kill when
-  net dollar-vega collapses (the long-vol thesis gone); `rebalance` re-flattens net delta by band.
+  net dollar-vega collapses (the long-vol thesis gone); `rebalance` re-flattens net delta by
+delegating to the shared `decide_delta_hedge` band rule (S1 is delta-flat, so its band targets 0).
 - **`StoreBackedDispersionData`** (`dispersion_data.py`) — the store-backed implementor of
   `DispersionMarketData` for paper/live: it composes the as-of membership resolver and the pure
   `basket_risk` over a `trade_date`-narrowed grid read; it adds no risk math. Build a ready-to-run

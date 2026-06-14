@@ -195,6 +195,12 @@ class UniverseConfig(_ConfigModel):
     authoritative copy (ADR 0011); this YAML copy must equal it as an ordered list, a
     drift a test guards. The order is preserved (a tuple, not a set) because the grid is
     quoted in tenor order downstream — and the grid must hold no duplicate tenor.
+
+    ``dispersion_top_n`` is the S1 dispersion-basket size: how many of an index's heaviest
+    constituents by index weight the top-N resolver
+    (:func:`~algotrading.infra.universe.membership.top_n_by_weight`) returns. It is economic
+    (it decides which names the book trades and so which constituent chains are captured), so it
+    travels in ``config_hashes["universe"]`` rather than living as a ``.py`` literal.
     """
 
     model_config = _SECTION_CONFIG
@@ -209,6 +215,12 @@ class UniverseConfig(_ConfigModel):
     # field present in universe.yaml, so the grid is never silently defaulted on the load
     # path (the same discipline ScenarioConfig uses).
     tenor_grid: _StrTuple = ("10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y")
+    # The dispersion-basket selection size (S1): how many of an index's heaviest constituents by
+    # index weight the top-N resolver returns (`top_n_by_weight`). Economic — it decides which
+    # names the S1 dispersion book trades, hence which constituent chains get captured, so it
+    # changes which records exist and folds into config_hashes["universe"] (ADR 0028 / C7), never
+    # a `.py` literal. Default 10 = the course's top-10; the theory's top-50 is set in YAML.
+    dispersion_top_n: int = Field(default=10, ge=1)
     # The index registry block (ADR 0035) — which indices the platform tracks, keyed by
     # symbol. Held here as the raw nested mapping (canonicalized to a stable, JSON-ready
     # form), NOT as the validated typed `IndexRegistry`: the typed parse + calendar-code

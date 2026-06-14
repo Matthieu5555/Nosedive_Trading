@@ -40,7 +40,7 @@ from algotrading.infra.contracts import IndexConstituent
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.storage.partitioning import table_dir
 
-from .errors import MembershipError
+from .errors import MembershipError, MembershipRankingError
 
 _TABLE = "index_constituents"
 
@@ -311,6 +311,70 @@ def members(
     finally:
         connection.close()
     return tuple(BasketMember(constituent=row[0], weight=row[1]) for row in rows)
+
+
+def top_n_by_weight(
+    store: ParquetStore,
+    index: str,
+    as_of_date: date,
+    n: int,
+    *,
+    known_as_of: date | None = None,
+) -> tuple[BasketMember, ...]:
+    """The point-in-time top-``n`` constituents by index weight — the S1 dispersion selector.
+
+    Resolves the as-of basket through :func:`members` (the one look-ahead-gated resolver — this
+    adds *only* a ranking on top, it does not re-implement the as-of join), then returns the
+    ``n`` heaviest names by index weight. The order is deterministic: **descending weight, ties
+    broken by ascending constituent symbol**, so the same basket always yields the same top-``n``
+    regardless of storage/row order (the tie-break makes equal-weight names reproducible rather
+    than arbitrary).
+
+    ``n`` is the selection size the caller sources from config (the course's top-10, the theory's
+    top-50 — :attr:`UniverseConfig.dispersion_top_n`), passed in here rather than read from a
+    literal so the resolver stays a pure, injected function. A basket with **fewer than ``n``
+    members** returns all of them (a smaller live index is a legitimate state, not an error) —
+    the result is "the top of what exists", never padded.
+
+    Two refusals, both labeled (:class:`MembershipRankingError`), never a silent wrong answer:
+
+    * ``n <= 0`` — asking for the top-zero or top-negative names is meaningless.
+    * **any constituent in the as-of basket has a ``None`` (labeled-unavailable) weight** — you
+      cannot rank what isn't known. Dropping the unweighted names would silently bias the
+      selection toward the names that happen to carry a weight, and zeroing them would rank them
+      last on a fiction; both are the economic-correctness bug the membership layer refuses, so
+      this raises instead. (An *empty* basket — an unknown index or a pre-history date — is not
+      an error: there is nothing to rank, so it returns ``()``.)
+
+    Weights are compared as raw magnitudes, so a source in percent (the SSGA SPDR-ETF holdings
+    feed: ASML ≈ 12.08, summing ≈ 96 not 1.0) ranks identically to one normalized to fractions —
+    ranking needs only the relative order, never a normalized total. ``as_of_date`` is the date to
+    reconstruct as of (never today's date for a historical computation); ``known_as_of`` is the
+    knowledge axis, both passed straight through to :func:`members`.
+    """
+    if n <= 0:
+        raise MembershipRankingError(
+            index, "n", n, "must be a positive selection size (the top-N count)"
+        )
+    basket = members(store, index, as_of_date, known_as_of=known_as_of)
+    if not basket:
+        return ()
+    unweighted = tuple(member.constituent for member in basket if member.weight is None)
+    if unweighted:
+        raise MembershipRankingError(
+            index,
+            "weight",
+            unweighted,
+            "cannot rank a basket with labeled-unavailable (None) weights; "
+            f"{len(unweighted)} of {len(basket)} names have no weight "
+            f"(e.g. {unweighted[0]!r}) — ingest a weighted source before selecting top-N",
+        )
+    # Descending weight, ties broken by ascending symbol. Python's sort is stable, so a single
+    # key tuple (-weight, constituent) gives the full deterministic order in one pass. The
+    # `or 0.0` is unreachable (the None-weight guard above already raised) but keeps the key
+    # total for the type checker without an assert-as-control-flow.
+    ranked = sorted(basket, key=lambda member: (-(member.weight or 0.0), member.constituent))
+    return tuple(ranked[:n])
 
 
 def basket_weight_sum(basket: Sequence[BasketMember]) -> float | None:

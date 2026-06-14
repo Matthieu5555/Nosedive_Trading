@@ -146,6 +146,15 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # instead of the `MIN_POINTS_FOR_SVI` .py literal (ADR 0028). Default 5 = unchanged routing.
     # The `pricing` bundle hash — and so the folded whole-config hash — moved BY DESIGN;
     # `universe`/`qc`/`scenarios` stay byte-identical (section isolation). Pre-capture dev change.
+    #
+    # infra-sx5e-weighted-membership (2026-06-14, ADR 0044): `UniverseConfig.dispersion_top_n`
+    # joined the hashed `universe` bundle (the S1 dispersion-basket size the `top_n_by_weight`
+    # selector returns; it lives in config, not a `.py` literal). ibkr-constituent-option-capture
+    # (2026-06-14, ADR 0045) likewise added `UniverseConfig.constituent_top_n`. Both move ONLY the
+    # `universe` bundle hash — and so the folded whole-config hash — BY DESIGN; `qc`/`pricing`/
+    # `scenarios` stay byte-identical (section isolation). The universe/full values below are
+    # regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked record
+    # carries the old hash.
     config = _config()
     assert config_hash(config) == (
         "393e9812259791ec3660009c9579c8f1176ebc1901c9b40db287801dd2d7268d"

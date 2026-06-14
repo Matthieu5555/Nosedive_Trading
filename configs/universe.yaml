@@ -44,6 +44,14 @@ strike_selection:
 # enters config_hashes["universe"]. Order is meaningful — kept as written.
 tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 
+# Dispersion-basket size (S1, ADR 0044): how many of an index's heaviest constituents by index
+# weight the top-N resolver (`top_n_by_weight`) returns for the S1 dispersion book. Economic — it
+# decides which constituent names trade and so which chains get captured, hence which records
+# exist — so it is hashed config here (config_hashes["universe"]), never a `.py` literal (ADR 0028
+# / C7). Set to the theory's top-50 (the SX5E carries 50 names); the course's top-10 is the model
+# default and the smaller live sub-basket a caller can ask for explicitly. Must be >= 1.
+dispersion_top_n: 50
+
 # Index registry (ADR 0035): which indices the platform tracks. Keyed by index symbol —
 # the same `index` key 1A membership, 1C capture, 1G cron, and the 1I picker consume.
 # HASHED: this block lives in universe.yaml and changes which records exist (enabling an

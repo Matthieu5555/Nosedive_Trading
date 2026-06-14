@@ -64,6 +64,8 @@ from .multileg import (
     LegRisk,
     analytics_cell_key,
     basket_risk,
+    index_rows_by_cell_and_side,
+    resolve_cell_side,
 )
 from .positions import Position, PositionSet, hypothetical_positions
 from .reconciliation import (
@@ -217,6 +219,8 @@ __all__ = [
     "LegRisk",
     "basket_risk",
     "analytics_cell_key",
+    "index_rows_by_cell_and_side",
+    "resolve_cell_side",
     # config
     "RiskParams",
     "DEFAULT_GROUPING_KEYS",

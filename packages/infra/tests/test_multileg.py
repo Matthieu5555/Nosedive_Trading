@@ -45,6 +45,7 @@ def _row(
     tenor_label: str = "1m",
     underlying: str = _UND,
     provider: str = "ibkr",
+    surface_side: str = "combined",
 ) -> ProjectedOptionAnalytics:
     """One analytics grid cell with hand-chosen dollar Greeks (the oracle inputs)."""
     return ProjectedOptionAnalytics(
@@ -54,6 +55,7 @@ def _row(
         tenor_label=tenor_label,
         maturity_years=1.0 / 12.0,
         delta_band=delta_band,
+        surface_side=surface_side,
         target_delta=0.30 if delta_band.endswith("c") else -0.30,
         log_moneyness=0.0,
         strike=100.0,
@@ -254,3 +256,124 @@ def test_single_leg_basket() -> None:
     result = basket_risk(basket, analytics_rows=[call], spot_by_underlying={})
     assert result.dollar_delta == pytest.approx(5.0)
     assert len(result.legs) == 1
+
+
+# --- per-side surface routing (ADR 0048) -------------------------------------------------------
+# One cell now carries up to three rows (put / call / combined), differing only by which fitted
+# surface supplied the IV. The oracle for each test is the hand-chosen per-side dollar Greeks: a
+# leg must read off the surface it names, never mutualise onto the combined row.
+
+
+def _sided_cell() -> list[ProjectedOptionAnalytics]:
+    """The 30dc cell as three surface sides, each with a distinct, hand-chosen dollar_vega."""
+    return [
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.50,
+             price=4.00, surface_side="combined"),
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.55,
+             price=4.20, surface_side="put"),
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.45,
+             price=3.80, surface_side="call"),
+    ]
+
+
+def test_leg_routes_to_its_requested_surface_side() -> None:
+    # A leg that names the call wing reads the call row's vega/price; the put wing reads the put
+    # row's. Independent oracle: the per-side dollar_vega/price hand-chosen in _sided_cell.
+    rows = _sided_cell()
+    call_leg = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="call")
+    )
+    put_leg = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="put")
+    )
+    call_res = basket_risk(call_leg, analytics_rows=rows, spot_by_underlying={})
+    put_res = basket_risk(put_leg, analytics_rows=rows, spot_by_underlying={})
+    assert call_res.dollar_vega == pytest.approx(0.45)
+    assert call_res.price == pytest.approx(3.80)
+    assert put_res.dollar_vega == pytest.approx(0.55)
+    assert put_res.price == pytest.approx(4.20)
+    assert call_res.gaps == ()
+    assert put_res.gaps == ()
+
+
+def test_default_leg_reads_combined_even_when_wings_present() -> None:
+    # The default (unspecified) leg sums only the combined row — so the additive put/call rows
+    # never double-count or shift the legacy basket number (ADR 0048: combined is the reference).
+    rows = _sided_cell()
+    basket = _basket(BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc"))
+    result = basket_risk(basket, analytics_rows=rows, spot_by_underlying={})
+    assert result.dollar_vega == pytest.approx(0.50)  # the combined row only
+    assert result.price == pytest.approx(4.00)
+    assert len(result.legs) == 1
+    assert result.gaps == ()
+
+
+def test_straddle_wings_price_off_their_own_surfaces() -> None:
+    # The motivating case: an S1 straddle — long the ATM call wing + long the ATM put wing — must
+    # price each leg off its own surface, not one mutualised IV. Oracle: vega = call-wing vega +
+    # put-wing vega = 0.45 + 0.55 = 1.0 (would be 0.50+0.50=1.0 only by coincidence if both read
+    # combined; the per-side prices below make the distinction unambiguous).
+    rows = _sided_cell()
+    straddle = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="call"),
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="put"),
+    )
+    result = basket_risk(straddle, analytics_rows=rows, spot_by_underlying={})
+    assert result.price == pytest.approx(3.80 + 4.20)  # call wing + put wing, not 4.00 + 4.00
+    assert result.dollar_vega == pytest.approx(0.45 + 0.55)
+    assert result.gaps == ()
+
+
+def test_requested_wing_with_no_curve_is_labeled_gap_not_combined_fallback() -> None:
+    # The cell has combined + put rows but no call row (the call wing had too few points to fit).
+    # A leg that asks for the call wing is a labelled gap — never a silent fall back to combined,
+    # which would re-mutualise the very IV the wing selection exists to separate.
+    rows = [
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.50,
+             price=4.0, surface_side="combined"),
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.55,
+             price=4.2, surface_side="put"),
+    ]
+    basket = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="call")
+    )
+    result = basket_risk(basket, analytics_rows=rows, spot_by_underlying={})
+    (leg,) = result.legs
+    assert leg.resolved is False
+    assert leg.gap_reason == "surface_side_unavailable"
+    assert leg.dollar_vega is None  # not 0.50 (the combined row), not 0.0
+    assert result.dollar_vega == 0.0  # empty sum; the gap is reported, never absorbed
+    assert result.gaps == (
+        type(result.gaps[0])(_UND, "1m", "30dc", "surface_side_unavailable"),
+    )
+
+
+def test_provider_ambiguity_is_isolated_per_surface_side() -> None:
+    # Two providers seed the *combined* side of the cell (ambiguous), but only one seeds the call
+    # side. A combined leg is a gap; a call leg on the cleanly-single-provider call wing resolves.
+    rows = [
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.50,
+             price=4.0, surface_side="combined", provider="ibkr"),
+        _row(delta_band="30dc", dollar_delta=99.0, dollar_gamma=9.0, dollar_vega=9.00,
+             price=9.0, surface_side="combined", provider="saxo"),
+        _row(delta_band="30dc", dollar_delta=10.0, dollar_gamma=2.0, dollar_vega=0.45,
+             price=3.8, surface_side="call", provider="ibkr"),
+    ]
+    combined_leg = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc")
+    )
+    call_leg = _basket(
+        BasketLeg("option", "long", 1.0, _UND, tenor_label="1m", delta_band="30dc",
+                  surface_side="call")
+    )
+    combined_res = basket_risk(combined_leg, analytics_rows=rows, spot_by_underlying={})
+    call_res = basket_risk(call_leg, analytics_rows=rows, spot_by_underlying={})
+    assert combined_res.legs[0].gap_reason == "provider_ambiguous"
+    assert combined_res.dollar_vega == 0.0
+    assert call_res.legs[0].resolved is True  # the call side is unambiguous
+    assert call_res.dollar_vega == pytest.approx(0.45)

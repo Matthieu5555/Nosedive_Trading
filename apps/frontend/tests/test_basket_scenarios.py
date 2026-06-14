@@ -61,9 +61,15 @@ def _row(
     right: str = "C",
     tenor_label: str = "1m",
     price_override: float | None = None,
+    surface_side: str = "combined",
+    vol: float = _VOL,
 ) -> ProjectedOptionAnalytics:
-    """One grid cell whose ``price`` is the independent Black-76 value (DF backs out to 1.0)."""
-    base_price = _black76(_F, _K, _VOL, _T, right) if price_override is None else price_override
+    """One grid cell whose ``price`` is the independent Black-76 value (DF backs out to 1.0).
+
+    ``vol`` is the surface side's IV; ``price`` is the Black-76 value at that IV, so a per-side
+    row reprices off its own wing exactly as the projection emits it (ADR 0048).
+    """
+    base_price = _black76(_F, _K, vol, _T, right) if price_override is None else price_override
     return ProjectedOptionAnalytics(
         snapshot_ts=_TS,
         provider="ibkr",
@@ -75,8 +81,9 @@ def _row(
         log_moneyness=math.log(_K / _F),
         strike=_K,
         forward_price=_F,
-        implied_vol=_VOL,
-        total_variance=_VOL * _VOL * _T,
+        implied_vol=vol,
+        total_variance=vol * vol * _T,
+        surface_side=surface_side,
         price=base_price,
         delta=0.5,
         gamma=0.02,
@@ -111,7 +118,13 @@ def _config(steps: int = 5) -> ScenarioConfig:
     )
 
 
-def _leg(side: str = "long", quantity: float = 2.0, *, delta_band: str = "atm") -> BasketLeg:
+def _leg(
+    side: str = "long",
+    quantity: float = 2.0,
+    *,
+    delta_band: str = "atm",
+    surface_side: str = "combined",
+) -> BasketLeg:
     return BasketLeg(
         instrument_kind="option",
         side=side,
@@ -119,6 +132,7 @@ def _leg(side: str = "long", quantity: float = 2.0, *, delta_band: str = "atm") 
         underlying=_UND,
         tenor_label="1m",
         delta_band=delta_band,
+        surface_side=surface_side,
     )
 
 
@@ -224,6 +238,53 @@ def test_unresolved_leg_is_a_labelled_gap():
     # An empty book still reprices to a valid (flat-zero) surface over the config axes.
     assert len(result.spot_axis) == 5
     assert all(cell == 0.0 for grid_row in result.pnl_grid for cell in grid_row)
+
+
+def test_leg_reprices_off_its_requested_surface_side():
+    """A call-wing leg reprices off the call surface's IV, not the combined IV (ADR 0048).
+
+    The cell carries a combined row at _VOL and a call row at a higher IV; the +spot-shock cell
+    of a call-wing leg must equal the independent Black-76 reprice at the *call* IV.
+    """
+    call_vol = _VOL + 0.05
+    combined = _row(delta_band="atm", right="C", surface_side="combined", vol=_VOL)
+    call_wing = _row(delta_band="atm", right="C", surface_side="call", vol=call_vol)
+    quantity = 2.0
+    result = basket_stress(
+        _basket(_leg("long", quantity, surface_side="call")),
+        analytics_rows=[combined, call_wing],
+        multiplier=_MULT,
+        currency="USD",
+        spot_by_underlying={},
+        config=_config(),
+    )
+    assert result.n_resolved == 1
+    assert result.gaps == ()
+    i = result.spot_axis.index(0.25)  # +25% spot
+    j = result.vol_axis.index(0.0)  # no vol shock
+    scale = _MULT * quantity  # DF ~ 1: the stored price is the undiscounted Black-76 at call_vol
+    base = _black76(_F, _K, call_vol, _T, "C")
+    shocked = _black76(_F * 1.25, _K, call_vol, _T, "C")
+    expected = scale * (shocked - base)
+    assert result.pnl_grid[i][j] == pytest.approx(expected, abs=1e-4)
+    # And it is genuinely the call IV, not the combined IV: the combined-IV reprice differs.
+    combined_base = _black76(_F, _K, _VOL, _T, "C")
+    combined_shocked = _black76(_F * 1.25, _K, _VOL, _T, "C")
+    assert expected != pytest.approx(scale * (combined_shocked - combined_base), abs=1e-4)
+
+
+def test_requested_wing_with_no_curve_is_a_labelled_gap():
+    """A leg asking for a wing the cell has no row for is a gap — never a silent combined reprice."""
+    result = basket_stress(
+        _basket(_leg(surface_side="call")),
+        analytics_rows=[_row(surface_side="combined")],  # only the combined side exists
+        multiplier=_MULT,
+        currency="USD",
+        spot_by_underlying={},
+        config=_config(),
+    )
+    assert result.n_resolved == 0
+    assert [g.reason for g in result.gaps] == ["surface_side_unavailable"]
 
 
 def test_missing_instrument_master_is_a_labelled_gap():

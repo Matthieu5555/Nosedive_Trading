@@ -177,6 +177,32 @@ def test_basket_leg_side_sign_contradiction_is_rejected_with_explicit_error() ->
     assert exc.value.value == -1.0
 
 
+def test_basket_leg_surface_side_defaults_to_combined() -> None:
+    # An unspecified leg reads off the combined surface (the forward-backing reference, ADR
+    # 0048), so adding the field changes no existing caller.
+    leg = BasketLeg("option", "long", 1.0, "AAA", tenor_label="1m", delta_band="30dc")
+    assert leg.surface_side == "combined"
+
+
+def test_basket_leg_rejects_unknown_surface_side_with_offending_value() -> None:
+    # A wing selection outside {put, call, combined} is a malformed contract, rejected with the
+    # offending value — never silently coerced to combined.
+    with pytest.raises(ContractValidationError) as exc:
+        BasketLeg(
+            "option", "long", 1.0, "AAA", tenor_label="1m", delta_band="30dc", surface_side="bid"
+        )
+    assert exc.value.field == "surface_side"
+    assert exc.value.value == "bid"
+
+
+def test_basket_leg_accepts_put_and_call_wings() -> None:
+    for side in ("put", "call", "combined"):
+        leg = BasketLeg(
+            "option", "long", 1.0, "AAA", tenor_label="1m", delta_band="30dc", surface_side=side
+        )
+        assert leg.surface_side == side
+
+
 def test_basket_row_missing_required_column_is_rejected_not_coerced() -> None:
     # Write-ahead read rejection: a stored row missing a required column raises rather than
     # constructing an invalid instance (the additive-nullable rule only forgives Optionals).

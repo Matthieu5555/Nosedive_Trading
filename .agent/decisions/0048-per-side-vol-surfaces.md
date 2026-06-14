@@ -84,3 +84,15 @@ Deferred, by the owner ruling on scope:
   the regenerated golden differs only by that field on existing rows plus the new put/call rows.
 - S1 (and any wing-aware strategy) can now price its put leg off the put surface and its call leg
   off the call surface by selecting `surface_side`, instead of mutualising one IV.
+
+## Follow-ups landed
+
+- **Basket-leg wing routing** (2026-06-14, [`infra-basket-leg-per-side-routing`](../../tasks/archive/infra-basket-leg-per-side-routing.md)).
+  `BasketLeg` gained `surface_side` (default `combined`, the point-4 opt-in), and the summed
+  basket (`risk/multileg.py`) + the BFF live-reprice (`basket_scenarios.py`) now route each leg
+  to its named surface through one shared indexer (`index_rows_by_cell_and_side` /
+  `resolve_cell_side`). A requested wing with no curve is a labelled `surface_side_unavailable`
+  gap, never a silent combined fall-back. Booking (`concretization`) stays combined as decided in
+  point 4 — it solves the strike off combined (§3) and marks off the real listed quote, so a
+  booked fill is already side-correct. The web toggle that *sets* a leg's side stays in
+  [`frontend-per-side-surfaces-toggle`](../../tasks/frontend-per-side-surfaces-toggle.md).

@@ -269,6 +269,19 @@ legacy per-`$1` `PositionRisk` dollar Greeks (mixing the two normalisations is s
 makes that basket Greek `None` + a gap, never a partial sum. The per-leg `LegRisk` contributions
 are preserved beside the aggregate (the proof the total is the sum, and what 2C attributes off).
 
+Each option leg also names a `surface_side` (ADR 0048): `combined` by default — so an
+unspecified leg sums the forward-backing reference exactly as before, and the additive put/call
+rows never double-count — or a wing (`put` / `call`) that a wing-aware strategy uses to price
+its put leg off the put surface and its call leg off the call surface (an S1 dispersion
+straddle), instead of mutualising one IV. The cell→side resolution lives in one shared indexer
+(`index_rows_by_cell_and_side` + `resolve_cell_side`), used by both `basket_risk` and the BFF
+live-reprice (`basket_scenarios`) so the summed Greeks and the stress reprice agree on which
+wing a leg priced off. A leg that asks for a wing the cell has no fitted curve for is a
+`surface_side_unavailable` gap — never a silent fall back to combined, which would re-mutualise
+the IV the wing selection exists to separate. Booking (`concretization`) stays combined: it
+solves the strike off the combined surface (ADR 0048 §3) and marks off the real listed quote,
+so the booked fill is already side-correct without selecting a wing.
+
 ## Failure modes
 
 The core is pure, so failures are input-validation and corrupt-join errors, not transient

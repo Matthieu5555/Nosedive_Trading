@@ -34,6 +34,7 @@ from algotrading.execution import (
     ResolvedLeg,
     book,
 )
+
 # The booking seam's labelled ConcretizationError (carries field/value) — distinct from the
 # concretization engine's ConcretizationError re-exported at the package top level (ADR 0043).
 from algotrading.execution.booking import ConcretizationError, LegResolver

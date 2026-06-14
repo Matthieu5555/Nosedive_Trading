@@ -207,10 +207,44 @@ basket = members(store, "SX5E", date(2021, 1, 15))            # as-of basket, so
 > reads no wall clock. `check-lookahead-bias` over `membership.py` and its callers passes
 > with zero findings; keep it that way.
 
+### Top-N by weight — the S1 dispersion selector (ADR 0044)
+
+`top_n_by_weight(store, index, as_of_date, n, *, known_as_of=None)` returns the `n` heaviest
+constituents by index weight, **point-in-time**: it resolves the as-of basket through `members`
+(adding only a rank on top — not a second resolver, so look-ahead stays policed in one place) and
+sorts **descending weight, ties broken by ascending constituent symbol** (deterministic across
+storage/ingest order). `n` is the selection size the caller sources from config —
+`UniverseConfig.dispersion_top_n` (default 10 = course top-10; `configs/universe.yaml` sets 50 =
+theory top-50) — passed in as a parameter so the selector stays a pure injected function.
+
+Two refusals, both labeled `MembershipRankingError`, never a silent wrong answer: a non-positive
+`n`, and a basket carrying **any** labeled-unavailable (`None`) weight — you cannot rank what
+isn't known, and dropping/zeroing the unweighted names would bias the selection. An *empty* basket
+(unknown index or pre-history date) is not an error: it returns `()`. A basket smaller than `n`
+returns all of it (a smaller live index is legitimate, never padded). Weights are ranked as raw
+magnitudes, so the SSGA percent feed (summing ≈ 96, not 1.0) ranks identically to a fractional
+source — ranking needs only the relative order.
+
+```python
+from datetime import date
+from algotrading.core.config import load_platform_config
+from algotrading.infra.universe import top_n_by_weight
+
+n = load_platform_config("configs").universe.dispersion_top_n   # typed, hashed (50)
+basket = top_n_by_weight(store, "SX5E", date(2026, 6, 9), n)    # heaviest-first, deterministic
+names = [member.constituent for member in basket]               # the S1 names to capture/trade
+```
+
 Tests: `packages/infra/tests/test_membership.py` — as-of basket correctness, both interval
 boundaries, the today's-list-is-not-history negative guard, weights-as-of, bitemporal
 restatement, contract round-trip + malformed-rejection seam, the edge-case floor,
 reordering invariance, and SP500 on the same contract/resolver.
+`packages/infra/tests/test_membership_ranking.py` — `top_n_by_weight`: descending-weight order
+and the ascending-symbol tie-break (hand-derived), every N slice, N-larger-than-basket returns
+all, ingest-order invariance, the point-in-time guard (a name added later is excluded from a past
+date's top-N) and the knowledge-axis vintage, the two labeled refusals (non-positive N; any
+unavailable weight), empty/pre-history baskets return `()`, and the shipped SSGA SX5E CSV ranked
+end to end (`CsvFileSource` → ingest → top-N) against a temp store.
 
 The earlier generic `(instrument_key, as_of_date)` key (masters, chain resolution) is the
 foundation 1A builds on; it stays for the instrument-level lookups above.

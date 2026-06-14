@@ -47,14 +47,26 @@ test("Risk Scenarios: portfolio selector lists portfolios and is selectable", as
   await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
 });
 
-test("Orders: the ticket renders and Submit is disabled (read-only sketch)", async ({ page }) => {
-  await page.goto("/orders");
-  await expect(page.getByRole("heading", { level: 1, name: "Orders" })).toBeVisible();
+test("Basket booking home: the real ticket builds and Sign & send stays 3B-gated", async ({ page }) => {
+  // The booking chain has one home (frontend-orders-booking-reconcile, ruling (b)): the order
+  // ticket on Basket. There is no Orders sketch — execution stays gated here, not on a dead tab.
+  await page.goto("/basket");
+  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
 
-  const submit = page.getByRole("button", { name: /Submit/ });
-  await expect(submit).toBeVisible();
-  // Execution is out of scope — the button must be disabled and self-label why.
-  await expect(submit).toBeDisabled();
+  // Compose legs so the real ticket panel mounts (it is gated on legs.length > 0).
+  await page.getByRole("button", { name: "template straddle" }).click();
+  const ticket = page.getByRole("region", { name: /order ticket/i });
+  await expect(ticket).toBeVisible();
+  // Self-labels as the real, preview-only Execution ticket — not an indicative sketch.
+  await expect(ticket.getByText(/preview only/i)).toBeVisible();
+
+  // Build the ticket off the BFF preview, then the send path must stay disabled + 3B-gated.
+  await ticket.getByRole("button", { name: "Build ticket" }).click();
+  await expect(ticket.getByRole("table", { name: /order ticket legs/i })).toBeVisible();
+  const send = ticket.getByRole("button", { name: "Sign and send order" });
+  await expect(send).toBeVisible();
+  await expect(send).toBeDisabled();
+  await expect(ticket.getByText(/3B — gated/)).toBeVisible();
 });
 
 test("Basket: a template button composes legs and enables pricing", async ({ page }) => {

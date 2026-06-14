@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { BasketLegInput, BasketRequest, BasketRiskResponse, IndicesResponse } from "../api";
-import { priceBasket, stressBasket } from "../api";
+import type {
+  AttributionResponse,
+  BasketLegInput,
+  BasketRequest,
+  BasketRiskResponse,
+  IndicesResponse,
+} from "../api";
+import { fetchAttribution, priceBasket, stressBasket } from "../api";
 import { BasketLegGrid } from "../components/BasketLegGrid";
 import { BasketRiskPanel } from "../components/BasketRiskPanel";
+import { AttributionWaterfall } from "../components/AttributionWaterfall";
 import { Metric } from "../components/Metric";
 import { StressSurface } from "../components/StressSurface";
 import { TicketPanel } from "../components/TicketPanel";
@@ -41,6 +48,12 @@ export function BasketPage() {
   const [stress, setStress] = useState<BasketScenariosResponse | null>(null);
   const [stressError, setStressError] = useState<string | null>(null);
   const [stressLoading, setStressLoading] = useState(false);
+  // The persisted P&L attribution is keyed on a portfolio id + trade date (not the ad-hoc
+  // composed basket), so the operator names the portfolio to drill into its decomposition.
+  const [portfolioId, setPortfolioId] = useState("");
+  const [attribution, setAttribution] = useState<AttributionResponse | null>(null);
+  const [attributionError, setAttributionError] = useState<string | null>(null);
+  const [attributionLoading, setAttributionLoading] = useState(false);
 
   function addLeg(leg: BasketLegInput) {
     setLegs((current) => [...current, leg]);
@@ -87,6 +100,25 @@ export function BasketPage() {
     }
   }
 
+  async function loadAttribution() {
+    setAttributionError(null);
+    setAttributionLoading(true);
+    try {
+      setAttribution(
+        await fetchAttribution({
+          tradeDate: tradeDate || undefined,
+          portfolioId: portfolioId || undefined,
+          level: "book",
+        }),
+      );
+    } catch (err) {
+      setAttribution(null);
+      setAttributionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAttributionLoading(false);
+    }
+  }
+
   return (
     <section className="page">
       <div className="page-header">
@@ -125,6 +157,12 @@ export function BasketPage() {
           <input aria-label="tenor" value={tenor}
             onChange={(e) => setTenor(e.target.value)} />
         </label>
+        <label>
+          {/* The portfolio whose persisted P&L attribution to drill into (book level). */}
+          Portfolio (attribution){" "}
+          <input aria-label="portfolio" value={portfolioId}
+            onChange={(e) => setPortfolioId(e.target.value)} />
+        </label>
       </div>
 
       <div className="basket-templates" role="group" aria-label="templates">
@@ -150,6 +188,9 @@ export function BasketPage() {
         </button>
         <button type="button" onClick={runStress} disabled={stressLoading || legs.length === 0}>
           {stressLoading ? "Stressing…" : "Stress basket"}
+        </button>
+        <button type="button" onClick={loadAttribution} disabled={attributionLoading}>
+          {attributionLoading ? "Loading attribution…" : "P&L attribution"}
         </button>
       </div>
 
@@ -212,6 +253,20 @@ export function BasketPage() {
           <StressSurface
             surface={stress.surface}
             kicker={`${stress.underlying} ${stress.trade_date}`}
+          />
+        </div>
+      )}
+
+      {attributionError !== null && (
+        <p role="alert" className="error">
+          Failed to load attribution: {attributionError}
+        </p>
+      )}
+      {attribution !== null && (
+        <div className="risk-grid">
+          <AttributionWaterfall
+            attribution={attribution}
+            kicker={`${portfolioId || "portfolio"} ${tradeDate || "latest"}`}
           />
         </div>
       )}

@@ -18,6 +18,7 @@ from algotrading.infra.contracts import (
     PricingResult,
     ProjectedOptionAnalytics,
     RiskAggregate,
+    ScenarioAttribution,
     ScenarioResult,
     SurfaceParameters,
 )
@@ -242,6 +243,73 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
         "n_cells": len(surface_rows),
         "has_holes": n_holes > 0,
         "n_holes": n_holes,
+    }
+
+
+# A by-Greek attribution contribution and its residual are *already* dollar PnL amounts (the
+# local Taylor split of the scenario reprice — see infra/risk/attribution.py), not per-unit
+# Greeks, so they do not take a ``UNIT_STRINGS`` Greek unit. They carry these PnL labels.
+ATTRIBUTION_TERM_UNIT = "$ (PnL contribution)"
+ATTRIBUTION_RESIDUAL_UNIT = "$ (residual vs full reprice)"
+
+# The waterfall term order is the ADR-0030 / TARGET §2.5 dPnL identity, left to right. Each
+# entry is (display name, the ``ScenarioAttribution`` field carrying the dollar contribution).
+# The frozen seam on this branch carries Δ/Γ/Vega/Θ; the second-order-greeks lane appends
+# Rho/Vanna/Volga entries here once the contract field lands (purely additive — a new tuple
+# row), and the residual stays its own bar after all named terms, never folded in.
+_ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
+    ("Delta", "delta_pnl"),
+    ("Gamma", "gamma_pnl"),
+    ("Vega", "vega_pnl"),
+    ("Theta", "theta_pnl"),
+)
+
+
+def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
+    """Serialize one by-Greek attribution record into the front's waterfall payload.
+
+    Projects the frozen :class:`~algotrading.infra.contracts.ScenarioAttribution` seam verbatim
+    — the BFF re-decomposes nothing and reprices nothing: every ``dollars`` value is the engine's
+    own term, passed through. ``terms`` are the named dollar contributions in the ADR-0030 dPnL
+    order (Δ → Γ → Vega → Θ, with Rho/Vanna/Volga appended by the second-order-greeks lane), each
+    a labelled ``{name, dollars, unit}``. ``residual`` is the honesty meter (§5.2) —
+    ``full_reprice_pnl - approx_pnl`` against the full reprice oracle — carried as its **own**
+    bar, never hidden or folded into a term. ``verdict`` is the engine's tolerance ruling:
+    ``within_tolerance`` beside the ``residual_abs_tol``/``residual_rel_tol`` it was judged
+    against (the persisted seam carries no diagnostic string — the in-memory split owns that —
+    so the verdict the front shows is the boolean against its echoed bounds).
+    """
+    terms = [
+        {
+            "name": name,
+            "dollars": getattr(row, field),
+            "unit": ATTRIBUTION_TERM_UNIT,
+        }
+        for name, field in _ATTRIBUTION_TERMS
+    ]
+    return {
+        "valuation_ts": _iso(row.valuation_ts),
+        "portfolio_id": row.portfolio_id,
+        "scenario_id": row.scenario_id,
+        "contract_key": row.contract_key,
+        "level": row.level,
+        "terms": terms,
+        "residual": {"dollars": row.residual, "unit": ATTRIBUTION_RESIDUAL_UNIT},
+        "verdict": {
+            "within_tolerance": row.within_tolerance,
+            "residual_abs_tol": row.residual_abs_tol,
+            "residual_rel_tol": row.residual_rel_tol,
+        },
+        # The lumped Taylor sum and the full-reprice oracle, so the front can show the
+        # residual *against* the reprice without re-summing the bars itself.
+        "approx_pnl": row.approx_pnl,
+        "full_reprice_pnl": row.full_reprice_pnl,
+        "residual_abs_tol": row.residual_abs_tol,
+        "residual_rel_tol": row.residual_rel_tol,
+        "scenario_version": row.scenario_version,
+        "attribution_version": row.attribution_version,
+        "source_snapshot_ts": _iso(row.source_snapshot_ts),
+        "provenance": provenance_to_dict(row.provenance),
     }
 
 

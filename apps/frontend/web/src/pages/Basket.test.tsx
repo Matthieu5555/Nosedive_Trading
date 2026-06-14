@@ -7,6 +7,7 @@ import { expect, test, vi } from "vitest";
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
 import { BasketPage } from "./Basket";
+import type { OrderTicketResponse } from "../api";
 import { BASKET_RISK_AAA } from "../test/fixtures";
 import { jsonPost, server } from "../test/server";
 
@@ -119,4 +120,75 @@ test("a stress error renders a labelled alert carrying the BFF's typed detail", 
     expect(screen.getByRole("alert")).toHaveTextContent(/Failed to stress basket/i),
   );
   expect(screen.getByRole("alert")).toHaveTextContent(/boom/);
+});
+
+// The booking chain's single home (frontend-orders-booking-reconcile, ruling (b)): the Basket
+// page composes legs, then builds the real, store-backed ticket from POST /api/ticket/preview.
+// There is no separate Orders sketch — these stand in for "exactly one real booking surface".
+//
+// What the BFF returns for the previewed ticket; the long->BUY / short->SELL mapping is pinned in
+// the Python unit tests, so this fixture is the BFF's authority, not a re-derivation. It comes
+// back gated (transmit:false) so the send affordance must stay disabled.
+const TICKET: OrderTicketResponse = {
+  source_basket_id: "basket-AAA-latest",
+  trade_date: "",
+  underlying: "AAA",
+  target_broker: "ibkr",
+  time_in_force: "day",
+  mode: "paper",
+  legs: [
+    { instrument_kind: "option", underlying: "AAA", side: "buy", quantity: 1,
+      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atm" },
+    { instrument_kind: "option", underlying: "AAA", side: "buy", quantity: 1,
+      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atmp" },
+  ],
+  n_legs: 2,
+  gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },
+};
+
+test("the single booking home builds the real ticket and self-labels it as preview-only", async () => {
+  const user = userEvent.setup();
+  server.use(jsonPost("/api/ticket/preview", TICKET));
+  render(<BasketPage />);
+
+  // Composing legs reveals the real ticket panel (it is gated on legs.length > 0).
+  await user.click(screen.getByRole("button", { name: /template straddle/i }));
+  const ticketPanel = screen.getByRole("region", { name: /order ticket/i });
+  // Self-labels: the real Execution ticket, preview-only — not an "indicative sketch".
+  expect(within(ticketPanel).getByRole("heading", { name: /order ticket/i })).toBeInTheDocument();
+  expect(within(ticketPanel).getByText(/preview only/i)).toBeInTheDocument();
+
+  await user.click(within(ticketPanel).getByRole("button", { name: "Build ticket" }));
+  const legsTable = await within(ticketPanel).findByRole("table", { name: /order ticket legs/i });
+  expect(within(legsTable).getAllByText("BUY").length).toBeGreaterThanOrEqual(1);
+});
+
+test("the booking home's send affordance is disabled and 3B-gated; nothing can transmit", async () => {
+  const user = userEvent.setup();
+  server.use(jsonPost("/api/ticket/preview", TICKET));
+  render(<BasketPage />);
+
+  await user.click(screen.getByRole("button", { name: /template straddle/i }));
+  await user.click(screen.getByRole("button", { name: "Build ticket" }));
+  await screen.findByRole("table", { name: /order ticket legs/i });
+
+  const send = screen.getByRole("button", { name: /sign and send order/i });
+  expect(send).toBeDisabled();
+  expect(screen.getByText(/3B — gated/)).toBeInTheDocument();
+});
+
+test("the retired Orders sketch renders nowhere — no hardcoded strike 5350, no Submit (sketch)", async () => {
+  const user = userEvent.setup();
+  server.use(jsonPost("/api/ticket/preview", TICKET));
+  render(<BasketPage />);
+
+  await user.click(screen.getByRole("button", { name: /template straddle/i }));
+  await user.click(screen.getByRole("button", { name: "Build ticket" }));
+  await screen.findByRole("table", { name: /order ticket legs/i });
+
+  // The dead sketch's tells must not appear anywhere on the booking home.
+  expect(screen.queryByText("5350")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Submit \(sketch/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Execution sketch — read-only/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Indicative only/i)).not.toBeInTheDocument();
 });

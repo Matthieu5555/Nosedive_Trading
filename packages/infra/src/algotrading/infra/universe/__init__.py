@@ -51,6 +51,7 @@ from .errors import (
     IndexRegistryError,
     InstrumentMasterConflictError,
     MembershipError,
+    MembershipRankingError,
     StrikeSelectionError,
     UniverseError,
     UnknownContractError,
@@ -69,6 +70,7 @@ from .membership import (
     basket_weight_sum,
     ingest_membership_changes,
     members,
+    top_n_by_weight,
 )
 from .membership_source import (
     CsvFileSource,
@@ -111,6 +113,7 @@ __all__ = [
     "InstrumentMasterConflictError",
     "MembershipChange",
     "MembershipError",
+    "MembershipRankingError",
     "MembershipSource",
     "OptionContract",
     "OptionParams",
@@ -157,4 +160,5 @@ __all__ = [
     "select_strikes",
     "select_strikes_delta_band",
     "tenor_target_dates",
+    "top_n_by_weight",
 ]

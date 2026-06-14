@@ -122,6 +122,18 @@ The BFF exposes (all under `/api` except the liveness probe):
   **viewable** day (whose `analytics` stage produced a surface, **including qc-failing ones**),
   each tagged with its QC verdict (`pass`/`fail`/`unknown`). The date picker offers `available`
   and shows a QC badge, so a degraded snapshot is shown rather than hidden (WS 1I).
+- `GET /api/attribution[?trade_date=&portfolio_id=&level=&contract_key=]` — the by-Greek P&L
+  decomposition for one persisted `scenario_attributions` record (TARGET §2 #5 / §7 #2). Projects
+  the frozen `ScenarioAttribution` seam **verbatim** (the BFF re-decomposes nothing): `terms` are
+  the per-Greek dollar contributions in the ADR-0030 dPnL order (Δ → Γ → Vega → Θ; Rho/Vanna/Volga
+  appended by the second-order-greeks lane as the seam grows), each a labelled `{name, dollars,
+  unit}`; `residual` is the honesty meter against the full reprice carried as its **own** bar
+  (never folded into a term); `verdict` is the engine's `within_tolerance` ruling against its
+  echoed `residual_abs_tol`/`residual_rel_tol`. `level=book` (default, the book sentinel
+  `contract_key`) or `level=position` + a `contract_key` for the §5.8 per-position drill. No
+  record for the `(portfolio, date)` is a labelled-empty `found=false` body (HTTP 200), a bad
+  `trade_date` a labelled `400`. The web `AttributionWaterfall` (Plotly waterfall) renders it on
+  the Basket page beside the stress surface.
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

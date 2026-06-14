@@ -21,13 +21,14 @@ Scope + universe model live in ADR [0042](../.agent/decisions/0042-index-options
 and [`TARGET.md §0`](../TARGET.md) — **index-options-only, IBKR sole broker, SX5E sole live index**.
 The reminder that earns its place here: if any older spec, ADR, or README still says "Saxo",
 "Deribit", "three brokers", or "equity underlying", **the index-only pivot wins** — do not resurrect
-it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-13 (1507 passed, 12 skipped).
+it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-14 after the core-fleet
+integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 
 ## Active claims
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| claude (matthieu) | `tasks/TASKBOARD.md`, `AGENTS.md`; archive 2 landed specs | 2026-06-13 | context-pollution cleanup ([T-agent-context-minimization](T-agent-context-minimization.md) Part A/B) |
+| claude (matthieu) | core-fleet integration → `main`: `packages/{execution,strategy}`, `apps/frontend` (attribution + booking + orders-reconcile), `infra/universe`, IBKR top-N capture; 8 specs archived | 2026-06-14 | done — booking chain + strategy spine + attribution view landed, gate green |
 | Claude (vincent) | [T-front-currency-and-bands](T-front-currency-and-bands.md) — front display wiring (`api.ts`, `DollarGreeks.tsx`, `MaturityAccordion`, `format.ts`) + un-hardcode `BasketLegGrid` band list | 2026-06-13 | backend `/api/indices` currency single-source already landed; front half remains |
 | Claude (anthony) | Basket/Risk tab operator-flow fixes — `routers/basket.py` (empty `trade_date` → latest banked day), web `pages/Basket.tsx`, `pages/RiskScenarios.tsx` | 2026-06-12 | drop the duplicated stress composer from the Risk tab; on-demand stress lives on Basket |
 
@@ -63,8 +64,7 @@ planning pass.**
 
 **`infra-` — analytics / risk / surface / storage compute**
 - [infra-rates-curve-ingest](infra-rates-curve-ingest.md) (R1) · [infra-per-side-surfaces](infra-per-side-surfaces.md) (R2 — put/call/combined fit) · [infra-mirror-greeks-putcall](infra-mirror-greeks-putcall.md) (greeks-only; *not* the per-side fit)
-- [infra-signal-layer](infra-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope; consumes [ibkr-constituent-option-capture](ibkr-constituent-option-capture.md)) · [infra-rt-vega](infra-rt-vega.md) (#5)
-- ★ [infra-sx5e-weighted-membership](infra-sx5e-weighted-membership.md) (§0/§7.4 — **S1 precondition found by the 2026-06-14 IBKR-coverage audit**: no weighted SX5E source + no top-N-by-weight resolver exist; unblocks [ibkr-constituent-option-capture](ibkr-constituent-option-capture.md))
+- [infra-signal-layer](infra-signal-layer.md) (implied ρ̄ / IV rank / RV−IV / term slope; consumes [ibkr-constituent-option-capture](archive/ibkr-constituent-option-capture.md), **landed**) · [infra-rt-vega](infra-rt-vega.md) (#5)
 - [infra-strike-window-pct-clip](infra-strike-window-pct-clip.md) (latent mine — labelling + delivery test) · [infra-daily-bar-compaction](infra-daily-bar-compaction.md) (971k one-row `daily_bar` files)
 - ★ [infra-named-scenarios-and-corr-shock](infra-named-scenarios-and-corr-shock.md) (§5.4 — named historical stress 2008/COVID + correlation-shock axis; reuses the 2B grid + landed rate-axis pattern)
 - ★ [infra-tail-risk-var-es](infra-tail-risk-var-es.md) (§5.9 — VaR/ES off the full-reprice distribution + liquidity/concentration; **post-week**, substrate built) · ★ [infra-residual-diagnosis](infra-residual-diagnosis.md) (§7 #10 — regress the attribution residual against unmodeled exposures; **deferred**, gated behind booking + banked realized P&L)
@@ -72,29 +72,27 @@ planning pass.**
 > **Landed & archived (2026-06-14, infra-coverage audit):** [infra-pnl-attribution](archive/infra-pnl-attribution.md) (2C by-Greek attribution), [infra-second-order-greeks](archive/infra-second-order-greeks.md) (Vanna/Volga/Charm + Rho/Vanna/Volga + realized day-over-day — compute landed), [infra-scenario-rate-axis](archive/infra-scenario-rate-axis.md) (rate-shock engine+config landed). The front remainders live in [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) and [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md).
 
 **`ibkr-` — IBKR capture lane & connectivity**
-- [ibkr-constituent-option-capture](ibkr-constituent-option-capture.md) (§7.4 — S1 dispersion blocker) · [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
+- [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
 - [ibkr-clock-timer-coherence](ibkr-clock-timer-coherence.md) (the live SX5E/XEUR timer shift)
 - ★ [ibkr-unattended-reauth](ibkr-unattended-reauth.md) (§5.9 — close the ~daily SMS-2FA wall; OAuth bring-up + SSO-expiry ALARM delivery. **Load-bearing for the unattended-week story**)
 - ★ [ibkr-broker-account-read](ibkr-broker-account-read.md) (§5.9/§6 — **found by the 2026-06-14 IBKR-coverage audit**: the read-only CP-REST positions/cash/fills path reconciliation needs; the recon sub-lane of [execution-operational-hardening](execution-operational-hardening.md) assumes it but no `ibkr-` task owned it)
 
-**`strategy-` — the strategy book, signals, backtester**
-- ★ [strategy-contract-base](strategy-contract-base.md) (**foundation — build first**: the `Strategy` spine — typed contract premium/signal/intended-Greeks/kill + entry/exit/kill decision interface + one-logic-four-contexts harness + the `strategy_id` stamp that lets 2D compose and attribution group by strategy. **Found by the 2026-06-14 strategy-coverage audit**: all five S-specs and the backtester assume it; none owned it. `packages/strategy` is empty.)
-- ★ [strategy-s1-dispersion](strategy-s1-dispersion.md) (§3 S1 — flagship, week goal; blocked on `ibkr-constituent-option-capture`; implements [strategy-contract-base](strategy-contract-base.md)) · ★ [strategy-s2-index-put-line](strategy-s2-index-put-line.md) (§3 S2) · ★ [strategy-s3-gamma-trading](strategy-s3-gamma-trading.md) (§3 S3)
+**`strategy-` — the strategy book, signals, backtester** (`packages/strategy` spine **landed** — [strategy-contract-base](archive/strategy-contract-base.md): typed contract + protocol + 4-context harness + `strategy_id` stamp; the S-specs and backtester build on it.)
+- ★ [strategy-s1-dispersion](strategy-s1-dispersion.md) (§3 S1 — flagship, week goal; the `ibkr-constituent-option-capture` blocker is now **landed**; implements [strategy-contract-base](archive/strategy-contract-base.md)) · ★ [strategy-s2-index-put-line](strategy-s2-index-put-line.md) (§3 S2) · ★ [strategy-s3-gamma-trading](strategy-s3-gamma-trading.md) (§3 S3)
 - ★ [strategy-s4-covered-strangle](strategy-s4-covered-strangle.md) (§3 S4) · ★ [strategy-s5-calendar-carry](strategy-s5-calendar-carry.md) (§3 S5, optional)
 - [strategy-composition](strategy-composition.md) (Phase 2, §5.8 — the §3 book composed: combined Greeks + stress + attribution + correlation view; infra/risk + BFF + web are seams) · [strategy-delta-hedge-band](strategy-delta-hedge-band.md) (hedge rule for S1/S3/S4)
 - [strategy-backtester](strategy-backtester.md) (§7.8) · ★ [strategy-decorrelation-analytics](strategy-decorrelation-analytics.md) (§5.8 — decorrelation *verification*, post-week; depends on [strategy-composition](strategy-composition.md))
 
-**`execution-` — OMS / booking chain (`packages/execution` still empty; 3A ticket landed in `infra/orders`)**
-- ★ [execution-fill-concretization](execution-fill-concretization.md) — **blocks #1**: resolve the abstract grid-cell ticket → concrete `(strike, expiry, right)` + paper mark, so a fill can be synthesized (the seam 3A deferred and booking-commit assumes). **Ruled [ADR 0043](../.agent/decisions/0043-fills-are-concrete-contracts-resolved-at-booking.md)** — concretize at booking; ready to build.
-- ★ [execution-booking-commit](execution-booking-commit.md) — **§7 #1, week's top priority**: the password-gated booking write barrier (previewed ticket → paper fill → fills-store + audit)
-- ✓ ~~execution-order-ticket~~ (3A) **landed 2026-06-14** → [archive](archive/execution-order-ticket.md) · [execution-order-sign-and-send](execution-order-sign-and-send.md) (read-only / paper until an explicit owner gate) · [execution-fills-position-store](execution-fills-position-store.md) (§7.1 — the book built from fills; risk/attribution read it)
+**`execution-` — OMS / booking chain (`packages/execution` now built: concretize → book → fills-store → audit, paper-gated)**
+- ✓ The §7 #1 booking chain **landed 2026-06-14 (core-fleet)**: [execution-fill-concretization](archive/execution-fill-concretization.md) (grid-cell → concrete priced paper fill, ADR 0043) → [execution-booking-commit](archive/execution-booking-commit.md) (password-gated write barrier) → [execution-fills-position-store](archive/execution-fills-position-store.md) (fills-based book read by risk/attribution). 3A ticket landed prior → [archive](archive/execution-order-ticket.md).
+- [execution-order-sign-and-send](execution-order-sign-and-send.md) (3B broker send — read-only / paper until an explicit owner gate; **off this week**)
 - [execution-operational-hardening](execution-operational-hardening.md) (§7.9 umbrella — margin / kill switch / broker recon / alert delivery; margin sub-lane gates S2, rest post-week)
 
 **`frontend-` — BFF + web delivery (apps/frontend)**
 - [frontend-page1-cdc-buildout](frontend-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards) · [frontend-sigfig-scientific-display](frontend-sigfig-scientific-display.md) (#6)
 - [frontend-capture-coverage-panel](frontend-capture-coverage-panel.md) (capture-quality table; BFF + `CoverageTable` landed **and the panel drop is mounted** at `Market.tsx:172` — only the phase-2 quote-completeness add remains)
 - ★ [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) (step 3 of infra-second-order-greeks; after 3A + sigfig) · ★ [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md) (BFF/front slice of infra-scenario-rate-axis)
-- ★ [frontend-attribution-view](frontend-attribution-view.md) (**week, §7 #2** — the missing host: BFF router + Plotly waterfall over the landed `ScenarioAttribution`; the view 2nd-order-greeks-panels assumes) · ★ [frontend-orders-booking-reconcile](frontend-orders-booking-reconcile.md) (**§7 #1 coherence** — one booking chain; retire the dead `Orders.tsx` sketch duplicating the real ticket on Basket)
+- ✓ **Landed 2026-06-14 (core-fleet):** [frontend-attribution-view](archive/frontend-attribution-view.md) (§7 #2 — BFF router + attribution waterfall over `ScenarioAttribution`, wired on Basket) · [frontend-orders-booking-reconcile](archive/frontend-orders-booking-reconcile.md) (§7 #1 coherence — dead `Orders.tsx` retired, `/orders` redirects to the one booking home on Basket)
 
 **`platform-` — CI/CD, deploy, security, ops & audits (cross-cutting; not a package)**
 - [platform-security-review](platform-security-review.md) (pre-live-order pass; auth/secrets/BFF/deps runnable now, order-seam §2 opens with 3A/3B)

@@ -463,3 +463,94 @@ export interface OrderTicketResponse {
 export async function previewTicket(body: TicketPreviewRequest): Promise<OrderTicketResponse> {
   return postJson<OrderTicketResponse>("/api/ticket/preview", body);
 }
+
+// The password-gated booking commit (§7 #1): turn a previewed ticket into paper fill(s), but ONLY
+// behind the password write barrier. The request is the ticket-preview body plus a `password`; the
+// response is a decision — "commit" (fills written) or "block" (fail-closed, no fill, a labelled
+// reason). A block is HTTP 200 (a normal answer); a malformed request is a labelled 400. This is
+// the *paper* booking gate, NOT the 3B broker-send gate — nothing here transmits to a broker.
+export interface BookingCommitRequest extends TicketPreviewRequest {
+  password: string;
+}
+
+export interface BookingCommitResponse {
+  decision: "commit" | "block";
+  booking_id: string;
+  // Present on a commit:
+  fill_ids?: string[];
+  fill_count?: number;
+  // Present on a block:
+  reason?: string;
+  detail?: string;
+}
+
+export async function commitBooking(body: BookingCommitRequest): Promise<BookingCommitResponse> {
+  return postJson<BookingCommitResponse>("/api/booking/commit", body);
+}
+
+// --- P&L attribution waterfall (TARGET §2 #5 / §7 #2) --------------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/serializers.py::scenario_attribution_to_dict and
+// the /api/attribution router body. The HTTP shape is the seam — keep both sides in lockstep. The
+// BFF re-decomposes nothing; every `dollars` is the engine's own ScenarioAttribution term.
+
+// One named by-Greek contribution: an already-monetized dollar PnL amount and its unit string.
+// `dollars` is null only on the labelled-empty body (no record for the selection).
+export interface AttributionTerm {
+  name: string;
+  dollars: number | null;
+  unit: string;
+}
+
+// The residual against the full reprice — the honesty meter (§5.2). Its own bar, never folded.
+export interface AttributionResidual {
+  dollars: number | null;
+  unit: string;
+}
+
+// The engine's tolerance ruling: within_tolerance against the echoed abs/rel bounds. Null on the
+// labelled-empty body (no record was judged).
+export interface AttributionVerdict {
+  within_tolerance: boolean;
+  residual_abs_tol: number;
+  residual_rel_tol: number;
+}
+
+// The /api/attribution body. `found=false` is the labelled-empty case (terms []), HTTP 200.
+export interface AttributionResponse {
+  trade_date: string | null;
+  portfolio_id: string | null;
+  level: string;
+  contract_key: string | null;
+  found: boolean;
+  terms: AttributionTerm[];
+  residual: AttributionResidual;
+  verdict: AttributionVerdict | null;
+  approx_pnl?: number;
+  full_reprice_pnl?: number;
+  scenario_version?: string;
+  attribution_version?: string;
+  provenance?: Provenance;
+}
+
+export interface AttributionQuery {
+  tradeDate?: string;
+  portfolioId?: string;
+  level?: "book" | "position";
+  contractKey?: string;
+}
+
+// Fetch one attribution record's waterfall payload. The book aggregate by default; a position
+// drill passes level=position + contractKey (the §5.8 drill target). An unknown (portfolio, date)
+// comes back as a labelled-empty 200; a bad trade_date is a labelled 400 surfaced as an Error.
+export async function fetchAttribution(
+  query: AttributionQuery = {},
+  signal?: AbortSignal,
+): Promise<AttributionResponse> {
+  const params = new URLSearchParams();
+  if (query.tradeDate) params.set("trade_date", query.tradeDate);
+  if (query.portfolioId) params.set("portfolio_id", query.portfolioId);
+  if (query.level) params.set("level", query.level);
+  if (query.contractKey) params.set("contract_key", query.contractKey);
+  const suffix = params.toString();
+  return getJson<AttributionResponse>(`/api/attribution${suffix ? `?${suffix}` : ""}`, signal);
+}

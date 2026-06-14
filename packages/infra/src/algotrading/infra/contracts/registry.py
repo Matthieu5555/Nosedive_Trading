@@ -239,6 +239,8 @@ REGISTRY: dict[str, TableSpec] = {
         # An operator-authored INPUT, like ``positions`` — not a derived analytic, so it
         # carries no provenance stamp (the priced RESULT a downstream task may persist is the
         # derived, stamped row). ``provider`` is an optional field, not a partition segment.
+        # ``strategy_id`` is the additive-nullable strategy-identity stamp (None on an
+        # operator-authored basket; set by the strategy spine on a strategy-emitted set).
         append_only=False,
         requires_provenance=False,
         requires_source_snapshot_ts=False,

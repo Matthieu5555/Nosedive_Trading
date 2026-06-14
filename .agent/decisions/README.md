@@ -51,6 +51,15 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0036** — $-Greek units + monetization conventions (raw is truth, dollar is derived).
 - **0038** — By-Greek PnL attribution (`ScenarioAttribution`) — transcript §7.
 
+## Execution & booking
+- **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*
+- **0047** — Password-gated booking write barrier: scrypt gate (env-configured, fail-closed) + a separate append-only decision log.
+
+## Strategy, universe & capture
+- **0044** — Top-N-by-weight dispersion selector (`top_n_by_weight`) + `dispersion_top_n` config (S1 precondition).
+- **0045** — Constituent option capture: one underlying-generic basket, top-N membership seam.
+- **0046** — The Strategy spine: typed contract, `Strategy` protocol, and the `strategy_id` identity stamp.
+
 ## Frontend
 - **0030** — Visualization/UI stack: Plotly.js charts; shadcn/ui + TanStack Table.
 

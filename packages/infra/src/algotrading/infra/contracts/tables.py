@@ -616,6 +616,16 @@ class Basket:
     scopes which grid is read; ``provider`` optionally narrows the provider-partitioned read
     (``None`` reads across providers). An **empty** ``legs`` is a valid, labelled-empty
     basket — not rejected here.
+
+    ``strategy_id`` is the **strategy-identity stamp** (additive-nullable, ``None`` on an
+    operator-authored or pre-strategy-layer basket): the identity of the
+    :class:`~algotrading.strategy.Strategy` that emitted this position set, carried so the
+    same emitted object can be (a) layered as a *named book layer* by 2D composition
+    (``risk/book.py``) and (b) grouped by strategy for per-strategy P&L attribution
+    (TARGET §7.2). Defined by the strategy spine (``packages/strategy``) and consumed by
+    those two infra lanes — infra never reads strategy *logic*, only this opaque label.
+    When present it must be a non-empty string; the additive default keeps every existing
+    basket valid unchanged.
     """
 
     basket_id: str
@@ -623,6 +633,7 @@ class Basket:
     underlying: str
     legs: tuple[BasketLeg, ...]
     provider: str | None = None
+    strategy_id: str | None = None
 
     def __post_init__(self) -> None:
         table = "baskets"
@@ -633,4 +644,9 @@ class Basket:
         if not self.underlying.strip():
             raise ContractValidationError(
                 table, "underlying", self.underlying, "must be non-empty",
+            )
+        if self.strategy_id is not None and not self.strategy_id.strip():
+            raise ContractValidationError(
+                table, "strategy_id", self.strategy_id,
+                "when present (the strategy-identity stamp) must be a non-empty string",
             )

@@ -43,8 +43,14 @@ breaking the blueprint's per-contract `Position` keying for the interim.
 - `execution-fill-concretization` builds a **pure, as-of** resolver `(grid-cell leg, as_of, chain) →
   concrete contract + paper mark` — deterministic, look-ahead-guarded (an old-date replay resolves
   that date's chain, never today's), labelled failure when no contract matches.
-- The **paper fill-price rule** still needs pinning (mid of the as-of chain is the default); record
-  it in the spec when built.
+- The **paper fill-price rule** is now pinned (built in `packages/execution/concretization.py`):
+  the fill books at the **mid of the as-of `MarketStateSnapshot`** (`(bid + ask) / 2`) for the
+  resolved contract when a finite two-sided positive quote exists, else the WS-1F analytics row's
+  model `price`. The rule that set the mark is recorded on `ConcreteFill.mark_source`
+  (`snapshot_mid` / `analytics_model_price`) — deterministic, as-of-clean, never a wall-clock read.
+- The grid cell binds to the listed contract at the **soonest listed expiry on/after the booking
+  date** (the front contract a desk would book); an already-expired-only listing is a labelled
+  failure, never a backward-dated contract.
 - `execution-booking-commit` consumes the resolved+marked leg to synthesize the concrete fill;
   `execution-fills-position-store` keys positions by `contract_key`.
 - Risk/attribution need a concrete-contract valuation path alongside the grid-cell one — the one

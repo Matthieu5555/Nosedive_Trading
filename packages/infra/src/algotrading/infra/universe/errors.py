@@ -78,6 +78,29 @@ class MembershipError(UniverseError):
         )
 
 
+class MembershipRankingError(UniverseError):
+    """A top-N-by-weight selection could not rank the basket, for a labeled reason (S1).
+
+    Raised by :func:`~algotrading.infra.universe.membership.top_n_by_weight` when the basket
+    cannot be ranked deterministically by index weight: a non-positive ``n`` (asking for the
+    top-zero or top-negative names is meaningless), or a basket carrying any *labeled-
+    unavailable* (``None``) weight — you cannot rank what isn't known, and silently dropping
+    or zeroing the missing names would bias the selection (the economic-correctness bug the
+    membership layer refuses everywhere). Carries the offending ``index``, the ``field`` that
+    failed, the ``value`` seen, and a plain-language ``reason``, so the caller gets a *labeled*
+    failure naming exactly what blocked the rank rather than a quietly-truncated basket.
+    """
+
+    def __init__(self, index: str, field: str, value: object, reason: str) -> None:
+        self.index = index
+        self.field = field
+        self.value = value
+        self.reason = reason
+        super().__init__(
+            f"top-N-by-weight for index {index!r}: {field} = {value!r} is invalid: {reason}"
+        )
+
+
 class CalendarResolutionError(UniverseError):
     """A calendar resolve failed for a labeled reason rather than a silent wrong answer.
 

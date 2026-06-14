@@ -52,6 +52,7 @@ capture against a fake gateway with no network and no secrets.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 
 import structlog
@@ -81,42 +82,101 @@ from .cp_rest_snapshot import snapshot_index_spot, snapshot_with_warmup
 from .cp_rest_wire import SnapshotRow, coerce_int_or_none
 
 __all__ = [
+    "CaptureTarget",
     "CloseCaptureError",
     "DiscoveryRunawayError",
     "collect_live_basket",
+    "collect_target_basket",
+    "target_from_index",
 ]
 
 _LOGGER = structlog.get_logger("ibkr.close_capture")
 
 # The index itself is a non-option underlying; its security type in our key space. The option
-# multiplier IBKR lists is a string ("100"); the index leg carries a multiplier of 1.0 (it is
-# not a contract with a lot size in our key space, only the options are).
+# multiplier IBKR lists is a string ("100"); the underlying leg carries a multiplier of 1.0 (it is
+# not a contract with a lot size in our key space, only the options are). A constituent underlying
+# is an equity ("STK") but is otherwise the same shape of non-option chain centre.
 _INDEX_SECURITY_TYPE = "IND"
-_INDEX_MULTIPLIER = 1.0
+_EQUITY_SECURITY_TYPE = "STK"
+_UNDERLYING_MULTIPLIER = 1.0
 _OPTION_SECURITY_TYPE = "OPT"
 
 
-def _index_key(index: IndexEntry, conid: int) -> InstrumentKey:
-    """The index underlying's canonical :class:`InstrumentKey` (the chain's centre)."""
-    return InstrumentKey(
-        underlying_symbol=index.symbol,
-        security_type=_INDEX_SECURITY_TYPE,
+@dataclass(frozen=True, slots=True)
+class CaptureTarget:
+    """One underlying to capture an option chain for — the index *or* a constituent (1C × 1I).
+
+    The capture mechanics (resolve conid, snapshot spot, discover + plan + budget the chain,
+    snapshot the close marks, assemble the basket) are identical for the index and for each
+    constituent; they differ only in this small descriptor. Holding it in one frozen value keeps
+    :func:`collect_target_basket` underlying-generic, so the constituent lane (1I) is a *scope*
+    widening that reuses the index lane (1C) byte-for-byte rather than a parallel capture path.
+
+    * ``symbol`` — the platform-wide key the basket, masters, and analytics store under (the
+      index registry symbol, or the constituent's underlying key — the same one its OHLC bars
+      land under, so a pinned constituent's bars and chain share an underlying).
+    * ``search_symbol`` — the symbol the IBKR ``secdef`` door is searched by, when it differs
+      from ``symbol`` (e.g. SX5E→ESTX50, SAN→SAN1); ``None`` means same as ``symbol``.
+    * ``exchange`` — the IBKR routing/listing exchange the discovery and option keys carry.
+    * ``currency`` — the contract currency (steers the constituent's venue preference on search).
+    * ``security_type`` — the underlying leg's security type in our key space (``IND`` for the
+      index, ``STK`` for an equity constituent); the option legs are always ``OPT``.
+    * ``conid`` — the underlying's verified IBKR conid when already known (a pinned constituent,
+      or an index whose conid was resolved upstream); ``None`` means resolve it at capture time
+      from ``search_symbol`` (the index path, which never trusts the registry ``conid: 0``).
+    """
+
+    symbol: str
+    exchange: str
+    currency: str
+    security_type: str = _EQUITY_SECURITY_TYPE
+    search_symbol: str | None = None
+    conid: int | None = None
+
+    @property
+    def resolved_search_symbol(self) -> str:
+        """The symbol to resolve against IBKR — ``search_symbol`` override, else ``symbol``."""
+        return self.search_symbol or self.symbol
+
+
+def target_from_index(index: IndexEntry) -> CaptureTarget:
+    """Build the :class:`CaptureTarget` for an index entry (the 1C index lane, unchanged).
+
+    The index conid is left to runtime resolution (``conid=None``) so the live path never trusts
+    the registry's ``conid: 0`` placeholder — exactly the prior behaviour, now expressed through
+    the generic descriptor.
+    """
+    return CaptureTarget(
+        symbol=index.symbol,
         exchange=index.ibkr.exchange,
         currency=index.currency,
-        multiplier=_INDEX_MULTIPLIER,
+        security_type=_INDEX_SECURITY_TYPE,
+        search_symbol=index.ibkr_search_symbol,
+        conid=None,
+    )
+
+
+def _underlying_key(target: CaptureTarget, conid: int) -> InstrumentKey:
+    """The underlying's canonical :class:`InstrumentKey` (the chain's centre)."""
+    return InstrumentKey(
+        underlying_symbol=target.symbol,
+        security_type=target.security_type,
+        exchange=target.exchange,
+        currency=target.currency,
+        multiplier=_UNDERLYING_MULTIPLIER,
         broker_contract_id=str(conid),
     )
 
 
 def _option_key(
-    index: IndexEntry, *, expiry: date, strike: float, right: str, multiplier: float, conid: str
+    target: CaptureTarget, *, expiry: date, strike: float, right: str, multiplier: float, conid: str
 ) -> InstrumentKey:
     """One option contract's canonical :class:`InstrumentKey`, carrying its IBKR conid."""
     return InstrumentKey(
-        underlying_symbol=index.symbol,
+        underlying_symbol=target.symbol,
         security_type=_OPTION_SECURITY_TYPE,
-        exchange=index.ibkr.exchange,
-        currency=index.currency,
+        exchange=target.exchange,
+        currency=target.currency,
         multiplier=multiplier,
         broker_contract_id=conid,
         expiry=expiry,
@@ -138,7 +198,7 @@ def _master(instrument: InstrumentKey, as_of: datetime) -> InstrumentMaster:
 def _discover_chain(
     discovery: CpRestDiscovery,
     *,
-    index: IndexEntry,
+    target: CaptureTarget,
     conid: int,
     months: Sequence[str],
     selection: ChainSelection,
@@ -146,7 +206,7 @@ def _discover_chain(
     as_of: date,
     strike_selection: StrikeSelectionConfig,
 ) -> tuple[AvailableChain, dict[str, str]]:
-    """Discover the listed chain for the index and build the broker-neutral ``AvailableChain``.
+    """Discover the listed chain for the underlying and build the broker-neutral ``AvailableChain``.
 
     Drives the CP three-step ``strikes`` → ``info`` sequence (the ``search`` already resolved
     the conid and the listed ``months``). Returns the assembled chain menu *and* a
@@ -160,7 +220,7 @@ def _discover_chain(
     delivered. ``info`` costs one paced call per (strike, right); the window is full-30Δ (no cap)
     but bounded in practice by the listed strikes, with the runaway valve as the only backstop.
     """
-    log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
+    log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
     expirations: list[str] = []
     strikes: set[float] = set()
     conid_by_contract: dict[str, str] = {}
@@ -179,7 +239,11 @@ def _discover_chain(
         for strike in qualified:
             for right in ("C", "P"):
                 for contract in discovery.contracts(
-                    conid, symbol=index.ibkr_search_symbol, month=month, strike=strike, right=right
+                    conid,
+                    symbol=target.resolved_search_symbol,
+                    month=month,
+                    strike=strike,
+                    right=right,
                 ):
                     if contract.broker_contract_id is None:
                         continue
@@ -192,8 +256,8 @@ def _discover_chain(
                         _contract_token(contract.expiry, float(contract.strike), right)
                     ] = contract.broker_contract_id
     chain = AvailableChain(
-        exchange=index.ibkr.exchange,
-        trading_class=index.symbol,
+        exchange=target.exchange,
+        trading_class=target.symbol,
         multiplier=multiplier,
         expirations=tuple(sorted(set(expirations))),
         strikes=tuple(sorted(strikes)),
@@ -207,7 +271,7 @@ def _contract_token(expiry: date, strike: float, right: str) -> str:
 
 
 def _planned_option_keys(
-    index: IndexEntry,
+    target: CaptureTarget,
     *,
     plan_expiries: Sequence[str],
     plan_strikes: Sequence[float],
@@ -231,7 +295,7 @@ def _planned_option_keys(
                     continue
                 keys.append(
                     _option_key(
-                        index,
+                        target,
                         expiry=expiry,
                         strike=strike,
                         right=right,
@@ -314,64 +378,64 @@ def _snapshot_events(
     return events
 
 
-def collect_live_basket(
+def collect_target_basket(
     transport: SupportsRestGet,
     *,
-    index: IndexEntry,
+    target: CaptureTarget,
+    conid: int,
+    months: Sequence[str],
     as_of: datetime,
     next_open: datetime,
     config: PlatformConfig,
     selection: ChainSelection | None = None,
 ) -> IndexBasket | None:
-    """Capture one fired index's EOD close basket over CP REST (the live ``BasketSource`` body).
+    """Capture one underlying's EOD close option basket over CP REST (the underlying-generic body).
 
-    Resolves the index conid from its symbol, snapshots its spot to centre the chain, discovers
-    and plans the option chain, caps it to the capture budget, snapshots the selected contracts
-    at the close, and returns the populated :class:`IndexBasket`. Returns ``None`` (a clean,
-    labeled empty capture — never a raise) only when the index lists no option chain at all, so
-    a name with no listed options degrades to a no-capture day rather than failing the fire.
+    This is the capture mechanics, factored out of the index lane so the constituent lane (1I)
+    reuses it byte-for-byte: given an already-resolved underlying ``conid`` and its listed option
+    ``months``, it snapshots the spot to centre the chain, discovers and plans the option chain,
+    caps it to the capture budget, snapshots the selected contracts at the close, and returns the
+    populated :class:`IndexBasket` (the underlying leg + its option legs). Returns ``None`` (a
+    clean, labeled empty capture — never a raise) when the underlying lists no qualifiable option
+    chain, so a name with no options degrades to a no-capture rather than failing.
 
     ``selection`` defaults to a :class:`ChainSelection` built from the universe config's strike-
     selection knobs (nearest maturities, the per-session strike budget); the economic 30Δ band
-    runs downstream in :func:`run_analytics`. ``as_of`` is the index's own session close — every
-    captured event is stamped there; ``next_open`` is the next session's open and bounds the
-    admitted close set to the half-open ``[as_of, next_open)`` (a later-session row is dropped).
-    A snapshot that returns option contracts but keeps none after that guard raises
-    :class:`CloseCaptureError` (a loud failure), never a silently-empty basket.
+    runs downstream in :func:`run_analytics`. ``as_of`` is the session close — every captured
+    event is stamped there; ``next_open`` bounds the admitted close set to the half-open
+    ``[as_of, next_open)`` (a later-session row is dropped). A snapshot that returns option
+    contracts but keeps none after that guard raises :class:`CloseCaptureError` (a loud failure),
+    never a silently-empty basket.
     """
-    log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
-    resolved = resolve_index(
-        transport, symbol=index.ibkr_search_symbol, exchange=index.ibkr.exchange
-    )
-    conid = resolved.conid
+    log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
     selection = selection or _selection_from_config(config, as_of.date())
     discovery = CpRestDiscovery(
-        transport, exchange=index.ibkr.exchange, currency=index.currency
+        transport, exchange=target.exchange, currency=target.currency
     )
     spot = snapshot_index_spot(transport, conid)
     chain, conid_by_contract = _discover_chain(
         discovery,
-        index=index,
+        target=target,
         conid=conid,
-        months=resolved.option_months,
+        months=months,
         selection=selection,
         spot=spot,
         as_of=as_of.date(),
         strike_selection=config.universe.strike_selection,
     )
     if not conid_by_contract:
-        log.info("ibkr.close_capture.no_options", reason="index lists no qualifiable options")
+        log.info("ibkr.close_capture.no_options", reason="underlying lists no qualifiable options")
         return None
 
-    plan = plan_chain(index.symbol, [chain], spot=spot, selection=selection)
+    plan = plan_chain(target.symbol, [chain], spot=spot, selection=selection)
     if plan is None:
-        log.info("ibkr.close_capture.no_plan", reason="no listing selected for the index")
+        log.info("ibkr.close_capture.no_plan", reason="no listing selected for the underlying")
         return None
 
     multiplier = float(plan.multiplier) if plan.multiplier else 100.0
-    index_key = _index_key(index, conid)
+    underlying_key = _underlying_key(target, conid)
     option_keys = _planned_option_keys(
-        index,
+        target,
         plan_expiries=plan.expiries,
         plan_strikes=plan.strikes,
         plan_rights=plan.rights,
@@ -380,17 +444,17 @@ def collect_live_basket(
     )
 
     # Cap to the per-session capture budget (nearest-the-money), then snapshot exactly those.
-    spots = {index.symbol: spot} if spot is not None else {}
+    spots = {target.symbol: spot} if spot is not None else {}
     captured = set(
         select_capture_keys(
-            [index_key, *option_keys],
+            [underlying_key, *option_keys],
             spots=spots,
             selection=selection,
-            exchange=index.ibkr.exchange,
+            exchange=target.exchange,
         )
     )
     kept_options = [key for key in option_keys if key.canonical() in captured]
-    keys_by_conid: dict[int, InstrumentKey] = {conid: index_key}
+    keys_by_conid: dict[int, InstrumentKey] = {conid: underlying_key}
     for key in kept_options:
         option_conid = coerce_int_or_none(key.broker_contract_id)
         if option_conid is None:
@@ -404,17 +468,17 @@ def collect_live_basket(
             continue
         keys_by_conid[option_conid] = key
 
-    session_id = f"{index.symbol}:{as_of.date().isoformat()}"
+    session_id = f"{target.symbol}:{as_of.date().isoformat()}"
     events = _snapshot_events(
         transport,
         keys_by_conid=keys_by_conid,
-        underlying=index.symbol,
+        underlying=target.symbol,
         session_id=session_id,
         as_of=as_of,
         next_open=next_open,
     )
 
-    instruments = (index_key, *kept_options)
+    instruments = (underlying_key, *kept_options)
     masters = tuple(_master(key, as_of) for key in instruments)
     log.info(
         "ibkr.close_capture.captured",
@@ -428,12 +492,44 @@ def collect_live_basket(
         # capture, not a clean optionless no-op (that returned None far above). Fail loud so the
         # runner exits non-zero and OnFailure= alerts, rather than silently landing an empty day.
         raise CloseCaptureError(
-            f"{index.symbol}: snapshot returned {len(kept_options)} option contracts but kept 0 "
+            f"{target.symbol}: snapshot returned {len(kept_options)} option contracts but kept 0 "
             f"events after the look-ahead guard (as_of={as_of.isoformat()}, "
             f"next_open={next_open.isoformat()}) — empty close set, refusing to land it silently"
         )
     return IndexBasket(
         instruments=instruments, events=tuple(events), masters=masters
+    )
+
+
+def collect_live_basket(
+    transport: SupportsRestGet,
+    *,
+    index: IndexEntry,
+    as_of: datetime,
+    next_open: datetime,
+    config: PlatformConfig,
+    selection: ChainSelection | None = None,
+) -> IndexBasket | None:
+    """Capture one fired index's EOD close basket over CP REST (the live ``BasketSource`` body).
+
+    Resolves the index conid from its symbol (never the registry's ``conid: 0`` placeholder) and
+    its listed option months in one secdef search, then delegates to the underlying-generic
+    :func:`collect_target_basket`. The behaviour is the index lane as it always was — this is now
+    a thin wrapper that pins the index :class:`CaptureTarget` and shares the capture mechanics with
+    the constituent lane. Return-value and look-ahead semantics are :func:`collect_target_basket`'s.
+    """
+    resolved = resolve_index(
+        transport, symbol=index.ibkr_search_symbol, exchange=index.ibkr.exchange
+    )
+    return collect_target_basket(
+        transport,
+        target=target_from_index(index),
+        conid=resolved.conid,
+        months=resolved.option_months,
+        as_of=as_of,
+        next_open=next_open,
+        config=config,
+        selection=selection,
     )
 
 

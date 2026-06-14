@@ -132,6 +132,42 @@ def test_basket_contract_round_trips() -> None:
     assert from_row(Basket, row) == basket
 
 
+def test_basket_strategy_id_stamp_defaults_none_and_round_trips() -> None:
+    # The additive strategy-identity stamp: absent (None) on an operator-authored basket and
+    # set on a strategy-emitted one. Both forms must validate and round-trip equal (the
+    # additive-nullable contract-evolution path — an existing basket stays valid unchanged).
+    unstamped = _basket()
+    assert unstamped.strategy_id is None  # additive default keeps existing baskets valid
+    assert from_row(Basket, to_row(Basket, unstamped)) == unstamped
+
+    stamped = Basket(
+        basket_id="s1-aaa-1m",
+        trade_date=date(2026, 6, 5),
+        underlying="AAA",
+        legs=(BasketLeg("stock", "long", 10.0, "AAA"),),
+        strategy_id="S1",
+    )
+    validate(stamped)
+    row = to_row(Basket, stamped)
+    assert row["strategy_id"] == "S1"
+    assert from_row(Basket, row) == stamped
+
+
+def test_basket_empty_strategy_id_stamp_is_rejected_with_the_offending_value() -> None:
+    # The stamp is optional, but a present-but-blank stamp is malformed (it cannot group a
+    # strategy), rejected with the offending value rather than silently treated as absent.
+    with pytest.raises(ContractValidationError) as exc:
+        Basket(
+            basket_id="x",
+            trade_date=date(2026, 6, 5),
+            underlying="AAA",
+            legs=(BasketLeg("stock", "long", 1.0, "AAA"),),
+            strategy_id="   ",
+        )
+    assert exc.value.field == "strategy_id"
+    assert exc.value.value == "   "
+
+
 def test_basket_leg_side_sign_contradiction_is_rejected_with_explicit_error() -> None:
     # Malformed at construction (not a silent normalisation): a "long" leg with a negative
     # quantity is a structured ContractValidationError carrying the offending value.

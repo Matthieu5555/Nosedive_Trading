@@ -43,13 +43,35 @@ five-parameter identifiability floor, a math invariant). Default 5 = byte-identi
 analytics/surface golden moved (only the `pricing` config-hash, by design). Tests: a raised
 threshold routes a well-populated slice to the fallback; the `>= 5` floor is enforced. Gate green.
 
-**Deferred (with their wrinkles, so the next pass has the analysis):**
-- **`model` / `fallback_model`** — not a clean literal move: the blueprint says `fallback_model:
-  spline`, but the code's fallback is **linear-interpolation nonparametric** (`METHOD_NONPARAMETRIC`),
-  not a spline. Adding the keys needs a model-dispatch layer + an owner/blueprint reconciliation of
-  the "spline" name vs the shipped linear interp — do not encode `spline` if the code does linear.
-- **Forward-engine block** (`max_candidate_count` / `outlier_method` / `max_robust_zscore`) — the
-  z-score literal `_MAD_REJECTION_Z = 3.5` lives in the **shared** `utils/robust.py` (used beyond
-  forwards → a config home there would couple the shared util to forward config — a layering call),
-  and `max_candidate_count: 12` is a **new cap behaviour**, not an existing literal. Needs its own
-  small design (where the rate/outlier config lives without cross-layer coupling).
+## Landed — slices 2 & 3: surface model/fallback + forward-engine policy (2026-06-14)
+The two deferred slices landed, resolving their wrinkles honestly:
+
+- **`model` / `fallback_model`** — `SurfaceConfig.model` (∈{`svi`}) / `fallback_model`
+  (∈{`nonparametric`}) now carry the method choice; `fit_slice` reads the emitted labels from
+  config instead of the hardwired `METHOD_SVI` / `METHOD_NONPARAMETRIC` literals. The "spline"
+  wrinkle is resolved by **naming the fallback what the code does** — `nonparametric` (linear
+  interp in total variance), never the blueprint's aspirational `spline` (config describes the
+  code). The vocabulary is forward-compatible: a real spline would grow both the validator set
+  and the fitter's dispatch together. No model-dispatch registry was built — over-engineering for
+  two methods; the labels-from-config wiring is the deliverable.
+- **Forward-engine block** — landed in the **existing `forward:` block** (not a fragmented
+  `forward_engine:` section): `ForwardConfig.max_robust_zscore` (3.5), `outlier_method`
+  (∈{`mad`,`none`} — `none` genuinely disables rejection, giving the field teeth), and
+  `max_candidate_count` (`int|None`). The shared-util wrinkle is resolved by **parameterising**
+  `robust.outlier_flags(..., rejection_z=…)` with the `_MAD_REJECTION_Z` default kept — the shared
+  util stays decoupled and every non-forward caller is byte-identical; the forward engine passes
+  its config value. The new-cap wrinkle is resolved with the **zero-churn idiom**: `max_candidate_count`
+  ships `None`=no-cap (byte-identical), and when set keeps the most-liquid N pairs (tie-break strike);
+  the blueprint's `12` is an owner-enabled value (it moves the analytics golden when binding), so it
+  is not shipped on.
+
+Every default = the shipped behaviour, so fits/forwards are byte-identical; only the `pricing`
+config-hash (and the folded whole-config hash) moved BY DESIGN, section isolation intact. The
+pinned synthetic oracle in `test_config_core` was regenerated. (Incidentally reconciled the
+`strategy_signals` golden row that predated the as_of provenance column — additive `as_of:null`,
+stamp_hash unchanged.) Tests cover config-driven labels, the candidate cap, the `none`/z-cut
+outlier knobs, and per-knob hash folding. Gate green (2057 passed / 12 skipped).
+
+## Done — all three slices landed; the surface model/fallback policy and the forward-engine
+candidate/outlier policy are typed config read by the code (no `.py` literals at these sites);
+the pricing config-hash golden regenerated.

@@ -1,4 +1,5 @@
 # platform-secret-and-dep-scan — close the orphaned secret + dependency scan gap
+<!-- state: DONE 2026-06-15 — branch worktree-agent-a379a1bf2eedc327a; see TASKBOARD for handoff note -->
 
 A **parallel cross-cutting** slice. The no-secrets rule (`AGENTS.md`) is **convention-only**:
 there is no scan that fails a build when a credential or an abandoned/CVE-ridden package slips

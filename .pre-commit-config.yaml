@@ -1,0 +1,28 @@
+# Local pre-commit hooks — catch secrets before they reach a commit.
+#
+# Install once per checkout:
+#   uv run pre-commit install
+#
+# Run manually at any time:
+#   uv run pre-commit run --all-files
+#
+# The secret-scan hook uses detect-secrets against .secrets.baseline (the
+# reviewed allowlist of known false-positives). A new secret not in the
+# baseline causes the commit to be rejected immediately, before it reaches CI.
+#
+# The same scanner runs in CI (.github/workflows/scan.yml) — the pre-commit
+# hook is the local fast-path that stops a secret at the developer's machine.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets (block new secrets)
+        args:
+          - --baseline
+          - .secrets.baseline
+          - --exclude-files
+          - "^uv\\.lock$|^data/|^ThomasHossen/|^Test Lenny/|^Vincent.s Code/|\\.claude/"
+        # Runs on every staged file at commit time.
+        # Exit non-zero (and blocks the commit) if any staged file contains a
+        # secret that is NOT already in .secrets.baseline.

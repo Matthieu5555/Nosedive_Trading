@@ -1,0 +1,114 @@
+# Security scan — secret detection + dependency-vulnerability audit + pyCrypto guard.
+#
+# Deliberately separated from gate.yml so a scanner-DB hiccup cannot mask a
+# genuine ruff/mypy/pytest failure (spec gotcha: "keep the real gate's scope
+# untouched"). Runs on every push and pull request.
+#
+# Jobs:
+#   secret-scan     — detect-secrets diff against .secrets.baseline (fails on new secrets)
+#   dep-vuln        — pip-audit over the uv-exported requirements (fails on fixable CVEs)
+#   pycrypto-guard  — grep blocks pycrypto/PyCrypto before the OAuth module can land it
+name: scan
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Secret scan — detect-secrets diff against the reviewed baseline.
+  #    A new credential NOT in .secrets.baseline fails this job.
+  #    The baseline was generated with `uv run detect-secrets scan` over the clean
+  #    tree; all 71 findings in it are reviewed false-positives (test fixtures,
+  #    hash digests, notebook cell IDs). See .secrets.baseline for the full list.
+  # ---------------------------------------------------------------------------
+  secret-scan:
+    name: secret scan (detect-secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: sync dev deps (includes detect-secrets)
+        run: uv sync --group dev
+
+      - name: scan for new secrets
+        # detect-secrets-hook compares the current tree against the reviewed
+        # baseline and exits non-zero if it finds a secret NOT already in the
+        # baseline. This is the correct model: the baseline is the explicit
+        # allowlist; any new secret addition fails CI.
+        run: |
+          uv run detect-secrets-hook \
+            --baseline .secrets.baseline \
+            $(git ls-files | grep -vE "^(uv\.lock|data/|ThomasHossen/|Test Lenny/|Vincent.s Code/|\.claude/)")
+
+  # ---------------------------------------------------------------------------
+  # 2. Dependency-vulnerability scan — pip-audit over the exported uv lockfile.
+  #    Fails on any advisory (with or without a fix). Add --ignore-vuln <GHSA-id>
+  #    ONLY for unfixable advisories, with a dated comment explaining why.
+  #    Uses OSV (Google) — comprehensive, open, no authentication required.
+  #
+  #    Allowlist: none today (clean lockfile, 0 advisories at 2026-06-15).
+  # ---------------------------------------------------------------------------
+  dep-vuln:
+    name: dependency vulnerability scan (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+
+      - name: sync dev deps (includes pip-audit)
+        run: uv sync --group dev
+
+      - name: export requirements from lockfile
+        # Full flat requirements list from the resolved lockfile.
+        run: uv export --no-hashes > /tmp/requirements.txt
+
+      - name: audit for known vulnerabilities
+        # -s osv: OSV advisory source (open, no auth needed, comprehensive).
+        # Exit non-zero on any vulnerability found.
+        # The workspace packages (algotrading-*) are skipped automatically —
+        # they are editable local packages, not on PyPI, which is expected.
+        #
+        # To ignore an unfixable advisory, add a line like:
+        #   --ignore-vuln GHSA-xxxx-xxxx-xxxx  # <CVE-id> — <reason> — reviewed YYYY-MM-DD
+        run: uv run pip-audit -r /tmp/requirements.txt -s osv
+
+  # ---------------------------------------------------------------------------
+  # 3. pyCrypto guard — block the abandoned pycrypto/PyCrypto package.
+  #    ADR 0031 mandates pycryptodome; this guard ensures the OAuth-signing
+  #    module (and any future dependency) cannot silently pull in the insecure
+  #    predecessor. A grep over uv.lock + every pyproject.toml is sufficient.
+  # ---------------------------------------------------------------------------
+  pycrypto-guard:
+    name: pycrypto guard (ADR 0031)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reject pycrypto / PyCrypto
+        # grep -i matches all capitalisation variants.
+        # The negative lookahead for 'd' is not available in basic grep, so we
+        # match "pycrypto" and then explicitly exclude "pycryptodome".
+        # Exit 1 (failure) if any pycrypto/PyCrypto match found; exit 0 if clean.
+        run: |
+          MATCHES=$(grep -ri "pycrypto" uv.lock \
+            $(find . -name "pyproject.toml" \
+              -not -path "./Vincent's Code/*" \
+              -not -path "./.claude/*") 2>/dev/null \
+            | grep -iv "pycryptodome" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "ERROR: Found pycrypto/PyCrypto reference:"
+            echo "$MATCHES"
+            echo "ADR 0031 mandates pycryptodome. Remove the bad package."
+            exit 1
+          fi
+          echo "pyCrypto guard: clean"

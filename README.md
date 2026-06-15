@@ -45,3 +45,20 @@ shared instruction layer). Use branches: one per task, merge small and often.
 Your AI CLIs (`claude`, `codex`) authenticate with YOUR own account — config
 lives in your personal `$HOME`, not here. Don't commit secrets; put per-person
 tokens in your `$HOME`, project config in a local `.env` (gitignored).
+
+**Secret scan.** A pre-commit hook catches credentials before they reach a commit.
+Install it once per checkout:
+
+```
+uv run pre-commit install
+```
+
+The same scanner runs in CI (`.github/workflows/scan.yml`, `secret-scan` job).
+The baseline of known false-positives (test fixtures, hash digests) lives in
+`.secrets.baseline`. To add a reviewed non-secret to the baseline, run
+`uv run detect-secrets scan --update .secrets.baseline` and commit the updated
+baseline alongside the change.
+
+CI also runs `pip-audit` on every push to catch dependency advisories (`dep-vuln`
+job), and a grep guard to block the abandoned `pycrypto` package (`pycrypto-guard`
+job, ADR 0031).

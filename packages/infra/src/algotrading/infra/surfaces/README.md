@@ -82,7 +82,9 @@ side suffix, `…p`/`…c`; see `_option_right_for_band`). A deep-OTM band point
 the fitted strike span is a labeled `ProjectionGap`, never a guessed strike. Each cell is a stamped `ProjectedOptionAnalytics`
 contract carrying the fitted IV, the model price, and the Greeks in **both** representations
 side by side — the decimal per-unit Greeks (source of truth) and the dollar Greeks, each
-dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036).
+dollar number tagged with an explicit unit string (OQ-1 / P0.2, ADR 0036). The cell also
+carries `rt_vega`/`dollar_rt_vega` per strike — running-time / annualised vega `vega/√T`
+(ADR 0049), a vega comparable across tenors — in the same dual, unit-tagged representation.
 
 ### Per-side surfaces (`surface_side`, ADR 0048 / R2)
 
@@ -149,9 +151,10 @@ beyond the span, so `DF(0) → 1`). Only an **empty** curve falls back to
 `default_discount_factor` — the documented, explicitly injected no-curve degradation. The
 old exact-`get` silently priced every projected cell rate-free.
 
-**One dollar-Greek home.** The five `dollar_*` numbers and the two convention forks (gamma
-per 1% vs $1, theta ÷365 vs ÷252) come from `pricing.dollar_greeks` — the projection reuses
-it rather than forking a second formula. The unit strings come from the same `UNIT_STRINGS`.
+**One dollar-Greek home.** The `dollar_*` numbers (the five first-order plus `dollar_rt_vega`,
+ADR 0049) and the two convention forks (gamma per 1% vs $1, theta ÷365 vs ÷252) come from
+`pricing.dollar_greeks` — the projection reuses it rather than forking a second formula. The
+unit strings come from the same `UNIT_STRINGS`.
 
 **Config and reproducibility.** The tenor grid and the 30Δ bound are the hashed `universe`
 bundle; the gamma/theta flags are the hashed `scenarios` bundle (`MonetizationConfig`); the

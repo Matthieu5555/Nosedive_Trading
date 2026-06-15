@@ -690,7 +690,8 @@ def _build_cell(
     greeks = price_european(state)
     monetized = dollar_greeks(
         delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
-        rho=greeks.rho, spot=market.spot, multiplier=1.0, quantity=1.0, config=monetization,
+        rho=greeks.rho, spot=market.spot, rt_vega=greeks.rt_vega,
+        multiplier=1.0, quantity=1.0, config=monetization,
     )
     return ProjectedOptionAnalytics(
         snapshot_ts=snapshot_ts,
@@ -725,6 +726,9 @@ def _build_cell(
         dollar_rho=monetized.dollar_rho,
         dollar_theta_unit=monetized.theta_unit,
         dollar_rho_unit=UNIT_STRINGS["dollar_rho"],
+        rt_vega=greeks.rt_vega,
+        dollar_rt_vega=monetized.dollar_rt_vega,
+        dollar_rt_vega_unit=UNIT_STRINGS["dollar_rt_vega"],
         surface_side=surface_side,
     )
 

@@ -18,6 +18,7 @@ from algotrading.infra.pricing.dollar_greeks import (
     dollar_delta,
     dollar_gamma,
     dollar_rho,
+    dollar_rt_vega,
     dollar_theta,
     dollar_vanna,
     dollar_vega,
@@ -145,6 +146,45 @@ def test_charm_rides_the_theta_day_count_fork() -> None:
     charm_252 = dollar_charm(CHARM, SPOT, MULT, day_count=252)
     assert charm_252 == pytest.approx(charm_365 * (365.0 / 252.0), abs=1e-9)
     assert charm_252 != pytest.approx(charm_365)  # the flag is not inert
+
+
+# RT-Vega hand fixture (ADR 0049). RT-Vega = vega/sqrt(T); its dollar form is per 1 vol
+# point exactly like Vega$, so the hand value mirrors the Vega$ definition.
+RT_VEGA = 0.18  # a running-time vega in per-1.00-of-vol units
+#   RT-Vega$ = rt_vega·0.01·mult = 0.18 * 0.01 * 100 = 0.18 (per contract)
+RT_VEGA_DOLLAR_PER_CONTRACT = 0.18
+
+
+def test_dollar_rt_vega_unit_definition_matches_hand_value() -> None:
+    # Per contract, then ×qty for per-position (the same additivity invariant as Vega$).
+    assert dollar_rt_vega(RT_VEGA, MULT) == pytest.approx(RT_VEGA_DOLLAR_PER_CONTRACT, abs=TOL)
+    assert dollar_rt_vega(RT_VEGA, MULT, QTY) == pytest.approx(
+        RT_VEGA_DOLLAR_PER_CONTRACT * QTY, abs=TOL
+    )
+
+
+def test_dollar_rt_vega_is_monetized_like_vega() -> None:
+    # RT-Vega$ uses the same per-1-vol-point shock as Vega$ (ADR 0049): for the same raw
+    # number the two dollar conversions coincide.
+    assert dollar_rt_vega(VEGA, MULT, QTY) == pytest.approx(dollar_vega(VEGA, MULT, QTY), abs=TOL)
+
+
+def test_dollar_greeks_monetizes_rt_vega_with_a_fixed_unforked_unit() -> None:
+    cfg = MonetizationConfig(version="m")
+    d = dollar_greeks(
+        delta=DELTA, gamma=GAMMA, vega=VEGA, theta=THETA, rho=RHO, spot=SPOT, multiplier=MULT,
+        rt_vega=RT_VEGA, config=cfg,
+    )
+    assert d.dollar_rt_vega == pytest.approx(RT_VEGA_DOLLAR_PER_CONTRACT, abs=TOL)
+    # No config flag touches RT-Vega$: it is the same under any fork.
+    cfg_alt = MonetizationConfig(
+        version="m", gamma_normalisation="one_dollar", theta_day_count=252
+    )
+    d_alt = dollar_greeks(
+        delta=DELTA, gamma=GAMMA, vega=VEGA, theta=THETA, rho=RHO, spot=SPOT, multiplier=MULT,
+        rt_vega=RT_VEGA, config=cfg_alt,
+    )
+    assert d_alt.dollar_rt_vega == pytest.approx(d.dollar_rt_vega, abs=TOL)
 
 
 def test_dollar_greeks_monetizes_the_second_order_set_and_forks_charm() -> None:

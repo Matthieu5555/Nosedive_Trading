@@ -50,6 +50,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0010** — QC + validation merged into one `triage_records` plane.
 - **0036** — $-Greek units + monetization conventions (raw is truth, dollar is derived).
 - **0038** — By-Greek PnL attribution (`ScenarioAttribution`) — transcript §7.
+- **0049** — RT-Vega (running-time / annualised vega) = `vega/√T`; per strike, raw + cash, T→0 guarded to 0.
 - **0048** — Per-side vol surfaces (R2): fit put/call/combined; `surface_side` in the grid PK; combined is the reference; put−call IV spread = signal + QC.
 
 ## Execution & booking

@@ -161,7 +161,9 @@
       "theta": -0.01,
       "vanna": null,
       "vega": 0.1,
-      "volga": null
+      "volga": null,
+      "rt_vega": null,
+      "dollar_rt_vega": null
     },
     "projected_option_analytics": {
       "delta": 0.3,
@@ -200,7 +202,10 @@
       "theta": -0.02,
       "total_variance": 0.004,
       "underlying": "AAPL",
-      "vega": 0.12
+      "vega": 0.12,
+      "rt_vega": null,
+      "dollar_rt_vega": null,
+      "dollar_rt_vega_unit": null
     },
     "qc_results": {
       "check_name": "forward_stability",

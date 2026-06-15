@@ -377,6 +377,81 @@ def test_degenerate_state_has_zero_second_order_greeks(right: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# RT-Vega: running-time / annualised vega = vega / sqrt(T)  (ADR 0049)         #
+# --------------------------------------------------------------------------- #
+# Two independent oracles, neither the rt_vega code under test:
+#   (a) a hand-built S · N'(d1) · e^{(b-r)T} — the maturity-independent core of vega,
+#       computed here from d1 and a local standard-normal pdf, not read off the engine;
+#   (b) the engine's own vega divided by sqrt(T) — a different field, so a sqrt(T)
+#       drop/duplication or a unit slip cannot hide.
+# RT-Vega must equal both.
+_SQRT_2PI = math.sqrt(2.0 * math.pi)
+
+
+def _norm_pdf(x: float) -> float:
+    # Local standard-normal pdf, independent of the engine's internal helper.
+    return math.exp(-0.5 * x * x) / _SQRT_2PI
+
+
+def _rt_vega_oracle(spot: float, vol: float, t: float, rate: float, carry: float) -> float:
+    # S · N'(d1) · e^{(b-r)T}, with the forward F = S·e^{bT} (the engine's own forward law).
+    forward = spot * math.exp(carry * t)
+    d1 = (math.log(forward / 100.0) + 0.5 * vol * vol * t) / (vol * math.sqrt(t))
+    return spot * _norm_pdf(d1) * math.exp((carry - rate) * t)
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+@pytest.mark.parametrize(("spot", "vol", "t", "rate", "carry"), _SECOND_ORDER_POINTS)
+def test_rt_vega_equals_hand_built_running_time_core(
+    right: str, spot: float, vol: float, t: float, rate: float, carry: float
+) -> None:
+    # Oracle (a): the hand-built S·N'(d1)·e^{(b-r)T}. Call == put (it differentiates the
+    # shared N'(d1)), so the right does not change the expected value.
+    expected = _rt_vega_oracle(spot, vol, t, rate, carry)
+    got = price_european(_spot_state(spot, vol, t, right, rate, carry)).rt_vega
+    assert got == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+@pytest.mark.parametrize(("spot", "vol", "t", "rate", "carry"), _SECOND_ORDER_POINTS)
+def test_rt_vega_equals_vega_over_sqrt_t(
+    right: str, spot: float, vol: float, t: float, rate: float, carry: float
+) -> None:
+    # Oracle (b): vega / sqrt(T), with vega taken from the engine's own (independently
+    # FD-verified elsewhere) vega field — the convention pin (ADR 0049).
+    g = price_european(_spot_state(spot, vol, t, right, rate, carry))
+    assert g.rt_vega == pytest.approx(g.vega / math.sqrt(t), rel=1e-12, abs=1e-12)
+
+
+def test_rt_vega_is_maturity_comparable_where_raw_vega_is_not() -> None:
+    # The whole point: at fixed spot/vol/carry, raw vega grows ~sqrt(T) across tenors, while
+    # RT-Vega strips that. Two ATM-forward strikes 4x apart in T have vegas ~2x apart but
+    # RT-Vegas within a few percent (only the small N'(d1) drift remains).
+    short = price_european(_spot_state(100.0, 0.20, 0.25, "C", 0.0, 0.0))
+    long = price_european(_spot_state(100.0, 0.20, 1.00, "C", 0.0, 0.0))
+    # Raw vega roughly doubles (sqrt(4) == 2).
+    assert long.vega / short.vega == pytest.approx(2.0, rel=0.05)
+    # RT-Vega stays close: the ratio is far nearer 1 than the raw 2x.
+    assert long.rt_vega / short.rt_vega == pytest.approx(1.0, abs=0.05)
+
+
+@pytest.mark.parametrize("right", ["C", "P"])
+def test_rt_vega_is_zero_in_the_degenerate_t_to_zero_regime(right: str) -> None:
+    # Boundary: T -> 0 (and sigma -> 0) must not divide by zero. RT-Vega is defined 0.0
+    # there (vega is 0, no vol sensitivity at expiry) — a guard, not a 0/0 (ADR 0049).
+    zero_t = from_spot(
+        spot=100.0, strike=95.0, maturity_years=0.0, volatility=0.20,
+        discount_factor=1.0, option_right=right, carry=0.0,
+    )
+    zero_vol = from_spot(
+        spot=100.0, strike=95.0, maturity_years=0.5, volatility=0.0,
+        discount_factor=0.99, option_right=right, carry=0.0,
+    )
+    assert price_european(zero_t).rt_vega == 0.0
+    assert price_european(zero_vol).rt_vega == 0.0
+
+
+# --------------------------------------------------------------------------- #
 # American engine                                                             #
 # --------------------------------------------------------------------------- #
 def test_american_call_no_dividend_equals_european() -> None:
@@ -577,7 +652,7 @@ def test_pricing_result_carries_second_order_greeks_raw_and_cash() -> None:
     canonical = dollar_greeks(
         delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
         rho=greeks.rho, spot=state.spot, vanna=greeks.vanna, volga=greeks.volga,
-        charm=greeks.charm, multiplier=1.0, quantity=1.0,
+        charm=greeks.charm, rt_vega=greeks.rt_vega, multiplier=1.0, quantity=1.0,
         config=MonetizationConfig(version="monetization-default"),
     )
     assert result.vanna == greeks.vanna
@@ -586,6 +661,10 @@ def test_pricing_result_carries_second_order_greeks_raw_and_cash() -> None:
     assert result.dollar_vanna == pytest.approx(canonical.dollar_vanna, rel=1e-15)
     assert result.dollar_volga == pytest.approx(canonical.dollar_volga, rel=1e-15)
     assert result.dollar_charm == pytest.approx(canonical.dollar_charm, rel=1e-15)
+    # RT-Vega (ADR 0049) rides the same dual representation: raw straight from the engine,
+    # cash through the same canonical monetization home.
+    assert result.rt_vega == greeks.rt_vega
+    assert result.dollar_rt_vega == pytest.approx(canonical.dollar_rt_vega, rel=1e-15)
 
 
 # --------------------------------------------------------------------------- #
@@ -606,6 +685,9 @@ def test_price_greeks_shape_is_frozen() -> None:
         # Second-order set (TARGET §7.2), appended with 0.0 defaults so the legacy
         # six-field construction still type-checks.
         "vanna", "volga", "charm",
+        # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0049), appended last
+        # with a 0.0 default for the same reason.
+        "rt_vega",
     )
 
 

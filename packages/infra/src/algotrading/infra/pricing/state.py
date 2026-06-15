@@ -30,7 +30,10 @@ Greek conventions (see :class:`PriceGreeks`): ``delta`` is spot delta
 by 365 for a one-day figure), and ``rho`` is per 1.00 of the rate, holding the
 forward fixed. The second-order set (``vanna``, ``volga``, ``charm``) extends the
 same units — vanna/volga per 1.00 of vol (the vega clock), charm per year (the
-theta clock); see :class:`PriceGreeks` for the full definitions.
+theta clock); see :class:`PriceGreeks` for the full definitions. ``rt_vega`` is the
+running-time (annualised) vega ``vega / sqrt(T)`` (ADR 0049), in the same per-1.00-of-vol
+unit as ``vega`` — vega with the ``sqrt(T)`` factor stripped, so it is comparable across
+maturities; ``0.0`` in the degenerate (``T -> 0``) regime.
 """
 
 from __future__ import annotations
@@ -148,6 +151,14 @@ class PriceGreeks:
       same per-year clock as ``theta`` (``ddelta/dt = -ddelta/dT``), so a roll-down
       bleeds delta the way ``theta`` bleeds value; divide by 365 for a one-day figure.
 
+    ``rt_vega`` (running-time / annualised vega, ADR 0049) = ``vega / sqrt(T)`` =
+    ``S · N'(d1) · e^{(b-r)T}`` — vega with the ``sqrt(T)`` maturity factor stripped, in
+    the *same* per-1.00-of-vol unit as ``vega``. Raw vega scales with ``sqrt(T)`` and so is
+    not comparable across tenors; RT-Vega removes that mechanical time-growth, so a vega
+    figure can be read straight across the maturity grid. At ``T -> 0`` it is defined to be
+    ``0.0`` (a guard, not a ``0/0``): the degenerate regime has ``vega == 0``, no vol
+    sensitivity at all, so its time-normalised value is zero too.
+
     They default to ``0.0`` so the legacy ``PriceGreeks(price, delta, gamma, vega,
     theta, rho)`` construction still type-checks; the closed-form Black-76 engine
     fills them with the analytic values, while engines that do not yet expose them
@@ -164,6 +175,7 @@ class PriceGreeks:
     vanna: float = 0.0
     volga: float = 0.0
     charm: float = 0.0
+    rt_vega: float = 0.0
 
 
 def from_spot(

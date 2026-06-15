@@ -20,9 +20,12 @@ request routed through M0, because every field ripples to the other workstreams.
   the candlestick charts) — a **distinct** product from the option `MarketStateSnapshot`,
   provider-partitioned per ADR 0034 §4 (P0.3 / WS 1E); `PricingResult` carries the full
   five-Greek dollar layer (`dollar_delta/gamma/vega/theta/rho`, ADR 0036) with
-  `dollar_theta`/`dollar_rho` additive-nullable. `ProjectedOptionAnalytics` is the WS 1F
-  tenor × delta-band grid cell (decimal **and** dollar Greeks side by side, each dollar
-  number unit-tagged) — provider-partitioned, stored under the `analytics` layer; produced
+  `dollar_theta`/`dollar_rho` additive-nullable, plus the second-order set
+  (`vanna`/`volga`/`charm` + their `dollar_*`) and `rt_vega`/`dollar_rt_vega` (running-time /
+  annualised vega `vega/√T`, ADR 0049) — all raw + cash, additive-nullable.
+  `ProjectedOptionAnalytics` is the WS 1F tenor × delta-band grid cell (decimal **and** dollar
+  Greeks side by side — including `rt_vega` per strike, each dollar number unit-tagged) —
+  provider-partitioned, stored under the `analytics` layer; produced
   by `surfaces.project_grid`. `ScenarioAttribution` is the WS 2C by-Greek decomposition of a
   scenario's stress PnL — the named dollar contributions (`delta_pnl`/`gamma_pnl`/`vega_pnl`/
   `theta_pnl`), their lumped `approx_pnl`, the `full_reprice_pnl` oracle, and the `residual`

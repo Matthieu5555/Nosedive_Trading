@@ -64,7 +64,8 @@ def test_analytics_payload_uses_blueprint_field_names(
     for field in ("forward_price", "implied_vol", "log_moneyness"):
         assert field in point, f"blueprint field {field!r} must be in the analytics payload"
     # The dollar_* layer is exposed as named metrics carrying the raw per-unit Greek.
-    assert set(point["metrics"]) == {"delta", "gamma", "vega", "theta", "rho"}
+    # RT-Vega (running-time / annualised vega, ADR 0049) rides beside vega.
+    assert set(point["metrics"]) == {"delta", "gamma", "vega", "rt_vega", "theta", "rho"}
     assert "raw" in point["metrics"]["delta"] and "dollar" in point["metrics"]["delta"]
 
 
@@ -81,7 +82,11 @@ def test_dollar_greeks_carry_unit_strings(
     assert metrics["vega"]["unit"] == seed.AN_DOLLAR_VEGA_UNIT
     assert metrics["theta"]["unit"] == seed.AN_DOLLAR_THETA_UNIT
     assert metrics["rho"]["unit"] == seed.AN_DOLLAR_RHO_UNIT
-    for name in ("delta", "gamma", "vega", "theta", "rho"):
+    # RT-Vega (ADR 0049): raw + cash with its own unit, read straight back from the cell.
+    assert metrics["rt_vega"]["raw"] == pytest.approx(seed.AN_RT_VEGA)
+    assert metrics["rt_vega"]["dollar"] == pytest.approx(seed.AN_DOLLAR_RT_VEGA)
+    assert metrics["rt_vega"]["unit"] == seed.AN_DOLLAR_RT_VEGA_UNIT
+    for name in ("delta", "gamma", "vega", "rt_vega", "theta", "rho"):
         assert metrics[name]["unit"], f"{name} must carry a non-empty unit string"
 
 

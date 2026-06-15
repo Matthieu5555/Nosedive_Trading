@@ -24,6 +24,13 @@ standard shock times multiplier" style, each in an explicit unit:
 * **Charm\\$** ``= charm * S * mult / day_count`` — the change in **Delta\\$ per day**
   (``ddelta/dt`` monetized like delta and put on theta's calendar/trading day-count fork).
 
+RT-Vega (running-time / annualised vega, ADR 0049) monetizes exactly like Vega — it is vega
+with the ``sqrt(T)`` factor stripped, in the same per-1.00-of-vol unit:
+
+* **RT-Vega\\$** ``= rt_vega * 0.01 * mult`` — the dollar value change for a **1 vol point**
+  (0.01) move, of the time-normalised vega. No convention fork (like Vega\\$), so its unit is
+  fixed (``"$ per 1 vol point"``) and looked up, not carried as a field.
+
 Per-contract numbers (``mult``) scale to per-position by ``* quantity``, and per-position
 numbers are additive across a book — the Phase-2 basket builder sums positions without
 reworking this contract. Each value carries a matching unit string (:data:`UNIT_STRINGS`)
@@ -46,6 +53,9 @@ UNIT_STRINGS: dict[str, str] = {
     "dollar_gamma_one_pct": "$ per 1% move",
     "dollar_gamma_one_dollar": "$ per $1 move",
     "dollar_vega": "$ per 1 vol point",
+    # RT-Vega (running-time / annualised vega, ADR 0049): vega/sqrt(T), monetized exactly
+    # like Vega$ (per 1 vol point), no convention fork.
+    "dollar_rt_vega": "$ per 1 vol point",
     "dollar_theta_365": "$ per calendar day",
     "dollar_theta_252": "$ per trading day",
     "dollar_rho": "$ per 1% rate",
@@ -62,11 +72,12 @@ UNIT_STRINGS: dict[str, str] = {
 class DollarGreeks:
     """The monetized Greeks, each beside the unit string of its forked convention.
 
-    The five first-order numbers plus the three second-order ones (vanna/volga/charm,
-    TARGET §7.2). Only the *forked* units are carried as fields (``gamma_unit``,
-    ``theta_unit``, ``charm_unit`` — the conventions that a config flag can flip); the
-    unforked ones (delta/vega/rho, vanna/volga) are fixed and looked up in
-    :data:`UNIT_STRINGS`, so this object never carries a unit a caller could not derive.
+    The five first-order numbers, the three second-order ones (vanna/volga/charm, TARGET
+    §7.2), and RT-Vega (running-time vega, ADR 0049). Only the *forked* units are carried as
+    fields (``gamma_unit``, ``theta_unit``, ``charm_unit`` — the conventions that a config
+    flag can flip); the unforked ones (delta/vega/rho, vanna/volga, rt_vega) are fixed and
+    looked up in :data:`UNIT_STRINGS`, so this object never carries a unit a caller could not
+    derive.
     """
 
     dollar_delta: float
@@ -77,6 +88,7 @@ class DollarGreeks:
     dollar_vanna: float
     dollar_volga: float
     dollar_charm: float
+    dollar_rt_vega: float
     gamma_unit: str
     theta_unit: str
     charm_unit: str
@@ -105,6 +117,16 @@ def dollar_gamma(
 def dollar_vega(vega: float, multiplier: float = 1.0, quantity: float = 1.0) -> float:
     """Vega\\$ = vega·0.01·mult·qty — per 1 vol point (0.01)."""
     return vega * 0.01 * multiplier * quantity
+
+
+def dollar_rt_vega(rt_vega: float, multiplier: float = 1.0, quantity: float = 1.0) -> float:
+    """RT-Vega\\$ = rt_vega·0.01·mult·qty — per 1 vol point (0.01), ADR 0049.
+
+    The dollar form of the running-time (annualised) vega ``rt_vega = vega/sqrt(T)``;
+    monetized exactly like Vega\\$ (same per-1-vol-point shock), since RT-Vega is vega in the
+    same per-1.00-of-vol unit with the ``sqrt(T)`` factor stripped.
+    """
+    return rt_vega * 0.01 * multiplier * quantity
 
 
 def dollar_theta(
@@ -169,6 +191,7 @@ def dollar_greeks(
     vanna: float = 0.0,
     volga: float = 0.0,
     charm: float = 0.0,
+    rt_vega: float = 0.0,
     multiplier: float = 1.0,
     quantity: float = 1.0,
     config: MonetizationConfig,
@@ -179,8 +202,9 @@ def dollar_greeks(
     ``theta_day_count`` (Charm\\$ rides the latter, since charm is a per-time Greek like
     theta). Per-contract is ``quantity=1.0``; per-position passes the signed held
     quantity; a book is the additive sum of per-position numbers. ``vanna``/``volga``/
-    ``charm`` default to ``0.0`` so a first-order-only caller is unchanged; the pricing
-    emission path passes the analytic second-order values (TARGET §7.2).
+    ``charm``/``rt_vega`` default to ``0.0`` so a first-order-only caller is unchanged; the
+    pricing emission path passes the analytic second-order values (TARGET §7.2) and RT-Vega
+    (ADR 0049).
     """
     return DollarGreeks(
         dollar_delta=dollar_delta(delta, spot, multiplier, quantity),
@@ -195,6 +219,7 @@ def dollar_greeks(
         dollar_charm=dollar_charm(
             charm, spot, multiplier, quantity, day_count=config.theta_day_count
         ),
+        dollar_rt_vega=dollar_rt_vega(rt_vega, multiplier, quantity),
         gamma_unit=gamma_unit_string(config.gamma_normalisation),
         theta_unit=theta_unit_string(config.theta_day_count),
         charm_unit=charm_unit_string(config.theta_day_count),

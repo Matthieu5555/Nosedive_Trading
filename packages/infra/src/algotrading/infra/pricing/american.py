@@ -114,14 +114,16 @@ def price_american(state: PricingState, *, steps: int = _DEFAULT_STEPS) -> Price
         # QuantLib theta is dV/dt per year (time decay), matching our convention.
         theta=option.theta(),
         rho=rho,
-        # Second-order cross/convexity Greeks (vanna/volga/charm) are a closed-form
-        # Black-76 European feature (TARGET §7.2); the lattice does not expose them and
-        # this lane does not finite-difference them off the tree. Left explicitly 0.0 —
-        # a documented gap, not a silent zero — so an American line never reports a
-        # spurious vanna. (Carry to the American path is out of this lane's scope.)
+        # Second-order cross/convexity Greeks (vanna/volga/charm) and RT-Vega (the
+        # running-time vega vega/sqrt(T), ADR 0049) are a closed-form Black-76 European
+        # feature; the lattice does not expose them and this lane does not finite-difference
+        # them off the tree. Left explicitly 0.0 — a documented gap, not a silent zero — so
+        # an American line never reports a spurious value. (Carry to the American path is
+        # out of this lane's scope.)
         vanna=0.0,
         volga=0.0,
         charm=0.0,
+        rt_vega=0.0,
     )
 
 

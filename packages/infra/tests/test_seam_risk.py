@@ -155,6 +155,8 @@ def test_price_greeks_shape_is_frozen() -> None:
         "price", "delta", "gamma", "vega", "theta", "rho",
         # Second-order set (TARGET §7.2), appended with 0.0 defaults.
         "vanna", "volga", "charm",
+        # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0049).
+        "rt_vega",
     )
 
 

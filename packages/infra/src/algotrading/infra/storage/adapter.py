@@ -150,33 +150,56 @@ class ParquetStore:
             # <string> columns that collide with the file's date32/string ones and
             # breaks the concat below. partitioning=None disables that inference.
             existing = pq.read_table(path, partitioning=None)
-            colliding = self._existing_key_collisions(spec, records, existing)
-            if colliding:
-                # Report the first incoming record (in batch order) whose full
-                # composite key already exists, so the rejection is deterministic
-                # and names exactly the offending key, as the prior loop did.
+            identical, conflicting = self._partition_collisions(table, spec, records, existing)
+            if conflicting:
+                # A re-write under an existing primary key with DIFFERENT content is a genuine
+                # immutability breach — report the first such incoming record deterministically.
                 for record in records:
                     key = primary_key_of(table, record)
-                    if key in colliding:
+                    if key in conflicting:
                         raise AppendOnlyViolation(table, key)
+            if identical:
+                # A re-write of a BYTE-IDENTICAL row (same key, same content) is an idempotent
+                # no-op: the row is already persisted, so re-asserting it must neither duplicate it
+                # nor raise. This is what lets a same-day re-fire converge (ADR 0032 overwrite-by-
+                # re-run) on the append-only tables too — drop the already-present rows before the
+                # concat, so an intraday capture re-run (or a close after one) is a clean no-op
+                # rather than an AppendOnlyViolation. A same-key row with changed content still
+                # raises above; immutability (ADR 0040/0015) holds (identical == no mutation).
+                new_rows = [
+                    row
+                    for record, row in zip(records, new_rows, strict=True)
+                    if primary_key_of(table, record) not in identical
+                ]
+                new_table = _rows_to_arrow(new_rows, schema)
             new_table = pa.concat_tables([existing, new_table])
 
         return new_table
 
     @staticmethod
-    def _existing_key_collisions(
-        spec: TableSpec, records: list[object], existing: pa.Table
-    ) -> set[tuple[object, ...]]:
-        """The full composite primary keys of ``records`` already present in ``existing``.
+    def _partition_collisions(
+        table: str, spec: TableSpec, records: list[object], existing: pa.Table
+    ) -> tuple[set[tuple[object, ...]], set[tuple[object, ...]]]:
+        """Split the append-only primary-key collisions into ``(identical, conflicting)``.
 
-        The collision test is a DuckDB ``SEMI JOIN`` of the incoming keys against the
-        existing partition on the *whole* primary key (every key column at once, on the
-        engine's native typed values), so a row collides only when its full composite key
-        already exists — never because it merely shares one key field. This is the
-        engine-native form of the append-only immutability check; the previous
-        ``zip`` + Python-set membership it replaces decided the same set. Returns the
-        colliding keys as native value tuples (the form :func:`primary_key_of` yields),
-        empty when nothing collides.
+        A DuckDB ``SEMI JOIN`` of the existing partition against the incoming keys on the
+        *whole* composite primary key (every key column at once, on the engine's native typed
+        values) selects exactly the existing rows whose key an incoming record re-asserts — a
+        row collides only on its full key, never because it shares one key field. Each colliding
+        existing row is reconstructed to its typed record (:func:`from_row`, the same path
+        :meth:`read` uses) and compared *by value* with the incoming record:
+
+        * **identical** — equal records: a byte-identical re-write, an idempotent no-op the
+          caller drops (re-asserting an immutable row must not duplicate it nor raise);
+        * **conflicting** — same key, different content: a genuine append-only/immutability
+          breach the caller raises on.
+
+        The typed compare is immune to storage-encoding asymmetries (JSON key order, datetime
+        tz) because both sides pass through the same (de)serialization. (Caveat: a NaN float
+        field would compare unequal to itself and read as a false conflict — none of the current
+        append-only contracts carry computed floats; a future one that does needs an explicit
+        NaN-aware compare.) Returns native value tuples (the form :func:`primary_key_of` yields);
+        both sets empty when nothing collides.
         """
         key_columns = list(spec.primary_key)
         incoming = pa.table(
@@ -186,16 +209,34 @@ class ParquetStore:
         connection = duckdb.connect()
         try:
             connection.execute("SET TimeZone='UTC'")
-            connection.register("existing_keys", existing.select(key_columns))
+            connection.register("existing_rows", existing)
             connection.register("incoming_keys", incoming)
             using = ", ".join(key_columns)
-            rows = connection.execute(
-                f"SELECT {using} FROM incoming_keys "
-                f"SEMI JOIN existing_keys USING ({using})"
-            ).fetchall()
+            relation = connection.execute(
+                f"SELECT * FROM existing_rows SEMI JOIN incoming_keys USING ({using})"
+            )
+            column_names = [description[0] for description in relation.description]
+            existing_rows = [
+                dict(zip(column_names, values, strict=True)) for values in relation.fetchall()
+            ]
         finally:
             connection.close()
-        return {tuple(row) for row in rows}
+        existing_by_key = {
+            primary_key_of(table, record): record
+            for record in (from_row(spec.contract, row) for row in existing_rows)
+        }
+        identical: set[tuple[object, ...]] = set()
+        conflicting: set[tuple[object, ...]] = set()
+        for record in records:
+            key = primary_key_of(table, record)
+            existing_record = existing_by_key.get(key)
+            if existing_record is None:
+                continue
+            if record == existing_record:
+                identical.add(key)
+            else:
+                conflicting.add(key)
+        return identical, conflicting
 
     def _commit(self, prepared: list[tuple[Path, pa.Table]]) -> None:
         """Write every prepared partition by staging to temp files, then renaming.

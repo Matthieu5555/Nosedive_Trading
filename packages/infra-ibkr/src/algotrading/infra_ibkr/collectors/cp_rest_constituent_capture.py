@@ -231,7 +231,9 @@ def _attempt_constituent(
         )
     conid = target.conid
     try:
-        months = option_months_for_conid(transport, conid=conid)
+        months = option_months_for_conid(
+            transport, symbol=target.resolved_search_symbol, conid=conid
+        )
         if not months:
             log.info("ibkr.constituent_capture.no_option_months", conid=conid)
             return _ConstituentResult(

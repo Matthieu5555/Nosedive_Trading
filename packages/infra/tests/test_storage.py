@@ -236,8 +236,10 @@ def _reference_collisions(
 
 
 def test_dedup_collision_set_matches_the_reference_zip_set_oracle(tmp_path: Path) -> None:
-    # Build an existing partition, then probe a mixed batch (some colliding, some new)
-    # and assert the engine collision set equals the old zip+set oracle exactly.
+    # Build an existing partition, then probe a mixed batch (some colliding, some new) and assert
+    # the engine collision set (identical ∪ conflicting) equals the old zip+set oracle exactly. The
+    # probe re-writes byte-identical rows, so the collisions land in `identical` (idempotent
+    # no-ops) and `conflicting` is empty.
     import pyarrow.parquet as pq
     from algotrading.infra.contracts.registry import spec_for_table
     from algotrading.infra.storage.partitioning import partition_file
@@ -249,10 +251,11 @@ def test_dedup_collision_set_matches_the_reference_zip_set_oracle(tmp_path: Path
 
     spec = spec_for_table("raw_market_events")
     probe = [_event("evt-a"), _event("evt-c"), _event("evt-b")]  # a, b collide; c is new
-    engine = store._existing_key_collisions(spec, probe, existing)
+    identical, conflicting = store._partition_collisions("raw_market_events", spec, probe, existing)
     reference = _reference_collisions(spec.primary_key, probe, existing)
-    assert engine == reference
-    assert engine == {("sess-1", "evt-a"), ("sess-1", "evt-b")}
+    assert (identical | conflicting) == reference
+    assert identical == {("sess-1", "evt-a"), ("sess-1", "evt-b")}
+    assert conflicting == set()
 
 
 def test_dedup_full_composite_key_allows_same_instrument_on_a_new_date(tmp_path: Path) -> None:
@@ -277,6 +280,22 @@ def test_dedup_rejects_an_exact_date_typed_composite_key_collision(tmp_path: Pat
         store.write(
             "instrument_master", [_instrument_master("SPX", date(2026, 6, 5), '{"changed": 1}')]
         )
+
+
+def test_append_only_byte_identical_rewrite_is_an_idempotent_noop(tmp_path: Path) -> None:
+    # Re-writing a BYTE-IDENTICAL (instrument_key, as_of_date) row must be a silent no-op: no
+    # AppendOnlyViolation, and the partition still holds exactly one row. This is what lets a
+    # same-day capture re-fire — an intraday run, or the real close after one — converge on the
+    # append-only tables instead of aborting at universe_refresh (ADR 0032 overwrite-by-re-run).
+    # Immutability is preserved: an identical re-write is no mutation; only a CHANGED payload under
+    # the same key still raises (asserted in the test above).
+    store = _store(tmp_path)
+    master = _instrument_master("SPX", date(2026, 6, 5), '{"a": 1}')
+    store.write("instrument_master", [master])
+    store.write("instrument_master", [master])  # identical re-write — must not raise
+    read_back = store.read("instrument_master")
+    assert len(read_back) == 1
+    assert read_back[0] == master
 
 
 # -- versioned restatement -------------------------------------------------

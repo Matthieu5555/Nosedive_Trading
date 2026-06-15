@@ -127,7 +127,8 @@ class _FakeGateway:
     """A fake CP REST gateway listing a chain for the index and each option-bearing constituent.
 
     Routes by path + params. The index resolves via an ``IND`` secdef search; each unpinned
-    constituent via a ``STK`` secdef search; pinned SAN1 is NEVER searched (asserted). Every
+    constituent's conid via a ``STK`` secdef search; pinned SAN1's conid never comes from a ticker
+    search (asserted) — its option months come from a symbol search filtered by its pin. Every
     underlying lists the same strikes × rights at a distinct, underlying-scoped conid, so the
     capture's per-underlying isolation is observable in the basket.
     """
@@ -154,10 +155,6 @@ class _FakeGateway:
         raise AssertionError(f"unexpected path {path!r}")
 
     def _search(self, params: dict[str, Any]) -> Any:
-        # A conid-keyed search (the option-month lookup for an already-resolved underlying) returns
-        # the one row for that conid; a pinned name reaches the chain ONLY through this path.
-        if "conid" in params and "secType" not in params:
-            return self._search_by_conid(int(params["conid"]))
         sec_type = str(params.get("secType", ""))
         symbol = str(params.get("symbol", ""))
         if sec_type == "IND":
@@ -171,19 +168,24 @@ class _FakeGateway:
                     ],
                 }
             ]
-        # STK search resolves an UNPINNED constituent's conid. SAN1 is pinned: its conid never comes
-        # from a ticker search, so a STK search for it is a bug in the capture path.
-        assert symbol != "SAN1", "pinned SAN1 conid must come from the pin, never a ticker search"
-        self.stk_searches.append(symbol)
-        conid = {**_EQUITY_CONID, "ENEL": _ENEL_CONID}.get(symbol)
-        if conid is None:
-            return []
-        return [{"conid": conid, "symbol": symbol, "sections": [{"secType": "STK"}]}]
+        if sec_type == "STK":
+            # STK search resolves an UNPINNED constituent's conid. SAN1 is pinned: its conid never
+            # comes from a ticker search, so a STK search for it is a bug in the capture path.
+            assert symbol != "SAN1", "pinned SAN1 conid must come from the pin, never a ticker search"
+            self.stk_searches.append(symbol)
+            conid = {**_EQUITY_CONID, "ENEL": _ENEL_CONID}.get(symbol)
+            if conid is None:
+                return []
+            return [{"conid": conid, "symbol": symbol, "sections": [{"secType": "STK"}]}]
+        # A symbol-keyed search with no secType is the option-month lookup for an already-resolved
+        # underlying: the gateway REQUIRES ``symbol`` (a conid-only call returns "symbol required"),
+        # so the caller searches by ticker and disambiguates by the pinned/resolved conid. SAN1
+        # reaches its months HERE (by symbol, filtered on its pinned conid), not via a STK search.
+        return self._option_months_search(symbol)
 
-    def _search_by_conid(self, conid: int) -> Any:
-        name = {v: k for k, v in {**_EQUITY_CONID, "ENEL": _ENEL_CONID, "SAN1": 29612249}.items()}
-        symbol = name.get(conid)
-        if symbol is None:
+    def _option_months_search(self, symbol: str) -> Any:
+        conid = {**_EQUITY_CONID, "ENEL": _ENEL_CONID, "SAN1": 29612249}.get(symbol)
+        if conid is None:
             return []
         opt_section: list[dict[str, Any]] = []
         if symbol not in _NO_OPTION_NAMES:

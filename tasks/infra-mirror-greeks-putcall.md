@@ -1,7 +1,13 @@
 # T-mirror-greeks-putcall — both-sides (put/call) greeks per grid cell
 
-**Status:** specced, not started. Owner-gated scope confirmed 2026-06-13 (Vincent + the
-prof's board drawing). Opened as the follow-up to `T-delta-step-2`.
+**Status:** done — branch `agent-a50a8b5449d08707c`, 2026-06-15.
+
+Implementation: additive-nullable mirror fields on `ProjectedOptionAnalytics` (option a from
+spec); `_build_cell` prices the opposite right at the same IV; BFF serializer emits
+`price_mirror` + `mirror_metrics`; 14 unit tests (put-call parity oracle, ATM price parity,
+delta sign, dollar scaling, serializer round-trip, look-ahead probe) + 1 BFF integration test;
+contracts-plane golden regenerated; surfaces + contracts READMEs updated.
+Gate: 2089 passed, 12 skipped (ruff/mypy/lint-imports/pytest green).
 
 ## Why
 

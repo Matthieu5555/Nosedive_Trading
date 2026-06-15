@@ -650,6 +650,11 @@ def project_grid(
     return ProjectionResult(cells=tuple(cells), gaps=tuple(gaps))
 
 
+def _mirror_right(option_right: str) -> str:
+    """The opposite option right: ``"C"`` → ``"P"``, ``"P"`` → ``"C"``."""
+    return "P" if option_right == "C" else "C"
+
+
 def _build_cell(
     *,
     market: SnapshotMarketState,
@@ -676,9 +681,14 @@ def _build_cell(
     ATM pillars are the call (``atm``) and the put (``atmp``) at the one ATM-forward strike. It is
     priced at ``vol`` — so the IV used to price equals the IV the strike was solved against on the
     combined surface, and the per-side IV is the wing's own. The decimal Greeks are the engine's
-    per-unit Greeks (source of truth); the
-    dollar layer is derived once via :func:`pricing.dollar_greeks` with the configured
-    flags and unit strings (one dollar-Greek home, no second code path).
+    per-unit Greeks (source of truth); the dollar layer is derived once via
+    :func:`pricing.dollar_greeks` with the configured flags and unit strings (one dollar-Greek home,
+    no second code path).
+
+    Mirror Greeks (T-mirror-greeks-putcall): the opposite option right is also priced at the
+    **same** IV and strike — one extra :func:`price_european` call. Only delta/theta/rho differ by
+    right; gamma/vega are identical (put-call parity at one IV, one strike) and are already carried
+    in the primary fields, so they are not duplicated in the mirror fields.
     """
     strike = forward * math.exp(k)
     total_variance = vol * vol * maturity
@@ -693,6 +703,20 @@ def _build_cell(
         rho=greeks.rho, spot=market.spot, rt_vega=greeks.rt_vega,
         multiplier=1.0, quantity=1.0, config=monetization,
     )
+
+    # Mirror: price the opposite right at the same strike and IV (cheap, additive, no fit change).
+    mirror_right = _mirror_right(option_right)
+    mirror_state = from_forward(
+        forward=forward, strike=strike, maturity_years=maturity, volatility=vol,
+        discount_factor=discount_factor, option_right=mirror_right, spot=market.spot,
+    )
+    mirror_greeks = price_european(mirror_state)
+    mirror_monetized = dollar_greeks(
+        delta=mirror_greeks.delta, gamma=mirror_greeks.gamma, vega=mirror_greeks.vega,
+        theta=mirror_greeks.theta, rho=mirror_greeks.rho,
+        spot=market.spot, multiplier=1.0, quantity=1.0, config=monetization,
+    )
+
     return ProjectedOptionAnalytics(
         snapshot_ts=snapshot_ts,
         provider=market.provider,
@@ -730,6 +754,14 @@ def _build_cell(
         dollar_rt_vega=monetized.dollar_rt_vega,
         dollar_rt_vega_unit=UNIT_STRINGS["dollar_rt_vega"],
         surface_side=surface_side,
+        # Mirror Greeks: opposite right at the same IV and strike.
+        price_mirror=mirror_greeks.price,
+        delta_mirror=mirror_greeks.delta,
+        theta_mirror=mirror_greeks.theta,
+        rho_mirror=mirror_greeks.rho,
+        dollar_delta_mirror=mirror_monetized.dollar_delta,
+        dollar_theta_mirror=mirror_monetized.dollar_theta,
+        dollar_rho_mirror=mirror_monetized.dollar_rho,
     )
 
 

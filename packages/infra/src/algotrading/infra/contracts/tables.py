@@ -314,6 +314,19 @@ class ProjectedOptionAnalytics:
     additive-nullable for the same reason; ``dollar_rt_vega_unit`` is fixed (``"$ per 1 vol
     point"``, no convention fork) and stored beside the value so the cell stays
     self-describing like the other dollar Greeks.
+
+    **Mirror Greeks (T-mirror-greeks-putcall):** at each solved cell the projection also
+    prices the *opposite* option right at the **same** fitted IV — a put for a call-wing
+    band, a call for a put-wing band. ``price_mirror``, ``delta_mirror``, ``theta_mirror``,
+    and ``rho_mirror`` carry those opposite-right values. ``gamma`` and ``vega`` are
+    intentionally omitted from the mirror: put-call parity guarantees Γcall == Γput and
+    νcall == νput at one IV and one strike, so they are already in the primary fields.
+    The ``dollar_delta_mirror``, ``dollar_theta_mirror``, and ``dollar_rho_mirror`` fields
+    carry the monetized forms under the same conventions as the primary dollar Greeks.
+    All seven mirror fields are additive-nullable — a partition written before this lane
+    reads them back ``None`` unchanged. They let the front draw the full S-shaped delta
+    curve (both branches: call 1→0 and put 0→−1) and render theta/rho for both sides
+    without a second fit, second ingestion, or any surface change.
     """
 
     snapshot_ts: datetime
@@ -358,6 +371,18 @@ class ProjectedOptionAnalytics:
     # surface unchanged; ``put``/``call`` rows are additive, emitted only where the per-side fits
     # are supplied.
     surface_side: str = SURFACE_SIDE_COMBINED
+    # Mirror Greeks (T-mirror-greeks-putcall): the opposite option right at the same fitted IV.
+    # price_mirror is the opposite-right model price; delta_mirror / theta_mirror / rho_mirror
+    # are its Greeks. dollar_* counterparts follow the same monetization as the primary Greeks.
+    # gamma / vega are omitted — they are identical call vs put (put-call parity), so the primary
+    # gamma / vega already carry the shared value. All additive-nullable: None on pre-lane rows.
+    price_mirror: float | None = None
+    delta_mirror: float | None = None
+    theta_mirror: float | None = None
+    rho_mirror: float | None = None
+    dollar_delta_mirror: float | None = None
+    dollar_theta_mirror: float | None = None
+    dollar_rho_mirror: float | None = None
 
     def __post_init__(self) -> None:
         if self.surface_side not in SURFACE_SIDES:

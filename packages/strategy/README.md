@@ -121,6 +121,42 @@ the `SignalSnapshot`, now sourced from the persisted infra signal layer via
 `signal_snapshot_from_store`; the *realized*-correlation kill reading is still future, so
 `decide_exit` uses the net-vega-collapse proxy for the position-side kill until then.
 
+## S3 — the gamma-trading strategy (course p.107–108)
+
+`s3_gamma.py` is the second concrete strategy object (TARGET §3 S3) — and the second consumer
+of the shared `decide_delta_hedge` band rule (S1 hedges a synthetic forward; S3 hedges with
+stock). It harvests the **gamma premium** on *one* cheap name: when a single name's implied vol
+is low and realized vol comes in higher, a delta-neutral **long-gamma** structure scalps the
+difference — each delta-band round trip banks the rectangle realized vol carves out, paid for
+with theta.
+
+- **`GammaStrategy`** — pure over an injected `GammaConfig` (the economic parameters: `index`,
+  `option_tenor`, `entry_iv_rank_max`, `contracts`, `delta_band`, …, from typed platform config,
+  never `.py` literals) and a `GammaMarketData` (the as-of I/O seam). Entry fires when the
+  **cheapest** name's **IV rank** is at or below the threshold — the course ranking's "low IV
+  expected to rise" (the opposite sense to S1's "ρ̄ rich → high triggers"); `construct` builds a
+  **long ATM call** on that single name (routed to the call wing, ADR 0048) plus a **short stock
+  leg** sized to flatten the call's net dollar delta (Δ=0). A negligible hedge is omitted; an
+  unresolvable cheap name / call delta / spot is refused (`GammaConstructionError`), never a
+  naked directional call. Exit fires the §3 kill when **net dollar-gamma collapses** (the
+  long-gamma thesis gone — "quiet drift + IV crush, gain < theta"); `rebalance` runs the p.108
+  scalp cycle by delegating to `decide_delta_hedge` — hold inside the band, sell stock as delta
+  rises past it, buy back lower, each round trip banking the rectangle.
+- **`StoreBackedGammaData`** (`gamma_data.py`) — the store-backed implementor of
+  `GammaMarketData` for paper/live: it picks the cheapest name from the banked `strategy_signals`
+  IV-rank partition, prices the call's delta through the pure `basket_risk` over a
+  `trade_date`-narrowed grid read, and reads the name's spot from the grid's `forward_price`
+  (the pipeline pins `carry == 0` ⇒ forward == spot, so no second table is needed). It adds no
+  risk math. Build a ready-to-run object with
+  `gamma_strategy(store, config, reference_tenor="3m", provider="ibkr")`.
+
+**v1 boundary:** v1 builds the **long call + short stock** form; the course's symmetric
+alternative (long put + long stock — the same long-gamma/Δ=0 structure with the wings swapped)
+is a documented, deferred mirror that changes no rule. The kill is the net-gamma-collapse
+position-side proxy until the realized-vs-implied kill reading lands. S3 and S1 share a failure
+mode (low realized vol) **on purpose** — the §3 overlap is held so the 2D book/correlation view
+must surface it; it is not "fixed" here.
+
 ## Testing
 
 From the repo root, the one gate:
@@ -137,9 +173,10 @@ the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two
 
 ## Known limitations / out of scope
 
-- **S1 lives here; S2–S5 do not yet.** The spine (`contract`/`signals`/`strategy`/`harness`) is
-  strategy-agnostic; `s1_dispersion.py` + `dispersion_data.py` are the first concrete strategy.
-  S2–S5's construction/entry/exit rules are still owned by their S-tasks.
+- **S1 and S3 live here; S2/S4/S5 do not yet.** The spine
+  (`contract`/`signals`/`strategy`/`harness`) is strategy-agnostic; `s1_dispersion.py` +
+  `dispersion_data.py` (S1) and `s3_gamma.py` + `gamma_data.py` (S3) are the concrete strategies
+  so far. S2/S4/S5's construction/entry/exit rules are still owned by their S-tasks.
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
   layer (`algotrading.infra.signals`) derives and persists it, and `signal_snapshot_from_store`
   bridges the two. A caller can still build a snapshot from any source (research/backtest);

@@ -792,6 +792,43 @@ class StressSurfaceConfig(_ConfigModel):
         return self
 
 
+class NamedScenarioConfig(_ConfigModel):
+    """One labelled historical *compound* shock — a single joint spot/vol/rate move.
+
+    A named scenario (TARGET §5.4, the course's 2008 / COVID-March-2020 references) is one
+    full-reprice scenario expressing a whole crisis day at once: a spot crash, a vol spike,
+    and a rate move applied **together**, not the parametric grid's one-axis-at-a-time
+    sweep. The three shock fields reuse the engine's existing conventions verbatim:
+
+    * ``spot_shock`` — **relative** (``new_spot = spot * (1 + spot_shock)``); a crash is
+      negative (``-0.50`` is −50%).
+    * ``vol_shock`` — **additive** in vol units (``new_vol = vol + vol_shock``); a spike is
+      positive (``+0.30`` is +30 vol points).
+    * ``rate_shock`` — **additive** in the continuously-compounded rate (``+0.0025`` = +25 bp,
+      forward-fixed); a cut is negative.
+
+    ``label`` is the scenario's stable id stem (the grid mints ``named_<label>``); it must be
+    non-empty and unique within the catalogue (the config rejects a duplicate label).
+    ``correlation_shock`` defaults to ``0.0`` — the named family is a spot/vol/rate compound
+    today (the correlation leg is wired but dormant until ρ̄ exposure is real, see
+    :class:`Scenario`), so a legacy three-shock catalogue entry is unchanged.
+    """
+
+    model_config = _SECTION_CONFIG
+
+    label: str = Field(min_length=1)
+    spot_shock: float = 0.0
+    vol_shock: float = 0.0
+    rate_shock: float = 0.0
+    correlation_shock: float = 0.0
+
+
+# A YAML list of named-scenario mappings → an immutable tuple of validated models.
+_NamedScenarioTuple = Annotated[
+    tuple[NamedScenarioConfig, ...], BeforeValidator(_list_to_tuple)
+]
+
+
 class ScenarioConfig(_ConfigModel):
     """The stress grid applied by the risk engine.
 
@@ -813,6 +850,23 @@ class ScenarioConfig(_ConfigModel):
     construction). When non-empty it folds into the construction hash, so a rate axis cannot
     be added without moving the persisted ``effective_scenario_version``.
 
+    ``named_scenarios`` carries the **named historical-scenario catalogue** (TARGET §5.4 — the
+    2008 / COVID-March-2020 references). Each entry (:class:`NamedScenarioConfig`) is one
+    labelled *compound* shock applied as a single full-reprice scenario alongside the
+    parametric grid, expressing a whole crisis day's joint spot/vol/rate move at once. Its
+    default is the empty tuple — **no named family** — so a grid built without a configured
+    catalogue is byte-identical (at the construction-hash level) to before this field existed.
+    When non-empty it folds into the construction hash, so adding a named scenario moves the
+    persisted ``effective_scenario_version``.
+
+    ``correlation_shocks`` carries the **correlation-shock family** (TARGET §5.4's fourth
+    axis). Each value is an **additive** bump to the basket's average implied correlation ρ̄
+    (the basket-variance identity Eq 23, ``risk/basket.py``). Like ``rate_shocks`` its default
+    is the empty tuple — and the family is **built but dormant**: it only reprices a book that
+    carries a real ρ̄ exposure (a constituent-capture + signal-layer downstream), which the
+    live option book does not yet. Empty by default, it folds into the construction hash only
+    when configured, so a correlation-less grid hashes byte-identically.
+
     ``stress_surface`` is the 2B cartesian (spot × vol) surface grid (see
     :class:`StressSurfaceConfig`). Like ``roll_down_days`` its default is a placeholder for
     in-memory construction; the load path (``loader._build_scenario``) requires the
@@ -826,6 +880,8 @@ class ScenarioConfig(_ConfigModel):
     spot_shocks: _FloatTuple
     vol_shocks: _FloatTuple
     rate_shocks: _FloatTuple = ()
+    correlation_shocks: _FloatTuple = ()
+    named_scenarios: _NamedScenarioTuple = ()
     roll_down_days: _IntTuple = (1,)
     stress_surface: StressSurfaceConfig = Field(
         default_factory=lambda: StressSurfaceConfig(version="stress-surface-default")
@@ -836,6 +892,15 @@ class ScenarioConfig(_ConfigModel):
         for days in self.roll_down_days:
             if days <= 0:
                 raise ValueError("roll_down_days must be a positive day count")
+        return self
+
+    @model_validator(mode="after")
+    def _check_named_scenario_labels(self) -> ScenarioConfig:
+        labels = [named.label for named in self.named_scenarios]
+        if len(set(labels)) != len(labels):
+            raise ValueError(
+                f"named_scenarios labels must be unique, got {labels}"
+            )
         return self
 
 

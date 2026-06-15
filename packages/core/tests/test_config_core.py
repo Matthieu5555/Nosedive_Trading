@@ -181,14 +181,26 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # `qc`/`pricing`/`scenarios` stay byte-identical (section isolation). The universe/full values
     # below are regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked
     # record carries the old hash.
+    #
+    # infra-named-scenarios-and-corr-shock (2026-06-15): `ScenarioConfig` gained two §5.4 stress
+    # families — `named_scenarios` (the labelled 2008 / COVID compound historical shocks, a tuple of
+    # `NamedScenarioConfig`) and `correlation_shocks` (additive ρ̄ bumps on the basket-variance path) —
+    # both empty-tuple by default, plus the section `version` bumped to 2026.06.15. Adding the two
+    # fields adds two keys (`correlation_shocks: []`, `named_scenarios: []`) to the canonical JSON of
+    # every `ScenarioConfig`, so the `scenarios` bundle hash — and so the folded whole-config hash —
+    # moved BY DESIGN even though the defaults are empty (a config-bundle hash sees the new fields; the
+    # *grid* construction hash, which folds each family in only when non-empty, stays byte-identical —
+    # that is the engine-side invariant, pinned in test_scenario.py). `universe`/`qc`/`pricing` stay
+    # byte-identical (section isolation). The scenarios/full values below are regenerated over the
+    # expanded `scenario` section. Pre-capture dev change: no banked record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "d645e2550804e9806d02424202dd08a1fa8eaeccfb91633d4e6fd6cce4128500"
+        "e6dfda9bc74034d3467d96f6a8ac594f5a718292ada7f9aca48f5c12e4b2f150"
     )
     assert config_hashes(config) == {
         "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
         "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
-        "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
+        "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
         "universe": "6d278adf21aa0ce33e8f6a8cf7a93055efafd8ecab16359ebf6a8c2f33264172",
     }
 
@@ -963,6 +975,80 @@ def test_section_model_coerces_by_declared_type() -> None:
     assert all(isinstance(x, float) for x in sc.spot_shocks)
     assert sc.roll_down_days == (1, 7)
     assert all(isinstance(d, int) for d in sc.roll_down_days)
+
+
+def test_scenario_config_named_and_correlation_families_validate_and_default_empty() -> None:
+    # infra-named-scenarios-and-corr-shock: the named catalogue (a tuple of NamedScenarioConfig)
+    # and the correlation-shock axis both default empty (byte-identical-when-empty at the grid
+    # level), and a YAML list of named-scenario mappings becomes the declared tuple of models.
+    from algotrading.core.config import NamedScenarioConfig
+
+    bare = ScenarioConfig(version="sc", spot_shocks=[-0.1], vol_shocks=[0.0])
+    assert bare.named_scenarios == ()
+    assert bare.correlation_shocks == ()
+
+    sc = ScenarioConfig(
+        version="sc",
+        spot_shocks=[-0.1],
+        vol_shocks=[0.0],
+        correlation_shocks=[0.10, 0.20],
+        named_scenarios=[
+            {"label": "2008", "spot_shock": -0.45, "vol_shock": 0.40, "rate_shock": -0.02},
+        ],
+    )
+    assert sc.correlation_shocks == (0.10, 0.20)
+    assert len(sc.named_scenarios) == 1
+    named = sc.named_scenarios[0]
+    assert isinstance(named, NamedScenarioConfig)
+    assert (named.label, named.spot_shock, named.vol_shock, named.rate_shock) == (
+        "2008",
+        -0.45,
+        0.40,
+        -0.02,
+    )
+    # correlation_shock defaults to 0.0 (the named family is a spot/vol/rate compound today).
+    assert named.correlation_shock == 0.0
+
+
+def test_scenario_config_rejects_duplicate_named_scenario_labels() -> None:
+    # A label is the scenario's stable id stem; two entries sharing one label would mint a
+    # colliding scenario id, so the catalogue rejects it at validation rather than downstream.
+    from algotrading.core.config import ConfigFieldError
+
+    with pytest.raises(ConfigFieldError, match="labels must be unique"):
+        ScenarioConfig(
+            version="sc",
+            spot_shocks=[-0.1],
+            vol_shocks=[0.0],
+            named_scenarios=[
+                {"label": "2008", "spot_shock": -0.45},
+                {"label": "2008", "spot_shock": -0.30},
+            ],
+        )
+
+
+def test_named_and_correlation_families_fold_into_only_the_scenarios_bundle_hash() -> None:
+    # Adding the families moves ONLY the scenarios bundle hash (section isolation): the
+    # config-bundle hash sees the new fields; the other three bundles stay byte-identical.
+    base = _config()
+    moved = base.model_copy(
+        update={
+            "scenario": base.scenario.model_copy(
+                update={
+                    "correlation_shocks": (0.10,),
+                    "named_scenarios": (
+                        {"label": "2008", "spot_shock": -0.45},
+                    ),
+                }
+            )
+        }
+    )
+    base_h = config_hashes(base)
+    moved_h = config_hashes(moved)
+    assert moved_h["scenarios"] != base_h["scenarios"]
+    assert {k: moved_h[k] for k in ("universe", "qc", "pricing")} == {
+        k: base_h[k] for k in ("universe", "qc", "pricing")
+    }
 
 
 def test_section_model_rejects_unknown_key() -> None:

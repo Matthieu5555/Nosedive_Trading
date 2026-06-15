@@ -224,32 +224,6 @@ def _check_status(qc_rows: list, check_name: str, underlying: str) -> str:
     return "unknown"
 
 
-def _constituent_outcome_rows(outcomes: list, index: str) -> list[dict[str, object]]:
-    """Per-constituent capture verdicts for one index, heaviest first (the entitlement ledger).
-
-    Drives off ``constituent_capture_outcomes`` rows for ``index``: one labelled row per attempted
-    constituent. Ordered by the recorded weight rank (ascending — rank 1 = heaviest), so the panel
-    reads top-down exactly as the capture lane selected. A name's outcome is the captured verdict
-    the lane recorded; ``n_options`` is the captured option-leg count (0 for a non-capture). With no
-    ledger for this index/date (an index-only capture, or a date before the widened lane fired) the
-    list is empty — the panel then simply shows no constituent section, never a fabricated row.
-    """
-    rows = [
-        {
-            "symbol": outcome.underlying,
-            "rank": outcome.rank,
-            "weight": outcome.weight,
-            "outcome": outcome.outcome,
-            "n_options": outcome.n_options,
-            "detail": outcome.detail,
-        }
-        for outcome in outcomes
-        if outcome.index == index
-    ]
-    rows.sort(key=lambda row: (row["rank"], row["symbol"]))
-    return rows
-
-
 @router.get("")
 def get_coverage(
     ctx: CtxDep, trade_date: TradeDateDep, underlying: str | None = None

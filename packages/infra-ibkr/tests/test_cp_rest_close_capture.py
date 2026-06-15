@@ -43,8 +43,11 @@ from algotrading.infra_ibkr.collectors.cp_rest_chain_window import (
 from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
     CloseCaptureError,
     DiscoveryRunawayError,
+    _discover_chain,
     collect_live_basket,
+    target_from_index,
 )
+from algotrading.infra_ibkr.collectors.cp_rest_discovery import CpRestDiscovery
 from algotrading.infra_ibkr.collectors.cp_rest_snapshot import (
     SNAPSHOT_MAX_CONIDS,
     snapshot_index_spot,
@@ -656,3 +659,173 @@ def test_snapshot_batches_conids_to_stay_under_the_uri_limit() -> None:
     flattened = [conid for batch in batches for conid in batch]
     assert sorted(flattened) == requested
     assert {row.conid for row in rows} == set(requested)
+
+
+# ================================================================================
+# EMERGENCY-capture-throughput: the concurrent /secdef/info walk is output-identical
+# to the sequential one (parity is the acceptance bar), and the pool size is typed config.
+# ================================================================================
+def _discover_with_pool(pool_size: int) -> tuple[Any, dict[str, str], int]:
+    """Run ``_discover_chain`` over the known fake gateway at a given pool width.
+
+    Returns the assembled chain, the conid map, and the number of recorded ``/secdef/info``
+    calls — so a parity test can assert the SAME calls were made (never fewer), only differently
+    paced. The strike-selection config is identical apart from ``discovery_pool_size``.
+    """
+    gateway = _FakeGateway()
+    discovery = CpRestDiscovery(gateway, exchange="CBOE", currency="USD")
+    strike_selection = StrikeSelectionConfig(
+        version="ss-pool", min_strikes_per_side=3, discovery_pool_size=pool_size
+    )
+    chain, conid_by_contract = _discover_chain(
+        discovery,
+        target=target_from_index(SPX),
+        conid=INDEX_CONID,
+        months=list(_MONTHS),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+        spot=_SPOT,
+        as_of=TRADE_DATE,
+        strike_selection=strike_selection,
+    )
+    info_calls = sum(1 for path, _ in gateway.calls if path == "/iserver/secdef/info")
+    return chain, conid_by_contract, info_calls
+
+
+def test_concurrent_discovery_is_byte_identical_to_sequential() -> None:
+    """A bounded concurrent ``_discovery_chain`` walk yields the IDENTICAL chain + conid map.
+
+    The acceptance bar for EMERGENCY-capture-throughput: the discovery calls are independent and
+    the assembled output is order-independent (sorted-set expirations/strikes, a token-keyed conid
+    dict), so a pool of 6 must produce a chain and ``conid_by_contract`` byte-for-byte equal to the
+    sequential (pool of 1) walk — and make the SAME number of ``/secdef/info`` calls (same calls,
+    faster — never fewer). Expected derived from the property, not from the code's output.
+    """
+    seq_chain, seq_conids, seq_calls = _discover_with_pool(1)
+    par_chain, par_conids, par_calls = _discover_with_pool(6)
+
+    # Byte-identical assembled output, field by field.
+    assert par_chain == seq_chain
+    assert par_conids == seq_conids
+    # Same calls, never fewer: the strike window is untouched, only the pacing changed.
+    assert par_calls == seq_calls
+    # And the walk actually covered the full known chain (2 months × 3 strikes × 2 rights = 12).
+    assert seq_calls == len(_MONTHS) * len(_STRIKES) * 2
+    assert len(seq_conids) == len(_MONTHS) * len(_STRIKES) * 2
+
+
+def test_discovery_pool_size_is_clamped_to_at_least_one() -> None:
+    """A pool size of 1 is the sequential walk; the assembled chain is unchanged from any width.
+
+    Locks that the knob's floor is the sequential walk (the config field enforces >= 1, and the
+    capture clamps to >= 1 defensively), so a conservatively-tiny pool degrades to "the same chain,
+    serially" rather than misbehaving.
+    """
+    chain_1, conids_1, _ = _discover_with_pool(1)
+    chain_n, conids_n, _ = _discover_with_pool(64)  # wider than the 12 work items
+    assert chain_1 == chain_n
+    assert conids_1 == conids_n
+
+
+# ================================================================================
+# EMERGENCY-quote-integrity-gate: a closed / last-only / all-zero-bid basket is refused
+# (the canary), single-sided rows are quarantined, a genuine two-sided close passes.
+# ================================================================================
+class _ClosedMarketGateway(_FakeGateway):
+    """Every option snapshot row mirrors the 2026-06-15 canary: last-only, no two-sided quote.
+
+    ``bid == ask <= 0`` (the CP ``-1`` 'no value' sentinel) and only ``last`` is real — exactly
+    the closed-market shape that fitted a converged surface off junk. The index spot row stays
+    real so the chain still centres and discovers (the failure is the OPTION quotes, not the spot).
+    """
+
+    def _snapshot(self, params: dict[str, Any]) -> Any:
+        rows: list[dict[str, Any]] = []
+        for conid_text in str(params["conids"]).split(","):
+            conid = int(conid_text)
+            if conid == INDEX_CONID:
+                rows.append({"conid": conid, "31": str(_SPOT), "_updated": self._close_ms})
+                continue
+            mark = self._mark_for_conid(conid)
+            # last-only: bid/ask are the CP -1 sentinel (parses to None) — no two-sided quote.
+            rows.append(
+                {"conid": conid, "31": f"{mark:.2f}", "84": "-1", "86": "-1",
+                 "_updated": self._close_ms}
+            )
+        return rows
+
+
+def test_closed_market_basket_is_refused_not_banked() -> None:
+    """A whole-basket last-only capture (the canary) returns None — a labelled no-capture.
+
+    Every option row carries no two-sided quote (bid/ask are the -1 sentinel; only last is real),
+    so the two-sided fraction is 0.0, below the configured floor (0.10) — the basket is refused
+    rather than fed to the IV solver. This is the core EMERGENCY-quote-integrity-gate guard: a
+    closed market is a no-capture, NOT a converged surface off junk.
+    """
+    basket = collect_live_basket(
+        _ClosedMarketGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+    )
+    assert basket is None
+
+
+def test_genuine_two_sided_close_passes_untouched() -> None:
+    """The regression guard: a real two-sided close is banked exactly as before the gate.
+
+    The default ``_FakeGateway`` returns mark±0.1 as bid/ask — a healthy two-sided quote on every
+    contract (fraction 1.0). The gate must be transparent to it: the basket is non-None and every
+    listed contract is present, byte-identical to the pre-gate behaviour.
+    """
+    basket = _capture()
+    assert basket is not None
+    option_keys = {
+        (k.expiry, k.strike, k.option_right) for k in basket.instruments if k.is_option()
+    }
+    assert option_keys == _expected_option_keys()
+
+
+class _OneSidedGateway(_FakeGateway):
+    """Exactly ONE option contract is single-sided (ask only); the rest are healthy two-sided.
+
+    Tests the per-row quarantine: the one single-sided row is excluded from the promoted close set
+    (no events for it) while the rest of the basket bands cleanly and is still banked.
+    """
+
+    _QUARANTINED = (_MONTHS["JUN26"], 105.0, "C")
+
+    def _snapshot(self, params: dict[str, Any]) -> Any:
+        rows = super()._snapshot(params)
+        bad_conid = _conid_for(*self._QUARANTINED)
+        for row in rows:
+            if int(row["conid"]) == bad_conid:
+                row["84"] = "-1"  # drop the bid → single-sided, not a healthy two-sided quote
+        return rows
+
+
+def test_single_sided_row_is_quarantined_but_basket_still_banks() -> None:
+    """A single-sided option row is excluded from the derived close set; the basket still banks.
+
+    Only one of the twelve contracts is single-sided (ask-only), so the two-sided fraction (11/12)
+    clears the floor and the basket is banked — but the quarantined contract contributes NO events
+    (its quote was not promoted), while every healthy contract does. Raw is untouched; the gate is
+    on promotion. Expected derived from the gateway's poisoned contract, not the capture output.
+    """
+    basket = collect_live_basket(
+        _OneSidedGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+    )
+    assert basket is not None
+    quarantined = _conid_for(*_OneSidedGateway._QUARANTINED)
+    quarantined_key = next(
+        k.canonical() for k in basket.instruments
+        if k.is_option() and k.broker_contract_id == str(quarantined)
+    )
+    # The single-sided contract contributed NO events (it was quarantined, not promoted).
+    assert all(e.instrument_key != quarantined_key for e in basket.events)
+    # ...but the other eleven healthy contracts did (the basket still banks the live ones).
+    healthy_option_keys = {
+        k.canonical() for k in basket.instruments
+        if k.is_option() and k.broker_contract_id != str(quarantined)
+    }
+    event_keys = {e.instrument_key for e in basket.events}
+    assert healthy_option_keys <= event_keys

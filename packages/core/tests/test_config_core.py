@@ -182,26 +182,31 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # below are regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked
     # record carries the old hash.
     #
-    # infra-named-scenarios-and-corr-shock (2026-06-15): `ScenarioConfig` gained two §5.4 stress
-    # families — `named_scenarios` (the labelled 2008 / COVID compound historical shocks, a tuple of
-    # `NamedScenarioConfig`) and `correlation_shocks` (additive ρ̄ bumps on the basket-variance path) —
-    # both empty-tuple by default, plus the section `version` bumped to 2026.06.15. Adding the two
-    # fields adds two keys (`correlation_shocks: []`, `named_scenarios: []`) to the canonical JSON of
-    # every `ScenarioConfig`, so the `scenarios` bundle hash — and so the folded whole-config hash —
-    # moved BY DESIGN even though the defaults are empty (a config-bundle hash sees the new fields; the
-    # *grid* construction hash, which folds each family in only when non-empty, stays byte-identical —
-    # that is the engine-side invariant, pinned in test_scenario.py). `universe`/`qc`/`pricing` stay
-    # byte-identical (section isolation). The scenarios/full values below are regenerated over the
-    # expanded `scenario` section. Pre-capture dev change: no banked record carries the old hash.
+    # Two design-driven bundle moves are folded here after the integration merge:
+    #   * infra-named-scenarios-and-corr-shock (2026-06-15): `ScenarioConfig` gained the §5.4
+    #     `named_scenarios` (2008/COVID compound historical shocks) + `correlation_shocks` (additive
+    #     ρ̄ bumps) families (both empty-tuple default) + a section `version` bump, moving the
+    #     `scenarios` bundle hash. The *grid* construction hash stays byte-identical (each family
+    #     folds in only when non-empty — the engine-side invariant pinned in test_scenario.py).
+    #   * ibkr-quote-integrity-and-throughput (2026-06-15, ADR 0028 — the two EMERGENCY capture
+    #     specs): `StrikeSelectionConfig.discovery_pool_size` (default 6) joined the hashed
+    #     `universe` bundle — the bounded worker-pool width for the concurrent `/secdef/info` chain
+    #     walk (capture-throughput; a *pacing* knob, same calls faster, never which calls) — and
+    #     `QcThresholdConfig.quote_integrity` (`QuoteIntegrityQcConfig.min_two_sided_fraction`,
+    #     default 0.10) joined the hashed `qc` bundle — the capture-time two-sided-quote floor below
+    #     which a closed/last-only basket is refused (quote-integrity-gate).
+    # Three bundles moved (`scenarios`, `universe`, `qc`); `pricing` stays byte-identical (section
+    # isolation). The folded whole-config hash is regenerated over all three moves. Pre-capture dev
+    # change: no banked historical record carries the old hash.
     config = _config()
     assert config_hash(config) == (
-        "e6dfda9bc74034d3467d96f6a8ac594f5a718292ada7f9aca48f5c12e4b2f150"
+        "c1b71c9f7e8b47080368b994eaf7fe8658ff2ddf57d717a43934256669598474"
     )
     assert config_hashes(config) == {
         "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
-        "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
+        "qc": "4e60cf756dba172f161eba2dcba0061afc1fff17e61d25dd446c3b17d4c3f564",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
-        "universe": "6d278adf21aa0ce33e8f6a8cf7a93055efafd8ecab16359ebf6a8c2f33264172",
+        "universe": "711172086f39f9d33cc3ff702356d8d33266e963eccebd1cbc87c9e5718e7058",
     }
 
 
@@ -218,6 +223,8 @@ def test_supplementary_qc_cutoffs_fold_into_the_qc_bundle_hash() -> None:
         ("forward_engine", "max_rel_residual_mad", 0.007),
         ("fit_tolerance", "max_surface_rmse", 0.03),
         ("anomaly", "fail_z", 6.0),
+        # EMERGENCY-quote-integrity-gate: the capture-time two-sided floor folds into the qc bundle.
+        ("quote_integrity", "min_two_sided_fraction", 0.25),
     ):
         nested = getattr(base.qc_threshold, block).model_copy(update={field: new_value})
         moved = base.model_copy(
@@ -237,6 +244,38 @@ def test_anomaly_block_enforces_band_ordering() -> None:
 
     with pytest.raises(ConfigFieldError):
         AnomalyQcConfig(version="bad", warn_z=5.0, fail_z=3.0)
+
+
+def test_discovery_pool_size_folds_into_the_universe_hash() -> None:
+    # EMERGENCY-capture-throughput (ADR 0028): the concurrent /secdef/info pool width is hashed
+    # config on StrikeSelectionConfig, so moving it moves ONLY the universe bundle hash, leaving
+    # the other three byte-identical (section isolation). Independent oracle: bump the pool width
+    # and assert universe changes while qc/pricing/scenarios do not.
+    base = _config()
+    hashes = config_hashes(base)
+    bumped_strike = base.universe.strike_selection.model_copy(update={"discovery_pool_size": 12})
+    moved = base.model_copy(
+        update={"universe": base.universe.model_copy(update={"strike_selection": bumped_strike})}
+    )
+    moved_hashes = config_hashes(moved)
+    assert moved_hashes["universe"] != hashes["universe"]
+    assert {k: moved_hashes[k] for k in ("qc", "pricing", "scenarios")} == {
+        k: hashes[k] for k in ("qc", "pricing", "scenarios")
+    }
+
+
+def test_quote_integrity_floor_enforces_a_fraction_range() -> None:
+    # EMERGENCY-quote-integrity-gate: the two-sided floor is a fraction in [0, 1]; a value outside
+    # that range is rejected at construction, never silently accepted (a >1 floor could never pass,
+    # a <0 floor would refuse nothing — both are config errors).
+    from algotrading.core.config import ConfigFieldError, QuoteIntegrityQcConfig
+
+    assert QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=0.0).min_two_sided_fraction == 0.0
+    assert QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=1.0).min_two_sided_fraction == 1.0
+    with pytest.raises(ConfigFieldError):
+        QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=1.5)
+    with pytest.raises(ConfigFieldError):
+        QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=-0.1)
 
 
 def _surface_with_grid(buckets: tuple[float, ...]) -> SurfaceConfig:

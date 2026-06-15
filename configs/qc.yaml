@@ -80,3 +80,18 @@ anomaly:
   warn_z: 3.5           # rolling-baseline |robust z| WARN band
   fail_z: 5.0           # rolling-baseline FAIL band; must be >= warn_z
   min_baseline: 10      # fewer baseline points than this -> NO_BASELINE, never assumed normal
+
+# Capture-time quote-integrity floor (EMERGENCY-quote-integrity-gate). The 2026-06-15 SX5E canary
+# banked a converged surface off a CLOSED market: every snapshot row had bid<=0, ask<=0, bid==ask
+# (no two-sided quote), completeness=0.333 (only `last`), flags=["closed","fallback_spot"]. The IV
+# solver fit `last` alone into a plausible-looking surface and nothing refused it at the capture
+# boundary. This cut-off turns completeness/flags from inert scalars into a hard floor: below it the
+# close-capture path returns a labelled no-capture (None + a `closed_market` reason), never a fit.
+# Economic (it decides whether a day's basket is banked at all) → hashed here, never a `.py` literal.
+quote_integrity:
+  version: "2026.06.15"
+  # The smallest fraction of an underlying's promotable option rows that must carry a healthy
+  # two-sided quote (positive, uncrossed bid AND ask) for the basket to be banked. The canary
+  # fraction was 0.0 (every row last-only); a genuine two-sided close is 1.0. Set above 0 so the
+  # all-last-only basket is refused while a real close passes untouched.
+  min_two_sided_fraction: 0.10

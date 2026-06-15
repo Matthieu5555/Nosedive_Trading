@@ -173,6 +173,20 @@ class StrikeSelectionConfig(_ConfigModel):
       One value, not per-index: adding an index stays "conid + enabled" with nothing to
       hand-tune; if a genuinely more volatile index ever clips, ``delta_band_completeness``
       QC turns red and an override is added then, data-driven, never speculatively.
+    - ``discovery_pool_size`` — the bounded worker-pool width for the ``/secdef/info`` chain
+      walk (EMERGENCY-capture-throughput). The discovery calls have no inter-dependency and
+      the assembled ``AvailableChain`` is order-independent (sorted-set expirations/strikes,
+      a token-keyed conid dict), so the per-``(month, strike, right)`` qualification runs
+      through a :class:`~concurrent.futures.ThreadPoolExecutor` this many threads wide instead
+      of strictly sequentially — a latency-bound walk (each call is ~0.46 s of network wait)
+      that, serial, smears a "close" snapshot across 30–60 min on the full basket. It is a
+      *pacing* knob, not an economic one (it changes **how fast** the same calls are made,
+      never **which** calls — the strike window is untouched), but it lives in hashed config
+      rather than a ``.py`` literal so the pool can be tuned against real CP-Gateway 429
+      behaviour without a code change (ADR 0028). Kept deliberately small (default 6): the CP
+      Gateway is a single paced session and the transport's 429/503 backoff is the real valve;
+      a flood the backoff serialises back to ~sequential is a net loss. Must be ``>= 1`` (1 =
+      the sequential walk). Folds into the universe hash with the rest of this block.
     """
 
     model_config = _SECTION_CONFIG
@@ -182,6 +196,7 @@ class StrikeSelectionConfig(_ConfigModel):
     delta_convention: Literal["forward_undiscounted", "spot_discounted"] = "forward_undiscounted"
     min_strikes_per_side: int = Field(default=2, ge=1)
     discovery_working_vol: float = Field(default=0.40, gt=0.0)
+    discovery_pool_size: int = Field(default=6, ge=1)
 
 
 class SignalEntryConfig(_ConfigModel):
@@ -515,6 +530,35 @@ class AnomalyQcConfig(_ConfigModel):
         return self
 
 
+class QuoteIntegrityQcConfig(_ConfigModel):
+    """Capture-time quote-integrity floor: refuse a closed / last-only basket (ADR 0028).
+
+    The 2026-06-15 SX5E canary banked a converged, arb-free surface off a CLOSED market —
+    every snapshot row had ``bid <= 0``, ``ask <= 0``, ``bid == ask`` (no two-sided quote),
+    ``completeness == 0.333`` (only ``last``), ``flags == ["closed", "fallback_spot"]``. The
+    IV solver fit ``last`` alone into a plausible-looking surface; nothing at the capture
+    boundary refused it. These cut-offs make ``completeness``/``flags`` enforce a floor rather
+    than sit inert (EMERGENCY-quote-integrity-gate):
+
+    - ``min_two_sided_fraction`` — the smallest fraction of an underlying's promotable option
+      rows that must carry a healthy two-sided quote (a positive, uncrossed bid AND ask, per
+      :func:`assess_quote`) for the basket to be *banked* rather than refused. Below it the
+      basket is a labelled no-capture (``None`` + a structured ``closed_market`` reason), never
+      a fit. Set above 0 so an all-last-only basket (fraction 0.0, the canary) is refused
+      while a genuine two-sided close (fraction 1.0) passes untouched. A fraction in ``[0, 1]``.
+
+    Held as a nested model on :class:`QcThresholdConfig` so it folds into
+    ``config_hashes["qc"]`` with no separate hash — the capture gate and the end-to-end QC
+    plane read one config bundle, so they tell the same story. The default is for
+    in-memory/test construction; the loader requires the block present in ``qc.yaml``.
+    """
+
+    model_config = _SECTION_CONFIG
+
+    version: str = Field(min_length=1)
+    min_two_sided_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
+
+
 class QcThresholdConfig(_ConfigModel):
     """Cut-offs that decide whether a quote or chain is usable.
 
@@ -527,6 +571,8 @@ class QcThresholdConfig(_ConfigModel):
     - ``forward_engine`` — forward-stability and parity-residual cut-offs.
     - ``fit_tolerance`` — IV-convergence and surface-fit cut-offs.
     - ``anomaly`` — robust-z anomaly bands and the static-check MAD multiplier.
+    - ``quote_integrity`` — the capture-time two-sided-quote floor below which a basket is
+      refused as closed/last-only (EMERGENCY-quote-integrity-gate).
 
     Every nested default is for in-memory/test construction; the loader requires each block
     present in ``qc.yaml`` so the economic cut-offs are never silently defaulted on the load
@@ -551,6 +597,9 @@ class QcThresholdConfig(_ConfigModel):
     )
     anomaly: AnomalyQcConfig = Field(
         default_factory=lambda: AnomalyQcConfig(version="anomaly-qc-default")
+    )
+    quote_integrity: QuoteIntegrityQcConfig = Field(
+        default_factory=lambda: QuoteIntegrityQcConfig(version="quote-integrity-qc-default")
     )
 
 

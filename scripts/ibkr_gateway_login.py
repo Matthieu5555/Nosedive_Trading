@@ -22,7 +22,8 @@ Or interactively (it prompts on stdin for the code):
 
     uv run --with selenium python scripts/ibkr_gateway_login.py --mode live
 
-Credentials come from the repo `.env` (`TWS_USERID` / `TWS_PASSWORD`) — never hardcoded,
+Credentials come from the repo `.env` (`IBKR_USERID` / `IBKR_PASSWORD`, legacy `TWS_*` still
+accepted) — never hardcoded,
 never logged. `--mode paper` clicks the "Simulated Login" (Paper) tab; note that for an
 account with account-level 2FA, *both* tabs still trigger the same SMS challenge.
 """
@@ -55,9 +56,16 @@ _CODE_FIELDS = (  # tried in order; the visible one is the active 2FA method
 
 def _load_creds() -> tuple[str, str]:
     load_env_file()  # the repo-root .env; already-exported variables win
-    user, pw = os.environ.get("TWS_USERID"), os.environ.get("TWS_PASSWORD")
+    # The IBKR account login (the SAME credential for the website, Client Portal, and this
+    # gateway — not a TWS-socket thing). Prefer IBKR_USERID/IBKR_PASSWORD; fall back to the
+    # legacy TWS_* names so an un-migrated .env still works.
+    user = os.environ.get("IBKR_USERID") or os.environ.get("TWS_USERID")
+    pw = os.environ.get("IBKR_PASSWORD") or os.environ.get("TWS_PASSWORD")
     if not user or not pw or user.startswith("your_"):
-        sys.exit("TWS_USERID / TWS_PASSWORD missing or placeholder in .env — fill them first.")
+        sys.exit(
+            "IBKR_USERID / IBKR_PASSWORD missing or placeholder in .env — fill them first "
+            "(legacy TWS_USERID / TWS_PASSWORD also accepted)."
+        )
     return user, pw
 
 

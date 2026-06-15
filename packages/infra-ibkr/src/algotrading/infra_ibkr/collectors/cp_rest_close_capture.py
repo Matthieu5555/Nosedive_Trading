@@ -52,18 +52,22 @@ capture against a fake gateway with no network and no secrets.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
 import structlog
 from algotrading.core.config import PlatformConfig, StrikeSelectionConfig
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, RawMarketEvent
+from algotrading.infra.snapshots import assess_quote
 from algotrading.infra.surfaces import tenor_years as tenor_year_fraction
 from algotrading.infra.universe import (
     AvailableChain,
     ChainSelection,
     IndexEntry,
+    OptionContract,
     plan_chain,
     select_capture_keys,
 )
@@ -221,10 +225,10 @@ def _discover_chain(
     but bounded in practice by the listed strikes, with the runaway valve as the only backstop.
     """
     log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
-    expirations: list[str] = []
-    strikes: set[float] = set()
-    conid_by_contract: dict[str, str] = {}
-    multiplier = "100"
+    # Step 1 (sequential, one cheap call per month): resolve each month's listed strikes and
+    # qualify the delta-driven window. The strike window selection is UNTOUCHED (owner ruling,
+    # cp_rest_chain_window.py): this stage decides *which* (month, strike, right) items to walk.
+    work_items: list[tuple[str, float, str]] = []
     for month in select_discovery_months(months, selection):
         calls, puts = discovery.strikes(conid, month=month)
         listed = set(calls) | set(puts)
@@ -238,31 +242,93 @@ def _discover_chain(
         )
         for strike in qualified:
             for right in ("C", "P"):
-                for contract in discovery.contracts(
-                    conid,
-                    symbol=target.resolved_search_symbol,
-                    month=month,
-                    strike=strike,
-                    right=right,
-                ):
-                    if contract.broker_contract_id is None:
-                        continue
-                    multiplier = str(contract.multiplier)
-                    expiry_token = contract.expiry.strftime("%Y%m%d")
-                    if expiry_token not in expirations:
-                        expirations.append(expiry_token)
-                    strikes.add(float(contract.strike))
-                    conid_by_contract[
-                        _contract_token(contract.expiry, float(contract.strike), right)
-                    ] = contract.broker_contract_id
+                work_items.append((month, strike, right))
+
+    # Step 2 (bounded-concurrent): the per-(month, strike, right) `/secdef/info` walk. Each call is
+    # ~all network wait and independent of the others, and the assembled chain is order-independent
+    # (sorted-set expirations/strikes, a token-keyed conid dict), so a bounded ThreadPoolExecutor
+    # yields a BYTE-IDENTICAL chain to the sequential walk — only faster. The transport's 429/503
+    # backoff stays the pacing valve; the pool is small (typed config) so it degrades gracefully
+    # rather than flooding the single paced CP Gateway session. A pool of 1 is the sequential walk.
+    pool_size = min(max(strike_selection.discovery_pool_size, 1), max(len(work_items), 1))
+    contracts = _qualify_contracts_concurrently(
+        discovery,
+        target=target,
+        conid=conid,
+        work_items=work_items,
+        pool_size=pool_size,
+        log=log,
+    )
+
+    # Step 3 (deterministic assembly): fold the results in a stable order so the output never
+    # depends on completion order. Sorting the (token, contract) pairs makes the last-write of
+    # `multiplier` deterministic too (every contract carries the same "100", so this is belt-and-
+    # braces, not a behaviour change).
+    expirations: set[str] = set()
+    strikes: set[float] = set()
+    conid_by_contract: dict[str, str] = {}
+    multiplier = "100"
+    for token, contract in sorted(contracts, key=lambda pair: pair[0]):
+        multiplier = str(contract.multiplier)
+        expirations.add(contract.expiry.strftime("%Y%m%d"))
+        strikes.add(float(contract.strike))
+        conid_by_contract[token] = str(contract.broker_contract_id)
     chain = AvailableChain(
         exchange=target.exchange,
         trading_class=target.symbol,
         multiplier=multiplier,
-        expirations=tuple(sorted(set(expirations))),
+        expirations=tuple(sorted(expirations)),
         strikes=tuple(sorted(strikes)),
     )
     return chain, conid_by_contract
+
+
+def _qualify_contracts_concurrently(
+    discovery: CpRestDiscovery,
+    *,
+    target: CaptureTarget,
+    conid: int,
+    work_items: Sequence[tuple[str, float, str]],
+    pool_size: int,
+    log: Any,
+) -> list[tuple[str, OptionContract]]:
+    """Run the per-(month, strike, right) ``/secdef/info`` walk through a bounded thread pool.
+
+    Returns ``(contract_token, contract)`` pairs for every contract that qualified (carries a
+    broker conid), to be folded into the chain in a deterministic order by the caller. The walk
+    is order-independent, so concurrency changes only the wall-clock, never the assembled output.
+    A pool of size 1 reproduces the sequential walk exactly. The transport's 429/503 backoff is
+    the pacing valve; a worker that exhausts it raises, and that propagates (loud-fail discipline —
+    a discovery that cannot resolve its chain is not a silently-thinner chain).
+    """
+
+    def qualify(item: tuple[str, float, str]) -> list[tuple[str, OptionContract]]:
+        month, strike, right = item
+        resolved: list[tuple[str, OptionContract]] = []
+        for contract in discovery.contracts(
+            conid,
+            symbol=target.resolved_search_symbol,
+            month=month,
+            strike=strike,
+            right=right,
+        ):
+            if contract.broker_contract_id is None:
+                continue
+            token = _contract_token(contract.expiry, float(contract.strike), right)
+            resolved.append((token, contract))
+        return resolved
+
+    log.info(
+        "ibkr.close_capture.discovery_pool",
+        underlying=target.symbol,
+        work_items=len(work_items),
+        pool_size=pool_size,
+    )
+    contracts: list[tuple[str, OptionContract]] = []
+    with ThreadPoolExecutor(max_workers=pool_size) as pool:
+        for resolved in pool.map(qualify, work_items):
+            contracts.extend(resolved)
+    return contracts
 
 
 def _contract_token(expiry: date, strike: float, right: str) -> str:
@@ -306,6 +372,52 @@ def _planned_option_keys(
     return keys
 
 
+@dataclass(frozen=True, slots=True)
+class _PromotedSnapshots:
+    """The outcome of the kept/drop + quote-integrity pass over one underlying's snapshot rows.
+
+    ``events`` are the ``RawMarketEvent`` rows promoted to the derived close set (the basket the
+    IV solver consumes). ``option_row_count`` is how many option rows survived the look-ahead
+    guard (the denominator of the two-sided fraction); ``two_sided_count`` is how many of those
+    carried a healthy two-sided quote (a positive, uncrossed bid AND ask). ``drop_reasons`` is the
+    per-row audit receipt — one ``(instrument_key, reason)`` for every option row excluded from the
+    derived close set by the quote-integrity gate — the "discard the bullshit" trail. Raw stays
+    immutable (ADR 0040): a dropped row is excluded from *promotion*, never deleted from ``raw/``.
+    """
+
+    events: tuple[RawMarketEvent, ...]
+    option_row_count: int
+    two_sided_count: int
+    drop_reasons: tuple[tuple[str, str], ...]
+
+
+def _two_sided_quote_reason(row: SnapshotRow, *, max_spread_pct: float) -> str | None:
+    """``None`` when the row carries a healthy two-sided quote, else the drop reason code.
+
+    Reuses the shared :func:`assess_quote` / :func:`QuoteAssessment` machinery (the leverage-proven
+    rule — no parallel hand-rolled classifier): a row is promotable only when both sides are
+    present, both strictly positive, and the market is not crossed. A zero/one-sided/crossed quote
+    is what the closed-market canary banked (``bid==ask<=0``, ``completeness=0.333``), and is
+    quarantined here. The reason code is the worst ``assess_quote`` reason (``crossed`` /
+    ``non_positive_bid`` / ``non_positive_ask`` / ``missing_side``), so the audit receipt names
+    *why* the row was not promoted, not merely that it was.
+    """
+    bid = row.bid
+    ask = row.ask
+    if bid is None or ask is None:
+        return "missing_side"
+    if ask <= 0.0:
+        return "non_positive_ask"
+    # The remaining classification (non-positive bid, crossed market) is exactly what assess_quote's
+    # local checks already encode — reuse them rather than re-deriving the predicates.
+    assessment = assess_quote(bid=bid, ask=ask, max_spread_pct=max_spread_pct)
+    if "crossed" in assessment.reasons:
+        return "crossed"
+    if "non_positive_bid" in assessment.reasons:
+        return "non_positive_bid"
+    return None
+
+
 def _snapshot_events(
     transport: SupportsRestGet,
     *,
@@ -314,26 +426,35 @@ def _snapshot_events(
     session_id: str,
     as_of: datetime,
     next_open: datetime,
-) -> list[RawMarketEvent]:
-    """Snapshot the selected contracts at the close and normalize to ``RawMarketEvent`` rows.
+    max_spread_pct: float,
+) -> _PromotedSnapshots:
+    """Snapshot the selected contracts at the close, gate on quote integrity, normalize to events.
 
-    Every event is stamped at ``as_of`` (the session close) — both the exchange and receipt time
-    — so the basket is the close set, byte-identical on replay. A snapshot row whose own update
-    time (``_updated``) is at or after ``next_open`` (the next session's open) is dropped: it
-    belongs to a later session, a wrong-day catch-up snapshot the close capture never folds in
-    (the look-ahead guard). The admitted window is the half-open ``[as_of, next_open)``, so the
-    post-close settlement marks the timer fires into — whose ``_updated`` is after ``as_of`` but
-    before the next open — are kept, not dropped. A row for an unrequested conid is ignored.
+    Every promoted event is stamped at ``as_of`` (the session close) — both the exchange and
+    receipt time — so the basket is the close set, byte-identical on replay. A snapshot row whose
+    own update time (``_updated``) is at or after ``next_open`` (the next session's open) is
+    dropped: it belongs to a later session, a wrong-day catch-up snapshot the close capture never
+    folds in (the look-ahead guard). The admitted window is the half-open ``[as_of, next_open)``,
+    so the post-close settlement marks the timer fires into — whose ``_updated`` is after ``as_of``
+    but before the next open — are kept, not dropped. A row for an unrequested conid is ignored.
 
-    ``sequence`` is assigned from the kept contracts' *stable identity* (their canonical instrument
-    key), NOT from the broker's response row order: a re-fire / retry that returns the same
-    contracts in a different order must yield identical content-addressed event ids, so the
+    On top of the look-ahead guard, the kept OPTION rows pass a **quote-integrity gate**: only a row
+    carrying a healthy two-sided quote (positive, uncrossed bid AND ask — :func:`assess_quote`) is
+    promoted to the derived close set. A zero / single-sided / crossed row (the closed-market
+    canary, where every row was ``bid==ask<=0`` with only ``last`` real) is quarantined — excluded
+    from promotion with a recorded drop reason — never fed to the IV solver as if it were a quote.
+    The underlying leg is always promoted (it anchors the chain's reference spot, not a tradable
+    option quote). Raw stays immutable: the gate is on promotion, nothing is deleted from ``raw/``.
+
+    ``sequence`` is assigned from the *promoted* contracts' stable identity (their canonical
+    instrument key), NOT from the broker's response row order: a re-fire / retry that returns the
+    same contracts in a different order must yield identical content-addressed event ids, so the
     append-only store dedupes the re-capture instead of keeping a second copy. Broker-supplied
     ``conid`` / ``_updated`` scalars coerce through the wire model's validators, so an unexpected
     payload shape skips the row rather than raising a bare ``ValueError``.
     """
     if not keys_by_conid:
-        return []
+        return _PromotedSnapshots(events=(), option_row_count=0, two_sided_count=0, drop_reasons=())
     # Warm-up polled like the spot snapshot: a cold first call returns metadata-only rows (no
     # marks), which would yield a basket of contracts with no quotes — IV/Greeks could not price.
     rows = snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
@@ -359,11 +480,37 @@ def _snapshot_events(
             )
             continue
         kept.append((instrument, row))
-    # Second pass: assign sequence by the contract's stable canonical key (not arrival order), so a
-    # shuffled re-fire reproduces the same event ids.
-    kept.sort(key=lambda pair: pair[0].canonical())
+    # Second pass: the quote-integrity gate. Classify each kept OPTION row; promote only the
+    # healthy two-sided ones to the derived close set, recording a drop reason for the rest (the
+    # audit receipt). The underlying leg is promoted unconditionally (its quote anchors the spot,
+    # not an option mark). Sequence is then assigned by the promoted contract's stable canonical key
+    # (not arrival order), so a shuffled re-fire reproduces the same event ids.
+    option_row_count = 0
+    two_sided_count = 0
+    drop_reasons: list[tuple[str, str]] = []
+    promoted: list[tuple[InstrumentKey, SnapshotRow]] = []
+    for instrument, row in kept:
+        if not instrument.is_option():
+            promoted.append((instrument, row))
+            continue
+        option_row_count += 1
+        reason = _two_sided_quote_reason(row, max_spread_pct=max_spread_pct)
+        if reason is None:
+            two_sided_count += 1
+            promoted.append((instrument, row))
+            continue
+        drop_reasons.append((instrument.canonical(), reason))
+        _LOGGER.info(
+            "ibkr.close_capture.quarantine_row",
+            instrument_key=instrument.canonical(),
+            reason=reason,
+            bid=row.bid,
+            ask=row.ask,
+            last=row.last,
+        )
+    promoted.sort(key=lambda pair: pair[0].canonical())
     events: list[RawMarketEvent] = []
-    for sequence, (instrument, row) in enumerate(kept):
+    for sequence, (instrument, row) in enumerate(promoted):
         events.extend(
             snapshot_to_events(
                 row,
@@ -375,7 +522,12 @@ def _snapshot_events(
                 receipt_ts=as_of,
             )
         )
-    return events
+    return _PromotedSnapshots(
+        events=tuple(events),
+        option_row_count=option_row_count,
+        two_sided_count=two_sided_count,
+        drop_reasons=tuple(drop_reasons),
+    )
 
 
 def collect_target_basket(
@@ -406,6 +558,13 @@ def collect_target_basket(
     ``[as_of, next_open)`` (a later-session row is dropped). A snapshot that returns option
     contracts but keeps none after that guard raises :class:`CloseCaptureError` (a loud failure),
     never a silently-empty basket.
+
+    A **quote-integrity verdict** (EMERGENCY-quote-integrity-gate) sits on top: each kept option
+    row is classified, and only rows carrying a healthy two-sided quote are promoted to the derived
+    close set (the rest are quarantined with a recorded reason — kept in ``raw/``, excluded from
+    promotion). If the *whole* basket falls below ``config.qc_threshold.quote_integrity``'s
+    two-sided floor — a closed / last-only / degenerate capture (the 2026-06-15 SX5E canary) —
+    this returns ``None`` (a labelled no-capture), NOT a surface fit off last-only marks.
     """
     log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
     selection = selection or _selection_from_config(config, as_of.date())
@@ -469,33 +628,64 @@ def collect_target_basket(
         keys_by_conid[option_conid] = key
 
     session_id = f"{target.symbol}:{as_of.date().isoformat()}"
-    events = _snapshot_events(
+    qc = config.qc_threshold
+    promoted = _snapshot_events(
         transport,
         keys_by_conid=keys_by_conid,
         underlying=target.symbol,
         session_id=session_id,
         as_of=as_of,
         next_open=next_open,
+        max_spread_pct=qc.max_spread_pct,
     )
+    events = list(promoted.events)
 
     instruments = (underlying_key, *kept_options)
     masters = tuple(_master(key, as_of) for key in instruments)
+    two_sided_fraction = (
+        promoted.two_sided_count / promoted.option_row_count
+        if promoted.option_row_count > 0
+        else 0.0
+    )
     log.info(
         "ibkr.close_capture.captured",
         conid=conid,
         option_count=len(kept_options),
         event_count=len(events),
+        option_row_count=promoted.option_row_count,
+        two_sided_count=promoted.two_sided_count,
+        two_sided_fraction=two_sided_fraction,
+        quarantined_count=len(promoted.drop_reasons),
         spot=spot,
     )
-    if kept_options and not events:
+    if kept_options and not promoted.option_row_count:
         # Contracts came back but every row was dropped as a later session: a wrong-day / wrong-time
         # capture, not a clean optionless no-op (that returned None far above). Fail loud so the
         # runner exits non-zero and OnFailure= alerts, rather than silently landing an empty day.
         raise CloseCaptureError(
             f"{target.symbol}: snapshot returned {len(kept_options)} option contracts but kept 0 "
-            f"events after the look-ahead guard (as_of={as_of.isoformat()}, "
+            f"rows after the look-ahead guard (as_of={as_of.isoformat()}, "
             f"next_open={next_open.isoformat()}) — empty close set, refusing to land it silently"
         )
+    # Basket-level quote-integrity verdict (EMERGENCY-quote-integrity-gate). If the whole basket is
+    # closed / last-only / degenerate — too few rows carrying a healthy two-sided quote — this is a
+    # labelled no-capture, NOT a fit. Distinct from the wrong-day CloseCaptureError above: that is a
+    # look-ahead failure (rows belong to a later session); this is a market-closed verdict (rows are
+    # in-window but carry no live two-sided quote). The 2026-06-15 SX5E canary banked a converged
+    # surface off exactly this — every row bid==ask<=0, only `last` real — so it returns None with a
+    # structured reason rather than feeding `last`-only marks to the solver as if they were quotes.
+    min_fraction = qc.quote_integrity.min_two_sided_fraction
+    if promoted.option_row_count > 0 and two_sided_fraction < min_fraction:
+        log.info(
+            "ibkr.close_capture.closed_market",
+            reason="basket has no live two-sided quotes — last-only / market-closed capture",
+            option_row_count=promoted.option_row_count,
+            two_sided_count=promoted.two_sided_count,
+            two_sided_fraction=two_sided_fraction,
+            min_two_sided_fraction=min_fraction,
+            quarantined=list(promoted.drop_reasons),
+        )
+        return None
     return IndexBasket(
         instruments=instruments, events=tuple(events), masters=masters
     )

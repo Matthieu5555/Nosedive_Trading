@@ -36,6 +36,20 @@ grid*, not as a flat chain:
 Both grid checks are critical-severity (a grid breach pages) and key on config, not on the
 data — their cut-offs live in the typed `qc.grid` block (ADR 0028), not as `.py` literals.
 
+`underlying_quote_health` (critical) has **two limbs**, both of which must hold: (1) the
+**anchor spread** — every usable underlying (anchor) quote's `spread_pct` is within
+`max_spread_pct`; and (2) **chain has two-sided quotes** — when the batch carries option legs but
+*none* of them is a two-sided quote, that is "the chain has no two-sided quotes", a critical fail
+rather than a silent pass. An option leg counts as two-sided unless its assessment shows no
+two-sided quote (a non-positive bid or a crossed market) or an outright `reject`; a wide-spread or
+locked-but-positive `caution` still counts (it is a live two-sided quote). This is the same
+two-sided criterion the capture-time gate enforces, so capture and QC tell one story: the gate in
+`infra-ibkr` refuses a closed/last-only basket up front (EMERGENCY-quote-integrity-gate); this limb
+is the end-to-end backstop. The 2026-06-15 SX5E canary fitted a whole surface while *every option
+was zero-bid* (`non_positive_bid`), and this check — then anchor-only — silently passed. The
+context names the `failing_limb` (`anchor_spread` / `chain_no_two_sided_quotes`) so the operator
+sees whether the anchor is wide or the chain is dead.
+
 Plus `detect_anomaly` (a median/MAD robust z-score against a rolling baseline).
 `greek_sanity` folds in ADR 0006's deferred reconcile precondition: a broker row for a
 different contract is a mis-wired join and raises `ContractKeyMismatchError`, not a

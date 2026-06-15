@@ -1,5 +1,16 @@
 # ibkr-broker-account-read — the CP-REST account read-path (positions / cash / fills) reconciliation needs
 
+> **State (2026-06-15, branch `ibkr-broker-account-read`):** DONE — read-only CP-REST account
+> collector built. Frozen-seam contracts `BrokerPosition` / `BrokerCashBalance` / `BrokerFill` +
+> the in-memory `BrokerAccountSnapshot` bundle (`infra/contracts`, additively registered as
+> `broker_positions` / `broker_cash_balances` / `broker_fills`); the broker leaf collector
+> `infra-ibkr/collectors/{cp_rest_account_wire,cp_rest_account}.py` (read-only `/portfolio/*` +
+> `/iserver/account/trades` GETs, order endpoints asserted never called; malformed rows rejected
+> at the door; fills stamped at their own venue time — no look-ahead). Gate green
+> (ruff + mypy + lint-imports clean, 2110 passed / 12 skipped). The SHARED SEAM for the recon
+> sub-lane of `execution-operational-hardening` is the three `Broker*` contracts — clean and
+> additive. Live bring-up is a smoke run, not pytest.
+
 > **Source:** TARGET §5.9 + §6 ("broker position/cash/fill reconciliation") + R4 (ADR 0042/0024 —
 > CP-REST is *the* IBKR path). **Found by the 2026-06-14 IBKR-coverage audit:** reconciliation is
 > specced as sub-lane 3 of [[execution-operational-hardening]], but the IBKR-side capability it

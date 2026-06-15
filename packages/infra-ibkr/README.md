@@ -169,6 +169,33 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   The flag gate, the bind-and-capture, and the establish handshake are pinned in
   `test_gateway_capture.py`.
 
+### Read-only account read-path — positions / cash / fills (TARGET §5.9/§6, recon foundation)
+
+The IBKR-side capability broker **reconciliation** reads from. The leaf had market-data ingestion
+only; this is the strictly-read account collector the recon sub-lane of
+`execution-operational-hardening` consumes (it feeds the broker side only — the diff/tolerance/
+alert logic lives there, not here). It reuses the existing transport + session machinery; no new
+transport.
+
+- `collectors/cp_rest_account_wire.py` — the typed CP **account** wire shapes (pydantic v2,
+  `extra="ignore"`, the `cp_rest_wire.py` pattern): `PositionRow` (`/portfolio/{accountId}/
+  positions/{pageId}`), `LedgerRow` (`/portfolio/{accountId}/ledger`, one entry per currency +
+  the synthetic `BASE`), `TradeRow` (`/iserver/account/trades`). Broker spellings (`avgCost`,
+  `mktPrice`, `cashbalance`, `trade_time_r`) alias onto house names; the conid coercer is reused
+  verbatim from `cp_rest_wire`. A malformed *row* is a `ValidationError` the collector records,
+  never a coerced zero.
+- `collectors/cp_rest_account.py` — `CpRestAccountCollector` / `collect_broker_account`: reads the
+  three endpoints and normalizes into the frozen-seam contracts `BrokerPosition` /
+  `BrokerCashBalance` / `BrokerFill`, bundled into one `BrokerAccountSnapshot` (`infra.contracts`).
+  **Read-only** — only `/portfolio/*` and `/iserver/account/trades` GETs are ever touched, never
+  an order endpoint (asserted in `test_cp_rest_account.py`, mirroring the market-data adapter's
+  read-only assertion). Positions keep a **signed** quantity (short negative); fills are stamped
+  at their **own venue time** (`trade_time_r` epoch-ms), never the read clock — no look-ahead. The
+  transport, clock (`now_fn`), and the conid→`contract_key` resolver are injected (DI); the
+  resolver defaults to `conid=<N>` (recon joins on the broker's conid). It does **not** submit
+  orders, persist, or run recon — it hands back the typed snapshot. Lives in CI against a fake
+  transport; live bring-up is a smoke run, not pytest.
+
 ### Nautilus TWS (fallback, ADR 0025)
 
 - `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: the Nautilus
@@ -188,8 +215,11 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
   transport-signing** seam, the **history fetch/normalize/backfill-resume** path, the
   **REST↔TWS equivalence** test, and the **live EOD close capture** (`collect_live` against a
   fake gateway: credential load → conid resolve → chain plan → close snapshot → basket →
-  persisted grid, plus the no-look-ahead drop and the no-credentials fallback) all run in CI
-  against fakes — the verifiable core.
+  persisted grid, plus the no-look-ahead drop and the no-credentials fallback), and the
+  **read-only account collector** (`cp_rest_account` against a fake transport: positions/cash/
+  fills normalize into the broker contracts, the fill's own-venue-time stamp, the malformed-row
+  rejection, and the read-only/no-order-endpoint assertion) all run in CI against fakes — the
+  verifiable core.
 - The Nautilus config builder's guard runs; its construction test skips without the `ibkr` extra.
 - Live runs are a smoke script on a machine with the relevant Gateway, not pytest. Install the
   Nautilus-TWS path with `uv sync --extra ibkr`; the REST path needs the CP Gateway running locally.

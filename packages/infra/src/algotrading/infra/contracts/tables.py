@@ -726,3 +726,145 @@ class Basket:
                 table, "strategy_id", self.strategy_id,
                 "when present (the strategy-identity stamp) must be a non-empty string",
             )
+
+
+# A broker fill names exactly one direction. The pair is carried (not just the quantity
+# sign) so a record reads the way the broker reported it; ``BrokerFill`` keeps quantity
+# unsigned (a magnitude) and the side as the signed intent, mirroring the CP Web API's own
+# ``side`` ∈ {"B","S"} (normalized to these long forms at the door).
+FILL_SIDES = ("BUY", "SELL")
+
+
+@dataclass(frozen=True, slots=True)
+class BrokerPosition:
+    """One position as the **broker** reports it at a read instant — the recon left-hand side.
+
+    This is a *broker-reported fact*, not the internal book: reconciliation (§6, the
+    ``execution-operational-hardening`` recon sub-lane) diffs this against the fills-based
+    :class:`Position` store to catch a drift between what we think we hold and what the broker
+    says we hold. It is an input (read off the broker), not a derived analytic, so it carries no
+    provenance stamp — the same discipline as :class:`Position` / :class:`Basket`.
+
+    ``account_id`` is the broker account the read was scoped to; ``conid`` is IBKR's integer
+    contract id (the broker's own key) and ``contract_key`` is the canonical instrument key the
+    book is keyed on, so recon can join the two sides without re-resolving the conid. ``quantity``
+    is **signed** (long positive, short negative — the broker's convention). ``avg_cost`` is the
+    broker's average cost per unit and ``market_price`` / ``market_value`` its last mark; all are
+    in ``currency``. ``as_of_ts`` stamps the read instant (the broker has no per-row timestamp on
+    a positions snapshot — every row of one read shares the read's instant), and is the time axis
+    of the partition key so two reads of the same account never collide.
+    """
+
+    as_of_ts: datetime
+    account_id: str
+    conid: int
+    contract_key: str
+    quantity: float
+    avg_cost: float
+    market_price: float
+    market_value: float
+    currency: str
+
+    def __post_init__(self) -> None:
+        if not self.account_id.strip():
+            raise ContractValidationError(
+                "broker_positions", "account_id", self.account_id, "must be non-empty",
+            )
+        if not self.currency.strip():
+            raise ContractValidationError(
+                "broker_positions", "currency", self.currency, "must be non-empty",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class BrokerCashBalance:
+    """One currency's cash/ledger balance as the **broker** reports it — the recon cash side.
+
+    The ``/portfolio/{accountId}/ledger`` read returns one entry per currency the account holds
+    (plus a synthetic ``BASE`` summary row); each becomes one of these. ``cash_balance`` is the
+    raw cash, ``settled_cash`` the settled portion, ``net_liquidation`` the currency's NLV — all
+    signed (a debit balance is negative). A broker-reported input, no provenance stamp.
+
+    The key is ``(as_of_ts, account_id, currency)`` so the per-currency rows of one read are
+    distinct and a re-read replaces the prior instant's rows.
+    """
+
+    as_of_ts: datetime
+    account_id: str
+    currency: str
+    cash_balance: float
+    settled_cash: float
+    net_liquidation: float
+
+    def __post_init__(self) -> None:
+        if not self.account_id.strip():
+            raise ContractValidationError(
+                "broker_cash_balances", "account_id", self.account_id, "must be non-empty",
+            )
+        if not self.currency.strip():
+            raise ContractValidationError(
+                "broker_cash_balances", "currency", self.currency, "must be non-empty",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class BrokerFill:
+    """One execution (fill) as the **broker** reports it — the recon "accounting from fills" side.
+
+    The day's executions off ``/iserver/account/trades``. §6 says accounting comes **from fills,
+    not orders**: this is the broker's record of the fills the book's :class:`Position` store
+    should have ingested, so recon can verify the book was fed every fill the broker booked.
+
+    ``execution_id`` is the broker's globally-unique execution id — the natural key, so a fill is
+    idempotent on re-read and the table is append-only (a fill, once reported, never changes).
+    ``side`` ∈ :data:`FILL_SIDES`; ``quantity`` is the **unsigned** filled size (the magnitude —
+    direction lives in ``side``) and ``price`` the fill price, in ``currency``. ``venue_ts`` is
+    the execution's **own venue time** (no look-ahead — a fill is stamped when it happened at the
+    venue, never at our read clock) and ``trade_date`` its trading day (the partition date).
+    ``conid`` / ``contract_key`` mirror :class:`BrokerPosition` so a fill joins to the same
+    instrument both sides of recon address.
+    """
+
+    account_id: str
+    execution_id: str
+    conid: int
+    contract_key: str
+    side: str
+    quantity: float
+    price: float
+    currency: str
+    venue_ts: datetime
+    trade_date: date
+
+    def __post_init__(self) -> None:
+        if not self.account_id.strip():
+            raise ContractValidationError(
+                "broker_fills", "account_id", self.account_id, "must be non-empty",
+            )
+        if not self.execution_id.strip():
+            raise ContractValidationError(
+                "broker_fills", "execution_id", self.execution_id, "must be non-empty",
+            )
+        if self.side not in FILL_SIDES:
+            raise ContractValidationError(
+                "broker_fills", "side", self.side, f"must be one of {FILL_SIDES}",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class BrokerAccountSnapshot:
+    """One read of a broker account's read-only state — positions, cash, and the day's fills.
+
+    The transport-agnostic bundle a broker read-collector returns and the recon layer consumes:
+    the three persistable contracts above, grouped by the one read they came from. It is **not**
+    a registered table (the three members persist individually under their own keys); it is the
+    in-memory unit a collector hands back so a caller gets a coherent, single-instant view rather
+    than three loose reads that might straddle a clock tick. ``as_of_ts`` is that read instant —
+    every position/cash row shares it (the broker has no per-row read timestamp).
+    """
+
+    account_id: str
+    as_of_ts: datetime
+    positions: tuple[BrokerPosition, ...]
+    cash_balances: tuple[BrokerCashBalance, ...]
+    fills: tuple[BrokerFill, ...]

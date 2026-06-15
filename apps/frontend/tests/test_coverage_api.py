@@ -5,18 +5,25 @@ The router reads ``instrument_master`` (the captured chain) and ``qc_results`` (
 labeled empty payload (never a 500); a malformed ``trade_date`` is a 400. The populated case seeds a
 hand-counted chain + a hand-built QC verdict and asserts the counts and per-tenor coverage the front
 will render, so a passing assertion is real agreement, not a round-trip.
+
+Volume tests (TARGET §7 #7) cover:
+* ``total_volume`` in expiry rows is the sum of per-contract option volumes from
+  ``market_state_snapshots`` (additive-nullable: null when no contracts reported volume).
+* ``_volume_by_expiry`` sums correctly per expiry and skips None-volume contracts.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from algotrading.core.provenance import stamp
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
 from algotrading.infra.contracts import (
     ConstituentCaptureOutcome,
     InstrumentKey,
     InstrumentMaster,
+    MarketStateSnapshot,
     QcResult,
 )
 from fastapi.testclient import TestClient
@@ -178,3 +185,131 @@ def test_coverage_populated_counts_and_tenor_grid(ctx: AppContext) -> None:
 
     assert payload["qc_status"] == "fail"
     assert payload["delta_band_status"] == "fail"
+
+
+# ---------------------------------------------------------------------------
+# Volume tests (TARGET §7 #7) — ``total_volume`` in expiry rows
+# ---------------------------------------------------------------------------
+
+_PROV = stamp(
+    calc_ts=_RUN_TS,
+    code_version="test-snap-1.0.0",
+    config_hashes={"qc": "qc-test"},
+    source_records=(),
+    source_timestamps=(),
+)
+
+
+def _snap(key: InstrumentKey, volume: float | None = None) -> MarketStateSnapshot:
+    """Minimal ``MarketStateSnapshot`` for the coverage volume test."""
+    return MarketStateSnapshot(
+        snapshot_ts=_RUN_TS,
+        instrument_key=key.canonical(),
+        reference_spot=100.0,
+        bid=9.90,
+        ask=10.10,
+        last=10.0,
+        spread_pct=0.02,
+        reference_type="mid",
+        flags=("open",),
+        completeness=1.0,
+        trade_date=_TRADE_DATE,
+        underlying="SPX",
+        provenance=_PROV,
+        volume=volume,
+    )
+
+
+def test_coverage_total_volume_sums_by_expiry(ctx: AppContext) -> None:
+    """``total_volume`` in expiry rows is the per-expiry sum of ``market_state_snapshots.volume``.
+
+    Independent oracle (hand-summed):
+      * 2026-06-19 has two contracts: 300 + 500 = 800 total.
+      * 2026-09-18 has one contract with volume=None → total_volume must be null (absent from map).
+    The mapping skips contracts with None volume, so a lone None-volume expiry is null, not 0.
+    """
+    expiry_a = date(2026, 6, 19)
+    expiry_b = date(2026, 9, 18)
+
+    opt_a1 = _opt(expiry_a, 100.0, "C")
+    opt_a2 = _opt(expiry_a, 105.0, "C")
+    opt_b1 = _opt(expiry_b, 200.0, "C")
+
+    masters = [_master(opt_a1), _master(opt_a2), _master(opt_b1)]
+    snapshots = [
+        _snap(opt_a1, volume=300.0),  # expiry 2026-06-19 → partial sum 300
+        _snap(opt_a2, volume=500.0),  # expiry 2026-06-19 → partial sum 500; total 800
+        _snap(opt_b1, volume=None),   # expiry 2026-09-18 → no volume → total_volume null
+    ]
+
+    ctx.store.write("instrument_master", masters)
+    ctx.store.write("market_state_snapshots", snapshots)
+
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": "2026-06-11"}
+        ).json()
+
+    by_expiry = {row["expiry"]: row for row in payload["expiries"]}
+
+    # 2026-06-19: 300 + 500 = 800 (independently hand-summed)
+    assert by_expiry["2026-06-19"]["total_volume"] == 800.0, (
+        "total_volume should sum 300 + 500 = 800 for two contracts in expiry 2026-06-19"
+    )
+    # 2026-09-18: lone contract has volume=None → null in response
+    assert by_expiry["2026-09-18"]["total_volume"] is None, (
+        "total_volume must be null when all contracts in an expiry report None volume"
+    )
+
+
+def test_coverage_total_volume_is_null_with_no_snapshots(ctx: AppContext) -> None:
+    """When ``market_state_snapshots`` has no data for this date, ``total_volume`` is null.
+
+    Additive-nullable guarantee: captures written before the volume lane was active
+    have no snapshot records at all; the expiry rows must still be present with null volumes.
+    """
+    opt_a = _opt(date(2026, 6, 19), 100.0, "C")
+    ctx.store.write("instrument_master", [_master(opt_a)])
+    # No market_state_snapshots written → empty read → volume_by_expiry = {}
+
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": "2026-06-11"}
+        ).json()
+
+    by_expiry = {row["expiry"]: row for row in payload["expiries"]}
+    assert by_expiry["2026-06-19"]["total_volume"] is None
+
+
+def test_coverage_volume_by_expiry_unit() -> None:
+    """Unit test for ``_volume_by_expiry`` directly (no I/O, no BFF wire).
+
+    Independently-derived expected values:
+      * Two contracts in expiry "2026-06-19" with volumes 100.0 and 250.5 → sum = 350.5
+      * One contract in expiry "2026-09-18" with volume None → absent from map
+      * One contract with no expiry segment (the underlying leg, key has no expiry YYYY-MM-DD)
+        → skipped (not a tradable option row)
+    """
+    from algotrading.frontend.routers.coverage import _volume_by_expiry
+
+    class FakeSnap:
+        def __init__(self, key: str, volume: float | None) -> None:
+            self.instrument_key = key
+            self.volume = volume
+
+    snaps = [
+        # 2026-06-19 contracts
+        FakeSnap("SX5E|OPT|EUREX|EUR|100.0|11111|2026-06-19|4800.0|C", 100.0),
+        FakeSnap("SX5E|OPT|EUREX|EUR|100.0|22222|2026-06-19|4850.0|P", 250.5),
+        # 2026-09-18 contract — volume None → skipped
+        FakeSnap("SX5E|OPT|EUREX|EUR|100.0|33333|2026-09-18|5000.0|C", None),
+        # Underlying leg — no expiry segment (empty 7th segment) → skipped
+        FakeSnap("SX5E|STK|EUREX|EUR|1.0|99999||0.0|", 500.0),
+    ]
+
+    result = _volume_by_expiry(snaps)
+
+    # 2026-06-19: 100.0 + 250.5 = 350.5 (hand-summed)
+    assert result == {"2026-06-19": 350.5}, (
+        f"Expected {{'2026-06-19': 350.5}}, got {result}"
+    )

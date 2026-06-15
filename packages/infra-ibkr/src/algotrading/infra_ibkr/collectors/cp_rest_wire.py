@@ -27,10 +27,11 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationEr
 _NO_VALUE = -1.0
 
 # The market-data field tags the snapshot/WS normalizer understands — what to request on
-# snapshot/subscribe, in the deterministic emit order: bid, ask, sizes, last, last size.
+# snapshot/subscribe, in the deterministic emit order: bid, ask, sizes, last, last size, volume.
 # Codes per the CP Web API (interactivebrokers.github.io/cpwebapi); they MUST map onto the same
 # names the Nautilus path uses or the equivalence test fails.
-SNAPSHOT_FIELD_TAGS: tuple[str, ...] = ("84", "86", "88", "85", "31", "7059")
+# Tag 7762 is the per-contract option day-volume (cumulative contracts traded today).
+SNAPSHOT_FIELD_TAGS: tuple[str, ...] = ("84", "86", "88", "85", "31", "7059", "7762")
 
 
 def parse_field_value(raw: object) -> float | None:
@@ -148,6 +149,9 @@ class SnapshotRow(BaseModel):
     ask_size: MarketFieldValue = Field(default=None, alias="85")
     last: MarketFieldValue = Field(default=None, alias="31")
     last_size: MarketFieldValue = Field(default=None, alias="7059")
+    # Per-contract option day-volume (cumulative contracts traded today). CP tag 7762.
+    # Additive-nullable on the wire: the broker does not always populate this field.
+    volume: MarketFieldValue = Field(default=None, alias="7762")
 
     def has_market_value(self) -> bool:
         """True when the row carries at least one parseable value tag — the warm/cold test.

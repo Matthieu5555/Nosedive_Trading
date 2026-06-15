@@ -216,6 +216,7 @@ def _build_assessed(
         trade_date=trade_date,
         underlying=instrument.underlying_symbol,
         provenance=_stamp_for(used_events, context),
+        volume=field_value("volume"),
     )
     assessment = assess_quote(
         bid=bid,

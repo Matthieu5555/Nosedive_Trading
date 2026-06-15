@@ -109,8 +109,8 @@ def test_parse_snapshot_rows_skips_non_rows() -> None:
 
 
 def test_snapshot_field_tags_are_the_cp_codes() -> None:
-    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size (CP field codes).
-    assert SNAPSHOT_FIELD_TAGS == ("84", "86", "88", "85", "31", "7059")
+    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size, 7762=volume (CP codes).
+    assert SNAPSHOT_FIELD_TAGS == ("84", "86", "88", "85", "31", "7059", "7762")
 
 
 def test_secdef_search_rows_skip_garbage_and_coerce_string_conids() -> None:

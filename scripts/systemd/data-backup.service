@@ -1,0 +1,49 @@
+# data-backup.service — daily backup of the canonical store keystone (platform-data-durability).
+#
+# The systemd timer is the scheduler; this is the one-shot it fires. It wraps
+# scripts/backup_data_store.py, which snapshots the KEYSTONE (the immutable raw partitions +
+# _run_state.jsonl) to $ALGOTRADING_BACKUP_ROOT as a new timestamped, append-only directory with
+# a sha256 manifest. Everything under derived/ replays from raw, so the default snapshot is
+# raw + ledger; pass --include-derived in ExecStart to also copy the reconstructable trees.
+#
+# It reads the canonical store ONLY (never writes into it). A run is independent and idempotent
+# in effect (each fire is a fresh snapshot); a failed fire routes to data-backup-alert.service.
+#
+# Ordering: the timer fires AFTER the eod-capture window (18:15 Europe/Berlin) so it snapshots the
+# freshly-captured close, not a mid-capture store. It does not hard-depend on eod-capture (a day
+# with no capture still backs up the prior state — a no-op-equivalent, harmless snapshot).
+#
+# DESTINATION IS A DECISION: $ALGOTRADING_BACKUP_ROOT must point at a SECOND location for real
+# durability — a mounted external disk, an NFS/rsync target, or an object-store mount. A same-disk
+# path protects only against a bad purge / fat-finger, NOT disk loss. The script refuses to run
+# with no destination set, so a misconfigured unit fails loudly rather than silently not backing up.
+#
+# Install (per-user, alongside the eod-capture units — see eod-capture@.service's header):
+#   cp scripts/systemd/data-backup.service  ~/.config/systemd/user/
+#   cp scripts/systemd/data-backup.timer    ~/.config/systemd/user/
+#   cp scripts/systemd/data-backup-alert.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now data-backup.timer
+# Operate:
+#   journalctl --user -u data-backup.service          # the backup trace
+#   systemctl --user list-timers data-backup.timer    # next fire
+
+[Unit]
+Description=AlgoTrading canonical-store daily backup (raw + run-state ledger)
+Documentation=file:///srv/project/scripts/systemd/data-backup.service
+OnFailure=data-backup-alert.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/project
+# Loads $ALGOTRADING_BACKUP_ROOT (and any store override) from the repo .env. The leading `-`
+# makes a missing file a no-op; the script itself still refuses to run with no destination set.
+EnvironmentFile=-/srv/project/.env
+ExecStart=/usr/bin/env uv run python scripts/backup_data_store.py backup
+# A transient disk/mount hiccup retries; a fresh snapshot each fire makes a retry safe.
+Restart=on-failure
+RestartSec=120
+StartLimitIntervalSec=900
+StartLimitBurst=3
+StandardOutput=journal
+StandardError=journal

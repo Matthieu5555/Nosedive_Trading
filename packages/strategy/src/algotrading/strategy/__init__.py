@@ -24,6 +24,7 @@ from .delta_hedge_band import (
     decide_delta_hedge,
 )
 from .dispersion_data import StoreBackedDispersionData, dispersion_strategy
+from .gamma_data import StoreBackedGammaData, gamma_strategy
 from .harness import (
     StrategyContext,
     StrategyStep,
@@ -35,6 +36,12 @@ from .s1_dispersion import (
     DispersionConstructionError,
     DispersionMarketData,
     DispersionStrategy,
+)
+from .s3_gamma import (
+    GammaConfig,
+    GammaConstructionError,
+    GammaMarketData,
+    GammaStrategy,
 )
 from .signal_data import signal_snapshot_from_store
 from .signals import (
@@ -89,4 +96,11 @@ __all__ = [
     "DispersionConstructionError",
     "StoreBackedDispersionData",
     "dispersion_strategy",
+    # S3 gamma-trading strategy (delta-neutral long-gamma scalp on one cheap name)
+    "GammaStrategy",
+    "GammaConfig",
+    "GammaMarketData",
+    "GammaConstructionError",
+    "StoreBackedGammaData",
+    "gamma_strategy",
 ]

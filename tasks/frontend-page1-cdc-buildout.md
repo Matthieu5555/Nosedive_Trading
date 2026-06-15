@@ -45,3 +45,26 @@ dollar-Greeks term structure. What's missing is the rest of the CDC's §3.3–3.
   computable now. Surface honest empty/degraded states, never a blank.
 - Recommended order: **1 → 2 → 3** as one increment (the bulk of "it finally looks like the CDC",
   all data-backed), then 4, then 5, then 6.
+
+## Phase 7 — robustness to degenerate slices + Greeks table transpose (added 2026-06-15)
+
+The first **live SX5E render** (real 2026-06-15 data) exposed two things the CDC buildout must
+absorb (folded in here; the standalone `frontend-page-a-robustness-audit` was merged into this task):
+
+- **Robust to degenerate data.** A single railed/arb-flagged slice (the SVI bound_hit producing
+  108%/140% IV spikes — root fix is [[infra-surface-fit-quality]]) currently **blows up the whole
+  page from the nappe down**: the 3D Z/colour scale explodes, the greeks panels spike/empty, the
+  greeks-by-strike table overflows. The front must **not** depend on that data fix: clamp/flag/exclude
+  pathological points (NaN, |IV| absurd, duplicated delta, arb-flagged slice), render the good slices,
+  and **mark** the bad one (not silent garbage). Verify by **driving the running app with Playwright +
+  screenshot** on a degenerate fixture AND the real store — look at the pixels. Use dedicated
+  frontend/UX agents for the component-by-component audit (nappe, dollar-greeks term structure,
+  per-maturity, smile, the greeks table).
+- **Greeks display = transpose (owner direction).** Re-lay the §3.6 Greeks block as a **table with
+  the Greeks as COLUMNS (raw AND currency/devise side by side) and the deltas as ROWS, scrollable,
+  grouped/paged by maturity** — instead of the current greeks-vs-maturity panels and the wide
+  overflowing strike table. One maturity in view at a time (the global maturity selector from phase 4),
+  deltas down the rows, each Greek a raw+devise column pair. This also fixes the table-overflow defect.
+
+Pairs with [[infra-surface-fit-quality]] (the data side — clean slices) and
+`frontend-per-side-surfaces-toggle`. P1 once the close-settled data confirms the slices.

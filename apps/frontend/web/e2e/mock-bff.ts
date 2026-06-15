@@ -14,6 +14,7 @@ import {
   ANALYTICS_AAA,
   BASKET_RISK_AAA,
   CONSTITUENTS_TWO,
+  DELTA_BANDS_32,
   HEALTH_HEALTHY,
   INDICES_SPX_SX5E,
   PORTFOLIOS_ONE,
@@ -84,6 +85,7 @@ const ROUTES: Record<string, unknown> = {
   "/api/risk/scenarios": SCENARIOS_EMPTY,
   "/api/basket/risk": BASKET_RISK_AAA,
   "/api/ticket/preview": TICKET_AAA,
+  "/api/config/delta-bands": { delta_bands: DELTA_BANDS_32 },
 };
 
 export interface BffMock {

@@ -227,10 +227,19 @@ export interface AnalyticsResponse {
 export interface IndexOption {
   symbol: string;
   name: string;
+  // ISO quote currency from the registry (e.g. "EUR" for SX5E). The front renders monetized
+  // Greeks/PnL in this currency's symbol — never a hard-coded "$" (blueprint 05-math-notes).
+  currency: string;
 }
 
 export interface IndicesResponse {
   indices: IndexOption[];
+}
+
+// The platform-wide delta-band axis (GET /api/config/delta-bands) the basket leg selector
+// offers — the single source, so the selector is never a hard-coded band list.
+export interface DeltaBandsResponse {
+  delta_bands: string[];
 }
 
 export type QcVerdict = "pass" | "fail" | "unknown";

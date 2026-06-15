@@ -56,6 +56,38 @@ test("pricing a composed basket renders the totals with unit strings visible", a
   expect(within(totals).getByText("$ per 1% move")).toBeInTheDocument();
 });
 
+test("the leg band selector is wired to the platform band axis (>8 options)", async () => {
+  render(<BasketPage />);
+  // The msw default serves the 32-band axis from GET /api/config/delta-bands; the page threads it
+  // into the leg grid, so the selector offers far more than the old hard-coded 8.
+  const bandSelect = await screen.findByLabelText("leg band");
+  await waitFor(() =>
+    expect(within(bandSelect).getAllByRole("option").length).toBeGreaterThan(8),
+  );
+  // A band only the full axis carries (the old 8-list never had 02dp/02dc).
+  expect(within(bandSelect).getByRole("option", { name: "02dp" })).toBeInTheDocument();
+  expect(within(bandSelect).getByRole("option", { name: "02dc" })).toBeInTheDocument();
+});
+
+test("selecting the EUR-quoted index renders monetized values in € (not $)", async () => {
+  const user = userEvent.setup();
+  server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
+  render(<BasketPage />);
+  // The msw default serves SX5E with currency EUR; switch the underlying to it, then price.
+  const underlying = await screen.findByLabelText("underlying");
+  await user.selectOptions(underlying, "SX5E");
+  await user.click(screen.getByRole("button", { name: /template straddle/i }));
+  await user.click(screen.getByRole("button", { name: /price basket/i }));
+  await waitFor(() =>
+    expect(screen.getByRole("table", { name: /book-additive sum/i })).toBeInTheDocument(),
+  );
+  const totals = screen.getByRole("table", { name: /book-additive sum/i });
+  // The backend "$"-unit is re-currencied to the index's quote currency: "$ per 1% move" (gamma)
+  // -> "€ per 1% move". The raw $-token must not leak once the EUR index is selected.
+  expect(within(totals).getByText("€ per 1% move")).toBeInTheDocument();
+  expect(within(totals).queryByText("$ per 1% move")).not.toBeInTheDocument();
+});
+
 test("a pricing error renders a labelled alert carrying the BFF's typed detail", async () => {
   const user = userEvent.setup();
   server.use(badBasket("/api/basket/risk"));

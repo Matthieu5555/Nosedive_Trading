@@ -97,6 +97,10 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/providers`, `GET /api/run/underlyings`, `POST /api/run`,
   `GET /api/jobs`, `GET /api/jobs/{id}`.
 - `GET /api/config`, `GET /api/config/{filename}`.
+- `GET /api/config/delta-bands` — the ordered delta-band axis (`30dp … atm, atmp … 30dc`) the
+  basket leg selector offers, the single source built from `qc_threshold.grid` via
+  `ProjectionConfig.from_band` (no hard-coded band list on the front); falls back to the default
+  axis when no config bundle is loadable.
 - `GET /api/price-history[?underlying=&start=&end=]` — daily OHLC bars for one ticker over a
   window, from the `daily_bar` table (WS 1I).
 - `GET|POST /api/price-history/batch` — grouped daily OHLC histories for a requested list of

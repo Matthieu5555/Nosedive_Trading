@@ -16,8 +16,10 @@ import {
 
 import type { BasketLegInput, InstrumentKind, LegSide } from "../api";
 
-// The delta bands the WS-1F grid offers (projection.py), put → ATM (call `atm` + put `atmp`) → call.
-const DELTA_BANDS = ["30dp", "20dp", "10dp", "atm", "atmp", "10dc", "20dc", "30dc"];
+// A minimal fallback band axis for when the platform axis (GET /api/config/delta-bands) has not
+// arrived yet (loading) or failed — so the leg form is still usable. The live axis is threaded in
+// from the page as a prop; this is never the primary source.
+const FALLBACK_BANDS = ["30dp", "20dp", "10dp", "atm", "atmp", "10dc", "20dc", "30dc"];
 
 function validateLeg(leg: BasketLegInput): string | null {
   if (!Number.isFinite(leg.quantity) || leg.quantity === 0) {
@@ -68,20 +70,27 @@ export function BasketLegGrid({
   legs,
   defaultUnderlying,
   defaultTenor,
+  bands = [],
   onAdd,
   onRemove,
 }: {
   legs: BasketLegInput[];
   defaultUnderlying: string;
   defaultTenor: string;
+  // The platform delta-band axis (GET /api/config/delta-bands), threaded from the page — the
+  // single source for the band selector, never a hard-coded list. Empty while loading/on error,
+  // in which case the form falls back to FALLBACK_BANDS so it stays usable.
+  bands?: string[];
   onAdd: (leg: BasketLegInput) => void;
   onRemove: (index: number) => void;
 }) {
+  const bandOptions = bands.length > 0 ? bands : FALLBACK_BANDS;
+  const defaultBand = bandOptions.includes("atm") ? "atm" : bandOptions[0];
   const [kind, setKind] = useState<InstrumentKind>("option");
   const [side, setSide] = useState<LegSide>("long");
   const [quantity, setQuantity] = useState("1");
   const [tenor, setTenor] = useState(defaultTenor);
-  const [band, setBand] = useState("atm");
+  const [band, setBand] = useState(defaultBand);
   const [error, setError] = useState<string | null>(null);
 
   const table = useReactTable({
@@ -177,7 +186,7 @@ export function BasketLegGrid({
               Band{" "}
               <select aria-label="leg band" value={band}
                 onChange={(e) => setBand(e.target.value)}>
-                {DELTA_BANDS.map((b) => (
+                {bandOptions.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>

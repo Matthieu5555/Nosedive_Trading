@@ -14,6 +14,7 @@ import { setupServer } from "msw/node";
 import {
   ANALYTICS_AAA,
   CONSTITUENTS_TWO,
+  DELTA_BANDS_32,
   INDICES_SPX_SX5E,
   PORTFOLIOS_ONE,
   PRICE_HISTORY_AAA,
@@ -47,6 +48,7 @@ export const server = setupServer(
   jsonPost("/api/price-history/batch", PRICE_HISTORY_BATCH_TWO),
   jsonGet("/api/risk/portfolios", PORTFOLIOS_ONE),
   jsonGet("/api/risk/scenarios", SCENARIOS_EMPTY),
+  jsonGet("/api/config/delta-bands", { delta_bands: DELTA_BANDS_32 }),
   // Last (lowest precedence): any other /api endpoint behaves like the old routers' 500.
   http.all("/api/*", notMocked),
 );

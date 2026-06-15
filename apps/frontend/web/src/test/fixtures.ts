@@ -157,10 +157,20 @@ export const HEALTH_DEGRADED: HealthResponse = {
 // default index matches the SPX-centric recorded/analytics fixtures below.
 export const INDICES_SPX_SX5E: IndicesResponse = {
   indices: [
-    { symbol: "SPX", name: "S&P 500" },
-    { symbol: "SX5E", name: "EURO STOXX 50" },
+    { symbol: "SPX", name: "S&P 500", currency: "USD" },
+    { symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" },
   ],
 };
+
+// The platform-wide delta-band axis the leg selector consumes (GET /api/config/delta-bands).
+// The pinned ±30Δ pas-2 grid: 15 puts → atm/atmp → 15 calls = 32, chosen independently here.
+export const DELTA_BANDS_32: string[] = [
+  "30dp", "28dp", "26dp", "24dp", "22dp", "20dp", "18dp", "16dp",
+  "14dp", "12dp", "10dp", "08dp", "06dp", "04dp", "02dp",
+  "atm", "atmp",
+  "02dc", "04dc", "06dc", "08dc", "10dc", "12dc", "14dc", "16dc",
+  "18dc", "20dc", "22dc", "24dc", "26dc", "28dc", "30dc",
+];
 
 export const RECORDED_TWO_DATES: RecordedDatesResponse = {
   index: "SPX",

@@ -19,6 +19,7 @@ import { AsyncBlock } from "../components/AsyncBlock";
 import { CoveragePanel } from "../components/CoverageTable";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useFetch } from "../hooks/useFetch";
+import { currencySymbol } from "../lib/format";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { IndexAnalytics, IndexHistory } from "./market/IndexAnalytics";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
@@ -116,6 +117,12 @@ export function MarketPage() {
             }
             const qc = available.find((a) => a.date === effectiveAsOf)?.qc ?? "unknown";
             const recordedIndex = recorded.data.index;
+            // The quote-currency SYMBOL of the index being viewed (€ for SX5E, $ for SPX), from
+            // the registry — so the analytics panel's monetized Greeks render in the right
+            // currency, never a hard-coded "$". Unknown/missing → "$".
+            const currency = currencySymbol(
+              indexOptions.find((o) => o.symbol === recordedIndex)?.currency,
+            );
             return (
               <>
                 {/* The index's own daily history leads the page (price-first). */}
@@ -156,7 +163,11 @@ export function MarketPage() {
                   aria-label={`Volatility analytics for ${recordedIndex}`}
                 >
                   <ErrorBoundary label="Volatility analytics">
-                    <IndexAnalytics underlying={recordedIndex} asOf={effectiveAsOf} />
+                    <IndexAnalytics
+                      underlying={recordedIndex}
+                      asOf={effectiveAsOf}
+                      currency={currency}
+                    />
                   </ErrorBoundary>
                 </article>
 

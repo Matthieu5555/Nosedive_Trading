@@ -9,7 +9,7 @@
 import type { Data } from "plotly.js";
 
 import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
-import { sci } from "../lib/format";
+import { sci, withCurrency } from "../lib/format";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
@@ -267,7 +267,13 @@ function unitFor(maturities: AnalyticsMaturity[], greek: GreekName): string {
   return "$";
 }
 
-export function GreeksTermStructure({ maturities }: { maturities: AnalyticsMaturity[] }) {
+export function GreeksTermStructure({
+  maturities,
+  currency = "$",
+}: {
+  maturities: AnalyticsMaturity[];
+  currency?: string;
+}) {
   const label = "Dollar Greeks term structure ($ value vs maturity, by delta band)";
   const sorted = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years);
   if (!sorted.some((m) => m.points.length > 0)) {
@@ -283,7 +289,10 @@ export function GreeksTermStructure({ maturities }: { maturities: AnalyticsMatur
       <h3>{label}</h3>
       <div className="chart-grid">
         {GREEK_PANELS.map(({ name, title }) => {
-          const unit = unitFor(sorted, name);
+          // The backend unit carries "$" as the currency placeholder; render it in the index's
+          // real quote currency (€ for SX5E) on both the panel label and the y-axis unit.
+          // `unitFor` always returns a non-null string, so `withCurrency` does too.
+          const unit = withCurrency(unitFor(sorted, name), currency) as string;
           return (
             <LightweightLineChart
               key={name}

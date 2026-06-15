@@ -5,6 +5,7 @@ import type {
   BasketLegInput,
   BasketRequest,
   BasketRiskResponse,
+  DeltaBandsResponse,
   IndicesResponse,
 } from "../api";
 import { fetchAttribution, priceBasket, stressBasket } from "../api";
@@ -16,7 +17,7 @@ import { StressSurface } from "../components/StressSurface";
 import { TicketPanel } from "../components/TicketPanel";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { useFetch } from "../hooks/useFetch";
-import { sciUnit, UNITS } from "../lib/format";
+import { currencySymbol, sciUnit, UNITS, withCurrency } from "../lib/format";
 import type { BasketScenariosResponse } from "../stressApi";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
@@ -39,6 +40,14 @@ export function BasketPage() {
       setUnderlying(indexOptions[0].symbol);
     }
   }, [indexOptions, underlying]);
+  // The currency symbol of the selected underlying's quote currency (from the registry) — every
+  // monetized number on the page renders in this, never a hard-coded "$" (blueprint 05-math-notes).
+  const currency = currencySymbol(
+    indexOptions.find((o) => o.symbol === underlying)?.currency,
+  );
+  // The platform-wide delta-band axis the leg selector offers — the single source, fetched once
+  // and threaded into the (presentational) leg grid as a prop.
+  const deltaBands = useFetch<DeltaBandsResponse>("/api/config/delta-bands");
   const [tradeDate, setTradeDate] = useState("");
   const [tenor, setTenor] = useState("1m");
   const [legs, setLegs] = useState<BasketLegInput[]>([]);
@@ -178,6 +187,7 @@ export function BasketPage() {
         legs={legs}
         defaultUnderlying={underlying}
         defaultTenor={tenor}
+        bands={deltaBands.data?.delta_bands ?? []}
         onAdd={addLeg}
         onRemove={removeLeg}
       />
@@ -208,7 +218,7 @@ export function BasketPage() {
           Failed to price basket: {error}
         </p>
       )}
-      {result !== null && <BasketRiskPanel result={result} />}
+      {result !== null && <BasketRiskPanel result={result} currency={currency} />}
 
       {stressError !== null && (
         <p role="alert" className="error">
@@ -230,7 +240,7 @@ export function BasketPage() {
             <div className="quote-strip">
               <Metric
                 label="Worst PnL"
-                value={sciUnit(stress.worst_case.pnl, stress.worst_case.unit)}
+                value={sciUnit(stress.worst_case.pnl, withCurrency(stress.worst_case.unit, currency))}
               />
               <Metric
                 label="Spot shock"
@@ -256,6 +266,7 @@ export function BasketPage() {
           <StressSurface
             surface={stress.surface}
             kicker={`${stress.underlying} ${stress.trade_date}`}
+            currency={currency}
           />
         </div>
       )}

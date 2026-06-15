@@ -215,6 +215,32 @@ test("a fetch error renders through AsyncBlock, not a blank page", async () => {
   });
 });
 
+test("monetized Greeks render in the index's quote currency (€ for SX5E)", async () => {
+  // SX5E quotes in EUR (registry currency "EUR"). With SX5E the only/selected index, the dollar-
+  // Greeks panel must render its unit strings in € — the index's real quote currency from
+  // /api/indices — not the hard-coded "$" the legacy stored unit strings still carry.
+  server.use(
+    jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" }] }),
+    jsonGet("/api/recorded-dates", {
+      index: "SX5E",
+      count: 1,
+      dates: ["2026-05-29"],
+      available: [{ date: "2026-05-29", qc: "pass" }],
+    }),
+  );
+  render(<MarketPage />);
+
+  const greeks = await screen.findByRole("table", { name: /Dollar Greeks by delta band/i });
+  // "$ per 1% move" → "€ per 1% move"; "$ per $1 of underlying" → "€ per €1 of underlying".
+  expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
+  expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();
+
+  // The Greek term-structure panels carry the € unit too (no hard-coded "$").
+  expect(
+    await screen.findByLabelText(/Gamma \$ term structure \(€ per 1% move\)/i),
+  ).toBeInTheDocument();
+});
+
 test("the index selector is driven by /api/indices — a parked index is not offered", async () => {
   // The registry exposes only SX5E (SPX is parked, enabled:false). The selector must reflect the
   // registry, never a hard-coded list — so only SX5E is offered and SPX is absent.

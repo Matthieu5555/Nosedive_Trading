@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sci, sciUnit, UNITS } from "./format";
+import { currencySymbol, sci, sciUnit, UNITS, withCurrency } from "./format";
 
 // Expected strings are derived by hand from the rule (six significant figures, scientific
 // notation, trailing zeros stripped, Unicode-superscript exponent), never copied from the
@@ -61,5 +61,37 @@ describe("sciUnit", () => {
   it("falls back to the bare number when no unit is supplied", () => {
     expect(sciUnit(12.5, null)).toBe("1.25 × 10¹");
     expect(sciUnit(12.5, undefined)).toBe("1.25 × 10¹");
+  });
+});
+
+describe("currencySymbol", () => {
+  it("maps ISO codes to symbols, defaulting/falling back sensibly", () => {
+    expect(currencySymbol("EUR")).toBe("€");
+    expect(currencySymbol("USD")).toBe("$");
+    expect(currencySymbol("GBP")).toBe("£");
+    expect(currencySymbol("SEK")).toBe("SEK"); // unknown → the code itself
+    expect(currencySymbol(null)).toBe("$"); // missing → USD default
+    expect(currencySymbol(undefined)).toBe("$");
+  });
+});
+
+describe("withCurrency", () => {
+  it("substitutes the currency symbol for the $ placeholder in unit strings", () => {
+    expect(withCurrency(UNITS.delta, "€")).toBe("€/€");
+    expect(withCurrency(UNITS.vega, "€")).toBe("€/Vol");
+    expect(withCurrency("$ per 1% move", "€")).toBe("€ per 1% move");
+    expect(withCurrency("$ per $1 of underlying", "€")).toBe("€ per €1 of underlying");
+  });
+
+  it("leaves a unit untouched for USD, a missing symbol, or a unit with no $", () => {
+    expect(withCurrency(UNITS.delta, "$")).toBe("$/$");
+    expect(withCurrency(UNITS.delta, null)).toBe("$/$");
+    expect(withCurrency(UNITS.delta, undefined)).toBe("$/$");
+    expect(withCurrency(UNITS.vol, "€")).toBe("Vol"); // no $ to replace
+  });
+
+  it("passes null/undefined units through unchanged", () => {
+    expect(withCurrency(null, "€")).toBeNull();
+    expect(withCurrency(undefined, "€")).toBeUndefined();
   });
 });

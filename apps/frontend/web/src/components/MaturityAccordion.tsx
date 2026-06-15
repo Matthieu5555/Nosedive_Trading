@@ -8,7 +8,13 @@ import type { AnalyticsMaturity } from "../api";
 import { DollarGreeksMatrix } from "./DollarGreeks";
 import { SmileChart } from "./charts";
 
-export function MaturityAccordion({ maturities }: { maturities: AnalyticsMaturity[] }) {
+export function MaturityAccordion({
+  maturities,
+  currency = "$",
+}: {
+  maturities: AnalyticsMaturity[];
+  currency?: string;
+}) {
   const label = "Per-maturity smile and dollar Greeks";
   if (maturities.length === 0) {
     return (
@@ -29,7 +35,7 @@ export function MaturityAccordion({ maturities }: { maturities: AnalyticsMaturit
             </Accordion.Header>
             <Accordion.Content>
               <SmileChart maturity={maturity} />
-              <DollarGreeksMatrix points={maturity.points} />
+              <DollarGreeksMatrix points={maturity.points} currency={currency} />
             </Accordion.Content>
           </Accordion.Item>
         ))}

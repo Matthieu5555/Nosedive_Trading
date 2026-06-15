@@ -7,7 +7,7 @@
 // rendered inline so the panel is never silently wrong or blank.
 
 import type { BasketMetric, BasketRiskResponse, BasketLegResult } from "../api";
-import { sci, sciUnit } from "../lib/format";
+import { sci, sciUnit, withCurrency } from "../lib/format";
 import { Plot } from "./Plot";
 
 const GREEK_ORDER = ["delta", "gamma", "vega", "theta", "rho"] as const;
@@ -22,7 +22,15 @@ function legLabel(leg: BasketLegResult): string {
   return `${leg.side} ${leg.quantity} ${leg.underlying} ${leg.tenor_label}/${leg.delta_band}`;
 }
 
-export function BasketRiskPanel({ result }: { result: BasketRiskResponse }) {
+export function BasketRiskPanel({
+  result,
+  currency = "$",
+}: {
+  result: BasketRiskResponse;
+  // The currency symbol the monetized dollar Greeks/price should render in (the index quote
+  // currency). Defaults to "$" so a USD/unknown-currency view is unchanged.
+  currency?: string;
+}) {
   const totalsLabel = `Basket dollar Greeks — ${result.basket_id} (book-additive sum)`;
   const perLegLabel = "Per-leg contribution to each dollar Greek";
 
@@ -52,14 +60,14 @@ export function BasketRiskPanel({ result }: { result: BasketRiskResponse }) {
               <tr key={greek}>
                 <td>{greek}</td>
                 <td>{sci(metric.dollar)}</td>
-                <td>{metric.unit ?? "n/a"}</td>
+                <td>{withCurrency(metric.unit, currency) ?? "n/a"}</td>
               </tr>
             );
           })}
           <tr>
             <td>price</td>
             <td>{sci(result.price)}</td>
-            <td>$ (net leg value)</td>
+            <td>{withCurrency("$ (net leg value)", currency)}</td>
           </tr>
         </tbody>
       </table>
@@ -82,7 +90,11 @@ export function BasketRiskPanel({ result }: { result: BasketRiskResponse }) {
               <td>{leg.resolved ? "yes" : leg.gap_reason}</td>
               {GREEK_ORDER.map((greek) => {
                 const metric = metricOf(leg, greek);
-                return <td key={greek}>{sciUnit(metric.dollar, metric.unit)}</td>;
+                return (
+                  <td key={greek}>
+                    {sciUnit(metric.dollar, withCurrency(metric.unit, currency))}
+                  </td>
+                );
               })}
             </tr>
           ))}

@@ -8,7 +8,7 @@ import type { Data } from "plotly.js";
 import type { StressSurfaceData } from "../stressApi";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
-import { sciUnit } from "../lib/format";
+import { sciUnit, withCurrency } from "../lib/format";
 
 const SURFACE_LABEL =
   "Stress PnL surface — full reprice over spot shock (relative) × vol shock (additive)";
@@ -24,10 +24,14 @@ export function StressSurface({
   surface,
   kicker,
   emptyMessage = "No stress surface for this selection.",
+  currency,
 }: {
   surface: StressSurfaceData;
   kicker: string;
   emptyMessage?: string;
+  // The currency symbol the monetized PnL unit should render in (the index quote currency). When
+  // omitted (e.g. the Risk Scenarios tab), the unit renders verbatim — exactly as it did before.
+  currency?: string;
 }) {
   if (surface.n_cells === 0) {
     return (
@@ -36,6 +40,10 @@ export function StressSurface({
       </article>
     );
   }
+
+  // The PnL unit carries `$` as the currency placeholder (a legacy contract artifact); render it
+  // in the real currency when one was threaded, otherwise leave the unit untouched.
+  const unit = withCurrency(surface.unit, currency) ?? surface.unit;
 
   const finite = finiteCells(surface.scenario_pnl);
   const maxGain = finite.length === 0 ? 0 : Math.max(...finite);
@@ -73,8 +81,8 @@ export function StressSurface({
           </span>
         </div>
         <div className="quote-strip">
-          <Metric label="Max gain" value={sciUnit(maxGain, surface.unit)} />
-          <Metric label="Max loss" value={sciUnit(maxLoss, surface.unit)} />
+          <Metric label="Max gain" value={sciUnit(maxGain, unit)} />
+          <Metric label="Max loss" value={sciUnit(maxLoss, unit)} />
           <Metric label="Spot points" value={String(surface.spot_shock.length)} />
           <Metric label="Vol points" value={String(surface.vol_shock.length)} />
           <Metric label="Version" value={surface.scenario_version ?? "—"} />
@@ -82,7 +90,7 @@ export function StressSurface({
         <p>
           Spot shock is relative (new spot = spot × (1 + s)); vol shock is additive (new vol = vol
           + v). The centre cell (0, 0) is ≈ 0 PnL by construction. PnL unit:{" "}
-          <strong>{surface.unit}</strong>.
+          <strong>{unit}</strong>.
         </p>
       </article>
 
@@ -113,7 +121,7 @@ export function StressSurface({
             scene: {
               xaxis: { title: { text: "vol shock (additive, vol pts)" } },
               yaxis: { title: { text: "spot shock (relative)" } },
-              zaxis: { title: { text: `PnL (${surface.unit})` } },
+              zaxis: { title: { text: `PnL (${unit})` } },
             },
           }}
         />

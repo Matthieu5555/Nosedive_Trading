@@ -102,6 +102,39 @@ export const UNITS = {
   shares: "sh",
 } as const;
 
+// Currency symbol for an ISO code (the index's quote currency from /api/indices). The
+// blueprint requires monetized Greeks/PnL in the *correct* currency (05-math-notes), driven
+// by the registry, never a hard-coded "$". Unknown codes fall back to the code itself.
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  CHF: "Fr",
+};
+
+export function currencySymbol(code: string | null | undefined): string {
+  if (!code) return "$";
+  return CURRENCY_SYMBOL[code] ?? code;
+}
+
+/**
+ * Re-currency a unit string: both the `UNITS` tokens (`$/$`, `$/Vol`, …) and the backend
+ * `$`-Greek unit strings (`"$ per 1% move"`, `"$ per $1 of underlying"`) carry `$` as the
+ * currency placeholder, so substituting it is the single way to render the right currency on
+ * the front (the stored unit strings still say `$` — a legacy contract artifact; the front
+ * renders the real currency from the payload, no re-capture). A missing symbol or plain `$`
+ * leaves the unit untouched, so a USD/unknown-currency view is unchanged.
+ */
+export function withCurrency(
+  unit: string | null | undefined,
+  symbol: string | null | undefined,
+): string | null | undefined {
+  if (unit === null || unit === undefined) return unit;
+  if (!symbol || symbol === "$") return unit;
+  return unit.replaceAll("$", symbol);
+}
+
 export function number(value: number, digits = 2): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }

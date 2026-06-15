@@ -9,7 +9,17 @@ import { GreeksTermStructure, PriceChart, VolSurface } from "../../components/ch
 import { MaturityAccordion } from "../../components/MaturityAccordion";
 import { useFetch } from "../../hooks/useFetch";
 
-export function IndexAnalytics({ underlying, asOf }: { underlying: string; asOf: string }) {
+export function IndexAnalytics({
+  underlying,
+  asOf,
+  currency = "$",
+}: {
+  underlying: string;
+  asOf: string;
+  // The index's quote-currency symbol (€ for SX5E), so the monetized Greeks below render in the
+  // right currency rather than a hard-coded "$" (05-math-notes). Defaults to "$".
+  currency?: string;
+}) {
   const analytics = useFetch<AnalyticsResponse>(
     `/api/analytics?underlying=${encodeURIComponent(underlying)}&trade_date=${encodeURIComponent(asOf)}`,
   );
@@ -18,8 +28,8 @@ export function IndexAnalytics({ underlying, asOf }: { underlying: string; asOf:
       {analytics.data && (
         <>
           <VolSurface surface={analytics.data.surface} maturities={analytics.data.maturities} />
-          <GreeksTermStructure maturities={analytics.data.maturities} />
-          <MaturityAccordion maturities={analytics.data.maturities} />
+          <GreeksTermStructure maturities={analytics.data.maturities} currency={currency} />
+          <MaturityAccordion maturities={analytics.data.maturities} currency={currency} />
         </>
       )}
     </AsyncBlock>

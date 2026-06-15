@@ -55,6 +55,52 @@ The raw store + run-state ledger are backed up on a defined cadence to a second 
 documented, tested command restores and verifies into a temp store; the RPO decision is on the
 record; nothing in the path mutates the canonical store or commits a secret.
 
+## Landed (2026-06-15)
+
+`scripts/backup_data_store.py` — backup / restore / verify for the canonical store, with the
+logic as importable functions (gate-tested) and a thin CLI:
+
+- **`backup_store`** snapshots the **keystone** — the immutable `raw/` partitions +
+  `_run_state.jsonl` — into `$ALGOTRADING_BACKUP_ROOT/<YYYYmmddTHHMMSSZ>/` as an **append-only**
+  directory (`store/` mirror + `manifest.json` of per-file sha256). `--include-derived` adds the
+  reconstructable `derived/`/`analytics/`/`qc/` trees; the default is raw+ledger because
+  everything derived replays from raw (the byte-identical replay substrate). Reads canonical
+  **read-only**; a colliding snapshot id is refused, never overwritten.
+- **`verify_snapshot`** re-hashes a stored snapshot against its manifest (bit-rot detection).
+- **`restore_store`** copies a snapshot into a target and re-hashes **every file vs the manifest**
+  (the byte-identical guarantee). Refuses the canonical store unless `--allow-canonical`, and a
+  non-empty target unless `--force` — so the default restore lands in a temp store you diff.
+- **Destination is an explicit decision, not a default:** `--backup-root` / `$ALGOTRADING_BACKUP_ROOT`
+  is required. This box has **one physical disk** (`nvme0n1p3`; no second disk / NAS mounted), so
+  a silent same-disk default would masquerade as off-box backup. The tool fails loudly with none
+  set, and the runbook says to point it at an external disk / NFS / object-store for disk-loss
+  protection (same-disk = purge/fat-finger protection only).
+
+**Cadence (RPO):** `scripts/systemd/data-backup.{service,timer}` fire daily at 19:30 Europe/Berlin
+(after the 18:15 close capture) — worst-case loss is one trading day's close. `data-backup-alert.service`
+is the `OnFailure=` target (a silent backup failure is the worst case). Units match the
+`eod-capture` style; install is per-user alongside them.
+
+**Docs:** `scripts/README.md` carries a "Backup & restore runbook" (what/where/RPO/restore-verify
++ the purge-coordination note) and a tools-table row.
+
+**Tests** (`packages/infra/tests/test_backup_data_store.py`, 10 cases): backup→restore
+byte-identical, simulated-loss recovery, source-untouched, canonical-restore refusal,
+non-empty-target refusal, derived include/exclude, manifest corruption detection, append-only,
+no-keystone refusal, destination resolution. Expected checksums derived independently with
+`hashlib`. The whole suite runs in temp stores (never the canonical `data/`); the CLI was also
+smoke-tested end to end (`backup`→`list`→`verify`→`restore`) against a temp store.
+
+**Gate green:** ruff ✓, mypy (240 files) ✓, import-linter ✓, pytest 2085 passed / 12 skipped.
+
+**Scope note / deferred:** the heavier "re-derive one day and diff against live derived" check is
+left to the existing read-only replay (`scripts/plot_live_surface.py` / the smoke test's
+byte-identical-replay invariant) — this tool proves the *raw* is faithfully recoverable, which is
+the keystone guarantee; derived reconstruction is already covered elsewhere. Two **operator
+actions remain**: (1) set `$ALGOTRADING_BACKUP_ROOT` to a real second location and install the
+timer; (2) sequence the first real backup after [[platform-post-monday-restore-cleanup]] so it
+captures the validated, post-purge state.
+
 ## Gotchas
 
 - **Never validate against the canonical store** — restores and diffs go into a temp store; the

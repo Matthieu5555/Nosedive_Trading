@@ -381,6 +381,96 @@ def test_quote_health_empty_batch_passes() -> None:
     assert result.qc_status == STATUS_PASS
 
 
+def test_quote_health_fails_when_chain_has_no_two_sided_quotes() -> None:
+    # EMERGENCY-quote-integrity-gate backstop: the anchor is fine, but EVERY option leg is a
+    # rejected quote (the 2026-06-15 canary, where the surface fitted while every option was
+    # zero-bid). The chain-has-quotes limb must turn this into a CRITICAL fail, not a silent pass.
+    # Option legs are the snapshots NOT in the anchor key set.
+    batch = SnapshotBatch(
+        assessed=(
+            _assessed("AAPL-STK", underlying="AAPL", spread_pct=0.002),  # tight anchor
+            _assessed("AAPL-OPT-1", underlying="AAPL", spread_pct=0.0, status="reject"),
+            _assessed("AAPL-OPT-2", underlying="AAPL", spread_pct=0.0, status="reject"),
+        ),
+        skipped=(),
+    )
+    result = check_underlying_quote_health(
+        batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    context = _assert_full_shape(
+        result,
+        check_name="underlying_quote_health",
+        status=STATUS_FAIL,
+        severity=SEVERITY_CRITICAL,
+    )
+    assert context["failing_limb"] == "chain_no_two_sided_quotes"
+    assert context["option_leg_count"] == 2
+    assert context["two_sided_option_count"] == 0
+
+
+def test_quote_health_passes_when_chain_has_at_least_one_usable_option() -> None:
+    # A live chain: the anchor is tight AND at least one option leg is usable -> pass. The dead-chain
+    # limb only fires when NO option leg is two-sided, so one usable option (alongside a rejected one)
+    # keeps the chain alive.
+    batch = SnapshotBatch(
+        assessed=(
+            _assessed("AAPL-STK", underlying="AAPL", spread_pct=0.002),
+            _assessed("AAPL-OPT-1", underlying="AAPL", spread_pct=0.01, status="usable"),
+            _assessed("AAPL-OPT-2", underlying="AAPL", spread_pct=0.0, status="reject"),
+        ),
+        skipped=(),
+    )
+    result = check_underlying_quote_health(
+        batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_PASS
+
+
+def test_quote_health_treats_a_wide_or_locked_caution_option_as_still_two_sided() -> None:
+    # A `caution` from a wide spread or a locked market is still a TWO-SIDED quote (both sides
+    # present and positive) — only a zero/one-sided/crossed quote means "no two-sided quote". A
+    # chain whose only option leg is a wide-spread caution (no `non_positive_bid`/`crossed` reason)
+    # must therefore keep the chain ALIVE (pass), so the limb does not false-positive on a merely
+    # wide but live chain. (This is the synthetic-fixture case the live-analytics e2e relies on.)
+    batch = SnapshotBatch(
+        assessed=(
+            _assessed("AAPL-STK", underlying="AAPL", spread_pct=0.002),
+            AssessedSnapshot(
+                snapshot=_snapshot("AAPL-OPT-1", underlying="AAPL", spread_pct=0.1),
+                assessment=QuoteAssessment(status="caution", reasons=("wide_spread",)),
+            ),
+        ),
+        skipped=(),
+    )
+    result = check_underlying_quote_health(
+        batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_PASS
+
+
+def test_quote_health_treats_a_non_positive_bid_caution_option_as_not_two_sided() -> None:
+    # The canary's exact shape: a caution carrying `non_positive_bid` (bid<=0) is NOT a two-sided
+    # quote even though its status is only `caution` (assess_quote cautions, never rejects, a
+    # zero bid). A chain where every option leg is such a caution is dead -> critical fail. This
+    # is the case the `usable`-only predicate would have wrongly passed.
+    batch = SnapshotBatch(
+        assessed=(
+            _assessed("AAPL-STK", underlying="AAPL", spread_pct=0.002),
+            AssessedSnapshot(
+                snapshot=_snapshot("AAPL-OPT-1", underlying="AAPL", spread_pct=0.0),
+                assessment=QuoteAssessment(
+                    status="caution", reasons=("locked", "non_positive_bid")
+                ),
+            ),
+        ),
+        skipped=(),
+    )
+    result = check_underlying_quote_health(
+        batch, ["AAPL-STK"], thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_FAIL
+
+
 # ================================================================================
 # 3. option chain coverage
 # ================================================================================

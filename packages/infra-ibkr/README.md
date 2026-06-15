@@ -121,12 +121,34 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   **orchestration**, factored over a small `CaptureTarget` (symbol / search-symbol / exchange /
   currency / sec-type / conid) so the index lane and the constituent lane share it byte-for-byte:
   resolve conid → snapshot spot → discover + `plan_chain` the option chain → cap with
-  `select_capture_keys` → snapshot the selected contracts at the close → assemble the
-  `IndexBasket` `run_analytics` consumes. Every event is stamped at the index's own
-  `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
+  `select_capture_keys` → snapshot the selected contracts at the close → **gate on quote
+  integrity** → assemble the `IndexBasket` `run_analytics` consumes. Every event is stamped at the
+  index's own `session_close`; a snapshot row stamped *after* the close is dropped (no look-ahead)
   (`test_cp_rest_close_capture.py`). The economic 30Δ delta-band selection runs downstream in the
   analytics over the captured set. The snapshot mechanics live in `cp_rest_snapshot.py` (above);
-  the window policy lives in `cp_rest_chain_window.py` (below).
+  the window policy lives in `cp_rest_chain_window.py` (below). Two EMERGENCY guards live here:
+  - **Concurrent discovery** (EMERGENCY-capture-throughput). `_discover_chain` runs the
+    per-`(month, strike, right)` `/secdef/info` walk through a **bounded** `ThreadPoolExecutor`
+    (`httpx.Client` is thread-safe) instead of strictly sequentially — a latency-bound walk (each
+    call is ~all network wait) that, serial, smears a "close" across 30–60 min on the full basket.
+    The pool width is **typed config** (`StrikeSelectionConfig.discovery_pool_size`, default 6,
+    `universe.yaml` / ADR 0028 — never a `.py` literal); a width of 1 is the sequential walk. The
+    discovery calls are independent and the assembled chain is order-independent (sorted-set
+    expirations/strikes, a token-keyed conid dict), so the concurrent walk is **byte-identical** to
+    the sequential one — the same calls, faster, never fewer (the strike window is untouched: an
+    owner ruling). The transport's existing 429/503 backoff stays the pacing valve; the per-walk
+    pool width is logged (`ibkr.close_capture.discovery_pool`). Locked by a parity test.
+  - **Quote-integrity gate** (EMERGENCY-quote-integrity-gate). `_snapshot_events` classifies each
+    kept OPTION row via the shared `assess_quote` machinery and **promotes only rows with a healthy
+    two-sided quote** (positive, uncrossed bid AND ask) to the derived close set; a zero /
+    single-sided / crossed row is *quarantined* — excluded from promotion with a recorded drop
+    reason (`ibkr.close_capture.quarantine_row`), never deleted from `raw/`. If the *whole* basket
+    falls below the typed two-sided floor (`QcThresholdConfig.quote_integrity.min_two_sided_fraction`,
+    `qc.yaml`), `collect_target_basket` returns `None` — a **labelled no-capture**
+    (`ibkr.close_capture.closed_market`), NOT a surface fit off last-only marks. This is the guard
+    the 2026-06-15 SX5E canary needed: it banked a converged, arb-free surface off a *closed*
+    market (every row `bid==ask<=0`, only `last` real). Distinct from the wrong-day
+    `CloseCaptureError` (a look-ahead failure); a genuine two-sided close passes untouched.
 - `collectors/cp_rest_constituent_capture.py` — `collect_index_and_constituents_basket`: widens
   the close capture to the index's **point-in-time top-N constituents by index weight** (the S1
   dispersion / implied-correlation input, TARGET §7.4). It captures the index leg (the spine), then

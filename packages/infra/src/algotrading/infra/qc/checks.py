@@ -82,6 +82,14 @@ CHECK_NAMES: tuple[str, ...] = (
 # feed analytics. Only usable quotes are judged by the quote-health/coverage checks.
 _USABLE_QUOTE_STATUS = "usable"
 
+# The assess_quote reason codes that mean a quote is NOT a healthy two-sided quote: a
+# non-positive bid (zero/sentinel side — the closed-market canary) or a crossed market. A
+# `caution` from a wide spread or a locked market is still a two-sided quote (both sides present
+# and positive), so it does NOT count as "the chain has no two-sided quotes". This is the same
+# two-sided criterion the capture-time quote-integrity gate enforces (infra-ibkr), so capture and
+# QC tell one story: capture refuses up front, this limb is the end-to-end backstop.
+_NO_TWO_SIDED_REASONS = frozenset({"non_positive_bid", "crossed"})
+
 
 def check_collector_continuity(
     summary: CollectorContinuityInput,
@@ -150,36 +158,78 @@ def check_underlying_quote_health(
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
-    """Is each underlying's own quote tight and fresh enough to anchor analytics.
+    """Is each underlying's own quote tight and fresh, AND does its chain carry live quotes.
 
-    ``underlying_instrument_keys`` are the snapshot keys of the bare underlyings (a
-    STK key, distinct from the option legs that hang off it), so the check looks only
-    at the anchor quotes. It scans the usable underlying snapshots and reports the
-    widest spread seen. It fails when any usable underlying quote's ``spread_pct``
-    exceeds ``max_spread_pct``, naming the exact ``instrument_key`` of the worst quote
-    so the operator sees which quote, not just that "a quote" was bad.
+    ``underlying_instrument_keys`` are the snapshot keys of the bare underlyings (a STK/IND key,
+    distinct from the option legs that hang off it). The check has two critical limbs, both of
+    which must hold:
+
+    1. **Anchor spread.** It scans the usable underlying (anchor) snapshots and reports the widest
+       spread seen; it fails when any usable anchor quote's ``spread_pct`` exceeds
+       ``max_spread_pct``, naming the exact ``instrument_key`` of the worst quote.
+    2. **Chain has two-sided quotes.** It also scans the OPTION legs (the snapshots NOT in
+       ``anchors``). An option leg is a live two-sided quote unless its assessment shows no
+       two-sided quote — a non-positive bid (a zero/sentinel side) or a crossed market
+       (:data:`_NO_TWO_SIDED_REASONS`), or an outright ``reject``; a wide-spread or locked-but-
+       positive ``caution`` still counts as two-sided. The 2026-06-15 SX5E canary fitted a whole
+       surface while *every option was zero-bid* (``non_positive_bid``) and this check — then
+       anchor-only — silently passed. So when the batch carries option legs but **none** is a
+       two-sided quote, that is "the chain has no two-sided quotes": a critical fail, not a silent
+       pass. A batch with no option legs at all (e.g. the anchor-only unit cases) does not trip
+       this limb — there is no chain to judge.
+
+    The verdict is the worst of the two limbs, and the context names which limb failed so the
+    operator sees whether the anchor is wide or the chain is dead, not merely that "a quote" failed.
     """
     anchors = set(underlying_instrument_keys)
     worst_key = ""
     worst_spread = 0.0
     seen = 0
+    option_seen = 0
+    two_sided_option_count = 0
     for assessed in batch.assessed:
         snap = assessed.snapshot
-        if snap.instrument_key not in anchors:
+        if snap.instrument_key in anchors:
+            if assessed.assessment.status != _USABLE_QUOTE_STATUS:
+                continue
+            seen += 1
+            if snap.spread_pct > worst_spread:
+                worst_spread = snap.spread_pct
+                worst_key = snap.instrument_key
             continue
-        if assessed.assessment.status != _USABLE_QUOTE_STATUS:
-            continue
-        seen += 1
-        if snap.spread_pct > worst_spread:
-            worst_spread = snap.spread_pct
-            worst_key = snap.instrument_key
-    status = STATUS_PASS if worst_spread <= thresholds.max_spread_pct else STATUS_FAIL
-    target = worst_key if worst_key else (sorted(anchors)[0] if anchors else "")
+        # An option leg (not an anchor): it counts toward the chain-has-quotes limb. An option is a
+        # live two-sided quote unless its assessment shows no two-sided quote (a non-positive bid or
+        # a crossed market — the closed-market canary). A `reject` for any reason, or a caution
+        # carrying one of those reason codes, is not two-sided; a wide/locked-but-positive caution
+        # still is.
+        option_seen += 1
+        reasons = set(assessed.assessment.reasons)
+        is_two_sided = (
+            assessed.assessment.status != "reject" and not (reasons & _NO_TWO_SIDED_REASONS)
+        )
+        if is_two_sided:
+            two_sided_option_count += 1
+    chain_has_no_two_sided = option_seen > 0 and two_sided_option_count == 0
+    spread_breach = worst_spread > thresholds.max_spread_pct
+    status = STATUS_FAIL if (spread_breach or chain_has_no_two_sided) else STATUS_PASS
+    if chain_has_no_two_sided and not spread_breach:
+        # The chain is dead even though the anchor (if any) is tight — name that limb explicitly.
+        failing_limb = "chain_no_two_sided_quotes"
+        target = sorted(anchors)[0] if anchors else ""
+    elif spread_breach:
+        failing_limb = "anchor_spread"
+        target = worst_key
+    else:
+        failing_limb = ""
+        target = worst_key if worst_key else (sorted(anchors)[0] if anchors else "")
     context = {
         "failing_quote": worst_key,
+        "failing_limb": failing_limb,
         "worst_spread_pct": worst_spread,
         "max_spread_pct": thresholds.max_spread_pct,
         "usable_quote_count": seen,
+        "option_leg_count": option_seen,
+        "two_sided_option_count": two_sided_option_count,
     }
     return build_result(
         check_name=CHECK_UNDERLYING_QUOTE_HEALTH,

@@ -181,15 +181,29 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # `qc`/`pricing`/`scenarios` stay byte-identical (section isolation). The universe/full values
     # below are regenerated over the expanded `universe` bundle. Pre-capture dev change: no banked
     # record carries the old hash.
+    #
+    # ibkr-quote-integrity-and-throughput (2026-06-15, ADR 0028 — the two EMERGENCY capture specs):
+    # TWO bundles moved by design. (a) `StrikeSelectionConfig.discovery_pool_size` (default 6) joined
+    # the hashed `universe` bundle — the bounded worker-pool width for the concurrent `/secdef/info`
+    # chain walk (EMERGENCY-capture-throughput); it is a *pacing* knob (same calls, faster — never
+    # which calls), in config so it tunes against real CP-Gateway 429 behaviour without a code change.
+    # (b) `QcThresholdConfig.quote_integrity` (a `QuoteIntegrityQcConfig` nested block carrying
+    # `min_two_sided_fraction`, default 0.10) joined the hashed `qc` bundle — the capture-time
+    # two-sided-quote floor below which a closed/last-only basket is refused
+    # (EMERGENCY-quote-integrity-gate). Both move ONLY their own bundle hash — and so the folded
+    # whole-config hash — BY DESIGN; the other two bundles stay byte-identical (section isolation:
+    # `pricing`/`scenarios` are unchanged below). The universe/qc/full values below are regenerated
+    # over the expanded bundles. Pre-capture dev change: no banked historical record carries the old
+    # hash.
     config = _config()
     assert config_hash(config) == (
-        "d645e2550804e9806d02424202dd08a1fa8eaeccfb91633d4e6fd6cce4128500"
+        "a1f54d7f4877e2c1707de0b6fe79a83eaf77719a6267f2a55e57e70caec55bf1"
     )
     assert config_hashes(config) == {
         "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
-        "qc": "7f2ceefa49887917c400092795cfffb8723bc6bbf752aa51bacd90de8c941b3f",
+        "qc": "4e60cf756dba172f161eba2dcba0061afc1fff17e61d25dd446c3b17d4c3f564",
         "scenarios": "41dffc62f417d57b7efb800fa4dd3b0cdf4a1d1d7b6aea1fef429e7f77d19e4d",
-        "universe": "6d278adf21aa0ce33e8f6a8cf7a93055efafd8ecab16359ebf6a8c2f33264172",
+        "universe": "711172086f39f9d33cc3ff702356d8d33266e963eccebd1cbc87c9e5718e7058",
     }
 
 
@@ -206,6 +220,8 @@ def test_supplementary_qc_cutoffs_fold_into_the_qc_bundle_hash() -> None:
         ("forward_engine", "max_rel_residual_mad", 0.007),
         ("fit_tolerance", "max_surface_rmse", 0.03),
         ("anomaly", "fail_z", 6.0),
+        # EMERGENCY-quote-integrity-gate: the capture-time two-sided floor folds into the qc bundle.
+        ("quote_integrity", "min_two_sided_fraction", 0.25),
     ):
         nested = getattr(base.qc_threshold, block).model_copy(update={field: new_value})
         moved = base.model_copy(
@@ -225,6 +241,38 @@ def test_anomaly_block_enforces_band_ordering() -> None:
 
     with pytest.raises(ConfigFieldError):
         AnomalyQcConfig(version="bad", warn_z=5.0, fail_z=3.0)
+
+
+def test_discovery_pool_size_folds_into_the_universe_hash() -> None:
+    # EMERGENCY-capture-throughput (ADR 0028): the concurrent /secdef/info pool width is hashed
+    # config on StrikeSelectionConfig, so moving it moves ONLY the universe bundle hash, leaving
+    # the other three byte-identical (section isolation). Independent oracle: bump the pool width
+    # and assert universe changes while qc/pricing/scenarios do not.
+    base = _config()
+    hashes = config_hashes(base)
+    bumped_strike = base.universe.strike_selection.model_copy(update={"discovery_pool_size": 12})
+    moved = base.model_copy(
+        update={"universe": base.universe.model_copy(update={"strike_selection": bumped_strike})}
+    )
+    moved_hashes = config_hashes(moved)
+    assert moved_hashes["universe"] != hashes["universe"]
+    assert {k: moved_hashes[k] for k in ("qc", "pricing", "scenarios")} == {
+        k: hashes[k] for k in ("qc", "pricing", "scenarios")
+    }
+
+
+def test_quote_integrity_floor_enforces_a_fraction_range() -> None:
+    # EMERGENCY-quote-integrity-gate: the two-sided floor is a fraction in [0, 1]; a value outside
+    # that range is rejected at construction, never silently accepted (a >1 floor could never pass,
+    # a <0 floor would refuse nothing — both are config errors).
+    from algotrading.core.config import ConfigFieldError, QuoteIntegrityQcConfig
+
+    assert QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=0.0).min_two_sided_fraction == 0.0
+    assert QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=1.0).min_two_sided_fraction == 1.0
+    with pytest.raises(ConfigFieldError):
+        QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=1.5)
+    with pytest.raises(ConfigFieldError):
+        QuoteIntegrityQcConfig(version="qi", min_two_sided_fraction=-0.1)
 
 
 def _surface_with_grid(buckets: tuple[float, ...]) -> SurfaceConfig:

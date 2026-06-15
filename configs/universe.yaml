@@ -31,12 +31,22 @@ exchange: SMART
 #     over-qualify, never clip (under-sizing re-creates the ±~1% clip this fix killed). One value,
 #     not per-index: adding an index stays "conid + enabled". If a genuinely more volatile index
 #     ever clips, delta_band_completeness QC turns red and an override is added then, data-driven.
+#   - discovery_pool_size: the bounded worker-pool width for the /secdef/info chain walk
+#     (EMERGENCY-capture-throughput). The discovery calls are independent and the assembled chain
+#     is order-independent, so the per-(month,strike,right) qualification runs through a
+#     ThreadPoolExecutor this wide instead of strictly sequentially — turning a latency-bound walk
+#     (~0.46 s of network wait each; serial it smears a "close" across 30–60 min on the full
+#     basket) into one that finishes inside the post-close window. A PACING knob, not economic: it
+#     changes how fast the SAME calls are made, never which calls (the strike window is untouched).
+#     Kept small (the CP Gateway is one paced session; the transport's 429/503 backoff is the real
+#     valve — a flood the backoff serialises back to sequential is a net loss). 1 = sequential.
 strike_selection:
-  version: "2026.06.12"
+  version: "2026.06.15"
   delta_bound: 0.30
   delta_convention: forward_undiscounted
   min_strikes_per_side: 2
   discovery_working_vol: 0.40
+  discovery_pool_size: 6
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
 # the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary

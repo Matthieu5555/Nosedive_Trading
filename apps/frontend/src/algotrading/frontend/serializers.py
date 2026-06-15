@@ -368,6 +368,18 @@ def _analytics_metric(raw: float, dollar: float | None, unit: str | None) -> dic
     return {"raw": raw, "dollar": dollar, "unit": unit}
 
 
+def _nullable_analytics_metric(
+    raw: float | None, dollar: float | None, unit: str | None
+) -> dict[str, object]:
+    """One dollar metric where the raw value itself is additive-nullable.
+
+    Used for mirror-Greek fields (T-mirror-greeks-putcall) that are ``None`` on partitions
+    written before the mirror-greeks lane landed. A ``None`` raw is a labelled-unavailable
+    reading, not a silent zero.
+    """
+    return {"raw": raw, "dollar": dollar, "unit": unit}
+
+
 def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[str, object]:
     """Serialize one tenor × delta-band analytics cell (WS 1F) for the front.
 
@@ -377,7 +389,20 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
     calendar day, Rho\\$ per 1% rate) beside its raw per-unit Greek — the BFF tags the unit, it
     does not redefine or recompute it (the blueprint / 1F own that). The analytics router groups
     these by maturity into smile + surface-grid + dollar-Greek views.
+
+    ``mirror_metrics`` carries the opposite option right's delta/theta/rho at the same IV and
+    strike (T-mirror-greeks-putcall). ``price_mirror`` is its model price. These are
+    additive-nullable — ``None`` on older partitions before the lane landed. Gamma and vega are
+    not mirrored (they are identical call vs put at one strike and one IV, already in ``metrics``).
+    The unit strings are the same as for the primary delta/theta/rho (the unit does not change
+    with option right — only the sign of delta and the direction of theta/rho differ).
     """
+    # Mirror metrics: delta/theta/rho of the opposite right. The dollar_*_unit strings match the
+    # primary (same monetization convention, same unit, only the raw value differs). Gamma/vega
+    # are omitted from the mirror — they are identical by put-call parity at one strike and one IV.
+    mirror_delta_unit = row.dollar_delta_unit if row.delta_mirror is not None else None
+    mirror_theta_unit = row.dollar_theta_unit if row.theta_mirror is not None else None
+    mirror_rho_unit = row.dollar_rho_unit if row.rho_mirror is not None else None
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
         "provider": row.provider,
@@ -398,6 +423,20 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
             "vega": _analytics_metric(row.vega, row.dollar_vega, row.dollar_vega_unit),
             "theta": _analytics_metric(row.theta, row.dollar_theta, row.dollar_theta_unit),
             "rho": _analytics_metric(row.rho, row.dollar_rho, row.dollar_rho_unit),
+        },
+        # Mirror: opposite right at the same IV and strike (T-mirror-greeks-putcall). Nullable
+        # on pre-lane partitions. Gamma/vega omitted (identical by put-call parity).
+        "price_mirror": row.price_mirror,
+        "mirror_metrics": {
+            "delta": _nullable_analytics_metric(
+                row.delta_mirror, row.dollar_delta_mirror, mirror_delta_unit
+            ),
+            "theta": _nullable_analytics_metric(
+                row.theta_mirror, row.dollar_theta_mirror, mirror_theta_unit
+            ),
+            "rho": _nullable_analytics_metric(
+                row.rho_mirror, row.dollar_rho_mirror, mirror_rho_unit
+            ),
         },
         "model_version": row.model_version,
         "pricer_version": row.pricer_version,

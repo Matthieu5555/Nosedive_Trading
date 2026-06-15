@@ -23,7 +23,10 @@ request routed through M0, because every field ripples to the other workstreams.
   `dollar_theta`/`dollar_rho` additive-nullable. `ProjectedOptionAnalytics` is the WS 1F
   tenor × delta-band grid cell (decimal **and** dollar Greeks side by side, each dollar
   number unit-tagged) — provider-partitioned, stored under the `analytics` layer; produced
-  by `surfaces.project_grid`. `ScenarioAttribution` is the WS 2C by-Greek decomposition of a
+  by `surfaces.project_grid`. It also carries **mirror Greeks** (T-mirror-greeks-putcall):
+  the opposite option right's `price_mirror`, `delta_mirror`, `theta_mirror`, `rho_mirror`,
+  and dollar counterparts — all additive-nullable (pre-lane rows read back as `None`).
+  Gamma and vega are not mirrored (put-call parity: identical at one IV, one strike). `ScenarioAttribution` is the WS 2C by-Greek decomposition of a
   scenario's stress PnL — the named dollar contributions (`delta_pnl`/`gamma_pnl`/`vega_pnl`/
   `theta_pnl`), their lumped `approx_pnl`, the `full_reprice_pnl` oracle, and the `residual`
   between them, at `level` `position` or `book` (the book record carries the `__book__`

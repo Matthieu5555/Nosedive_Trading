@@ -85,6 +85,34 @@ def test_dollar_greeks_carry_unit_strings(
         assert metrics[name]["unit"], f"{name} must carry a non-empty unit string"
 
 
+def test_mirror_greeks_serialized_in_analytics_payload(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    """The analytics payload carries price_mirror and mirror_metrics (T-mirror-greeks-putcall).
+
+    The seeded rows pre-date the mirror-greeks lane (no mirror fields set), so the payload
+    carries ``price_mirror: null`` and null raw/dollar values inside ``mirror_metrics``.
+    This pins the additive-nullable serialization path — a pre-lane partition must not 500.
+    The structure (keys present, correct shape) is what this test locks.
+    """
+    point = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()["maturities"][0]["points"][0]
+    # price_mirror is present (as null on pre-lane rows).
+    assert "price_mirror" in point
+    assert point["price_mirror"] is None  # seed row has no mirror fields
+    # mirror_metrics is present with the three sides-greeks (delta/theta/rho, no gamma/vega).
+    assert "mirror_metrics" in point
+    mirror = point["mirror_metrics"]
+    assert set(mirror) == {"delta", "theta", "rho"}
+    for greek in ("delta", "theta", "rho"):
+        assert "raw" in mirror[greek]
+        assert "dollar" in mirror[greek]
+        assert "unit" in mirror[greek]
+        assert mirror[greek]["raw"] is None  # pre-lane row
+
+
 def test_analytics_unknown_ticker_is_empty_not_500(seeded_client: TestClient) -> None:
     response = seeded_client.get("/api/analytics", params={"underlying": "NOPE"})
     assert response.status_code == 200

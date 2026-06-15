@@ -102,6 +102,21 @@ bound. Every combined-only consumer (basket risk, booking, grid-coverage QC, the
 filters to `surface_side == "combined"`, so per-side rows never perturb them. The front-end side
 toggle and persisted per-side SVI params are a follow-up.
 
+### Mirror Greeks (T-mirror-greeks-putcall)
+
+Each solved cell also prices the **opposite** option right at the **same** IV and strike — one
+extra `price_european` call, no fit change, no ingestion change. The call-wing band `30dc` already
+carries a call price and its Greeks; the mirror fields carry the corresponding put's price and
+delta/theta/rho. Gamma and vega are **not** mirrored: put-call parity guarantees `Γcall == Γput`
+and `νcall == νput` at one IV and one strike, so the primary fields already carry the shared value.
+
+The mirror fields (`price_mirror`, `delta_mirror`, `theta_mirror`, `rho_mirror`, and their
+dollar counterparts) are **additive-nullable** (`float | None`) — a partition written before this
+lane reads them back `None` unchanged. This lets the front draw the full S-shaped delta curve
+(call branch 1→0 **and** put branch 0→−1) across the band without a second fit, second surface,
+or any schema incompatibility. Acceptance oracle: `Δcall − Δput = DF` (put-call delta parity,
+independent of strike or vol at carry==0).
+
 ```python
 from algotrading.infra.surfaces import (
     ProjectionConfig, SnapshotMarketState, project_grid,

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { CoverageTable, type CoverageData } from "./CoverageTable";
+import { type CoverageData, CoverageTable } from "./CoverageTable";
 
 const POPULATED: CoverageData = {
   underlying: "SPX",
@@ -34,9 +34,30 @@ const POPULATED: CoverageData = {
     { tenor: "6m", measured: null, floor: null, status: "pass" },
   ],
   constituents: [
-    { symbol: "ASML", rank: 1, weight: 0.4, outcome: "captured", n_options: 6, detail: "captured 6 option leg(s)" },
-    { symbol: "SAN1", rank: 2, weight: 0.3, outcome: "unentitled", n_options: 0, detail: "account not entitled (HTTP 403)" },
-    { symbol: "ENEL", rank: 3, weight: 0.1, outcome: "no_options", n_options: 0, detail: "lists no option months" },
+    {
+      symbol: "ASML",
+      rank: 1,
+      weight: 0.4,
+      outcome: "captured",
+      n_options: 6,
+      detail: "captured 6 option leg(s)",
+    },
+    {
+      symbol: "SAN1",
+      rank: 2,
+      weight: 0.3,
+      outcome: "unentitled",
+      n_options: 0,
+      detail: "account not entitled (HTTP 403)",
+    },
+    {
+      symbol: "ENEL",
+      rank: 3,
+      weight: 0.1,
+      outcome: "no_options",
+      n_options: 0,
+      detail: "lists no option months",
+    },
   ],
   qc_status: "fail",
   delta_band_status: "fail",
@@ -112,8 +133,6 @@ test("renders a labeled empty state when nothing was captured", () => {
   render(<CoverageTable data={EMPTY} />);
   expect(screen.getByText(/No capture for this date/i)).toBeInTheDocument();
   // The expiries table is absent, but the per-tenor grid still renders.
-  expect(
-    screen.queryByRole("table", { name: /captured expiries/i }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("table", { name: /captured expiries/i })).not.toBeInTheDocument();
   expect(screen.getByRole("table", { name: /per-tenor coverage/i })).toBeInTheDocument();
 });

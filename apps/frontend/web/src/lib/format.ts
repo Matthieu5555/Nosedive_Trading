@@ -10,8 +10,17 @@
 // Unicode superscript digits + minus, so an exponent renders as "× 10⁻¹" inline anywhere a
 // string goes (table cell, chart axis, SVG tooltip) without needing JSX <sup>.
 const SUPERSCRIPT: Record<string, string> = {
-  "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
-  "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "-": "⁻",
+  "0": "⁰",
+  "1": "¹",
+  "2": "²",
+  "3": "³",
+  "4": "⁴",
+  "5": "⁵",
+  "6": "⁶",
+  "7": "⁷",
+  "8": "⁸",
+  "9": "⁹",
+  "-": "⁻",
 };
 
 function superscript(exponent: number): string {

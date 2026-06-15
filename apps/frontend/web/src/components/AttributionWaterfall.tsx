@@ -11,8 +11,8 @@
 import type { Data, Layout } from "plotly.js";
 
 import type { AttributionResponse } from "../api";
-import { Plot } from "./Plot";
 import { sci } from "../lib/format";
+import { Plot } from "./Plot";
 
 // The residual reads as its own bar, distinct from the named terms, so the operator sees the
 // honesty meter at a glance and never mistakes it for another Greek.
@@ -90,9 +90,9 @@ export function AttributionWaterfall({
       </div>
       <p>
         Each bar is one Greek&apos;s dollar contribution to the scenario P&amp;L; the{" "}
-        <strong>residual</strong> is the leftover against the full reprice (the honesty meter) —
-        its own bar, never folded into a term. Bars in dollars:{" "}
-        <strong>{termUnit}</strong>; residual: <strong>{residualUnit}</strong>.
+        <strong>residual</strong> is the leftover against the full reprice (the honesty meter) — its
+        own bar, never folded into a term. Bars in dollars: <strong>{termUnit}</strong>; residual:{" "}
+        <strong>{residualUnit}</strong>.
       </p>
       <ul className="attribution-legend" aria-label="attribution terms">
         {attribution.terms.map((term) => (
@@ -101,8 +101,8 @@ export function AttributionWaterfall({
           </li>
         ))}
         <li>
-          {RESIDUAL_NAME}: <strong>{sci(attribution.residual.dollars ?? 0)}</strong> (
-          {residualUnit})
+          {RESIDUAL_NAME}: <strong>{sci(attribution.residual.dollars ?? 0)}</strong> ({residualUnit}
+          )
         </li>
       </ul>
       <Plot label={label} data={[waterfall]} layout={layout} height={360} />

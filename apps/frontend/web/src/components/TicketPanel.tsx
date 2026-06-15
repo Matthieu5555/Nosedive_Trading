@@ -65,7 +65,9 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
   }, []);
 
   function priceSpec(): TicketPriceSpec {
-    return priceKind === "limit" ? { kind: "limit", price: Number(limitPrice) } : { kind: "market" };
+    return priceKind === "limit"
+      ? { kind: "limit", price: Number(limitPrice) }
+      : { kind: "market" };
   }
 
   async function build() {

@@ -97,8 +97,8 @@ export function DollarGreeksByMaturity({
         <div className="greeks-by-maturity-scroll">
           <table aria-label={`Dollar Greeks — ${maturity.label}`}>
             <caption>
-              Dollar Greeks — {maturity.label} (each Greek: raw and {currency} value; rows are
-              delta bands)
+              Dollar Greeks — {maturity.label} (each Greek: raw and {currency} value; rows are delta
+              bands)
             </caption>
             <thead>
               <tr>

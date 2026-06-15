@@ -37,7 +37,10 @@ for (const tab of TABS) {
     const { pageErrors } = collectPageErrors(page);
     await page.goto("/");
 
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: tab.button }).click();
+    await page
+      .getByRole("navigation", { name: "Main" })
+      .getByRole("link", { name: tab.button })
+      .click();
 
     await expect(page).toHaveURL(new RegExp(`${tab.path.replace("/", "\\/")}$`));
     await expect(page.getByRole("heading", { level: 1, name: tab.heading })).toBeVisible();
@@ -64,7 +67,9 @@ test("/market legacy path redirects to /", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
 });
 
-test("/orders legacy path redirects to the Basket booking home (retired sketch)", async ({ page }) => {
+test("/orders legacy path redirects to the Basket booking home (retired sketch)", async ({
+  page,
+}) => {
   await page.goto("/orders");
   await expect(page).toHaveURL(/\/basket$/);
   await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();

@@ -4,13 +4,13 @@
 // read-out and a formatter supplied by the caller. Plotly remains the charting path for
 // 3D surfaces, heatmaps, and non-line analytical views.
 
-import { useEffect, useRef } from "react";
 import {
-  LineSeries,
   createYieldCurveChart,
   type IYieldCurveChartApi,
   type LineData,
+  LineSeries,
 } from "lightweight-charts";
+import { useEffect, useRef } from "react";
 
 import { sci } from "../lib/format";
 import { baseLightweightOptions } from "./chartTheme";
@@ -55,9 +55,7 @@ function sortedUniqueData(points: LightweightLinePoint[]): LineData<number>[] {
       byX.set(point.x, point.value);
     }
   }
-  return [...byX.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([time, value]) => ({ time, value }));
+  return [...byX.entries()].sort((a, b) => a[0] - b[0]).map(([time, value]) => ({ time, value }));
 }
 
 export function LightweightLineChart({

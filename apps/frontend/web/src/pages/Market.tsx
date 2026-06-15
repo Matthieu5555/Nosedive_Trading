@@ -126,7 +126,10 @@ export function MarketPage() {
             return (
               <>
                 {/* The index's own daily history leads the page (price-first). */}
-                <article className="panel history-panel" aria-label={`${recordedIndex} daily history`}>
+                <article
+                  className="panel history-panel"
+                  aria-label={`${recordedIndex} daily history`}
+                >
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{recordedIndex}</p>
@@ -180,7 +183,10 @@ export function MarketPage() {
                   aria-label={`Capture coverage for ${recordedIndex}`}
                 >
                   <ErrorBoundary label="Capture coverage">
-                    <CoveragePanel underlying={recordedIndex} tradeDate={effectiveAsOf ?? undefined} />
+                    <CoveragePanel
+                      underlying={recordedIndex}
+                      tradeDate={effectiveAsOf ?? undefined}
+                    />
                   </ErrorBoundary>
                 </article>
               </>

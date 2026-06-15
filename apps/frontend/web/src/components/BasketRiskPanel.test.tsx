@@ -4,9 +4,9 @@ import { expect, test, vi } from "vitest";
 // Plotly draws to a canvas jsdom does not implement; swap the wrapper for the DOM stub.
 vi.mock("./Plot", async () => await import("../test/plotMock"));
 
-import { BasketRiskPanel } from "./BasketRiskPanel";
-import { BASKET_RISK_AAA } from "../test/fixtures";
 import type { BasketRiskResponse } from "../api";
+import { BASKET_RISK_AAA } from "../test/fixtures";
+import { BasketRiskPanel } from "./BasketRiskPanel";
 
 test("renders the book-additive totals with each unit string visible", () => {
   render(<BasketRiskPanel result={BASKET_RISK_AAA} />);
@@ -75,7 +75,9 @@ test("an unavailable Greek shows n/a, not a blank or a zero", () => {
 test("labelled gaps render inline, never a blank panel", () => {
   const withGap: BasketRiskResponse = {
     ...BASKET_RISK_AAA,
-    gaps: [{ underlying: "AAA", tenor_label: "3m", delta_band: "10dp", reason: "no_analytics_row" }],
+    gaps: [
+      { underlying: "AAA", tenor_label: "3m", delta_band: "10dp", reason: "no_analytics_row" },
+    ],
     n_gaps: 1,
   };
   render(<BasketRiskPanel result={withGap} />);

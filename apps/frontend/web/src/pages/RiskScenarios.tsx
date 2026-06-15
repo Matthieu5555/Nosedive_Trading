@@ -7,22 +7,25 @@
 // /api/basket/scenarios) lives on the Basket tab beside pricing — it is deliberately NOT
 // duplicated here (owner report 2026-06-12: the two tabs had become near-copies).
 
+// Reference migration (phase-2 hardening): this page is the canonical example contributors copy
+// when reaching for the new shadcn primitives. It composes the `Card` family from src/ui over
+// the existing `.page` panel grammar — Tailwind utilities and legacy CSS coexist on the same
+// page. Note the native <select> is kept on purpose: the e2e/test selectors and the dark-theme
+// styling already work, and a Radix Select would change the accessibility tree for no gain here.
 import { useState } from "react";
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Label } from "@/ui/label";
 
 import { AsyncBlock } from "../components/AsyncBlock";
 import { StressSurface } from "../components/StressSurface";
-import { useFetch } from "../hooks/useFetch";
+import { usePortfolios, useRiskScenarios } from "../hooks/queries";
 import type { ScenariosResponse } from "../stressApi";
-
-interface PortfoliosResponse {
-  portfolios: string[];
-}
 
 export function RiskScenariosPage() {
   const [portfolio, setPortfolio] = useState<string>("");
-  const portfolios = useFetch<PortfoliosResponse>("/api/risk/portfolios");
-  const query = portfolio ? `?portfolio_id=${encodeURIComponent(portfolio)}` : "";
-  const scenarios = useFetch<ScenariosResponse>(`/api/risk/scenarios${query}`);
+  const portfolios = usePortfolios();
+  const scenarios = useRiskScenarios(portfolio);
 
   return (
     <section className="page">
@@ -31,8 +34,10 @@ export function RiskScenariosPage() {
           <p className="eyebrow">Scenario engine</p>
           <h1>Risk Scenarios</h1>
         </div>
-        <div className="control-row">
+        <div className="control-row flex flex-col items-start gap-1">
+          <Label htmlFor="risk-portfolio">Portfolio</Label>
           <select
+            id="risk-portfolio"
             aria-label="Portfolio"
             value={portfolio}
             onChange={(event) => setPortfolio(event.target.value)}
@@ -47,17 +52,24 @@ export function RiskScenariosPage() {
         </div>
       </div>
 
-      <div className="page-subheader">
-        <h2>Persisted scenario surface</h2>
-        <p className="muted">
-          The cron-written ±spot × ±vol surface per configured portfolio. Empty until a portfolio
-          is configured and a run lands — to stress a basket on demand, compose it on the Basket
-          tab and use “Stress basket”.
-        </p>
-      </div>
-      <AsyncBlock loading={scenarios.loading} error={scenarios.error}>
-        {scenarios.data && <ScenarioBoard data={scenarios.data} />}
-      </AsyncBlock>
+      <Card>
+        <CardHeader>
+          <CardTitle>Persisted scenario surface</CardTitle>
+          <CardDescription>
+            The cron-written ±spot × ±vol surface per configured portfolio. Empty until a portfolio
+            is configured and a run lands — to stress a basket on demand, compose it on the Basket
+            tab and use “Stress basket”.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AsyncBlock
+            loading={scenarios.isPending}
+            error={scenarios.isError ? scenarios.error.message : null}
+          >
+            {scenarios.data && <ScenarioBoard data={scenarios.data} />}
+          </AsyncBlock>
+        </CardContent>
+      </Card>
     </section>
   );
 }

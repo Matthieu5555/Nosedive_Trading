@@ -11,10 +11,17 @@
 import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
 
+// Phase-2 hardening: the shell now reaches for shadcn primitives from src/ui where it does not
+// disturb the hand-tuned topbar layout (guarded by e2e/layout.spec.ts). The session pill renders
+// through the Badge primitive but keeps its `.session-pill` class so the existing grid placement
+// CSS still governs it — Tailwind utilities and legacy CSS coexisting on one element.
+import { Badge } from "@/ui/badge";
+
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { RiskScenariosPage } from "./pages/RiskScenarios";
+import { ROUTES } from "./routes";
 
 // Each route renders inside its own boundary, so a render error on one tab degrades to a
 // labelled tile on that tab instead of unwinding the whole console to a blank screen.
@@ -22,11 +29,15 @@ function Guarded({ label, children }: { label: string; children: ReactNode }) {
   return <ErrorBoundary label={label}>{children}</ErrorBoundary>;
 }
 
-const pages: { path: string; label: string; end?: boolean }[] = [
-  { path: "/", label: "Market", end: true },
-  { path: "/basket", label: "Basket" },
-  { path: "/risk", label: "Risk Scenarios" },
-];
+// The route → page-component map. The route list (path/label/heading) lives in src/routes.ts —
+// the single source the e2e collision net also reads — and the page component for each path is
+// bound here, the one place that may import React pages. A new page = a routes.ts entry + a line
+// here, and the nav, the <Routes> table and the layout/collision suite all pick it up.
+const PAGES: Record<string, ReactNode> = {
+  "/": <MarketPage />,
+  "/basket": <BasketPage />,
+  "/risk": <RiskScenariosPage />,
+};
 
 function AppShell() {
   return (
@@ -37,7 +48,7 @@ function AppShell() {
           <span>AlgoTrading</span>
         </div>
         <nav className="nav" aria-label="Main">
-          {pages.map((item) => (
+          {ROUTES.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -48,14 +59,18 @@ function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="session-pill">Paper</div>
+        <Badge className="session-pill">Paper</Badge>
       </header>
       <main className="main">
         <Routes>
-          <Route path="/" element={<Guarded label="Market"><MarketPage /></Guarded>} />
+          {ROUTES.map((item) => (
+            <Route
+              key={item.path}
+              path={item.path}
+              element={<Guarded label={item.label}>{PAGES[item.path]}</Guarded>}
+            />
+          ))}
           <Route path="/market" element={<Navigate to="/" replace />} />
-          <Route path="/basket" element={<Guarded label="Basket"><BasketPage /></Guarded>} />
-          <Route path="/risk" element={<Guarded label="Risk Scenarios"><RiskScenariosPage /></Guarded>} />
           {/* The Orders sketch is retired; its path redirects to the real booking home on Basket. */}
           <Route path="/orders" element={<Navigate to="/basket" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />

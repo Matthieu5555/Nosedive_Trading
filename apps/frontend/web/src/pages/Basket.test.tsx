@@ -6,10 +6,10 @@ import { expect, test, vi } from "vitest";
 // Plotly draws to a canvas jsdom does not implement; swap the wrapper for the DOM stub.
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import { BasketPage } from "./Basket";
 import type { OrderTicketResponse } from "../api";
 import { BASKET_RISK_AAA } from "../test/fixtures";
 import { jsonPost, server } from "../test/server";
+import { BasketPage } from "./Basket";
 
 // A malformed-basket rejection, as the BFF serves it: a 400 whose typed `detail` names the
 // problem — the UI must surface that detail, never a bare status line.
@@ -61,9 +61,7 @@ test("the leg band selector is wired to the platform band axis (>8 options)", as
   // The msw default serves the 32-band axis from GET /api/config/delta-bands; the page threads it
   // into the leg grid, so the selector offers far more than the old hard-coded 8.
   const bandSelect = await screen.findByLabelText("leg band");
-  await waitFor(() =>
-    expect(within(bandSelect).getAllByRole("option").length).toBeGreaterThan(8),
-  );
+  await waitFor(() => expect(within(bandSelect).getAllByRole("option").length).toBeGreaterThan(8));
   // A band only the full axis carries (the old 8-list never had 02dp/02dc).
   expect(within(bandSelect).getByRole("option", { name: "02dp" })).toBeInTheDocument();
   expect(within(bandSelect).getByRole("option", { name: "02dc" })).toBeInTheDocument();
@@ -175,10 +173,24 @@ const TICKET: OrderTicketResponse = {
   time_in_force: "day",
   mode: "paper",
   legs: [
-    { instrument_kind: "option", underlying: "AAA", side: "buy", quantity: 1,
-      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atm" },
-    { instrument_kind: "option", underlying: "AAA", side: "buy", quantity: 1,
-      price_spec: { kind: "market" }, tenor_label: "1m", delta_band: "atmp" },
+    {
+      instrument_kind: "option",
+      underlying: "AAA",
+      side: "buy",
+      quantity: 1,
+      price_spec: { kind: "market" },
+      tenor_label: "1m",
+      delta_band: "atm",
+    },
+    {
+      instrument_kind: "option",
+      underlying: "AAA",
+      side: "buy",
+      quantity: 1,
+      price_spec: { kind: "market" },
+      tenor_label: "1m",
+      delta_band: "atmp",
+    },
   ],
   n_legs: 2,
   gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },

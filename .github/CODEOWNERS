@@ -1,0 +1,25 @@
+# Code ownership — GitHub auto-requests review from the owner of every path a PR touches.
+#
+# ⚠️ PLACEHOLDER HANDLES. The @OWNER-* names below are NOT real GitHub accounts. Replace each
+# with a real GitHub username (`@octocat`) or team (`@org/team`) before this file does anything —
+# GitHub silently ignores an owner it cannot resolve, so an unfilled placeholder = no enforced
+# review. Owners must have write access to the repo for the auto-request to fire.
+#
+# Rules are matched bottom-of-file-last: the LAST matching pattern wins, so the catch-all sits at
+# the top and the most specific paths at the bottom.
+
+# Catch-all: everything not claimed by a more specific rule below.
+*                           @OWNER-maintainers
+
+# ── Frontend ────────────────────────────────────────────────────────────────────────────────
+# The BFF (FastAPI backend-for-frontend) — the HTTP contract seam. A change here can break the
+# web app's generated types; the web owner should see contract PRs too (added below).
+/apps/frontend/             @OWNER-frontend
+
+# The React/Vite web app. More specific than /apps/frontend/, so it wins for files under web/.
+/apps/frontend/web/         @OWNER-frontend-web
+
+# The exported OpenAPI contract + generated client types: changing these is changing the seam
+# between the two owners above, so both review.
+/apps/frontend/web/openapi.json        @OWNER-frontend @OWNER-frontend-web
+/apps/frontend/web/src/api/            @OWNER-frontend @OWNER-frontend-web

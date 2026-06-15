@@ -1,0 +1,1258 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "RunRequest": {
+        "description": "The body of a run launch: which provider, and (optionally) which underlying.",
+        "properties": {
+          "provider": {
+            "default": "SAMPLE",
+            "title": "Provider",
+            "type": "string"
+          },
+          "underlying": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Underlying"
+          }
+        },
+        "title": "RunRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "AlgoTrading Dashboard (BFF)",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/analytics": {
+      "get": {
+        "description": "Return the projected (tenor \u00d7 delta-band) analytics grid for one ticker/day.\n\n``underlying`` defaults to the context default; ``trade_date`` left ``None`` reads across\nevery persisted day for the underlying. A malformed ``trade_date`` yields a labeled 400; an\nunknown ticker or empty grid yields an empty ``maturities`` list with HTTP 200.",
+        "operationId": "get_analytics_api_analytics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlying"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analytics",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/attribution": {
+      "get": {
+        "description": "Return one by-Greek attribution record's waterfall payload.\n\n``level`` selects the book aggregate (default) or one position (``position`` + ``contract_key``,\nthe \u00a75.8 drill target). With ``trade_date=None`` the store returns every partition and the\nrecord is selected in Python, so an unknown ``(portfolio, date)`` resolves to a labelled-empty\nbody, not a 500. A malformed ``trade_date`` is a labelled 400.",
+        "operationId": "get_attribution_api_attribution_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "trade_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "portfolio_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Portfolio Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "default": "book",
+              "title": "Level",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contract_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Contract Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Attribution",
+        "tags": [
+          "attribution"
+        ]
+      }
+    },
+    "/api/basket/risk": {
+      "post": {
+        "description": "Price and risk a composed basket off the stored Tab-1 analytics (read-only).\n\nReads the WS-1F analytics grid for the basket's ``(trade_date, underlying[, provider])`` and\nthe stock-leg spots from ``daily_bar`` on the same date, then sums the per-leg dollar Greeks.\nReturns the priced/risked basket with each dollar number carrying its unit string and the\nper-leg breakdown + labelled gaps (HTTP 200). A malformed basket is a labelled 400.",
+        "operationId": "price_basket_api_basket_risk_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Price Basket",
+        "tags": [
+          "basket"
+        ]
+      }
+    },
+    "/api/basket/scenarios": {
+      "post": {
+        "description": "Full-reprice a composed basket over the cartesian (spot x vol) stress grid (WS 2B).\n\nThe interactive, no-cron counterpart to ``GET /api/risk/scenarios`` (which reads the cron's\npersisted surface): reconstructs a valuation per option leg from the stored WS-1F analytics\ngrid (:mod:`..basket_scenarios`), reprices the basket over the config-driven surface, and\nreturns the same surface payload shape the ``StressSurface`` web component renders plus the\nworst-case cell and labelled per-leg gaps. A malformed basket is a labelled 400; an\nunresolved leg is a labelled gap inside a 200, never a 500.",
+        "operationId": "stress_basket_api_basket_scenarios_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Stress Basket",
+        "tags": [
+          "basket"
+        ]
+      }
+    },
+    "/api/booking/commit": {
+      "post": {
+        "description": "Commit a previewed ticket into paper fill(s) behind the password gate (read-only, paper).\n\nBuilds the previewed ticket from the body, then runs the write barrier. A malformed request\nis a labelled 400; a gate refusal or an unresolvable leg is a labelled ``block`` (HTTP 200,\nno fill written); a verified, resolvable booking writes the fills + audit record and returns\n``decision: \"commit\"``. **Nothing is transmitted to a broker.**",
+        "operationId": "commit_booking_api_booking_commit_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Commit Booking",
+        "tags": [
+          "booking"
+        ]
+      }
+    },
+    "/api/config": {
+      "get": {
+        "description": "List the available config files (names only).",
+        "operationId": "list_config_files_api_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Config Files",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/delta-bands": {
+      "get": {
+        "description": "Return the ordered delta-band axis (put \u2192 ATM \u2192 call) the leg selector offers.\n\nThe single source of the band labels: the projection axis built by\n:meth:`ProjectionConfig.from_band` from the **one** band definition in\n``qc_threshold.grid`` (``band_low_delta``/``band_high_delta``/``band_step``, ADR 0028) \u2014 the\nsame numbers the projection emits and the grid QC validates, so the selector can never drift\nfrom the grid the platform actually produces. For the pinned \u00b130\u0394 *pas-2* grid that is the\n32 labels ``30dp \u2026 02dp, atm, atmp, 02dc \u2026 30dc``.\n\nA configs bundle that cannot be loaded (a deployment with no ``configs/``) yields the\nin-memory default axis rather than a 500, so the selector is always populated.",
+        "operationId": "get_delta_bands_api_config_delta_bands_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Delta Bands",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/config/{filename}": {
+      "get": {
+        "description": "Return one config file's raw text, or a typed error payload.",
+        "operationId": "read_config_file_api_config__filename__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "filename",
+            "required": true,
+            "schema": {
+              "title": "Filename",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Config File",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/api/constituents": {
+      "get": {
+        "description": "Return the point-in-time constituent basket for an index, price-first.\n\n``index`` defaults to the context default underlying only as a label fallback; ``as_of``\nmust be supplied for a historical view (it is passed verbatim to the resolver, never\ndefaulted to today for a past date). When ``as_of`` is omitted the basket is resolved as of\ntoday's reconstruction date for a *current* view only.",
+        "operationId": "get_constituents_api_constituents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "index",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Constituents",
+        "tags": [
+          "constituents"
+        ]
+      }
+    },
+    "/api/coverage": {
+      "get": {
+        "description": "Return the per-expiry capture + per-tenor QC coverage for one underlying and date.",
+        "operationId": "get_coverage_api_coverage_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlying"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Coverage",
+        "tags": [
+          "coverage"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "description": "Return the operator dashboard status for a trade date (latest with data by default).",
+        "operationId": "get_health_api_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "trade_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/indices": {
+      "get": {
+        "description": "Return the enabled indices (symbol + display name + currency), in registry order.\n\nThe symbol is the platform-wide vocabulary key (e.g. ``SX5E``); ``name`` is the display\nlabel (e.g. ``EURO STOXX 50``); ``currency`` is the index's ISO quote currency (e.g.\n``EUR``), the single source the front uses to render monetized Greeks/PnL in the right\ncurrency symbol \u2014 never a hard-coded ``$`` (the blueprint requires the *correct* currency\non monetized Greeks, 05-math-notes). The list is the registry's ``enabled`` set \u2014 the\nsingle source of which indices exist \u2014 so the front selector cannot list (or mis-label\nthe currency of) an index the backend is not capturing.\n\nA registry that cannot be loaded (no ``configs/`` bundle on this deployment) yields a\nlabeled empty payload (``indices == []``), never a 500 \u2014 the selector then renders empty\nand disabled rather than fronting an error tile.",
+        "operationId": "get_indices_api_indices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Indices",
+        "tags": [
+          "indices"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "description": "All jobs, most-recently-started first.",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "run"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "description": "Return one job's status, or a typed not-found payload.",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "run"
+        ]
+      }
+    },
+    "/api/price-history": {
+      "get": {
+        "description": "Return daily OHLC bars for one underlying over an optional ``[start, end]`` window.\n\n``start``/``end`` are inclusive ISO dates; either may be omitted for an open bound. A\nmalformed date yields a labeled 400 (mirrors the surfaces router's ``bad_trade_date``); an\nunknown ticker or empty window yields an empty ``bars`` list with HTTP 200, never a 500.",
+        "operationId": "get_price_history_api_price_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlying"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Price History",
+        "tags": [
+          "price-history"
+        ]
+      }
+    },
+    "/api/price-history/batch": {
+      "get": {
+        "description": "Return grouped OHLC histories for the requested underlyings.\n\nQuery callers can pass repeated ``underlyings=AAA&underlyings=BBB`` or a comma-separated\nvalue. ``start`` omitted means the bounded default window up to ``end``.",
+        "operationId": "get_price_history_batch_api_price_history_batch_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlyings",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlyings"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Price History Batch",
+        "tags": [
+          "price-history"
+        ]
+      },
+      "post": {
+        "description": "POST variant for large baskets whose symbols should not be encoded into a long URL.",
+        "operationId": "post_price_history_batch_api_price_history_batch_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Post Price History Batch",
+        "tags": [
+          "price-history"
+        ]
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "description": "Capabilities of every known provider \u2014 drives the UI selector.",
+        "operationId": "list_providers_api_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Providers",
+        "tags": [
+          "run"
+        ]
+      }
+    },
+    "/api/recorded-dates": {
+      "get": {
+        "description": "Return the trade dates the front can show, plus the clean-coverage count.\n\n``dates``/``count`` are the **qc-clean, gap-free** days (every canonical EOD stage finished\ncleanly) \u2014 the operator-facing coverage figure, unchanged. ``available`` is the broader set\nthe date picker actually offers: every day whose ``analytics`` stage produced a surface,\n**including qc-failing ones**, each tagged with its QC verdict (``pass``/``fail``/``unknown``).\nA degraded day stays selectable and is shown with its QC badge rather than hidden (cahier des\ncharges \u00a73.1 QC badge + \u00a75 \"show degraded states, don't mask them\"). An empty ledger yields\n``count == 0`` and empty lists.",
+        "operationId": "get_recorded_dates_api_recorded_dates_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "index",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recorded Dates",
+        "tags": [
+          "recorded-dates"
+        ]
+      }
+    },
+    "/api/risk": {
+      "get": {
+        "description": "Return net-sensitivity aggregates, optionally filtered to one portfolio.",
+        "operationId": "get_risk_api_risk_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "portfolio_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Risk",
+        "tags": [
+          "risk"
+        ]
+      }
+    },
+    "/api/risk/metrics": {
+      "get": {
+        "description": "Return per-contract price/Greeks with the unit-carrying dollar layer.\n\nEach dollar metric is read back with the explicit unit string of the pinned\nconvention beside its raw per-unit Greek (the BFF metric contract, ADR 0036), so the\nfront never receives a bare float. Optionally filtered to one underlying.",
+        "operationId": "get_metrics_api_risk_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlying"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Metrics",
+        "tags": [
+          "risk"
+        ]
+      }
+    },
+    "/api/risk/portfolios": {
+      "get": {
+        "description": "List the portfolio ids that have persisted risk aggregates.",
+        "operationId": "list_portfolios_api_risk_portfolios_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Portfolios",
+        "tags": [
+          "risk"
+        ]
+      }
+    },
+    "/api/risk/scenarios": {
+      "get": {
+        "description": "Return stress-scenario PnL cells plus the reshaped (spot \u00d7 vol) surface (WS 2B).\n\nTwo additive views over the same persisted ``scenario_results`` rows: ``cells`` (the\nper-contract list, unchanged \u2014 2C attributes over it) and ``surface`` (the cartesian\n``surf_`` grid reshaped into axes + a ``scenario_pnl`` z-grid for the 2B Plotly page). A\nmissing partition / unknown portfolio yields an empty list and a labelled empty surface,\nnever a 500. Serving is read-only \u2014 the cron is the sole writer (ADR 0034).",
+        "operationId": "get_scenarios_api_risk_scenarios_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "portfolio_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Portfolio Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Scenarios",
+        "tags": [
+          "risk"
+        ]
+      }
+    },
+    "/api/run": {
+      "post": {
+        "description": "Launch a run job for the requested provider.",
+        "operationId": "launch_run_api_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Launch Run",
+        "tags": [
+          "run"
+        ]
+      }
+    },
+    "/api/run/underlyings": {
+      "get": {
+        "description": "Underlyings that already have a persisted surface, plus the context default.\n\nNamespaced as ``/run/underlyings`` (not ``/underlyings``) to avoid shadowing the\nCodex market router's ``/api/underlyings`` fixture-selector in the combined app.",
+        "operationId": "list_run_underlyings_api_run_underlyings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Run Underlyings",
+        "tags": [
+          "run"
+        ]
+      }
+    },
+    "/api/surfaces": {
+      "get": {
+        "description": "Return the fitted SVI slices for an underlying (defaults to the context default).",
+        "operationId": "get_surface_api_surfaces_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "underlying",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Underlying"
+            }
+          },
+          {
+            "in": "query",
+            "name": "trade_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trade Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Surface",
+        "tags": [
+          "surfaces"
+        ]
+      }
+    },
+    "/api/surfaces/underlyings": {
+      "get": {
+        "description": "List the underlyings that have a persisted surface.",
+        "operationId": "list_surface_underlyings_api_surfaces_underlyings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Surface Underlyings",
+        "tags": [
+          "surfaces"
+        ]
+      }
+    },
+    "/api/ticket/options": {
+      "get": {
+        "description": "The selectable broker / time-in-force values, derived from the enums.\n\nThe single source for the web Ticket panel's selectors, so the front never hardcodes a\nparallel list that could drift from `TargetBroker` / `TimeInForce`.",
+        "operationId": "ticket_options_api_ticket_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ticket Options",
+        "tags": [
+          "ticket"
+        ]
+      }
+    },
+    "/api/ticket/preview": {
+      "post": {
+        "description": "Build and preview an order ticket from a composed basket (read-only, paper).\n\nCalls the pure builder and serializes the result. **Nothing is transmitted**; the broker is\nnamed and validated, never connected to. A malformed request is a labelled 400.",
+        "operationId": "preview_ticket_api_ticket_preview_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Preview Ticket",
+        "tags": [
+          "ticket"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Liveness probe: 200 when the process is up (no infra reads).",
+        "operationId": "liveness_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness",
+        "tags": [
+          "ops"
+        ]
+      }
+    }
+  }
+}

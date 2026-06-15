@@ -66,7 +66,13 @@ export function cleanSmile(
   for (let i = 0; i < n; i += 1) {
     const k = logMoneyness[i];
     const iv = impliedVols[i];
-    if (!isFiniteNumber(k) || iv === null || iv === undefined || Number.isNaN(iv) || !Number.isFinite(iv)) {
+    if (
+      !isFiniteNumber(k) ||
+      iv === null ||
+      iv === undefined ||
+      Number.isNaN(iv) ||
+      !Number.isFinite(iv)
+    ) {
       nDroppedNonFinite += 1;
       continue;
     }
@@ -82,7 +88,13 @@ export function cleanSmile(
     ks.push(k);
     ivs.push(iv);
   }
-  return { logMoneyness: ks, impliedVols: ivs, nDroppedNonFinite, nDroppedAbsurd, nDroppedDuplicate };
+  return {
+    logMoneyness: ks,
+    impliedVols: ivs,
+    nDroppedNonFinite,
+    nDroppedAbsurd,
+    nDroppedDuplicate,
+  };
 }
 
 export interface CleanDenseSurfaceResult {

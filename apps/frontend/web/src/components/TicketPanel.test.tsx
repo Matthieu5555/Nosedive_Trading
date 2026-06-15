@@ -3,15 +3,21 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
-import { TicketPanel } from "./TicketPanel";
 import type { BasketLegInput, OrderTicketResponse } from "../api";
 import { jsonGet, jsonPost, server } from "../test/server";
+import { TicketPanel } from "./TicketPanel";
 
 // The legs the panel is handed (already composed in the Basket view above it): a long option leg
 // and a short stock hedge — the ticket maps long->BUY / short->SELL with a positive quantity.
 const LEGS: BasketLegInput[] = [
-  { instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA",
-    tenor_label: "3m", delta_band: "30dc" },
+  {
+    instrument_kind: "option",
+    side: "long",
+    quantity: 1,
+    underlying: "AAA",
+    tenor_label: "3m",
+    delta_band: "30dc",
+  },
   { instrument_kind: "stock", side: "short", quantity: -2, underlying: "AAA" },
 ];
 
@@ -25,10 +31,24 @@ const TICKET: OrderTicketResponse = {
   time_in_force: "day",
   mode: "paper",
   legs: [
-    { instrument_kind: "option", underlying: "AAA", side: "buy", quantity: 1,
-      price_spec: { kind: "market" }, tenor_label: "3m", delta_band: "30dc" },
-    { instrument_kind: "stock", underlying: "AAA", side: "sell", quantity: 2,
-      price_spec: { kind: "market" }, tenor_label: null, delta_band: null },
+    {
+      instrument_kind: "option",
+      underlying: "AAA",
+      side: "buy",
+      quantity: 1,
+      price_spec: { kind: "market" },
+      tenor_label: "3m",
+      delta_band: "30dc",
+    },
+    {
+      instrument_kind: "stock",
+      underlying: "AAA",
+      side: "sell",
+      quantity: 2,
+      price_spec: { kind: "market" },
+      tenor_label: null,
+      delta_band: null,
+    },
   ],
   n_legs: 2,
   gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },
@@ -91,7 +111,9 @@ test("the build button is disabled when there are no legs to build from", () => 
 test("broker/TIF selectors are populated from the options endpoint, not a hardcoded list", async () => {
   // An extra TIF served by the endpoint must appear in the selector — proof the list is
   // server-driven (from the TargetBroker/TimeInForce enums), not a literal in the component.
-  server.use(jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc", "ioc"] }));
+  server.use(
+    jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc", "ioc"] }),
+  );
   renderPanel();
   expect(await screen.findByRole("option", { name: "IOC" })).toBeInTheDocument();
 });

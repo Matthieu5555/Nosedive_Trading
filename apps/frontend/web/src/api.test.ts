@@ -5,8 +5,8 @@
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
-import { ApiError, getJson, postJson, priceBasket } from "./api";
 import type { BasketRequest } from "./api";
+import { ApiError, getJson, postJson, priceBasket } from "./api";
 import { server } from "./test/server";
 
 const A_BASKET: BasketRequest = {

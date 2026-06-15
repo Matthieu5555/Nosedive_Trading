@@ -45,6 +45,22 @@ backfill *args='':
 login mode='live' *args='':
     uv run python scripts/ibkr_gateway_login.py --mode {{ mode }} {{ args }}
 
-# Web app verification (AGENTS.md frontend gate): eslint + vitest in apps/frontend/web.
+# Web app verification (AGENTS.md frontend gate): prettier + eslint (boundaries) + tsc + vitest.
 web-test:
-    cd apps/frontend/web && npm run lint && npm test
+    cd apps/frontend/web && npm run format:check && npm run lint && npm run typecheck && npm test
+
+# Real-browser e2e (Playwright): navigation + layout-collision / overflow checks.
+# Needs the Chromium binary once: `cd apps/frontend/web && npx playwright install chromium`.
+# Mirrors the `web-e2e` CI job; network is mocked so it never touches a live BFF.
+web-e2e:
+    cd apps/frontend/web && npm run e2e
+
+# Frontend↔BFF contract drift guard (needs both uv and node). Regenerates the exported
+# OpenAPI schema and the TS types from it, then fails if either differs from the committed
+# copy — so a backend contract change that was not regenerated breaks the build. Mirrors the
+# `web-contract` CI job. Run `uv run python scripts/export_openapi.py` + `npm run gen:api`
+# and commit both artifacts to clear it.
+web-contract:
+    uv run python scripts/export_openapi.py
+    cd apps/frontend/web && npm run gen:api
+    git diff --exit-code apps/frontend/web/openapi.json apps/frontend/web/src/api/schema.d.ts

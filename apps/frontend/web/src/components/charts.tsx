@@ -139,7 +139,9 @@ export function VolSurface({
   const sorted = cleaned.map(({ maturity }) => maturity);
   // Common x grid (union of every maturity's CLEANED log-moneyness axis), so the z-grid stays
   // rectangular even where a coarse long-dated tenor lacks the wing bands.
-  const xGrid = [...new Set(cleaned.flatMap(({ clean }) => clean.logMoneyness))].sort((a, b) => a - b);
+  const xGrid = [...new Set(cleaned.flatMap(({ clean }) => clean.logMoneyness))].sort(
+    (a, b) => a - b,
+  );
   const z: (number | null)[][] = cleaned.map(({ clean }) => {
     const byK = new Map(clean.logMoneyness.map((k, i) => [k, clean.impliedVols[i]]));
     return xGrid.map((k) => byK.get(k) ?? null);

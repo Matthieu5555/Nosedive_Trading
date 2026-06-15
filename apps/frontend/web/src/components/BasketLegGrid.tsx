@@ -6,13 +6,8 @@
 // so a malformed leg is caught here, not only at the BFF. An option leg must name its grid cell
 // (tenor + delta band); a stock leg must not.
 
+import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useState } from "react";
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
 
 import type { BasketLegInput, InstrumentKind, LegSide } from "../api";
 
@@ -57,8 +52,11 @@ function legColumns(onRemove: (index: number) => void): ColumnDef<BasketLegInput
       id: "remove",
       header: "",
       cell: (info) => (
-        <button type="button" aria-label={`remove leg ${info.row.index + 1}`}
-          onClick={() => onRemove(info.row.index)}>
+        <button
+          type="button"
+          aria-label={`remove leg ${info.row.index + 1}`}
+          onClick={() => onRemove(info.row.index)}
+        >
           ✕
         </button>
       ),
@@ -139,9 +137,7 @@ export function BasketLegGrid({
           {table.getRowModel().rows.map((row) => (
             <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
+                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
               ))}
             </tr>
           ))}
@@ -156,45 +152,65 @@ export function BasketLegGrid({
       <div className="add-leg">
         <label>
           Kind{" "}
-          <select aria-label="leg kind" value={kind}
-            onChange={(e) => setKind(e.target.value as InstrumentKind)}>
+          <select
+            aria-label="leg kind"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as InstrumentKind)}
+          >
             <option value="option">option</option>
             <option value="stock">stock</option>
           </select>
         </label>
         <label>
           Side{" "}
-          <select aria-label="leg side" value={side}
-            onChange={(e) => setSide(e.target.value as LegSide)}>
+          <select
+            aria-label="leg side"
+            value={side}
+            onChange={(e) => setSide(e.target.value as LegSide)}
+          >
             <option value="long">long</option>
             <option value="short">short</option>
           </select>
         </label>
         <label>
           Qty{" "}
-          <input aria-label="leg quantity" type="number" value={quantity}
-            onChange={(e) => setQuantity(e.target.value)} />
+          <input
+            aria-label="leg quantity"
+            type="number"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
         </label>
         {kind === "option" && (
           <>
             <label>
               Tenor{" "}
-              <input aria-label="leg tenor" value={tenor}
-                onChange={(e) => setTenor(e.target.value)} />
+              <input
+                aria-label="leg tenor"
+                value={tenor}
+                onChange={(e) => setTenor(e.target.value)}
+              />
             </label>
             <label>
               Band{" "}
-              <select aria-label="leg band" value={band}
-                onChange={(e) => setBand(e.target.value)}>
+              <select aria-label="leg band" value={band} onChange={(e) => setBand(e.target.value)}>
                 {bandOptions.map((b) => (
-                  <option key={b} value={b}>{b}</option>
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
                 ))}
               </select>
             </label>
           </>
         )}
-        <button type="button" onClick={add}>Add leg</button>
-        {error !== null && <p role="alert" className="error">{error}</p>}
+        <button type="button" onClick={add}>
+          Add leg
+        </button>
+        {error !== null && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
       </div>
     </section>
   );

@@ -1,13 +1,19 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 vi.mock("./components/Plot", async () => await import("./test/plotMock"));
 vi.mock("./components/CandleChart", async () => await import("./test/candleMock"));
-vi.mock("./components/LightweightLineChart", async () => await import("./test/lightweightLineMock"));
+vi.mock(
+  "./components/LightweightLineChart",
+  async () => await import("./test/lightweightLineMock"),
+);
 
 import { App } from "./App";
 import { RECORDED_EMPTY } from "./test/fixtures";
+// The Risk Scenarios tab now fetches through TanStack Query, so the full-App shell render needs a
+// QueryClientProvider in the tree — the same fresh-client-per-test wrapper the page tests use.
+import { renderWithClient as render } from "./test/renderWithClient";
 import { jsonGet, server } from "./test/server";
 
 // The shell tests want every tab in its labelled-empty state (the msw defaults serve the risk

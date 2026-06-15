@@ -27,7 +27,9 @@ export default defineConfig({
   // Fail a `.only` left in source on CI; keep local runs ergonomic.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? "github" : "list",
+  // On CI: GitHub inline annotations + an HTML report uploaded as an artifact on failure
+  // (see .github/workflows/gate.yml). Locally: the plain list reporter.
+  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",

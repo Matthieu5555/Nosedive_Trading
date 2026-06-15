@@ -6,7 +6,7 @@
 // A gap (an unpriced cell, an ambiguous provider, a missing spot, an unavailable theta/rho) is
 // rendered inline so the panel is never silently wrong or blank.
 
-import type { BasketMetric, BasketRiskResponse, BasketLegResult } from "../api";
+import type { BasketLegResult, BasketMetric, BasketRiskResponse } from "../api";
 import { sci, sciUnit, withCurrency } from "../lib/format";
 import { Plot } from "./Plot";
 
@@ -18,7 +18,8 @@ function metricOf(leg: BasketLegResult, greek: GreekName): BasketMetric {
 }
 
 function legLabel(leg: BasketLegResult): string {
-  if (leg.instrument_kind === "stock") return `${leg.side} ${leg.quantity} ${leg.underlying} (stock)`;
+  if (leg.instrument_kind === "stock")
+    return `${leg.side} ${leg.quantity} ${leg.underlying} (stock)`;
   return `${leg.side} ${leg.quantity} ${leg.underlying} ${leg.tenor_label}/${leg.delta_band}`;
 }
 
@@ -91,9 +92,7 @@ export function BasketRiskPanel({
               {GREEK_ORDER.map((greek) => {
                 const metric = metricOf(leg, greek);
                 return (
-                  <td key={greek}>
-                    {sciUnit(metric.dollar, withCurrency(metric.unit, currency))}
-                  </td>
+                  <td key={greek}>{sciUnit(metric.dollar, withCurrency(metric.unit, currency))}</td>
                 );
               })}
             </tr>

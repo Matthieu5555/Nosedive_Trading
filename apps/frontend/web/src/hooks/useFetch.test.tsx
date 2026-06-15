@@ -2,8 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
-import { useFetch } from "./useFetch";
 import { server } from "../test/server";
+import { useFetch } from "./useFetch";
 
 // A tiny probe component that renders the hook's state machine flat into the DOM, so a test can
 // assert on data / error / stale without a page. The probe path is served by per-test msw
@@ -30,9 +30,7 @@ test("a successful load exposes the data and clears loading", async () => {
 });
 
 test("a first-load failure fronts an error, not stale", async () => {
-  server.use(
-    http.get("/api/thing", () => HttpResponse.json({ error: "boom" }, { status: 500 })),
-  );
+  server.use(http.get("/api/thing", () => HttpResponse.json({ error: "boom" }, { status: 500 })));
   render(<Probe path="/api/thing" />);
   await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("500"));
   expect(screen.getByTestId("value")).toHaveTextContent("none");

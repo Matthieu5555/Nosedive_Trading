@@ -6,8 +6,8 @@ import { afterEach, expect, test, vi } from "vitest";
 // exposes the trace type as text (so we can assert a `waterfall` trace was requested).
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import { AttributionWaterfall } from "./AttributionWaterfall";
 import type { AttributionResponse } from "../api";
+import { AttributionWaterfall } from "./AttributionWaterfall";
 
 const TERM_UNIT = "$ (PnL contribution)";
 const RESIDUAL_UNIT = "$ (residual vs full reprice)";
@@ -80,7 +80,9 @@ test("the residual is its own labelled bar, never folded into a term", () => {
   // The residual is a distinct entry, dollar-labelled with its own residual unit string.
   expect(within(legend).getByText(/Residual:/)).toBeInTheDocument();
   expect(within(legend).getByText("4.5 × 10²")).toBeInTheDocument(); // residual 450
-  expect(within(legend).getByText(new RegExp(RESIDUAL_UNIT.replace(/[()$]/g, "\\$&")))).toBeInTheDocument();
+  expect(
+    within(legend).getByText(new RegExp(RESIDUAL_UNIT.replace(/[()$]/g, "\\$&"))),
+  ).toBeInTheDocument();
 });
 
 test("the tolerance verdict is surfaced (residual exceeds tolerance here)", () => {

@@ -6,18 +6,17 @@
 //   • nothing pushes the page into a horizontal scroll (a control shoved off-screen);
 //   • every nav button stays fully inside the viewport and clickable.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
+import { ROUTES } from "../src/routes";
 import { expectNoCollisions, expectNoHorizontalOverflow, expectWithinViewport } from "./helpers";
 import { mockBff } from "./mock-bff";
 
-// Orders is retired (frontend-orders-booking-reconcile, ruling (b)) — the booking surface is the
-// ticket panel on Basket, so the Basket route covers the booking home's collision/overflow check.
-const ROUTES = [
-  { name: "Market", path: "/", heading: "Market" },
-  { name: "Basket", path: "/basket", heading: "Basket Builder" },
-  { name: "Risk Scenarios", path: "/risk", heading: "Risk Scenarios" },
-] as const;
+// The route list is the SINGLE SOURCE OF TRUTH shared with App.tsx (src/routes.ts): every
+// user-facing route is collision-checked here automatically, so a new page added there is covered
+// the moment it ships — no second list to keep in sync. Orders is absent because it is retired
+// (frontend-orders-booking-reconcile, ruling (b)): the booking surface is the ticket panel on
+// Basket, so the Basket route covers the booking home's collision/overflow check.
 
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
@@ -37,7 +36,9 @@ async function navButtons(page: Page) {
 
 for (const viewport of VIEWPORTS) {
   for (const route of ROUTES) {
-    test(`[${viewport.name}] ${route.name}: no element collisions or overflow`, async ({ page }) => {
+    test(`[${viewport.name}] ${route.label}: no element collisions or overflow`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(route.path);
       await expect(page.getByRole("heading", { level: 1, name: route.heading })).toBeVisible();

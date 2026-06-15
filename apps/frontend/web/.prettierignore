@@ -1,0 +1,11 @@
+# Build output and deps
+dist
+node_modules
+coverage
+playwright-report
+test-results
+
+# Generated artifacts (own their own formatting)
+src/api/schema.d.ts
+# Exported from the BFF by `scripts/export_openapi.py`; the drift diff owns its shape.
+openapi.json

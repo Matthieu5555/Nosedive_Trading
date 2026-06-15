@@ -158,7 +158,11 @@ export function CoverageTable({ data }: { data: CoverageData }) {
           </thead>
           <tbody>
             {data.constituents.map((row) => (
-              <tr key={row.symbol} data-status={OUTCOME_STATUS[row.outcome]} data-outcome={row.outcome}>
+              <tr
+                key={row.symbol}
+                data-status={OUTCOME_STATUS[row.outcome]}
+                data-outcome={row.outcome}
+              >
                 <td>{row.rank}</td>
                 <td>{row.symbol}</td>
                 <td>{row.weight.toFixed(4)}</td>

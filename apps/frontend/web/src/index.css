@@ -6,7 +6,36 @@
  * state panels) is unchanged from the 2026-06-05 demo. Charts are now Plotly (ADR 0030),
  * so the hand-rolled SVG chart classes are dropped and a `.plot` rule frames the Plotly
  * figures inside the same panel grammar.
+ *
+ * ── Tailwind v4 coexistence (phase-2 hardening) ──────────────────────────────
+ * `@import "tailwindcss"` brings in Tailwind's preflight + utilities, emitted inside
+ * cascade layers (theme, base, components, utilities). Everything BELOW this import is
+ * left UNLAYERED on purpose: unlayered rules always beat layered ones regardless of
+ * source order, so the hand-tuned element/class rules below keep winning over Tailwind's
+ * preflight. shadcn primitives in src/ui use the @theme tokens below, so utilities like
+ * bg-panel / text-muted resolve to the exact same palette as the existing design system.
  */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Map Tailwind color/radius tokens onto the EXISTING palette. `@theme inline` makes the
+ * generated utilities reference var(--bg) etc. directly, so changing a :root var below
+ * keeps utilities and legacy CSS perfectly in sync (single source of truth). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-soft: var(--panel-soft);
+  --color-panel-soft-text: var(--panel-soft-text);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-amber: var(--amber);
+  --color-blue: var(--blue);
+}
 
 :root {
   color-scheme: dark;
@@ -25,7 +54,13 @@
   --blue: #86b9ff;
   --radius: 8px;
   font-family:
-    "Basis Grotesque", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Basis Grotesque",
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
 }
 

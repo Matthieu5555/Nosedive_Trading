@@ -70,7 +70,9 @@ export async function expectWithinViewport(page: Page, locator: Locator, slack =
   const box = await boxOf(locator);
   expect(box.x, "element clipped off the left edge").toBeGreaterThanOrEqual(-slack);
   expect(box.y, "element clipped off the top edge").toBeGreaterThanOrEqual(-slack);
-  expect(box.x + box.width, "element clipped off the right edge").toBeLessThanOrEqual(width + slack);
+  expect(box.x + box.width, "element clipped off the right edge").toBeLessThanOrEqual(
+    width + slack,
+  );
   expect(box.y + box.height, "element clipped off the bottom edge").toBeLessThanOrEqual(
     height + slack,
   );

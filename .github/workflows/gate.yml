@@ -63,7 +63,70 @@ jobs:
           cache-dependency-path: apps/frontend/web/package-lock.json
       - name: npm ci
         run: npm ci
+      - name: format check
+        run: npm run format:check
       - name: lint
         run: npm run lint
+      - name: typecheck
+        run: npm run typecheck
       - name: test
         run: npm test
+
+  web-contract:
+    name: frontend↔BFF contract (OpenAPI → TS, no drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Both toolchains: the schema is exported by Python (uv) and the TS types are
+      # generated from it by node — the drift guard spans the seam, so it needs both.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/frontend/web/package-lock.json
+      - name: npm ci
+        working-directory: apps/frontend/web
+        run: npm ci
+      - name: export OpenAPI schema (scratch store; never canonical data/)
+        run: uv run python scripts/export_openapi.py
+      - name: generate TS types from the schema
+        working-directory: apps/frontend/web
+        run: npm run gen:api
+      # A backend contract change that was not regenerated + committed fails here.
+      - name: fail on contract drift
+        run: git diff --exit-code apps/frontend/web/openapi.json apps/frontend/web/src/api/schema.d.ts
+
+  web-e2e:
+    name: web app e2e (Playwright layout + collision suite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/frontend/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/frontend/web/package-lock.json
+      - name: npm ci
+        run: npm ci
+      # The e2e suite renders in real Chromium because jsdom has no layout engine: it is the only
+      # net that catches visual overlap / viewport overflow / off-screen controls — exactly the
+      # regressions many parallel contributors introduce. Network is mocked (e2e/mock-bff.ts), so
+      # the job never touches a live BFF or the canonical store. Playwright starts its own Vite.
+      - name: install chromium
+        run: npx playwright install --with-deps chromium
+      - name: e2e
+        run: npm run e2e
+      - name: upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/frontend/web/playwright-report
+          retention-days: 7

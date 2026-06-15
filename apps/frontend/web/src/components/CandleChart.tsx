@@ -10,17 +10,17 @@
 // lightweight-charts draws to a <canvas> jsdom does not implement, so component tests stub this
 // module (see src/test/candleMock.tsx), mirroring how the Plotly wrapper is stubbed.
 
-import { useEffect, useRef } from "react";
 import {
+  type CandlestickData,
   CandlestickSeries,
   createChart,
-  type CandlestickData,
   type IChartApi,
 } from "lightweight-charts";
+import { useEffect, useRef } from "react";
 
 import type { DailyBar } from "../api";
 import { sci, UNITS } from "../lib/format";
-import { CHART_COLORS, baseLightweightOptions } from "./chartTheme";
+import { baseLightweightOptions, CHART_COLORS } from "./chartTheme";
 
 export interface CandleChartProps {
   bars: DailyBar[];
@@ -81,7 +81,11 @@ export function CandleChart({ bars, label }: CandleChartProps) {
     // Volume is not part of the candlestick series, so look it up by date for the read-out.
     const volumeByDate = new Map(sorted.map((bar) => [bar.trade_date, bar.volume]));
 
-    const renderLegend = (date: string, ohlc: CandlestickData, volume: number | undefined): void => {
+    const renderLegend = (
+      date: string,
+      ohlc: CandlestickData,
+      volume: number | undefined,
+    ): void => {
       const legend = legendRef.current;
       if (legend === null) return;
       const vol = volume === undefined ? "n/a" : volFmt(volume);

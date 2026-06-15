@@ -9,13 +9,13 @@ import type {
   IndicesResponse,
 } from "../api";
 import { fetchAttribution, priceBasket, stressBasket } from "../api";
+import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
+import { AttributionWaterfall } from "../components/AttributionWaterfall";
 import { BasketLegGrid } from "../components/BasketLegGrid";
 import { BasketRiskPanel } from "../components/BasketRiskPanel";
-import { AttributionWaterfall } from "../components/AttributionWaterfall";
 import { Metric } from "../components/Metric";
 import { StressSurface } from "../components/StressSurface";
 import { TicketPanel } from "../components/TicketPanel";
-import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol, sciUnit, UNITS, withCurrency } from "../lib/format";
 import type { BasketScenariosResponse } from "../stressApi";
@@ -42,9 +42,7 @@ export function BasketPage() {
   }, [indexOptions, underlying]);
   // The currency symbol of the selected underlying's quote currency (from the registry) — every
   // monetized number on the page renders in this, never a hard-coded "$" (blueprint 05-math-notes).
-  const currency = currencySymbol(
-    indexOptions.find((o) => o.symbol === underlying)?.currency,
-  );
+  const currency = currencySymbol(indexOptions.find((o) => o.symbol === underlying)?.currency);
   // The platform-wide delta-band axis the leg selector offers — the single source, fetched once
   // and threaded into the (presentational) leg grid as a prop.
   const deltaBands = useFetch<DeltaBandsResponse>("/api/config/delta-bands");
@@ -144,9 +142,12 @@ export function BasketPage() {
       <div className="basket-controls">
         <label>
           Underlying{" "}
-          <select aria-label="underlying" value={underlying}
+          <select
+            aria-label="underlying"
+            value={underlying}
             disabled={indexOptions.length === 0}
-            onChange={(e) => setUnderlying(e.target.value)}>
+            onChange={(e) => setUnderlying(e.target.value)}
+          >
             {indexOptions.map((item) => (
               <option key={item.symbol} value={item.symbol}>
                 {item.name} ({item.symbol})
@@ -158,26 +159,36 @@ export function BasketPage() {
           {/* Empty means "latest banked day": the BFF resolves it to the most recent analytics
               partition for the underlying, so the default flow prices without picking a date. */}
           Trade date (empty = latest){" "}
-          <input aria-label="trade date" type="date" value={tradeDate}
-            onChange={(e) => setTradeDate(e.target.value)} />
+          <input
+            aria-label="trade date"
+            type="date"
+            value={tradeDate}
+            onChange={(e) => setTradeDate(e.target.value)}
+          />
         </label>
         <label>
           Tenor{" "}
-          <input aria-label="tenor" value={tenor}
-            onChange={(e) => setTenor(e.target.value)} />
+          <input aria-label="tenor" value={tenor} onChange={(e) => setTenor(e.target.value)} />
         </label>
         <label>
           {/* The portfolio whose persisted P&L attribution to drill into (book level). */}
           Portfolio (attribution){" "}
-          <input aria-label="portfolio" value={portfolioId}
-            onChange={(e) => setPortfolioId(e.target.value)} />
+          <input
+            aria-label="portfolio"
+            value={portfolioId}
+            onChange={(e) => setPortfolioId(e.target.value)}
+          />
         </label>
       </div>
 
       <div className="basket-templates" role="group" aria-label="templates">
         {TEMPLATES.map((name) => (
-          <button key={name} type="button" aria-label={`template ${name}`}
-            onClick={() => applyTemplate(name)}>
+          <button
+            key={name}
+            type="button"
+            aria-label={`template ${name}`}
+            onClick={() => applyTemplate(name)}
+          >
             {TEMPLATE_LABELS[name]}
           </button>
         ))}
@@ -240,16 +251,16 @@ export function BasketPage() {
             <div className="quote-strip">
               <Metric
                 label="Worst PnL"
-                value={sciUnit(stress.worst_case.pnl, withCurrency(stress.worst_case.unit, currency))}
+                value={sciUnit(
+                  stress.worst_case.pnl,
+                  withCurrency(stress.worst_case.unit, currency),
+                )}
               />
               <Metric
                 label="Spot shock"
                 value={sciUnit(stress.worst_case.spot_shock, UNITS.shock)}
               />
-              <Metric
-                label="Vol shock"
-                value={sciUnit(stress.worst_case.vol_shock, UNITS.shock)}
-              />
+              <Metric label="Vol shock" value={sciUnit(stress.worst_case.vol_shock, UNITS.shock)} />
             </div>
             {stress.n_gaps > 0 && (
               <p role="status">

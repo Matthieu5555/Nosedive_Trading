@@ -4,7 +4,10 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 // Swap the canvas chart wrappers for DOM stubs (jsdom has no canvas), as the other Market tests do.
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
-vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
+vi.mock(
+  "../components/LightweightLineChart",
+  async () => await import("../test/lightweightLineMock"),
+);
 
 // Force the volatility-analytics panel to throw on render, while leaving the index-history panel
 // (its module sibling) a working stub — so we can prove one panel's crash is contained.

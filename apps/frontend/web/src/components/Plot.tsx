@@ -11,9 +11,9 @@
 // per-attribute, so a caller layout that sets only an axis title keeps the themed
 // gridcolor/tickcolor on that same axis.
 
+import type { Data, Layout } from "plotly.js";
 import Plotly from "plotly.js-dist-min";
 import createPlotlyComponent from "react-plotly.js/factory";
-import type { Data, Layout } from "plotly.js";
 
 import { themedPlotLayout } from "./chartTheme";
 

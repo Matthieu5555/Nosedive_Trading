@@ -1,12 +1,13 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { http } from "msw";
 import { expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import { RiskScenariosPage } from "./RiskScenarios";
-import { jsonGet, notMocked, server } from "../test/server";
 import type { ScenariosResponse } from "../stressApi";
+import { renderWithClient } from "../test/renderWithClient";
+import { jsonGet, notMocked, server } from "../test/server";
+import { RiskScenariosPage } from "./RiskScenarios";
 
 // /api/risk/portfolios is served by the msw defaults; each test picks its scenarios payload.
 
@@ -52,7 +53,7 @@ const SCENARIOS_WITH_HOLE: ScenariosResponse = {
 
 test("renders the stress summary with max gain/loss and a portfolio selector", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  render(<RiskScenariosPage />);
+  renderWithClient(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
   // Max gain 1500, max loss -1200, rendered in scientific notation (six sig figs, trailing
   // zeros stripped) with the backend PnL unit string adjacent (owner ruling 2026-06-15):
@@ -65,7 +66,7 @@ test("renders the stress summary with max gain/loss and a portfolio selector", a
 
 test("renders the PnL surface and heatmap as Plotly traces", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  render(<RiskScenariosPage />);
+  renderWithClient(<RiskScenariosPage />);
   const surface = await screen.findByLabelText(/Stress PnL surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
   const heatmap = await screen.findByLabelText(/Stress PnL heatmap/i);
@@ -74,7 +75,7 @@ test("renders the PnL surface and heatmap as Plotly traces", async () => {
 
 test("a missing cell is reported as missing and excluded from the gain/loss stats", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS_WITH_HOLE));
-  render(<RiskScenariosPage />);
+  renderWithClient(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
   // The hole is announced beside the cell count…
   expect(screen.getByText(/8 cells — 1 missing/)).toBeInTheDocument();
@@ -86,14 +87,14 @@ test("a missing cell is reported as missing and excluded from the gain/loss stat
 
 test("renders a labeled empty state when no surface is persisted", async () => {
   // The msw default for /api/risk/scenarios IS the empty surface (SCENARIOS_EMPTY).
-  render(<RiskScenariosPage />);
+  renderWithClient(<RiskScenariosPage />);
   expect(await screen.findByText(/No stress surface persisted yet/i)).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {
   // Portfolios stays on its default; /api/risk/scenarios is forced onto the 500 path.
   server.use(http.get("/api/risk/scenarios", notMocked));
-  render(<RiskScenariosPage />);
+  renderWithClient(<RiskScenariosPage />);
   await waitFor(() => {
     expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);
   });

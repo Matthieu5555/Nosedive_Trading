@@ -5,10 +5,15 @@
 
 import { useEffect, useMemo } from "react";
 
-import type { Constituent, ConstituentsResponse, PriceHistoryBatchResponse, PriceHistoryResponse } from "../../api";
+import type {
+  Constituent,
+  ConstituentsResponse,
+  PriceHistoryBatchResponse,
+  PriceHistoryResponse,
+} from "../../api";
 import { AsyncBlock } from "../../components/AsyncBlock";
-import { ConstituentTable } from "../../components/ConstituentTable";
 import { PriceChart } from "../../components/charts";
+import { ConstituentTable } from "../../components/ConstituentTable";
 import { useFetch } from "../../hooks/useFetch";
 import { useConstituentHistoryBatch } from "./constituentHistory";
 
@@ -36,19 +41,18 @@ export function ConstituentsWorkspace({
   );
   const histories = useConstituentHistoryBatch(symbols, asOf);
   const historyByUnderlying = useMemo(
-    () => new Map((histories.data?.histories ?? []).map((history) => [history.underlying, history])),
+    () =>
+      new Map((histories.data?.histories ?? []).map((history) => [history.underlying, history])),
     [histories.data],
   );
-  const selectedHistory = selected === null ? null : historyByUnderlying.get(selected) ?? null;
+  const selectedHistory = selected === null ? null : (historyByUnderlying.get(selected) ?? null);
 
   // Default-select the heaviest constituent once the basket loads (cahier des charges §3.2: the
   // top row is selected by default). Weight desc, nulls last — matches the table's default order.
   const heaviest = useMemo(() => {
     const list = state.data?.constituents ?? [];
     if (list.length === 0) return null;
-    return [...list].sort(
-      (a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity),
-    )[0].symbol;
+    return [...list].sort((a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity))[0].symbol;
   }, [state.data]);
   useEffect(() => {
     if (selected === null && heaviest !== null) onSelect(heaviest);
@@ -124,7 +128,10 @@ function SelectedComponentHistory({
   );
   const data = batchEntry ?? single.data;
   return (
-    <AsyncBlock loading={data === null && single.loading} error={data === null ? single.error : null}>
+    <AsyncBlock
+      loading={data === null && single.loading}
+      error={data === null ? single.error : null}
+    >
       {data && <PriceChart data={data} />}
     </AsyncBlock>
   );
@@ -148,8 +155,11 @@ function UnderlyingDataSummary({
   );
   const firstDate = tradeDates.length === 0 ? null : tradeDates.reduce((a, b) => (a < b ? a : b));
   const lastDate = tradeDates.length === 0 ? null : tradeDates.reduce((a, b) => (a > b ? a : b));
-  const windowText =
-    loading ? "loading" : firstDate === null || lastDate === null ? "n/a" : `${firstDate} - ${lastDate}`;
+  const windowText = loading
+    ? "loading"
+    : firstDate === null || lastDate === null
+      ? "n/a"
+      : `${firstDate} - ${lastDate}`;
   return (
     <div className="underlying-data-summary" aria-label="Underlying history coverage">
       <div>

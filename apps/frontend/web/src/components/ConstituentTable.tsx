@@ -5,15 +5,15 @@
 // a row selects that ticker for the detail panels; the parent default-selects the top (heaviest)
 // constituent on load. The table fills its panel width so the list never scrolls horizontally.
 
-import { useState } from "react";
 import {
   type ColumnDef,
-  type SortingState,
   flexRender,
   getCoreRowModel,
   getSortedRowModel,
+  type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
+import { useState } from "react";
 
 import type { Constituent } from "../api";
 import { sciUnit, UNITS } from "../lib/format";
@@ -68,11 +68,7 @@ export function ConstituentTable({
   return (
     // A bounded, vertically-scrollable container; the table fills the width so it never needs a
     // horizontal scrollbar.
-    <div
-      role="region"
-      aria-label={label}
-      style={{ maxHeight: "20rem", overflowY: "auto" }}
-    >
+    <div role="region" aria-label={label} style={{ maxHeight: "20rem", overflowY: "auto" }}>
       <table style={{ width: "100%" }}>
         <caption>{label}</caption>
         <thead>
@@ -108,8 +104,7 @@ export function ConstituentTable({
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>
-                    {symbol === cell.row.original.symbol &&
-                    cell.column.id === "symbol" ? (
+                    {symbol === cell.row.original.symbol && cell.column.id === "symbol" ? (
                       <button type="button" onClick={() => onSelect(symbol)}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </button>

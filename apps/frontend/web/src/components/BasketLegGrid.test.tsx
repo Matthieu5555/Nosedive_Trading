@@ -2,18 +2,45 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import { BasketLegGrid } from "./BasketLegGrid";
 import type { BasketLegInput } from "../api";
+import { BasketLegGrid } from "./BasketLegGrid";
 
 // A 32-band axis the page would thread from GET /api/config/delta-bands; derived here by hand
 // (put→ATM→call) independently of any backend output, with bands the hard-coded 8-list lacks
 // (e.g. 02dp / 02dc) so a test can prove the selector is driven by the prop, not a const.
 const BANDS_32 = [
-  "30dp", "28dp", "26dp", "24dp", "22dp", "20dp", "18dp", "16dp",
-  "14dp", "12dp", "10dp", "08dp", "06dp", "04dp", "02dp",
-  "atm", "atmp",
-  "02dc", "04dc", "06dc", "08dc", "10dc", "12dc", "14dc", "16dc",
-  "18dc", "20dc", "22dc", "24dc", "26dc", "28dc", "30dc",
+  "30dp",
+  "28dp",
+  "26dp",
+  "24dp",
+  "22dp",
+  "20dp",
+  "18dp",
+  "16dp",
+  "14dp",
+  "12dp",
+  "10dp",
+  "08dp",
+  "06dp",
+  "04dp",
+  "02dp",
+  "atm",
+  "atmp",
+  "02dc",
+  "04dc",
+  "06dc",
+  "08dc",
+  "10dc",
+  "12dc",
+  "14dc",
+  "16dc",
+  "18dc",
+  "20dc",
+  "22dc",
+  "24dc",
+  "26dc",
+  "28dc",
+  "30dc",
 ];
 
 function renderGrid(legs: BasketLegInput[] = [], bands?: string[]) {
@@ -89,7 +116,14 @@ test("with no bands (loading/error) the selector still renders a usable fallback
 test("renders an existing leg and can remove it", async () => {
   const user = userEvent.setup();
   const { onRemove } = renderGrid([
-    { instrument_kind: "option", side: "long", quantity: 1, underlying: "AAA", tenor_label: "1m", delta_band: "atm" },
+    {
+      instrument_kind: "option",
+      side: "long",
+      quantity: 1,
+      underlying: "AAA",
+      tenor_label: "1m",
+      delta_band: "atm",
+    },
   ]);
   const legs = screen.getByRole("table", { name: /composed legs/i });
   expect(within(legs).getByText("atm")).toBeInTheDocument();

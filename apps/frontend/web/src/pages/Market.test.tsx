@@ -7,9 +7,11 @@ import { afterEach, expect, test, vi } from "vitest";
 // wrapper for a DOM stub that exposes the self-label and chart inputs as text.
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
-vi.mock("../components/LightweightLineChart", async () => await import("../test/lightweightLineMock"));
+vi.mock(
+  "../components/LightweightLineChart",
+  async () => await import("../test/lightweightLineMock"),
+);
 
-import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
 import {
   ANALYTICS_AAA_DENSE,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
@@ -17,6 +19,7 @@ import {
   RECORDED_EMPTY,
 } from "../test/fixtures";
 import { jsonGet, notMocked, server } from "../test/server";
+import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
 
 // The msw defaults (src/test/server.ts) already serve this page's happy path: recorded dates,
 // constituents, single-ticker price history, analytics, and the batch preload. Each test only
@@ -96,9 +99,7 @@ test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and
   // series per delta band and the $ unit string carried into the panel label.
   const deltaPanel = await screen.findByLabelText(/Delta \$ term structure/i);
   expect(within(deltaPanel).getByTestId("line-series")).toHaveTextContent("30dp");
-  expect(within(deltaPanel).getByTestId("line-unit")).toHaveTextContent(
-    "$ per $1 of underlying",
-  );
+  expect(within(deltaPanel).getByTestId("line-unit")).toHaveTextContent("$ per $1 of underlying");
   expect(
     await screen.findByLabelText(/Gamma \$ term structure \(\$ per 1% move\)/i),
   ).toBeInTheDocument();
@@ -220,7 +221,9 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
   // Greeks panel must render its unit strings in € — the index's real quote currency from
   // /api/indices — not the hard-coded "$" the legacy stored unit strings still carry.
   server.use(
-    jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" }] }),
+    jsonGet("/api/indices", {
+      indices: [{ symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" }],
+    }),
     jsonGet("/api/recorded-dates", {
       index: "SX5E",
       count: 1,

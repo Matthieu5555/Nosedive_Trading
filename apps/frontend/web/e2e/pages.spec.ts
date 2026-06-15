@@ -23,9 +23,9 @@ test("Market: index and as-of selectors are present and switchable", async ({ pa
   await expect(page.getByLabel("As-of date")).toBeVisible();
 
   // Switching the index must not crash the page (heading survives, no error tile).
-  const values = await index.locator("option").evaluateAll((opts) =>
-    opts.map((o) => (o as HTMLOptionElement).value),
-  );
+  const values = await index
+    .locator("option")
+    .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
   if (values.length > 1) {
     await index.selectOption(values[1]);
     await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
@@ -47,7 +47,9 @@ test("Risk Scenarios: portfolio selector lists portfolios and is selectable", as
   await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
 });
 
-test("Basket booking home: the real ticket builds and Sign & send stays 3B-gated", async ({ page }) => {
+test("Basket booking home: the real ticket builds and Sign & send stays 3B-gated", async ({
+  page,
+}) => {
   // The booking chain has one home (frontend-orders-booking-reconcile, ruling (b)): the order
   // ticket on Basket. There is no Orders sketch — execution stays gated here, not on a dead tab.
   await page.goto("/basket");

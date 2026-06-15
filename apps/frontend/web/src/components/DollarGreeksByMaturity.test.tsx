@@ -23,7 +23,12 @@ const CLEAN_12M: AnalyticsMaturity = {
   maturity_years: 1.0,
   tenor_label: "12m",
   label: "12m (1.000y)",
-  smile: { axis_type: "delta", deltas: [-0.3, 0.3], implied_vols: [0.22, 0.2], log_moneyness: [-0.1, 0.1] },
+  smile: {
+    axis_type: "delta",
+    deltas: [-0.3, 0.3],
+    implied_vols: [0.22, 0.2],
+    log_moneyness: [-0.1, 0.1],
+  },
   surface_slice: null,
   points: [
     {
@@ -67,10 +72,7 @@ describe("DollarGreeksByMaturity", () => {
   test("one maturity in view at a time; the selector switches the table", async () => {
     const user = userEvent.setup();
     render(
-      <DollarGreeksByMaturity
-        maturities={[ANALYTICS_AAA.maturities[0], CLEAN_12M]}
-        currency="€"
-      />,
+      <DollarGreeksByMaturity maturities={[ANALYTICS_AAA.maturities[0], CLEAN_12M]} currency="€" />,
     );
     // First maturity is shown by default.
     expect(screen.getByRole("table", { name: /Dollar Greeks — 3m/ })).toBeInTheDocument();
@@ -82,7 +84,9 @@ describe("DollarGreeksByMaturity", () => {
   });
 
   test("a railed-slice row is rendered (values intact) and flagged, never dropped or blown", () => {
-    render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA_DEGENERATE.maturities} currency="€" />);
+    render(
+      <DollarGreeksByMaturity maturities={ANALYTICS_AAA_DEGENERATE.maturities} currency="€" />,
+    );
     const table = screen.getByRole("table", { name: /Dollar Greeks — 10d/ });
     // All three rows render — the railed rows are NOT dropped (the served datum stays visible).
     expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();

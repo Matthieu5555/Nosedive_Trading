@@ -5,12 +5,13 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { expect, test } from "vitest";
 
 import {
+  baseLightweightOptions,
   CHART_COLORS,
   PLOTLY_TEMPLATE,
-  baseLightweightOptions,
   themedPlotLayout,
 } from "./chartTheme";
 

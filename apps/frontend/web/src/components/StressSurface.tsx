@@ -5,10 +5,10 @@
 
 import type { Data } from "plotly.js";
 
+import { sciUnit, withCurrency } from "../lib/format";
 import type { StressSurfaceData } from "../stressApi";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
-import { sciUnit, withCurrency } from "../lib/format";
 
 const SURFACE_LABEL =
   "Stress PnL surface — full reprice over spot shock (relative) × vol shock (additive)";
@@ -88,9 +88,8 @@ export function StressSurface({
           <Metric label="Version" value={surface.scenario_version ?? "—"} />
         </div>
         <p>
-          Spot shock is relative (new spot = spot × (1 + s)); vol shock is additive (new vol = vol
-          + v). The centre cell (0, 0) is ≈ 0 PnL by construction. PnL unit:{" "}
-          <strong>{unit}</strong>.
+          Spot shock is relative (new spot = spot × (1 + s)); vol shock is additive (new vol = vol +
+          v). The centre cell (0, 0) is ≈ 0 PnL by construction. PnL unit: <strong>{unit}</strong>.
         </p>
       </article>
 

@@ -1,8 +1,21 @@
-// Typed client for the BFF. Response shapes mirror
-// apps/frontend/src/algotrading/frontend/serializers.py; keep them in sync when a
-// serializer changes (the HTTP contract is the seam).
+// Typed client for the BFF.
+//
+// Request bodies and any pydantic-modelled payloads are sourced from the generated
+// `./api/schema.d.ts` (run `npm run gen:api` after a backend contract change; CI's
+// `web-contract` gate fails on un-regenerated drift). The BFF's GET responses are
+// currently served as bare `JSONResponse` dicts with no `response_model=`, so they do
+// not appear in the OpenAPI schema; those response shapes are hand-maintained below and
+// mirror apps/frontend/src/algotrading/frontend/serializers.py — keep them in sync when a
+// serializer changes (the HTTP contract is the seam). Enriching the routers with
+// `response_model=` would let these aliases come from the schema too; that is the
+// follow-up that makes the GET contract drift-proof end to end.
 
+import type { components } from "./api/schema";
 import type { BasketScenariosResponse } from "./stressApi";
+
+// The run-launch body is a real pydantic model on the BFF, so its type comes straight
+// from the generated schema rather than a hand-written duplicate.
+export type RunRequest = components["schemas"]["RunRequest"];
 
 export interface Provenance {
   calc_ts: string;

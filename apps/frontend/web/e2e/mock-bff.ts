@@ -45,6 +45,19 @@ const COVERAGE_AAA: CoverageData = {
     { tenor: "1m", measured: null, floor: 0.8, status: "unknown" },
     { tenor: "3m", measured: 0.95, floor: 0.8, status: "pass" },
   ],
+  // Per-constituent outcome ledger (ibkr-constituent-lane-activation), heaviest-first. Exercises
+  // the per-name capture-outcome panel in the browser: one captured, one labelled gap.
+  constituents: [
+    { symbol: "BBB", rank: 1, weight: 0.0812, outcome: "captured", n_options: 22, detail: "" },
+    {
+      symbol: "CCC",
+      rank: 2,
+      weight: 0.0451,
+      outcome: "unentitled",
+      n_options: 0,
+      detail: "no option-data entitlement on this account",
+    },
+  ],
   qc_status: "pass",
   delta_band_status: "pass",
 };

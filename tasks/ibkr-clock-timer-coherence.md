@@ -43,4 +43,6 @@ per-index hand-set value that drifts.
 
 - Root cause + hotfix detail: memory `spx-post-close-drop-bug`, `index-addition-coherence`.
 - Owner ruling OQ-2 (guard→timer sequencing): memory `audit-oq-rulings`.
-- Timer/service units: `documentation/connectivity/eod-capture@*.timer`, `eod-capture@.service`.
+- Timer/service units: `scripts/systemd/eod-capture@XEUR.timer`, `scripts/systemd/eod-capture@XNYS.timer`,
+  `scripts/systemd/eod-capture@.service`. (`documentation/connectivity/` was removed; the live units
+  are tracked in `scripts/systemd/`.)

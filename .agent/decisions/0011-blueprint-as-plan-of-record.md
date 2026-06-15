@@ -4,27 +4,23 @@
 - **Date:** 2026-05-30
 - **Source:** Vincent's ADR-009; merged into our stream 2026-06-05
 
-> **AMENDED 2026-06-13 (b) — the blueprint is restored; it coexists with TARGET.md.**
-> An earlier same-day amendment (commit `bacec40`) retired the blueprint and deleted the
-> `documentation/` tree in a "context-minimization" pass. **That deletion is reverted** — the
-> owner (Vincent) restored `documentation/` in full. The blueprint and `TARGET.md` now hold
-> **two distinct, complementary authorities**:
+> **AMENDED 2026-06-15 (c) — `documentation/` is gone; `TARGET.md` is the sole domain authority.**
+> An earlier amendment (2026-06-13 b) reverted a deletion and stated that `documentation/blueprint/`
+> and `TARGET.md` were "two complementary authorities." The owner ruling (2026-06-14, repeated to ~15
+> agents) supersedes that: **the `documentation/` tree is outdated and abandoned; it has been
+> removed; git history is the archive.** `TARGET.md` absorbed the retired blueprint and is now the
+> **sole domain authority** — formulas, contracts, naming, vocabulary, the build sequence, and the
+> current scope rulings. For course pedagogy (Greek intuition, strategy rationale, vol-surface
+> teaching), the canonical live reference is `ThomasHossen/MM_options_trading.md`. The body below is
+> the historical "why we dissolved the V1/V2 split" record and is preserved for context only.
 >
-> - **The blueprint (`documentation/blueprint/`) is the detailed *domain* reference** — formulas,
->   the math framework, data schemas/dictionary, field naming, vocabulary, and the per-step
->   implementation guides. On any *domain-detail* question, the blueprint governs and the code
->   conforms to it.
-> - **`TARGET.md` is the *roadmap & scope* authority** — what we build now, in what order, the
->   end-state capability map, and the current owner rulings.
->
-> **Conflict resolution:** on **scope/universe/brokers**, `TARGET.md` and the later scope ADRs
-> win — decisively, **ADR 0042 (index-options-only, IBKR sole broker, SX5E sole live index)
-> overrides the blueprint** wherever the blueprint still assumes multi-broker (Saxo/Deribit),
-> equity underlyings, or wider scope. Restoring the blueprint does **not** re-open that scope. On
-> **domain detail** (formulas, contracts, naming), the blueprint wins unless a later ADR
-> explicitly supersedes it. The unchanged founding principle: there is one domain source of truth
-> per concern, the code conforms, and `AGENTS.md` governs process. The body below is the
-> historical "why we dissolved the V1/V2 split" record.
+> **Current conflict resolution:** `TARGET.md` governs on all domain questions. ADR 0042
+> (index-options-only, IBKR sole broker, SX5E sole live index) is a frozen scope ruling encoded in
+> `TARGET.md §0`. `AGENTS.md` governs process. Do not read or write `documentation/`.
+
+> **AMENDED 2026-06-13 (b) — superseded by amendment (c) above.** Noted here for history only:
+> Vincent restored `documentation/` after an earlier deletion; at that point the blueprint and
+> `TARGET.md` coexisted. That state is now superseded — `documentation/` is gone.
 
 ## Context
 
@@ -34,9 +30,10 @@ to be the source of observed drift: data contracts were partially filled, naming
 (e.g. `canonical_ts` vs `snapshot_ts`), and several modules mandated by the blueprint were absent.
 The V1/V2 framing was quietly narrowing scope in ways the code did not honor anyway.
 
-The blueprint (`documentation/blueprint/`, transcribed from *Industrial Roadmap for a Volatility
-Infrastructure Platform v4.0, 06 April 2026*) is a precise, prescriptive document: it specifies
-mathematical formulas, data schemas, field definitions, vocabulary, and a 16-step build order.
+The blueprint (*Industrial Roadmap for a Volatility Infrastructure Platform v4.0, 06 April 2026*;
+formerly at `documentation/blueprint/`, now absorbed into `TARGET.md` — see amendment (c) above)
+is a precise, prescriptive document: it specifies mathematical formulas, data schemas, field
+definitions, vocabulary, and a 16-step build order.
 
 ## Decision
 

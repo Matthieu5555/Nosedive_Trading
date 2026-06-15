@@ -1,9 +1,8 @@
 # T-option-volume-capture — capture per-strike option volume (bid/ask already landed)
 
-> **Source:** course transcript req #7
-> (`documentation/transcripts/AlgoTradingCourse2-Greeks-et-strategies-vol.md` §6). Without
-> volume per strike, the analytics stay "theoretical" — liquidity is what makes a strategy
-> implementable.
+> **Source:** course transcript req #7 (`ThomasHossen/MM_options_trading.md` §6 — without volume
+> per strike, the analytics stay "theoretical"; liquidity is what makes a strategy implementable).
+> `documentation/` is gone; `ThomasHossen/MM_options_trading.md` is the canonical course reference.
 
 ## The gap
 `MarketStateSnapshot` (`packages/infra/src/algotrading/infra/contracts/tables.py:~74`) carries

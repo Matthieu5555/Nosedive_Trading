@@ -2,8 +2,8 @@
 
 - **Status:** accepted, 2026-06-06.
 - **Date:** 2026-06-06.
-- **Implements:** roadmap **1G** (daily close-capture cron) in
-  [`documentation/roadmap-index-analytics.md`](../../documentation/roadmap-index-analytics.md).
+- **Implements:** roadmap **1G** (daily close-capture cron) — the roadmap now lives in `TARGET.md`
+  (`documentation/roadmap-index-analytics.md` was removed with the `documentation/` tree).
 - **Relates to:** [[0026-orchestration-observability-reconciliation]] (the run-state ledger + EOD
   pipeline this triggers), [[0023-nautilus-runtime-spine-and-library-leverage]].
 
@@ -34,8 +34,8 @@ what a timer does for free); and the orchestration platforms each stand up a ser
 
 ## Consequences
 
-- **Zero new Python dependencies.** The ops artifacts (unit files) live with the server-deploy
-  plumbing under `documentation/connectivity/`.
+- **Zero new Python dependencies.** The ops artifacts (unit files) live in `scripts/systemd/`
+  (`documentation/connectivity/` was removed with the `documentation/` tree).
 - Coheres with [[0031-ibkr-historical-data-cp-rest-oauth1a]]: the timer fires the daily job while the
   OAuth 1.0a session/tickler keeps the IBKR REST session alive — no competing standing scheduler.
 

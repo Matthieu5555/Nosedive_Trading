@@ -46,10 +46,10 @@ push — `RawCollector.on_event(broker_event)` → `set_callback` → `heartbeat
 flat EAV raw shape (Part IV schema rules; ADR 0019). **(2)** The code already voted: all
 three live adapters (Deribit, IBKR-TWS, IBKR-CP-REST, Saxo) are written on the push
 `MarketDataAdapter`/`RawCollector`; only `deribit_transport.py` still touches the pull seam.
-ADR 0023 already named the push EAV tick "the survivor." **(3)** The transcripts of the
-course (`documentation/transcripts/`) say nothing about ingestion transport; they set no
-override. The blueprint, the plan of record (ADR 0011), is the binding authority, and it is
-push.
+ADR 0023 already named the push EAV tick "the survivor." **(3)** The course transcripts say nothing about ingestion transport; they set no override
+(`documentation/transcripts/` was removed; course pedagogy lives in `ThomasHossen/MM_options_trading.md`).
+The blueprint, the plan of record (ADR 0011; absorbed into `TARGET.md`), is the binding authority,
+and it is push.
 
 Keeping both is the live violation of the no-dual-path invariant (ADR 0007): two
 `BrokerTick`s, two session protocols, two supervision homes, drifting. It is exactly why the

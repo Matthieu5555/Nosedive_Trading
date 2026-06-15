@@ -1,8 +1,8 @@
 # T-sigfig-scientific-display — render Greeks at ≥6 sig-figs in scientific notation on the front
 
-> **Source:** course transcript req #6
-> (`documentation/transcripts/AlgoTradingCourse2-Greeks-et-strategies-vol.md` §5). Delta is
-> O(1) while vega/gamma are O(0.1–0.001); a uniform 2-decimal rounding destroys the small Greeks.
+> **Source:** course transcript req #6 (`ThomasHossen/MM_options_trading.md` §5 — Delta is O(1)
+> while vega/gamma are O(0.1–0.001); a uniform 2-decimal rounding destroys the small Greeks).
+> `documentation/` is gone; `ThomasHossen/MM_options_trading.md` is the canonical course reference.
 
 ## The gap
 The analytics store Greeks at full float precision, but the front formatting (`lib/format.ts`)

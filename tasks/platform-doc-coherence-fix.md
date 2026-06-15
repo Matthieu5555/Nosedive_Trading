@@ -1,5 +1,8 @@
 # platform-doc-coherence-fix — quarantine the dead documentation/ tree and re-point every reference
 
+**State: done on branch `worktree-agent-a62613055e43cdb9f` (2026-06-15).** `documentation/` was
+already absent from disk. All live references re-pointed. See TASKBOARD claim row for details.
+
 **Owner ruling (2026-06-14, said to ~15 prior agents):** the `documentation/` tree is
 **outdated and abandoned**. It is not a source of truth and must not be read or written. Authority
 is `TARGET.md` (domain), `AGENTS.md` (process), `.agent/` (map/conventions/decisions/glossary), and

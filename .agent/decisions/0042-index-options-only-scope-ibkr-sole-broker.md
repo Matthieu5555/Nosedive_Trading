@@ -59,8 +59,8 @@ product does not ship, presented at the same "accepted" weight as load-bearing o
   it from a task file. Every multi-broker ADR now carries a dated amendment pointing here; reading
   the amendment is enough to skip the stale body.
 - **The gate stays green without Saxo/Deribit** (ruff/mypy/lint-imports/pytest; the broker layer in
-  import-linter names `infra_ibkr` only). The only failing tests are the pre-existing
-  `documentation/`-deletion ones (owner: leave).
+  import-linter names `infra_ibkr` only). The `documentation/` tree has since been fully removed
+  (owner ruling 2026-06-14); any tests that referenced it were resolved as part of that cleanup.
 - **No analytics or math changed.** The blueprint-governed option-analytics domain (IV, surface,
   Greeks, forward, risk) is untouched; this is purely an instrument/broker-surface narrowing.
 - **Re-entry is cheap and bounded.** Re-adding a broker = a new `infra-<broker>` leaf under the

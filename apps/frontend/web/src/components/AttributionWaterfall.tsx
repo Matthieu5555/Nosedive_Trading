@@ -12,7 +12,7 @@ import type { Data, Layout } from "plotly.js";
 
 import type { AttributionResponse } from "../api";
 import { Plot } from "./Plot";
-import { signedMoney } from "../lib/format";
+import { sci } from "../lib/format";
 
 // The residual reads as its own bar, distinct from the named terms, so the operator sees the
 // honesty meter at a glance and never mistakes it for another Greek.
@@ -53,8 +53,8 @@ export function AttributionWaterfall({
     attribution.residual.dollars ?? 0,
   ];
   const textLabels = [
-    ...attribution.terms.map((term) => `${signedMoney(term.dollars ?? 0)} (${term.unit})`),
-    `${signedMoney(attribution.residual.dollars ?? 0)} (${residualUnit})`,
+    ...attribution.terms.map((term) => `${sci(term.dollars ?? 0)} (${term.unit})`),
+    `${sci(attribution.residual.dollars ?? 0)} (${residualUnit})`,
   ];
 
   const waterfall: Data = {
@@ -97,11 +97,11 @@ export function AttributionWaterfall({
       <ul className="attribution-legend" aria-label="attribution terms">
         {attribution.terms.map((term) => (
           <li key={term.name}>
-            {term.name}: <strong>{signedMoney(term.dollars ?? 0)}</strong> ({term.unit})
+            {term.name}: <strong>{sci(term.dollars ?? 0)}</strong> ({term.unit})
           </li>
         ))}
         <li>
-          {RESIDUAL_NAME}: <strong>{signedMoney(attribution.residual.dollars ?? 0)}</strong> (
+          {RESIDUAL_NAME}: <strong>{sci(attribution.residual.dollars ?? 0)}</strong> (
           {residualUnit})
         </li>
       </ul>

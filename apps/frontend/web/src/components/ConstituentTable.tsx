@@ -16,23 +16,28 @@ import {
 } from "@tanstack/react-table";
 
 import type { Constituent } from "../api";
+import { sciUnit, UNITS } from "../lib/format";
 
 const columns: ColumnDef<Constituent>[] = [
   { accessorKey: "symbol", header: "Symbol" },
   {
     accessorKey: "weight",
     header: "Weight",
+    // Index weight is an analytics quantity: scientific notation with its (fractional) unit
+    // inline, since the column carries no separate unit cell.
     cell: (info) => {
       const value = info.getValue<number | null>();
-      return value === null ? "n/a" : value.toFixed(4);
+      return value === null ? "n/a" : sciUnit(value, UNITS.weight);
     },
   },
   {
     accessorKey: "latest_close",
     header: "Latest close",
+    // The latest close is a price: scientific notation with the "$" unit inline. A missing
+    // close keeps its em-dash placeholder.
     cell: (info) => {
       const value = info.getValue<number | null>();
-      return value === null ? "—" : value.toFixed(2);
+      return value === null ? "—" : sciUnit(value, UNITS.price);
     },
   },
   { accessorKey: "effective_add_date", header: "Added" },

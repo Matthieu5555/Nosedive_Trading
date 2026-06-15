@@ -19,6 +19,7 @@ import {
 } from "lightweight-charts";
 
 import type { DailyBar } from "../api";
+import { sci, UNITS } from "../lib/format";
 import { CHART_COLORS, baseLightweightOptions } from "./chartTheme";
 
 export interface CandleChartProps {
@@ -31,10 +32,10 @@ export interface CandleChartProps {
 const UP = CHART_COLORS.positive;
 const DOWN = CHART_COLORS.negative;
 
-// Explicit, locale-aware rounding for the hover read-out — every displayed number passes through
-// an explicit rounding (the design brief forbids raw floats on screen).
-const price2 = (n: number): string =>
-  n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// OHLC prices are analytics quantities: scientific notation (the shared "$" unit is shown once
+// at the end of the OHLC block). Volume is a traded-share count (a cardinality), not an analytics
+// quantity, so it keeps its plain grouped rendering.
+const price2 = (n: number): string => sci(n);
 const volFmt = (n: number): string => Math.round(n).toLocaleString();
 
 export function CandleChart({ bars, label }: CandleChartProps) {
@@ -87,7 +88,7 @@ export function CandleChart({ bars, label }: CandleChartProps) {
       legend.textContent =
         `${date}   O ${price2(ohlc.open)}   ` +
         `H ${price2(ohlc.high)}   L ${price2(ohlc.low)}   ` +
-        `C ${price2(ohlc.close)}   Vol ${vol}`;
+        `C ${price2(ohlc.close)} ${UNITS.price}   Vol ${vol}`;
     };
 
     // Seed the read-out with the latest bar so the box is never empty before the first hover.

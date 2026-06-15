@@ -55,7 +55,9 @@ test("renders the captured-expiries rows and the whole per-tenor grid", () => {
   const expiryRows = within(expiriesTable).getAllByRole("row").slice(1); // drop header
   expect(expiryRows).toHaveLength(2);
   expect(within(expiryRows[0]).getByText("2026-06-19")).toBeInTheDocument();
-  expect(within(expiryRows[0]).getByText("7315–7470")).toBeInTheDocument();
+  // Strike span is two strikes in scientific notation, sharing one "$" unit: 7315 → 7.315 × 10³,
+  // 7470 → 7.47 × 10³. The strike counts (32 / 32) are cardinalities and stay plain.
+  expect(within(expiryRows[0]).getByText("7.315 × 10³–7.47 × 10³ $")).toBeInTheDocument();
   expect(within(expiryRows[0]).getByText("32 / 32")).toBeInTheDocument();
   expect(within(expiryRows[1]).getByText("3 / 0")).toBeInTheDocument();
 

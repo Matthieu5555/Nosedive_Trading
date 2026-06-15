@@ -9,6 +9,7 @@
 import type { Data } from "plotly.js";
 
 import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
+import { sci } from "../lib/format";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
@@ -167,8 +168,10 @@ const CALL_COLOR = CHART_COLORS.positive;
 // shifted +1.0 and scaled ×1000 into the integer axis; the tick formatter restores the real k.
 const SMILE_X_OFFSET = 1.0;
 const SMILE_X_SCALE = 1000;
-const toSmileX = (k: number): number => Math.round((k + SMILE_X_OFFSET) * SMILE_X_SCALE);
-const fromSmileX = (x: number): string => (x / SMILE_X_SCALE - SMILE_X_OFFSET).toFixed(3);
+const toSmileX = (x: number): number => Math.round((x + SMILE_X_OFFSET) * SMILE_X_SCALE);
+// The x tick is the real log-moneyness k, an analytics quantity: scientific notation (the unit
+// rides the chart label, which already names log-moneyness).
+const fromSmileX = (x: number): string => sci(x / SMILE_X_SCALE - SMILE_X_OFFSET);
 
 export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
   // A degenerate calibration (parameter railed to a bound, non-converged, or arb-breached)
@@ -182,7 +185,8 @@ export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
   const puts: LightweightLineSeries = { label: "puts", color: PUT_COLOR, points: [] };
   const calls: LightweightLineSeries = { label: "calls", color: CALL_COLOR, points: [] };
   ks.forEach((k, i) => {
-    const point = { x: toSmileX(k), label: k.toFixed(3), value: vols[i] };
+    // The point's x-label is the real log-moneyness (analytics quantity), in scientific notation.
+    const point = { x: toSmileX(k), label: sci(k), value: vols[i] };
     if (k <= 0) puts.points.push(point);
     if (k >= 0) calls.points.push(point);
   });
@@ -192,7 +196,8 @@ export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
       series={[puts, calls]}
       yUnit="IV"
       xFormatter={fromSmileX}
-      valueFormatter={(value) => `${(value * 100).toFixed(1)}%`}
+      // Implied vol is an analytics quantity: scientific notation (the "IV" unit rides yUnit).
+      valueFormatter={(value) => sci(value)}
     />
   );
 }

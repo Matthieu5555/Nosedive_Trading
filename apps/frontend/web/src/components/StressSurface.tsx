@@ -8,7 +8,7 @@ import type { Data } from "plotly.js";
 import type { StressSurfaceData } from "../stressApi";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
-import { signedMoney } from "../lib/format";
+import { sciUnit } from "../lib/format";
 
 const SURFACE_LABEL =
   "Stress PnL surface — full reprice over spot shock (relative) × vol shock (additive)";
@@ -73,8 +73,8 @@ export function StressSurface({
           </span>
         </div>
         <div className="quote-strip">
-          <Metric label="Max gain" value={signedMoney(maxGain)} />
-          <Metric label="Max loss" value={signedMoney(maxLoss)} />
+          <Metric label="Max gain" value={sciUnit(maxGain, surface.unit)} />
+          <Metric label="Max loss" value={sciUnit(maxLoss, surface.unit)} />
           <Metric label="Spot points" value={String(surface.spot_shock.length)} />
           <Metric label="Vol points" value={String(surface.vol_shock.length)} />
           <Metric label="Version" value={surface.scenario_version ?? "—"} />

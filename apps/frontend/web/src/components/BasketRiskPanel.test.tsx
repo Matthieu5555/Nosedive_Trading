@@ -11,8 +11,10 @@ import type { BasketRiskResponse } from "../api";
 test("renders the book-additive totals with each unit string visible", () => {
   render(<BasketRiskPanel result={BASKET_RISK_AAA} />);
   const totals = screen.getByRole("table", { name: /book-additive sum/i });
-  // The aggregate dollar values and their unit strings are both shown.
-  expect(within(totals).getByText("15.2000")).toBeInTheDocument(); // gamma $
+  // The aggregate dollar values (scientific, 6 sig figs, trailing zeros stripped) and their
+  // verbatim backend unit strings are both shown; the value cell carries no UNITS token because
+  // the unit sits in its own adjacent column. 15.2 → "1.52 × 10¹".
+  expect(within(totals).getByText("1.52 × 10¹")).toBeInTheDocument(); // gamma $
   expect(within(totals).getByText("$ per 1% move")).toBeInTheDocument();
   expect(within(totals).getByText("$ per 1 vol point")).toBeInTheDocument();
   expect(within(totals).getByText("$ per calendar day")).toBeInTheDocument();
@@ -21,9 +23,11 @@ test("renders the book-additive totals with each unit string visible", () => {
 test("renders the per-leg contribution breakdown (the proof the total is the sum)", () => {
   render(<BasketRiskPanel result={BASKET_RISK_AAA} />);
   const perLeg = screen.getByRole("table", { name: /per-leg contribution/i });
-  // Both legs' signed Delta$ contributions appear (58.5 and -58.5 sum to the 0.0 total).
-  expect(within(perLeg).getByText("58.5000")).toBeInTheDocument();
-  expect(within(perLeg).getByText("-58.5000")).toBeInTheDocument();
+  // Both legs' signed Delta$ contributions appear (58.5 and -58.5 sum to the 0.0 total). These
+  // cells stand alone (no adjacent unit column), so each carries its verbatim backend unit:
+  // 58.5 → "5.85 × 10¹", with the leg metric's unit "$ per $1 of underlying".
+  expect(within(perLeg).getByText("5.85 × 10¹ $ per $1 of underlying")).toBeInTheDocument();
+  expect(within(perLeg).getByText("-5.85 × 10¹ $ per $1 of underlying")).toBeInTheDocument();
 });
 
 test("every panel self-labels and the per-leg Delta$ chart renders", () => {

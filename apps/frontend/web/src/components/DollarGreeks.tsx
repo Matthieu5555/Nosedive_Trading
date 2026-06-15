@@ -5,6 +5,7 @@
 // a labeled "n/a" rather than a bare blank so the absence is explicit.
 
 import type { AnalyticsPoint, DollarMetric } from "../api";
+import { sci, sciUnit, UNITS } from "../lib/format";
 
 const GREEK_ORDER: Array<keyof AnalyticsPoint["metrics"]> = [
   "delta",
@@ -14,9 +15,20 @@ const GREEK_ORDER: Array<keyof AnalyticsPoint["metrics"]> = [
   "rho",
 ];
 
+// The raw per-unit Greek's mathematical unit (owner notation), shown inline beside the raw
+// number — the dollar column carries its own config-forked unit string from the backend.
+const RAW_UNIT: Record<(typeof GREEK_ORDER)[number], string> = {
+  delta: UNITS.delta,
+  gamma: UNITS.gamma,
+  vega: UNITS.vega,
+  theta: UNITS.theta,
+  rho: UNITS.rho,
+};
+
+// The $ value in scientific notation at six significant figures (its unit travels in the
+// adjacent column, straight from the backend metric — never re-derived here).
 function formatDollar(metric: DollarMetric): string {
-  if (metric.dollar === null) return "n/a";
-  return metric.dollar.toFixed(4);
+  return sci(metric.dollar);
 }
 
 export function DollarGreeks({ point }: { point: AnalyticsPoint }) {
@@ -41,7 +53,7 @@ export function DollarGreeks({ point }: { point: AnalyticsPoint }) {
               <td>{formatDollar(metric)}</td>
               {/* The unit string is rendered verbatim so the operator sees what the $ is per. */}
               <td>{metric.unit ?? "n/a"}</td>
-              <td>{metric.raw.toFixed(6)}</td>
+              <td>{sciUnit(metric.raw, RAW_UNIT[name])}</td>
             </tr>
           );
         })}

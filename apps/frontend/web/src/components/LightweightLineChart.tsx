@@ -12,6 +12,7 @@ import {
   type LineData,
 } from "lightweight-charts";
 
+import { sci } from "../lib/format";
 import { baseLightweightOptions } from "./chartTheme";
 
 export interface LightweightLinePoint {
@@ -40,8 +41,11 @@ function defaultXFormatter(x: number): string {
   return `${Math.floor(x / 12)}y ${x % 12}m`;
 }
 
+// The series values are analytics quantities (dollar Greeks, etc.): scientific notation by
+// default. The unit rides the panel's yUnit (shown in the legend / axis title), so the bare
+// number is correct here; a caller with a different rule passes its own valueFormatter.
 function defaultValueFormatter(value: number): string {
-  return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  return sci(value);
 }
 
 function sortedUniqueData(points: LightweightLinePoint[]): LineData<number>[] {

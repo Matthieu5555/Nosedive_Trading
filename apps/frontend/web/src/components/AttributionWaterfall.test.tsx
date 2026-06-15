@@ -14,7 +14,14 @@ const RESIDUAL_UNIT = "$ (residual vs full reprice)";
 
 // A populated payload mirroring the BFF serializer shape. The independent oracle is these
 // hand-chosen dollar terms: the panel must render one labelled bar per term + the residual,
-// each with its dollar value and unit string. signedMoney renders +$42,000 / -$3,500, etc.
+// each with its dollar value and unit string. Per the owner ruling (2026-06-15) analytics
+// dollars render in scientific notation at six sig figs, trailing zeros stripped, with the
+// backend unit string shown verbatim alongside. Hand-derived from sci():
+//   42000  → "4.2 × 10⁴"   (4.20000e+4 → mantissa 4.2,  exp 4)
+//   -3500  → "-3.5 × 10³"  (-3.50000e+3 → mantissa -3.5, exp 3)
+//   12500  → "1.25 × 10⁴"  (1.25000e+4 → mantissa 1.25, exp 4)
+//   -1200  → "-1.2 × 10³"  (-1.20000e+3 → mantissa -1.2, exp 3)
+//   450    → "4.5 × 10²"   (4.50000e+2 → mantissa 4.5,  exp 2)
 const POPULATED: AttributionResponse = {
   trade_date: "2026-05-29",
   portfolio_id: "pf-attribution",
@@ -54,13 +61,13 @@ test("a populated payload mounts the waterfall with one labelled bar per term + 
   const plot = screen.getByLabelText(/P&L attribution waterfall/i);
   expect(within(plot).getByTestId("plot-types")).toHaveTextContent("waterfall");
 
-  // One labelled entry per term, each with its dollar value (signed money) and unit string.
+  // One labelled entry per term, each with its dollar value (scientific notation) and unit string.
   const legend = screen.getByRole("list", { name: /attribution terms/i });
   expect(within(legend).getByText(/Delta:/)).toBeInTheDocument();
-  expect(within(legend).getByText("+$42,000")).toBeInTheDocument();
-  expect(within(legend).getByText("-$3,500")).toBeInTheDocument(); // Gamma
-  expect(within(legend).getByText("+$12,500")).toBeInTheDocument(); // Vega
-  expect(within(legend).getByText("-$1,200")).toBeInTheDocument(); // Theta
+  expect(within(legend).getByText("4.2 × 10⁴")).toBeInTheDocument(); // Delta 42000
+  expect(within(legend).getByText("-3.5 × 10³")).toBeInTheDocument(); // Gamma -3500
+  expect(within(legend).getByText("1.25 × 10⁴")).toBeInTheDocument(); // Vega 12500
+  expect(within(legend).getByText("-1.2 × 10³")).toBeInTheDocument(); // Theta -1200
   // Every term carries its dollar unit string (§5.1/§2.5).
   expect(within(legend).getAllByText(new RegExp(TERM_UNIT.replace(/[()$]/g, "\\$&"))).length).toBe(
     POPULATED.terms.length,
@@ -72,7 +79,7 @@ test("the residual is its own labelled bar, never folded into a term", () => {
   const legend = screen.getByRole("list", { name: /attribution terms/i });
   // The residual is a distinct entry, dollar-labelled with its own residual unit string.
   expect(within(legend).getByText(/Residual:/)).toBeInTheDocument();
-  expect(within(legend).getByText("+$450")).toBeInTheDocument();
+  expect(within(legend).getByText("4.5 × 10²")).toBeInTheDocument(); // residual 450
   expect(within(legend).getByText(new RegExp(RESIDUAL_UNIT.replace(/[()$]/g, "\\$&")))).toBeInTheDocument();
 });
 

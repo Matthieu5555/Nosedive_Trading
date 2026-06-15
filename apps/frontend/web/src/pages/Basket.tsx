@@ -16,7 +16,7 @@ import { StressSurface } from "../components/StressSurface";
 import { TicketPanel } from "../components/TicketPanel";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { useFetch } from "../hooks/useFetch";
-import { signedMoney } from "../lib/format";
+import { sciUnit, UNITS } from "../lib/format";
 import type { BasketScenariosResponse } from "../stressApi";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
@@ -228,14 +228,17 @@ export function BasketPage() {
               </span>
             </div>
             <div className="quote-strip">
-              <Metric label="Worst PnL" value={signedMoney(stress.worst_case.pnl)} />
+              <Metric
+                label="Worst PnL"
+                value={sciUnit(stress.worst_case.pnl, stress.worst_case.unit)}
+              />
               <Metric
                 label="Spot shock"
-                value={`${(stress.worst_case.spot_shock * 100).toFixed(0)}%`}
+                value={sciUnit(stress.worst_case.spot_shock, UNITS.shock)}
               />
               <Metric
                 label="Vol shock"
-                value={`${(stress.worst_case.vol_shock * 100).toFixed(0)} pts`}
+                value={sciUnit(stress.worst_case.vol_shock, UNITS.shock)}
               />
             </div>
             {stress.n_gaps > 0 && (

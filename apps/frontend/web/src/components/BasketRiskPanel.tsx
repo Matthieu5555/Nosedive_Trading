@@ -7,14 +7,11 @@
 // rendered inline so the panel is never silently wrong or blank.
 
 import type { BasketMetric, BasketRiskResponse, BasketLegResult } from "../api";
+import { sci, sciUnit } from "../lib/format";
 import { Plot } from "./Plot";
 
 const GREEK_ORDER = ["delta", "gamma", "vega", "theta", "rho"] as const;
 type GreekName = (typeof GREEK_ORDER)[number];
-
-function fmt(value: number | null): string {
-  return value === null ? "n/a" : value.toFixed(4);
-}
 
 function metricOf(leg: BasketLegResult, greek: GreekName): BasketMetric {
   return leg.metrics[greek];
@@ -54,14 +51,14 @@ export function BasketRiskPanel({ result }: { result: BasketRiskResponse }) {
             return (
               <tr key={greek}>
                 <td>{greek}</td>
-                <td>{fmt(metric.dollar)}</td>
+                <td>{sci(metric.dollar)}</td>
                 <td>{metric.unit ?? "n/a"}</td>
               </tr>
             );
           })}
           <tr>
             <td>price</td>
-            <td>{fmt(result.price)}</td>
+            <td>{sci(result.price)}</td>
             <td>$ (net leg value)</td>
           </tr>
         </tbody>
@@ -83,9 +80,10 @@ export function BasketRiskPanel({ result }: { result: BasketRiskResponse }) {
             <tr key={index} aria-label={legLabel(leg)}>
               <td>{legLabel(leg)}</td>
               <td>{leg.resolved ? "yes" : leg.gap_reason}</td>
-              {GREEK_ORDER.map((greek) => (
-                <td key={greek}>{fmt(metricOf(leg, greek).dollar)}</td>
-              ))}
+              {GREEK_ORDER.map((greek) => {
+                const metric = metricOf(leg, greek);
+                return <td key={greek}>{sciUnit(metric.dollar, metric.unit)}</td>;
+              })}
             </tr>
           ))}
         </tbody>

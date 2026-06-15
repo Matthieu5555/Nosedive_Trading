@@ -50,7 +50,9 @@ test("pricing a composed basket renders the totals with unit strings visible", a
     expect(screen.getByRole("table", { name: /book-additive sum/i })).toBeInTheDocument(),
   );
   const totals = screen.getByRole("table", { name: /book-additive sum/i });
-  expect(within(totals).getByText("15.2000")).toBeInTheDocument(); // gamma $
+  // Gamma $ rendered scientific (6 sig figs, trailing zeros stripped): 15.2 → "1.52 × 10¹"; its
+  // verbatim backend unit sits in the adjacent column.
+  expect(within(totals).getByText("1.52 × 10¹")).toBeInTheDocument(); // gamma $
   expect(within(totals).getByText("$ per 1% move")).toBeInTheDocument();
 });
 
@@ -99,9 +101,13 @@ test("stressing a composed basket renders the worst case and the PnL surface", a
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
   await waitFor(() => expect(screen.getByText("Worst case")).toBeInTheDocument());
-  // The worst-case PnL (independently the -50%/-50% cell) is shown as signed money — it appears
-  // both in the worst-case panel and as the surface's max loss (same cell).
-  expect(screen.getAllByText("-$2,000").length).toBeGreaterThanOrEqual(1);
+  // The worst-case PnL (independently the -50%/-50% cell) is shown in scientific notation with
+  // its verbatim backend unit: -2000 → "-2 × 10³", unit "$ (full-reprice PnL)". It appears both
+  // in the worst-case panel and as the surface's max loss (same cell), so two cells match.
+  expect(screen.getAllByText("-2 × 10³ $ (full-reprice PnL)").length).toBeGreaterThanOrEqual(1);
+  // The shock magnitudes are the raw fractions (never ×100), scientific with the (frac) unit:
+  // -0.5 → "-5 × 10⁻¹". Both spot and vol shock are -0.5 in this fixture, so two cells match.
+  expect(screen.getAllByText("-5 × 10⁻¹ (frac)").length).toBe(2);
   expect(screen.getByText("2/2 legs repriced")).toBeInTheDocument();
   // The surface and heatmap render as Plotly traces.
   const surface = await screen.findByLabelText(/Stress PnL surface/i);

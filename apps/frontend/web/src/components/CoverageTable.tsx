@@ -8,6 +8,7 @@
 // wrapper a page drops in with one line.
 
 import { useFetch } from "../hooks/useFetch";
+import { sci, UNITS } from "../lib/format";
 import { AsyncBlock } from "./AsyncBlock";
 
 export type QcStatus = "pass" | "fail" | "unknown";
@@ -49,9 +50,11 @@ function StatusBadge({ status, label }: { status: QcStatus; label: string }) {
   );
 }
 
+// The strike span is two analytics quantities (strikes): each endpoint in scientific notation,
+// the "$" unit shown once after the range since both endpoints share it.
 function span(min: number | null, max: number | null): string {
   if (min === null || max === null) return "—";
-  return `${min.toFixed(0)}–${max.toFixed(0)}`;
+  return `${sci(min)}–${sci(max)} ${UNITS.strike}`;
 }
 
 /** Presentational: render the two coverage sections from an already-fetched payload. */

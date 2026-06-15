@@ -54,9 +54,12 @@ test("renders the stress summary with max gain/loss and a portfolio selector", a
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
   render(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
-  // Max gain 1500, max loss -1200 (signed money, no decimals).
-  expect(screen.getByText("+$1,500")).toBeInTheDocument();
-  expect(screen.getByText("-$1,200")).toBeInTheDocument();
+  // Max gain 1500, max loss -1200, rendered in scientific notation (six sig figs, trailing
+  // zeros stripped) with the backend PnL unit string adjacent (owner ruling 2026-06-15):
+  //   1500  → "1.5 × 10³"  (1.50000e+3 → mantissa 1.5, exp 3)
+  //   -1200 → "-1.2 × 10³" (-1.20000e+3 → mantissa -1.2, exp 3)
+  expect(screen.getByText("1.5 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
+  expect(screen.getByText("-1.2 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
   expect(await screen.findByLabelText("Portfolio")).toBeInTheDocument();
 });
 
@@ -76,9 +79,9 @@ test("a missing cell is reported as missing and excluded from the gain/loss stat
   // The hole is announced beside the cell count…
   expect(screen.getByText(/8 cells — 1 missing/)).toBeInTheDocument();
   // …and the stats come from the real cells only: max gain is 1500 (the hole is not a 0
-  // and not a fabricated extreme), max loss is -1200.
-  expect(screen.getByText("+$1,500")).toBeInTheDocument();
-  expect(screen.getByText("-$1,200")).toBeInTheDocument();
+  // and not a fabricated extreme), max loss is -1200 — scientific notation + PnL unit.
+  expect(screen.getByText("1.5 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
+  expect(screen.getByText("-1.2 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
 });
 
 test("renders a labeled empty state when no surface is persisted", async () => {

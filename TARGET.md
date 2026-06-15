@@ -327,7 +327,16 @@ First concrete target when this layer opens: replay S2 through a banked stretch 
 adverse regime, the course's own 2021-vs-2008 method (p.129–130) industrialized.
 
 *State:* substrate genuinely ready (immutable raw, byte-identical replay, as-of discipline,
-same actor live/replay). The backtester itself does not exist. Natural next big build.
+same actor live/replay). **Research backtester LANDED** (`strategy/backtest/`,
+`strategy-backtester`): replays a strategy day-by-day through the *same* §6 harness paper/live
+use, reinventing no substrate — landed `position_risk` for the book, `attribute_realized_book`
+for the day-over-day per-Greek **attribution-through-time**, `worst_case` for the stress column;
+output carries performance/drawdown/turnover/exposure/Greeks/stress + `cumulative_attribution()`
+(which Greek paid). No look-ahead by construction (`check-lookahead-bias` run + a mechanical
+recording-seam proof). First §7.8 target met: **S2** over a banked stretch + an adverse regime
+(course 2021-vs-2008). **Still open:** the **production-shadow** machine (reconcile the same step
+to booked paper/live), the **store-backed** `BacktestData` adapter (compose the landed concretizer
++ valuation join), and an explicit transaction-cost model — all documented follow-ups.
 
 ### 5.8 Portfolio construction — the allocation layer
 
@@ -401,7 +410,8 @@ Each row is roughly one spec.
 7. **Signal layer:** implied correlation (R3), IV rank/percentile per name, realized-vs-
    implied spread, term slope — persisted daily, the strategy entry inputs (§1's chain).
 8. **Backtester:** research first, production shadow second (§5.7); S2 on banked history
-   is the first case.
+   is the first case. **Research machine LANDED** (`strategy/backtest/`, S2 target met);
+   production shadow + store-backed adapter remain.
 9. **Operational hardening:** margin forecasting (S2), alert delivery, kill switch,
    reconciliation (§5.9 + autonomy audit).
 10. **Residual diagnosis (destination):** once realized attribution (#2) and a week-plus of

@@ -193,6 +193,72 @@ position-side proxy until the realized-vs-implied kill reading lands. S3 and S1 
 mode (low realized vol) **on purpose** — the §3 overlap is held so the 2D book/correlation view
 must surface it; it is not "fixed" here.
 
+## The research backtester (`backtest/`, course p.129-130 "2021-vs-2008")
+
+`backtest/` is the **research backtester** (TARGET §5.7 / §7.8) — "does this idea have edge?".
+It replays a strategy object over banked history day by day and produces the serious output the
+spec demands: performance, drawdowns, turnover, exposure, Greeks, **stress losses**, and
+**attribution through time** ("returns came from short vega and positive carry", not "Sharpe
+1.4"). It is the *first* of §5.7's two machines; the **production shadow** ("would my live system
+have produced this P&L?") is the deliberate second build and is **not** here (see the scope note
+below).
+
+**It reinvents no substrate.** The whole point of §5.7's "substrate genuinely ready" is that the
+backtester is an orchestration + bookkeeping layer over already-landed compute:
+
+- the strategy runs through the **same** §6 four-context harness (`run_strategy`,
+  `context=BACKTEST`) paper/live use — so backtest and live cannot diverge in *how* the strategy
+  is invoked (the production-shadow property, kept cheap for the second machine);
+- each day's book is priced into landed `PositionRisk` lines (`infra.risk.greeks.position_risk`);
+- the day-over-day P&L is decomposed by the landed realized attribution engine
+  (`infra.risk.attribution.attribute_realized_book` → named delta/gamma/vega/theta/rho/vanna/volga
+  terms + a residual honesty check) — the §5.7 "attribution through time" primitive, already built;
+- the daily stress loss is the landed worst-case scenario (`infra.risk.scenarios.worst_case`).
+
+The pieces:
+
+- **`run_backtest(strategy, data, *, dates, config)` (`engine.py`)** — the day-by-day replay
+  loop. Each day it rolls off expired contracts (S2's "one expires daily"), prices the book,
+  attributes the overnight move (yesterday's start-of-day Greeks re-marked at today's market),
+  runs the strategy, opens any entry, and records one `DayResult`. **No look-ahead by
+  construction:** the only date source is the loop variable; every read is keyed to the current
+  `as_of`; the attribution's start is strictly yesterday and its end strictly today. The
+  `check-lookahead-bias` skill was run against it, and `test_backtest_no_lookahead.py` proves it
+  mechanically with a recording data seam.
+- **`BacktestData` / `InMemoryBacktestData` / `HeldContract` (`data.py`)** — the as-of market-state
+  seam (the look-ahead boundary): the entry `SignalSnapshot`, plus the two valuation reads that
+  pin a grid-coordinate leg to a fixed contract on its entry day (`concretize_leg`) and re-mark it
+  each later day (`valuation`). The in-memory implementor is the hand-checkable test fixture; the
+  **store-backed** implementor (the production path) composes execution's landed grid-cell
+  concretizer + the infra valuation join exactly as `StoreBackedDispersionData` composes its
+  reads — a documented follow-up, see below.
+- **`BacktestResult` / `DayResult` / `BacktestSummary` (`results.py`)** — the output. `days` is the
+  through-time table; `summary` rolls it up (total P&L, max drawdown, annualised Sharpe, turnover,
+  worst stress loss — each one pure function); `cumulative_attribution()` is the §5.7 headline
+  view: the named per-Greek P&L summed across the stretch, so *which Greek paid* is a number, not
+  a story.
+
+**First concrete target (§7.8):** S2, the index short-put line, replayed through a banked stretch
+and an adverse (spot-down + vol-up) regime — the course's 2021-vs-2008 method industrialised. The
+engine drives exactly S2's daily decision: `decide_sell` (signal ∧ capacity) for the add, the
+capacity count read off the backtest book itself (the booked line *is* the book), the rolling
+roll-off in the loop.
+
+**Scope / out of scope for v1 (research):**
+
+- **Research machine first; production shadow second.** This is "does the idea have edge?". The
+  production-shadow reconciliation ("did my live system match?") is the deliberate second build,
+  not here — but the design keeps it cheap because the strategy is invoked through the *same*
+  harness call.
+- **The store-backed `BacktestData` is the documented follow-up.** v1 ships the protocol + the
+  in-memory reference adapter (so the engine and the landed risk/attribution are tested against
+  hand-derived numbers without a store, honouring "never smoke-test against canonical `data/`").
+  The store-backed implementor wires the landed concretizer + valuation join over a
+  `trade_date`-narrowed grid read; it adds no compute, exactly like the S1/S3 store adapters.
+- **No explicit transaction-cost / slippage model in the engine.** The fill mark is the data
+  adapter's (the store-backed one uses the ADR-0043 concretizer's mark); explicit commission /
+  slippage is a follow-up, so v1's reported P&L is a gross upper bound on net.
+
 ## Testing
 
 From the repo root, the one gate:
@@ -205,7 +271,11 @@ Strategy tests are in `tests/` and run as part of the suite (registered in the r
 `pyproject.toml` `testpaths`). They cover the contract validation, the four-context invariance,
 the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two seams
 (composition layering + per-strategy grouping). The `Basket.strategy_id` round-trip lives in
-`packages/infra/tests/test_contracts_validation.py`.
+`packages/infra/tests/test_contracts_validation.py`. The backtester suite
+(`test_backtest_{results,book,engine,no_lookahead}.py`) derives every expected value
+independently: the summary statistics by hand, the day P&L and attribution against the landed
+pricer applied as an independent oracle (`(price(end) - price(start)) * scale`), and the
+no-look-ahead guarantee by a recording-seam audit (not a claim).
 
 ## Known limitations / out of scope
 
@@ -213,7 +283,11 @@ the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two
   (`contract`/`signals`/`strategy`/`harness`) is strategy-agnostic; `s1_dispersion.py` +
   `dispersion_data.py` (S1), `s2_put_line.py` (S2, config-only), and `s3_gamma.py` +
   `gamma_data.py` (S3) are the concrete strategies so far. S4/S5's construction/entry/exit rules
-  are still owned by their S-tasks.
+  are still owned by their S-tasks. The research backtester (`backtest/`) replays any of them; its
+  first target is S2.
+- **Backtester scope is research-only in v1** — the production-shadow machine, the store-backed
+  data adapter, and an explicit transaction-cost model are documented follow-ups (see the
+  backtester section above).
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
   layer (`algotrading.infra.signals`) derives and persists it, and `signal_snapshot_from_store`
   bridges the two. A caller can still build a snapshot from any source (research/backtest);

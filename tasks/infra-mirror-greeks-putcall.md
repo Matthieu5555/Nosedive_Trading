@@ -5,19 +5,20 @@ prof's board drawing). Opened as the follow-up to `T-delta-step-2`.
 
 ## Why
 
-The prof's smile teaching (the repo reference `documentation/vol-surface/vol_surface_pedagogique.md`,
-Bloc 2-3) wants the **greeks shown per side** — the classic delta S-curve has **two branches**:
-call delta `1 → 0` and put delta `0 → −1` (the doc: "le put est l'image décalée"). Today the
-projection emits **one option right per band strike** (the OTM one: put on the put wing, call on
-the call wing, call at ATM), so each strike carries only one side's greeks. The front cannot draw
-the put branch on a call-wing strike (a deep-ITM put) or vice-versa.
+The prof's smile teaching (`ThomasHossen/MM_options_trading.md`, Bloc 2-3 — `documentation/` is
+gone; `ThomasHossen/MM_options_trading.md` is the canonical course reference) wants the **greeks
+shown per side** — the classic delta S-curve has **two branches**: call delta `1 → 0` and put delta
+`0 → −1` ("le put est l'image décalée"). Today the projection emits **one option right per band
+strike** (the OTM one: put on the put wing, call on the call wing, call at ATM), so each strike
+carries only one side's greeks. The front cannot draw the put branch on a call-wing strike (a
+deep-ITM put) or vice-versa.
 
 **Scope boundary (settled, do NOT widen):**
 - The **smile (IV) stays ONE curve.** Put-call parity → one IV per strike; the two "sides" are
   the two wings (`k<0` puts, `k>0` calls) of the single fitted surface, and the skew is its slope
   (the `3-1_quatre_smiles` figure is four *shapes*, not put-vs-call). This is **not** a request
   for two observed IV curves (that "case B" would mean an ingestion/fit refonte and contradicts
-  the parity + the in-repo doc).
+  the parity + `TARGET.md`).
 - Only **delta / theta / rho** differ by side. **Gamma / vega are identical** call vs put at one
   strike (one curve) — do not duplicate them blindly.
 

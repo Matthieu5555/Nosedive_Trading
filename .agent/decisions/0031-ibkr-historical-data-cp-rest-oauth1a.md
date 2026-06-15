@@ -3,8 +3,9 @@
 - **Status:** accepted, 2026-06-06. Extends [[0024-ibkr-rest-transport-alongside-tws]].
 - **Date:** 2026-06-06.
 - **Implements:** roadmap **P0.3 / 1C** (underlying daily OHLC backfill) and **OQ-2** (IBKR is the
-  historical source) in [`documentation/roadmap-index-analytics.md`](../../documentation/roadmap-index-analytics.md).
-  Honours the owner/prof mandate that the **Client Portal REST API** is the path.
+  historical source) — the roadmap now lives in `TARGET.md` (`documentation/roadmap-index-analytics.md`
+  was removed with the `documentation/` tree). Honours the owner/prof mandate that the **Client
+  Portal REST API** is the path.
 - **Relates to:** [[0023-nautilus-runtime-spine-and-library-leverage]], [[0024-ibkr-rest-transport-alongside-tws]],
   [[0025-nautilus-host-catalog-topology]], [[0019-one-immutable-raw-model]], [[0011-blueprint-as-plan-of-record]].
 

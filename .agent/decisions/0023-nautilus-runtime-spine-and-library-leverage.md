@@ -95,8 +95,8 @@ rather than inventing precision. C1 resolves each and records it (here or in a f
 ## Consequences
 
 The framework-free framing is retired everywhere agents read (TASKBOARD, the C1 spec,
-`.agent/map.md`, `.agent/glossary.md`, `documentation/known-limitations.md`,
-`documentation/interface-contracts.md`, `BIG_PICTURE.md`). C1 flips from "delete the fork, no
+`.agent/map.md`, `.agent/glossary.md`, `BIG_PICTURE.md`; `documentation/known-limitations.md`
+and `documentation/interface-contracts.md` were removed with the `documentation/` tree). C1 flips from "delete the fork, no
 Nautilus" to "adopt Nautilus, keep Saxo/Deribit." The dependency surface grows
 (`nautilus_trader` and its transitive deps; IBKR via Nautilus's extra) — accepted as the price
 of the leverage. Exit cost is real but bounded: the analytics core is pure and

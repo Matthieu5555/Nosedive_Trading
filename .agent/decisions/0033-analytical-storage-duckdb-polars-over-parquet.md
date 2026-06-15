@@ -2,9 +2,9 @@
 
 - **Status:** accepted, 2026-06-06.
 - **Date:** 2026-06-06.
-- **Implements:** roadmap **1E / storage** and the as-of join needs of **1A / 1C / 1F** in
-  [`documentation/roadmap-index-analytics.md`](../../documentation/roadmap-index-analytics.md); supports
-  the point-in-time discipline of **OQ-3** (index membership).
+- **Implements:** roadmap **1E / storage** and the as-of join needs of **1A / 1C / 1F** — the
+  roadmap now lives in `TARGET.md` (`documentation/roadmap-index-analytics.md` was removed with the
+  `documentation/` tree); supports the point-in-time discipline of **OQ-3** (index membership).
 - **Relates to:** [[0015-storage-repository-port-tiered-backends]] (the port this sits behind),
   [[0019-one-immutable-raw-model]] (Parquet stays the record), [[0011-blueprint-as-plan-of-record]].
 

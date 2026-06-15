@@ -6,8 +6,8 @@
   for 2D financial charts (candlesticks and Greek term-structure line charts); Plotly remains
   the 3D/heatmap/non-line analytical chart path.
 - **Implements:** applies the **library-leverage** principle of [[0023-nautilus-runtime-spine-and-library-leverage]]
-  to the front end; feeds roadmap **1I** (front page) and **Tab 2** UI
-  ([`documentation/roadmap-index-analytics.md`](../../documentation/roadmap-index-analytics.md)).
+  to the front end; feeds roadmap **1I** (front page) and **Tab 2** UI — the roadmap now lives in
+  `TARGET.md` (`documentation/roadmap-index-analytics.md` was removed with the `documentation/` tree).
 - **Relates to:** [[0011-blueprint-as-plan-of-record]] (blueprint governs domain, not UI), the C4
   consolidation that deleted the fixture-only `/api/market` router.
 

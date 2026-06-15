@@ -3,9 +3,10 @@
 - **Status:** accepted, 2026-06-05; **implemented (C7 complete) 2026-06-06** — all five
   staged pieces landed, including the as-of profile store (the "Next" stage built early on
   SQLite behind a `ProfileRepository` port, since the storage-port pattern already existed).
-  Ratifies
-  [`documentation/configuration-and-reproducibility.md`](../../documentation/configuration-and-reproducibility.md)
-  as a binding house standard, and resolves **OQ-5** and **OQ-6** (`.agent/open-questions.md`).
+  Ratifies the configuration-and-reproducibility standard (formerly
+  `documentation/configuration-and-reproducibility.md`, now removed with the `documentation/` tree;
+  the rules are encoded in this ADR and in `TARGET.md`) as a binding house standard, and resolves
+  **OQ-5** and **OQ-6** (`.agent/open-questions.md`).
 - **Date:** 2026-06-05
 - **Implements:** blueprint **Part VII** (configuration), **Part I** (determinism + versioning),
   **Part XIII App. B / Part XV** (the manifest, per-bundle config hashes). The blueprint is the
@@ -34,7 +35,7 @@ real defects, corrected here, so the ADR ratifies the *corrected* standard, not 
 
 ## Decision
 
-1. **The standard in `documentation/configuration-and-reproducibility.md` is binding.** No
+1. **The configuration-and-reproducibility standard (encoded in this ADR) is binding.** No
    business/compute parameter is a `.py` literal; it comes from a validated typed config object,
    hydrated from a versioned YAML file (blueprint Part VII taxonomy: `environment/broker/universe/
    qc/scenarios/pricing`), built **once at one named orchestration entrypoint** and threaded as

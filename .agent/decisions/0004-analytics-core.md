@@ -147,8 +147,9 @@ the version string, so no golden moved and no number moved.
 The one visible effect is forward-looking: `PricingResult.pricer_version` on results
 produced on or after 2026-06-02 reads `black76-lr-1.0.0`, while results produced before
 read `black76-crr-1.0.0`. The two label the identical computation. The discontinuity is
-recorded in git history (the rename note `documentation/releases/2026-06-02-pricer-version-rename.md`,
-retired with the docs trim) so a future diff of the label across the boundary is explained, not mysterious.
+recorded in git history (the rename note was at `documentation/releases/2026-06-02-pricer-version-rename.md`,
+retired when the `documentation/` tree was removed) so a future diff of the label across the boundary
+is explained, not mysterious.
 
 ## Addendum — 2026-06-13: ADR 0005 (analytics-core test surface) folded in
 

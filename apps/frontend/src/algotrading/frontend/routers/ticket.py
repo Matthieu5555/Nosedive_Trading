@@ -70,8 +70,10 @@ class TicketPreviewIn(BaseModel):
     underlying: str
     trade_date: str | None = ""
     legs: list[TicketLegIn] = []
-    target_broker: str = "ibkr"
-    time_in_force: str = "day"
+    # Defaults derive from the enums (the single source of truth), never bare string literals,
+    # so they cannot silently drift from `TargetBroker` / `TimeInForce`.
+    target_broker: str = TargetBroker.IBKR.value
+    time_in_force: str = TimeInForce.DAY.value
     price_spec: PriceSpecIn = Field(default_factory=PriceSpecIn)
 
 
@@ -140,6 +142,21 @@ def _price_spec(spec: PriceSpecIn) -> PriceSpec:
             raise TicketError("a limit price spec needs a price", field="price", value=None)
         return Limit(spec.price)
     raise TicketError("price spec kind must be 'market' or 'limit'", field="kind", value=spec.kind)
+
+
+@router.get("/options")
+async def ticket_options() -> JSONResponse:
+    """The selectable broker / time-in-force values, derived from the enums.
+
+    The single source for the web Ticket panel's selectors, so the front never hardcodes a
+    parallel list that could drift from `TargetBroker` / `TimeInForce`.
+    """
+    return JSONResponse(
+        {
+            "brokers": [broker.value for broker in TargetBroker],
+            "time_in_force": [tif.value for tif in TimeInForce],
+        }
+    )
 
 
 @router.post("/preview")

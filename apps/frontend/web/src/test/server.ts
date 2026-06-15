@@ -49,6 +49,7 @@ export const server = setupServer(
   jsonGet("/api/risk/portfolios", PORTFOLIOS_ONE),
   jsonGet("/api/risk/scenarios", SCENARIOS_EMPTY),
   jsonGet("/api/config/delta-bands", { delta_bands: DELTA_BANDS_32 }),
+  jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc"] }),
   // Last (lowest precedence): any other /api endpoint behaves like the old routers' 500.
   http.all("/api/*", notMocked),
 );

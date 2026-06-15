@@ -5,7 +5,7 @@ import { expect, test } from "vitest";
 
 import { TicketPanel } from "./TicketPanel";
 import type { BasketLegInput, OrderTicketResponse } from "../api";
-import { jsonPost, server } from "../test/server";
+import { jsonGet, jsonPost, server } from "../test/server";
 
 // The legs the panel is handed (already composed in the Basket view above it): a long option leg
 // and a short stock hedge — the ticket maps long->BUY / short->SELL with a positive quantity.
@@ -86,6 +86,14 @@ test("a malformed-ticket 400 surfaces the labelled detail, not a blank panel", a
 test("the build button is disabled when there are no legs to build from", () => {
   renderPanel([]);
   expect(screen.getByRole("button", { name: "Build ticket" })).toBeDisabled();
+});
+
+test("broker/TIF selectors are populated from the options endpoint, not a hardcoded list", async () => {
+  // An extra TIF served by the endpoint must appear in the selector — proof the list is
+  // server-driven (from the TargetBroker/TimeInForce enums), not a literal in the component.
+  server.use(jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc", "ioc"] }));
+  renderPanel();
+  expect(await screen.findByRole("option", { name: "IOC" })).toBeInTheDocument();
 });
 
 // --- the password-gated booking affordance (§7 #1) --------------------------------------

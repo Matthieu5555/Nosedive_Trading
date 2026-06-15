@@ -37,7 +37,7 @@ import math
 import random
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 import numpy as np
@@ -363,6 +363,24 @@ def test_analytic_greeks_match_finite_difference(right: str, strike: float) -> N
     assert analytic.theta == pytest.approx(fd.theta, rel=1e-5, abs=1e-6)
     # gamma: second-order difference is noisier, so a looser but still tight bound.
     assert analytic.gamma == pytest.approx(fd.gamma, rel=1e-3, abs=1e-7)
+
+    # Second-order Greeks (Vanna/Volga/Charm, §7.2) must survive the *dispatch* path too — the
+    # engine adapter threads them into the result, so a sign or unit slip there would pass the
+    # per-formula unit tests yet diverge here. Central-difference them through price():
+    #   vanna == d delta / d vol, volga == d vega / d vol (vol move; DF unchanged),
+    #   charm == -d delta / dT with the discount factor tracking the implied rate as T varies.
+    h = 1e-5
+    vol = valuation.volatility
+    repriced = lambda **kw: price(pricing_state_for(replace(valuation, **kw)))  # noqa: E731
+    vanna_fd = (repriced(volatility=vol + h).delta - repriced(volatility=vol - h).delta) / (2 * h)
+    volga_fd = (repriced(volatility=vol + h).vega - repriced(volatility=vol - h).vega) / (2 * h)
+    rate = -math.log(valuation.discount_factor) / valuation.maturity_years
+    at_t = lambda t: repriced(maturity_years=t, discount_factor=math.exp(-rate * t))  # noqa: E731
+    t0 = valuation.maturity_years
+    charm_fd = -(at_t(t0 + h).delta - at_t(t0 - h).delta) / (2 * h)
+    assert analytic.vanna == pytest.approx(vanna_fd, rel=1e-4, abs=1e-8)
+    assert analytic.volga == pytest.approx(volga_fd, rel=1e-4, abs=1e-8)
+    assert analytic.charm == pytest.approx(charm_fd, rel=1e-4, abs=1e-8)
 
 
 def test_finite_difference_greeks_over_book_within_budget() -> None:

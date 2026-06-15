@@ -153,3 +153,16 @@ def test_ticket_preview_bad_json_is_labelled_400(seeded_client: TestClient) -> N
     )
     assert response.status_code == 400
     assert response.json()["error"] == "bad_ticket"
+
+
+def test_ticket_options_lists_the_enum_values(seeded_client: TestClient) -> None:
+    # The selector source for the web panel — derived from the TargetBroker / TimeInForce enums,
+    # not a hardcoded list (independent oracle = the enum values themselves).
+    from algotrading.infra.orders import TargetBroker, TimeInForce
+
+    response = seeded_client.get("/api/ticket/options")
+    assert response.status_code == 200
+    assert response.json() == {
+        "brokers": [b.value for b in TargetBroker],
+        "time_in_force": [t.value for t in TimeInForce],
+    }

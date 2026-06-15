@@ -473,6 +473,18 @@ export async function previewTicket(body: TicketPreviewRequest): Promise<OrderTi
   return postJson<OrderTicketResponse>("/api/ticket/preview", body);
 }
 
+// The selectable broker / time-in-force values, derived server-side from the
+// `TargetBroker` / `TimeInForce` enums. The Ticket panel populates its selectors from this so it
+// never hardcodes a parallel list that could drift from the backend.
+export interface TicketOptions {
+  brokers: string[];
+  time_in_force: string[];
+}
+
+export async function getTicketOptions(): Promise<TicketOptions> {
+  return getJson<TicketOptions>("/api/ticket/options");
+}
+
 // The password-gated booking commit (§7 #1): turn a previewed ticket into paper fill(s), but ONLY
 // behind the password write barrier. The request is the ticket-preview body plus a `password`; the
 // response is a decision — "commit" (fills written) or "block" (fail-closed, no fill, a labelled

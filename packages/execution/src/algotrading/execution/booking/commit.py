@@ -279,6 +279,15 @@ def book(
             audit_log=audit_log,
         )
 
+    # Ordering is deliberate: fills FIRST, then the audit decision. "Accounting from fills"
+    # (§6) means the book IS the fills — so the book must never claim a position the ledger does
+    # not hold. Writing the audit first would risk a COMMITTED decision whose fills never landed
+    # (a phantom position); writing it last means the only crash window leaves *durable fills with
+    # no decision yet* — the safe direction, and fully recoverable: every fill carries its
+    # `booking_id`, so a reconciliation reconstructs the missing decision from the ledger. Both
+    # appends are within-process loud-on-failure (a dup id raises, never silently skips); the
+    # residual gap is a hard process crash between the two, tracked for hardening in
+    # T-audit-2026-06-14-findings.
     ledger.append_many(fills)
     audit = _audit_record(
         ticket,

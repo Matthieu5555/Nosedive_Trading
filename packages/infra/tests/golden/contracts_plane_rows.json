@@ -303,6 +303,7 @@
       "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
       "portfolio_id": "pf-1",
       "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "rate_shock": null,
       "scenario_id": "spot-down-5",
       "scenario_pnl": -25.0,
       "scenario_version": "scn-1",

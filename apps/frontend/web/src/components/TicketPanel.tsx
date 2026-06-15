@@ -7,19 +7,17 @@
 // come from the basket already composed above — the ticket maps long/short to BUY/SELL and shows
 // a positive magnitude quantity. Sending is WS 3B, behind an explicit owner gate.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type {
   BasketLegInput,
   BookingCommitResponse,
   OrderTicketLeg,
   OrderTicketResponse,
+  TicketOptions,
   TicketPriceSpec,
 } from "../api";
-import { commitBooking, previewTicket } from "../api";
-
-const BROKERS = ["ibkr"] as const;
-const TIFS = ["day", "gtc"] as const;
+import { commitBooking, getTicketOptions, previewTicket } from "../api";
 
 function legInstrument(leg: OrderTicketLeg): string {
   return leg.instrument_kind === "stock"
@@ -52,6 +50,19 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
   const [booking, setBooking] = useState<BookingCommitResponse | null>(null);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [bookingLoading, setBookingLoading] = useState(false);
+  // Selector values come from the BFF (derived from the TargetBroker / TimeInForce enums), never
+  // a hardcoded list in the component — so the front cannot drift from the backend source.
+  const [options, setOptions] = useState<TicketOptions | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getTicketOptions()
+      .then((opts) => live && setOptions(opts))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   function priceSpec(): TicketPriceSpec {
     return priceKind === "limit" ? { kind: "limit", price: Number(limitPrice) } : { kind: "market" };
@@ -126,7 +137,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
         <label>
           Broker{" "}
           <select aria-label="broker" value={broker} onChange={(e) => setBroker(e.target.value)}>
-            {BROKERS.map((b) => (
+            {(options?.brokers ?? [broker]).map((b) => (
               <option key={b} value={b}>
                 {b.toUpperCase()}
               </option>
@@ -136,7 +147,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
         <label>
           Time in force{" "}
           <select aria-label="time in force" value={tif} onChange={(e) => setTif(e.target.value)}>
-            {TIFS.map((t) => (
+            {(options?.time_in_force ?? [tif]).map((t) => (
               <option key={t} value={t}>
                 {t.toUpperCase()}
               </option>

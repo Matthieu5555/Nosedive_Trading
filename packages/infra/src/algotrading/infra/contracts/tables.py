@@ -395,7 +395,13 @@ class RiskAggregate:
 
 @dataclass(frozen=True, slots=True)
 class ScenarioResult:
-    """Stress PnL for one contract under one scenario shock."""
+    """Stress PnL for one contract under one scenario shock.
+
+    ``rate_shock`` is additive-nullable (``float | None``): it was added after the first three
+    shock axes, so a partition written before the rate axis reads it back ``None`` (the
+    schema-evolution rule). It persists the scenario's absolute rate move so a stored rate
+    scenario is distinguishable on replay — a ``rate_+0.0025`` cell no longer reads identically
+    to ``rate_+0.0`` (blueprint Part XV/XIX provenance)."""
 
     valuation_ts: datetime
     portfolio_id: str
@@ -408,6 +414,7 @@ class ScenarioResult:
     scenario_version: str
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
+    rate_shock: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

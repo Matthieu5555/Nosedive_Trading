@@ -707,4 +707,5 @@ def scenario_result(
         scenario_version=scenario_version,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
+        rate_shock=cell.scenario.rate_shock,
     )

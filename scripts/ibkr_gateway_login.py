@@ -5,8 +5,9 @@ The CP Gateway (`clientportal.gw`) needs a *browser* login that lapses ~daily â€
 drives the login with **headless Firefox** under Selenium, completing IBKR's **SMS 2FA**
 from a code you supply out-of-band. Once it reports `authenticated:true`, the EOD capture
 (`IBKR_CP_GATEWAY=1 uv run python scripts/eod_run.py`) and the OHLC backfill run over the
-same session. See `documentation/connectivity/ibkr-gateway-headless-login.md` for the full
-runbook and the non-Python commands (auth-status check, tickle keep-alive, etc.).
+same session. For the auth-status check (and the `curl /` 302 trap to avoid) see the "Is the
+gateway live?" section of `packages/infra-ibkr/README.md`; the session/tickle/reauth lifecycle
+is `infra_ibkr/connectivity/cp_rest_session.py`.
 
 Run it (Selenium is NOT a project dep â€” pull it in ephemerally; Selenium Manager
 auto-fetches the geckodriver for the installed Firefox):

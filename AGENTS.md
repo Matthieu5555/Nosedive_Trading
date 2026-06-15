@@ -86,6 +86,13 @@ keep it green, and extend it for new UI. How to run and write it lives in `apps/
 If a gate cannot run because the tooling is absent, say so plainly. Do not claim
 verification you did not perform.
 
+Report status in the verb that matches what actually happened. "Done" / "verified"
+/ "working" mean the thing **ran to completion and you saw the result**. Setup,
+staging, wiring, or a synced worktree is "staged," not "done" — say which.
+Estimates are estimates: label a number you modelled as modelled, give the load-bearing
+assumption, and never dress it as a measurement. When the report would otherwise read
+as "everything's handled," it must be true end to end, not true of the prep.
+
 ## Keep the docs alive
 
 When you change what a directory *does*, update that directory's `README.md` in
@@ -121,3 +128,9 @@ the code is part of the change, not a follow-up.
   the command that proved it — never "blocked because the spec says so." Task specs
   drift (a spec called a built, green-tested module "absent" the day after it
   landed); the running system does not lie. See the `probe-environment` skill.
+  Probe through the **real code path**, not a proxy: a health page, a redirect, a
+  banner, or an HTTP status off a hand-rolled `curl` is not the thing you care about.
+  (A bare `curl https://localhost:5000/` 302-ing to a login page does **not** mean the
+  IBKR gateway is unauthenticated — the real check is `CpRestSession.authenticated()`;
+  see `packages/infra-ibkr/README.md`.) Match how production asks the question before
+  you call something down.

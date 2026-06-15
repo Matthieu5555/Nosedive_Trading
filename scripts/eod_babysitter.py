@@ -7,8 +7,9 @@ One script, two modes, one auth seam. The session handling rides the *tested* pa
 silently treated as healthy.
 
 * **default (fire mode):** in production the systemd timer (ADR 0032) fires `eod_run.py` at each
-  index's session close. On a box with no timer — e.g. after a manual headless login (see
-  `documentation/connectivity/ibkr-gateway-headless-login.md`) — this stands in: it keeps the
+  index's session close. On a box with no timer — e.g. after a manual headless login
+  (`scripts/ibkr_gateway_login.py`; auth-status check in `packages/infra-ibkr/README.md`) — this
+  stands in: it keeps the
   session warm and fires the close-capture for each *enabled* index just after that index's own
   `session_close` (derived from its exchange calendar, so it is correct on half-days and across
   DST). It writes to the canonical store, so this is the real harvest.

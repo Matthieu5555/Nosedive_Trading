@@ -3,6 +3,26 @@
 Interactive Brokers leaf adapter. Imports `algotrading.infra` + `algotrading.core`, nothing
 above (enforced by import-linter).
 
+## Is the gateway live? Check the real path — do not `curl /`
+
+Before you ever conclude the gateway is down or "needs a login," check it the way the code does,
+not with a bare `curl`. A plain `GET https://localhost:5000/` returns a **302 to `/sso/Login`
+even when the brokerage session is fully authenticated** — that landing page is always served on
+`/`. Reading that redirect as "not logged in" is a false blocker; it has cost real time.
+
+The authoritative signal is `GET /iserver/auth/status` (`authenticated: true`), which
+`CpRestSession.authenticated()` wraps. The one-liner, through the real code path:
+
+```
+IBKR_CP_GATEWAY=1 uv run python -c "from algotrading.infra_ibkr.session_factory import build_gateway_session; _t, s = build_gateway_session(establish=False); print('authenticated:', s.authenticated())"
+```
+
+`authenticated: true, connected: false` means the SSO cookie is still valid and the brokerage
+session just went idle — `session.reauthenticate()` revives it with **no SMS / no new login**
+(this is what `scripts/eod_babysitter.py` rides). Only a `False` from `authenticated()` is a real
+"log in" blocker; the browser login is `scripts/ibkr_gateway_login.py`. The session lifecycle
+itself lives in `connectivity/cp_rest_session.py`.
+
 ## Two ingestion paths, one `RawMarketEvent` (ADR 0023/0024/0025)
 
 IBKR has **two** market-data paths; both normalize into our immutable `RawMarketEvent` (the system

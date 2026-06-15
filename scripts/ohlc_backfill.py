@@ -15,9 +15,10 @@ re-fetches only the missing tail). A session with neither a Gateway nor OAuth cr
 clean no-op (exit 0): nothing to fetch.
 
 Two authentications (same selection as ``scripts/eod_run.py``): set ``IBKR_CP_GATEWAY=1`` to run
-over the locally-running Client Portal Gateway (browser-login cookie, no OAuth enrolment — see
-``documentation/connectivity/ibkr-gateway-quickstart.md``); else the hosted OAuth path runs when
-the ``IBKR_CP_*`` artifacts are present (``.env.example``).
+over the locally-running Client Portal Gateway (browser-login cookie, no OAuth enrolment — for the
+auth-status check and the ``curl /`` 302 trap see the "Is the gateway live?" section of
+``packages/infra-ibkr/README.md``); else the hosted OAuth path runs when the ``IBKR_CP_*``
+artifacts are present (``.env.example``).
 
 **CP REST caps a single history request at ~999 daily bars (~4y)**, so one run backfills at most
 the most recent ~4 years per ticker — there is no multi-request pagination yet (a follow-up).

@@ -37,6 +37,7 @@ from .s1_dispersion import (
     DispersionMarketData,
     DispersionStrategy,
 )
+from .s2_put_line import PutLineConfig, PutLineStrategy
 from .s3_gamma import (
     GammaConfig,
     GammaConstructionError,
@@ -103,4 +104,7 @@ __all__ = [
     "GammaConstructionError",
     "StoreBackedGammaData",
     "gamma_strategy",
+    # S2 index short-put line (the rolling allocation factory; config-only, no data adapter)
+    "PutLineStrategy",
+    "PutLineConfig",
 ]

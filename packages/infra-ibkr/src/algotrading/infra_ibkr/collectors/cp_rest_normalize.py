@@ -25,6 +25,7 @@ from .market_fields import (
     BID_SIZE,
     LAST,
     LAST_SIZE,
+    VOLUME,
     raw_market_event,
 )
 
@@ -34,7 +35,7 @@ REQUEST_FIELD_TAGS: tuple[str, ...] = SNAPSHOT_FIELD_TAGS
 # SnapshotRow field → our canonical field name. The wire-tag ↔ field mapping itself lives on the
 # model (the tag aliases); these names MUST map onto the same ones the Nautilus path uses or the
 # equivalence test fails. Tuple (not dict) to fix a deterministic output order: bid, ask, sizes,
-# last, last size.
+# last, last size, volume.
 _FIELDS: tuple[tuple[str, str], ...] = (
     ("bid", BID),
     ("ask", ASK),
@@ -42,6 +43,7 @@ _FIELDS: tuple[tuple[str, str], ...] = (
     ("ask_size", ASK_SIZE),
     ("last", LAST),
     ("last_size", LAST_SIZE),
+    ("volume", VOLUME),
 )
 
 

@@ -124,7 +124,8 @@
       "trade_date": {
         "$date": "2026-05-29"
       },
-      "underlying": "AAPL"
+      "underlying": "AAPL",
+      "volume": null
     },
     "positions": {
       "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",

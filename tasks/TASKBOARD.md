@@ -28,6 +28,7 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
+| claude (ibkr-option-volume-capture) | branch `ibkr-option-volume-capture`: `infra/contracts/tables.py` (`MarketStateSnapshot.volume`), `infra/snapshots/builder.py`, `infra-ibkr/collectors/{market_fields,cp_rest_wire,cp_rest_normalize}.py`, `apps/frontend/routers/coverage.py`, contracts-plane golden, tests | 2026-06-15 | done — `MarketStateSnapshot.volume` (tag 7762, additive-nullable); coverage panel `total_volume`; 16 new volume seam tests; 2088 passed gate green |
 | claude (matthieu) | core-fleet integration → `main`: `packages/{execution,strategy}`, `apps/frontend` (attribution + booking + orders-reconcile), `infra/universe`, IBKR top-N capture; 8 specs archived | 2026-06-14 | done — booking chain + strategy spine + attribution view landed, gate green |
 | claude (matthieu) | [infra-per-side-surfaces](archive/infra-per-side-surfaces.md) (R2 infra core) — branch `infra-per-side-surfaces`: `infra/{surfaces,contracts,risk,qc,actor,orchestration}`, `execution/concretization`, `apps/frontend` BFF grid readers (combined-default), ADR 0048, goldens | 2026-06-14 | done — `surface_side` ∈ {put,call,combined} in grid PK; combined byte-identical; put−call IV spread signal+QC; gate green (1924 passed). Front toggle → frontend-per-side-surfaces-toggle |
 | claude (matthieu) | [infra-basket-leg-per-side-routing](archive/infra-basket-leg-per-side-routing.md) — branch `infra-basket-leg-per-side-routing`: `infra/contracts` (`BasketLeg.surface_side`), `infra/risk/multileg`, `apps/frontend` BFF `basket_scenarios`, ADR 0048 follow-up, baskets golden | 2026-06-14 | done — basket legs route to their named wing (default combined → no change); shared `index_rows_by_cell_and_side`/`resolve_cell_side`; missing wing = labelled gap; booking stays combined; gate green (1934 passed) |
@@ -86,7 +87,7 @@ planning pass.**
 > **R2 per-side surfaces (2026-06-14):** [infra-per-side-surfaces](archive/infra-per-side-surfaces.md) **infra core landed** (ADR 0048 — per-side fit, `surface_side` grid PK, put−call IV spread signal + QC), then [infra-basket-leg-per-side-routing](archive/infra-basket-leg-per-side-routing.md) **landed** — `BasketLeg.surface_side` opt-in routes the summed basket + BFF reprice to each leg's wing (booking stays combined). Front remainder: [frontend-per-side-surfaces-toggle](frontend-per-side-surfaces-toggle.md).
 
 **`ibkr-` — IBKR capture lane & connectivity**
-- [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
+- ~~[ibkr-option-volume-capture](archive/ibkr-option-volume-capture.md) (#7)~~ **done** (branch `ibkr-option-volume-capture`, 2026-06-15)
 - [ibkr-clock-timer-coherence](ibkr-clock-timer-coherence.md) (the live SX5E/XEUR timer shift)
 - ★ [ibkr-unattended-reauth](ibkr-unattended-reauth.md) (§5.9 — close the ~daily SMS-2FA wall; OAuth bring-up + SSO-expiry ALARM delivery. **Load-bearing for the unattended-week story**)
 - ★ [ibkr-broker-account-read](ibkr-broker-account-read.md) (§5.9/§6 — **found by the 2026-06-14 IBKR-coverage audit**: the read-only CP-REST positions/cash/fills path reconciliation needs; the recon sub-lane of [execution-operational-hardening](execution-operational-hardening.md) assumes it but no `ibkr-` task owned it)

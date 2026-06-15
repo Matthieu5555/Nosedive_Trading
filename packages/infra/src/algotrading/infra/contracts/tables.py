@@ -66,6 +66,13 @@ class MarketStateSnapshot:
 
     Derived from raw events, so it carries a provenance stamp pointing at them.
     It is itself the snapshot, so it has no ``source_snapshot_ts``.
+
+    ``volume`` (TARGET §7 #7) is the per-contract option day-volume (cumulative
+    contracts traded today, from CP REST field tag 7762). It is additive-nullable
+    (``float | None``): the broker does not always populate this field, and
+    partitions written before this lane land exist without it — reads back as
+    ``None`` rather than failing the schema-evolution check (the same pattern as
+    ``PricingResult.dollar_theta``).
     """
 
     snapshot_ts: datetime
@@ -81,6 +88,7 @@ class MarketStateSnapshot:
     trade_date: date
     underlying: str
     provenance: ProvenanceStamp
+    volume: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

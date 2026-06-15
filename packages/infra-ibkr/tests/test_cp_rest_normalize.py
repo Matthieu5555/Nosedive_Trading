@@ -39,16 +39,21 @@ def _events(row: dict[str, object], sequence: int = 7):
 
 
 def test_field_tags_map_to_named_events() -> None:
-    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size (CP field codes).
-    row = {"84": "9.27", "86": "9.31", "88": "10", "85": "12", "31": "9.29", "7059": "100"}
+    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size, 7762=volume (CP codes).
+    row = {
+        "84": "9.27", "86": "9.31", "88": "10", "85": "12",
+        "31": "9.29", "7059": "100", "7762": "500",
+    }
     by_field = {e.field_name: e for e in _events(row)}
-    assert set(by_field) == {"bid", "ask", "bid_size", "ask_size", "last", "last_size"}
+    assert set(by_field) == {"bid", "ask", "bid_size", "ask_size", "last", "last_size", "volume"}
     assert by_field["bid"].value == 9.27
     assert by_field["ask"].value == 9.31
     assert by_field["bid_size"].value == 10.0
     assert by_field["ask_size"].value == 12.0
     assert by_field["last"].value == 9.29
     assert by_field["last_size"].value == 100.0
+    # volume: derived independently from the CP tag 7762 spec → 500.0 contracts traded today
+    assert by_field["volume"].value == 500.0
     for event in by_field.values():
         assert event.instrument_key == _IK
         assert event.underlying == _UNDERLYING
@@ -91,4 +96,5 @@ def test_idempotent_event_ids_per_sequence() -> None:
 
 
 def test_request_field_tags_are_the_mapped_ones() -> None:
-    assert set(REQUEST_FIELD_TAGS) == {"31", "84", "86", "85", "88", "7059"}
+    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size, 7762=volume (CP codes).
+    assert set(REQUEST_FIELD_TAGS) == {"31", "84", "86", "85", "88", "7059", "7762"}

@@ -20,6 +20,11 @@ BID_SIZE = "bid_size"
 ASK_SIZE = "ask_size"
 LAST = "last"
 LAST_SIZE = "last_size"
+# Per-contract option volume (cumulative day-traded contracts). CP REST field tag 7762.
+# Named ``volume`` to match ``MarketStateSnapshot.volume`` and the IV-rank/liquidity
+# signals that consume it (TARGET §7 #7). Nullable at capture: the broker does not
+# always populate this field for every contract on every snapshot call.
+VOLUME = "volume"
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 

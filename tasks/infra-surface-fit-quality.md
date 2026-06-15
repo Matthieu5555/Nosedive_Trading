@@ -17,28 +17,38 @@ term-structure, per-maturity greeks) is degenerate. Root, confirmed in the data:
   the axis — both feed garbage into every downstream viz.
 - Worst on SX5E (10 slices), ENR (7), then SIE/SAP — i.e. NOT only the thinnest names.
 
-## Root cause — CONFIRMED (2026-06-15) + blueprint ruling
+## Root cause + blueprint ruling — CORRECTED (2026-06-15, read the blueprint exactly)
 
-`fit_slice` (`infra/surfaces/fit.py:164`) routes **on point-count alone**: `if len(ks) >=
-config.min_points_per_slice:` → commit to SVI and **return it even when it railed** (`bound_hits`),
-**violated arbitrage** (`butterfly_violations`), or **did not converge**. Those are recorded as
-*diagnostics* but never trigger the fallback. So a slice with enough points but bad/thin data keeps
-a **railed SVI** (e.g. `svi_rho = −0.999` pinned to its bound → the 108%/140% IV spikes) and serves
-it to the nappe.
+The slices rail because **bad intraday quotes** reach the fit. A first instinct — gate `fit_slice`
+to route a railed/arb/non-converged SVI to the nonparametric fallback — was **prototyped and
+reverted**: read exactly, the blueprint does **not** prescribe that as the immediate fix. The
+blueprint's surface pseudocode (§04 "Surface engine pseudocode") is `group_by_maturity` →
+`fit_svi_or_fallback` with **no surface-level outlier rejection** (the `reject_outliers(method=
+"mad")` is in the *forward* pseudocode), and our `actor/driver.py:749` matches it. And the
+failure-mode table (§04.H) rules the current behaviour correct:
 
-**The blueprint already rules this a deviation** (`docs/blueprint/05-math-notes.md:38`): *"In sparse
-maturities, **prefer a conservative fallback that is smooth and flagged over an aggressive
-calibration that produces sharp but unreliable local features.**"* and (:36) *"improvements come from
-**better QC rather than from a more complicated surface model**"*. §02-math-framework.md:113 mandates
-the SVI **+ nonparametric fallback in total-variance space**. The railed SVI is precisely the
-"aggressive calibration with sharp unreliable local features" the blueprint says to reject. This is
-state-of-the-art too (Gatheral/SSVI: never serve a non-arb-free / railed slice).
+> *Surface fit failure | pathological quote set | **Publish fail flag and retain raw points** |
+> [longer-term] Improve fallback interpolation path*
 
-**The fix is therefore NOT a fancier model.** Route `fit_slice` to the nonparametric fallback when
-the SVI fit is **railed / arb-violating / non-converged**, not only when points are too few — i.e.
-make `arb_free`/`bound_hits`/`converged` *gate* the method choice, not just annotate it. Keep it in
-total-variance space; keep the slice flagged. Then a thin/bad slice renders smooth-and-flagged, not
-spiky.
+So **flag-not-reject is the blueprint-prescribed surface behaviour** — `fit_slice` serving the
+railed SVI with `bound_hits` flagged + QC `surface_fit_error=fail` + raw points retained is correct,
+**not a deviation**. The blueprint puts the lever **upstream**: §05-math-notes:36 *"improvements come
+from better QC rather than a more complicated surface model"*; §12 *"bound parameters and **log**
+bound hits"*; the fallback is *"for **sparse** slices"* (§12/§16); arb is *"diagnostics now,
+enforcement later"* (§02:113). Routing a railed *dense* slice to the fallback is the **longer-term
+"improve fallback interpolation path"** column — owner-gated, not the immediate fix.
+
+**So the fix, per the blueprint, is three lanes — none of them `fit_slice`:**
+1. **Upstream data hygiene / QC (the primary lever)** — tighten the quote QC (spread, quote-age),
+   the IV-solver no-arb bounds, and strike selection / outlier thresholds (§04.H "tighten outlier
+   thresholds") so bad intraday points never become IV points the SVI rails on. **Validate on
+   settled-close data**, not intraday (the intraday thinness is a confound).
+2. **Front robustness** — the front must render the flagged degenerate slice legibly (clamp the
+   colour/Z scale, mark/exclude the outlier points), independent of the data. → folded into
+   `frontend-page1-cdc-buildout` phase 7.
+3. **Longer-term, owner-gated** — "improve fallback interpolation path" (route a railed dense slice
+   to the smooth flagged fallback). A real blueprint item, but explicitly the *future* column; do
+   not land it as the immediate fix.
 
 ## Remaining to verify on settled-close data (the capture-params half)
 
@@ -74,6 +84,6 @@ rail at the close too? Audit both halves **against the blueprint** (`docs/bluepr
 
 ## Links
 
-Depends on / informs [[frontend-page-a-robustness-audit]] (the front must ALSO survive a degenerate
-slice gracefully, independently of this fix). Related: `delta-window-fix`, the
-`core-pricing-config-completeness` surface model/fallback typing (ADR 0028).
+Depends on / informs [[frontend-page1-cdc-buildout]] phase 7 (the front must ALSO survive a
+degenerate slice gracefully, independently of this fix — lane 2 above). Related: `delta-window-fix`,
+the `core-pricing-config-completeness` surface model/fallback typing (ADR 0028).

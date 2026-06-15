@@ -1,0 +1,24 @@
+# data-backup.timer — daily trigger for the canonical-store backup (platform-data-durability).
+#
+# Fires data-backup.service at 19:30 Europe/Berlin, Mon–Fri — comfortably AFTER the 18:15 Eurex
+# close-capture window (eod-capture@XEUR.timer), so the snapshot captures the day's freshly-written
+# close rather than a mid-capture store. The time is stated in the EXCHANGE timezone so it tracks
+# the close across DST, not the server's clock.
+#
+# Persistent=true: a fire missed while the box was down runs on next boot — a slightly-late backup
+# beats a skipped one. The snapshot is append-only and timestamped, so a catch-up fire just adds
+# another snapshot; it never overwrites a prior one.
+#
+# Install: copy to ~/.config/systemd/user/ and `systemctl --user enable --now data-backup.timer`.
+
+[Unit]
+Description=Daily canonical-store backup timer
+
+[Timer]
+OnCalendar=Mon..Fri 19:30 Europe/Berlin
+Persistent=true
+RandomizedDelaySec=120
+Unit=data-backup.service
+
+[Install]
+WantedBy=timers.target

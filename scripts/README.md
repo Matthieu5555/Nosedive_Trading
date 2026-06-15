@@ -30,11 +30,66 @@ nbformat): run them with `uv run --group notebooks python scripts/<tool>.py`.
 | `smoke_e2e.py` | The WS V1 end-to-end smoke: one offline walk of the whole stack — bootstrap (`load_platform_config` + `ParquetStore`) → deterministic replay of the committed `synthetic_known_answer` chain → analytics (`reconstruct_day`) → every BFF endpoint over `TestClient` (no 500s) → the web `npm run build`/`npm test` → invariants (provenance + per-bundle `config_hashes`, byte-identical replay). Emits one `[PASS]`/`[FAIL]`/`[SKIP]` line per stage and exits `0` healthy / `1` spine-broken / `2` degraded. `--strict` collapses that to CI's binary contract (1 only when the spine is broken — expected SKIPs exit 0; the gate workflow uses it). Offline by default; `--skip-web`, `--json`, `--data-root` flags. Driver-honesty tests: `packages/infra/tests/test_smoke_e2e.py`. | `uv run python scripts/smoke_e2e.py` |
 | `export_notebook_figs.py` | Re-renders the vol-surface notebook figures to PNG. **Stale:** the old `documentation/vol-surface/assets` output dir was removed with the `documentation/` tree — repoint the output path before use. | `uv run --group notebooks python scripts/export_notebook_figs.py` |
 | `export_doc_pdf.py` | Renders a Markdown doc (default the vol-surface pedagogy) to a clean PDF via mistune + headless Chrome/Chromium. | `uv run --group notebooks python scripts/export_doc_pdf.py` |
+| `backup_data_store.py` | Backup / restore / verify for the canonical parquet store. Snapshots the **keystone** (immutable `raw/` + `_run_state.jsonl`; `--include-derived` adds the reconstructable trees) to `$ALGOTRADING_BACKUP_ROOT` as a timestamped, append-only directory with a sha256 manifest. Reads the canonical store **read-only**; `restore` lands in a temp store and re-hashes every file against the manifest (refuses the canonical store without `--allow-canonical`). Subcommands `backup`/`restore`/`verify`/`list`. Tests: `packages/infra/tests/test_backup_data_store.py`. See the **Backup & restore runbook** below. | `ALGOTRADING_BACKUP_ROOT=/mnt/backup uv run python scripts/backup_data_store.py backup` |
 
 The TWS-socket smoke (`ibkr_bootstrap.py`) is gone: it was built entirely on the hand-rolled
 `ib_async` transport deleted in the 2026-06 audit (M21), so it could only ever print its own
 import failure. The live IBKR path is CP REST (`eod_run.py`, `ohlc_backfill.py`); the
 nautilus-adapter path is `infra_ibkr.connectivity.nautilus_ibkr` behind the `ibkr` extra.
+
+## Backup & restore runbook (`backup_data_store.py`)
+
+The canonical store (`data/`) is untracked parquet and **not git-recoverable**. The close
+snapshots are point-in-time — you cannot re-capture last Tuesday's close — so this is the one
+asset the unattended week produces and cannot re-create. `backup_data_store.py` is its durability
+path (task: `platform-data-durability`).
+
+**What is backed up.** The **keystone**: the immutable `raw/` partitions + the `_run_state.jsonl`
+ledger. Everything under `derived/`/`analytics/`/`qc/` replays deterministically from `raw/` (the
+byte-identical replay substrate the smoke test pins), so the default snapshot is raw + ledger;
+`--include-derived` adds the reconstructable trees as a convenience. **Raw is the keystone** —
+losing it is the unrecoverable event.
+
+**Where backups go is a decision, not a default.** Set `$ALGOTRADING_BACKUP_ROOT` (or pass
+`--backup-root`). The tool **refuses to run with no destination** rather than silently back up to
+the same disk. For real durability point it at a **second location** — a mounted external disk, an
+NFS/rsync target, or an object-store mount. A same-disk path protects against a bad purge / a
+fat-fingered `rm` but **not disk loss** (this box has one physical disk).
+
+**RPO / cadence.** Daily, just after the close (`data-backup.timer`, 19:30 Europe/Berlin Mon–Fri —
+after the 18:15 capture). Worst-case data loss is one trading day's close. Snapshots are
+append-only and timestamped; prune old ones by hand or with a retention sweep on the target.
+
+```bash
+# 1. Back up the keystone after the close (timer does this; this is the manual form):
+ALGOTRADING_BACKUP_ROOT=/mnt/backup/algotrading uv run python scripts/backup_data_store.py backup
+
+# 2. List snapshots / spot-check one against its manifest checksums (detects bit-rot):
+uv run python scripts/backup_data_store.py list   --backup-root /mnt/backup/algotrading
+uv run python scripts/backup_data_store.py verify --snapshot /mnt/backup/algotrading/20260615T173000Z
+
+# 3. Restore into a TEMP store and verify byte-for-byte (never the canonical store by default):
+uv run python scripts/backup_data_store.py restore \
+    --snapshot /mnt/backup/algotrading/20260615T173000Z --target /tmp/restore-check
+#    -> re-hashes every restored file against the manifest; exits non-zero on any mismatch.
+
+# 4. Confidence that derived replays from the restored raw: re-derive a day into a throwaway
+#    temp store and eyeball it (the existing read-only replay tool), then compare to live derived:
+uv run --group notebooks python scripts/plot_live_surface.py --symbol SX5E --date 2026-06-15 --out /tmp/surf.html
+```
+
+**Restoring over the canonical store is an explicit, gated operator step** — `restore` refuses the
+canonical store unless `--allow-canonical --force` are both passed. The default flow restores to a
+temp store you inspect first.
+
+**Coordinate with the purge.** `platform-post-monday-restore-cleanup` *removes* the Friday-restore
+stopgap ledger rows. Take the backup **after** that purge (or back up the validated state), or a
+restore would re-seed purged rows — the two must agree on what "canonical" means.
+
+**Systemd units** (install per-user, alongside the `eod-capture` units — see
+`eod-capture@.service`'s header): `data-backup.service` (the one-shot), `data-backup.timer` (the
+daily trigger), `data-backup-alert.service` (the `OnFailure=` notification — a silent backup
+failure is the worst case, so a failed fire writes a loud journald line).
 
 ## Schema note: broker-raw samples vs the contracts store (ADR 0039)
 

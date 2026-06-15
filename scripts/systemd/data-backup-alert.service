@@ -1,0 +1,18 @@
+# data-backup-alert.service — the OnFailure= target for a failed store backup.
+#
+# A minimal one-shot data-backup.service routes to on failure. It writes a single labeled line
+# into journald so the operator notices a backup that did not run (a silent backup failure is the
+# worst case — you only discover it when you need the backup). Dependency-light (systemd-cat);
+# swap the ExecStart for a real channel (mail, webhook, ntfy) on the server, matching the
+# eod-capture-alert.service pattern.
+#
+# Install: copy alongside data-backup.service (see that file's header).
+
+[Unit]
+Description=AlgoTrading canonical-store backup FAILURE alert
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/env sh -c 'echo "Store backup FAILED — inspect: journalctl --user -u data-backup.service --since today" | systemd-cat -t data-backup-alert -p err'
+StandardOutput=journal
+StandardError=journal

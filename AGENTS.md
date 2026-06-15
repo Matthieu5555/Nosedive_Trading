@@ -25,10 +25,15 @@ Do not search blind. The map exists so you don't have to.
    Clear it when done. This is a shared `devs`-group workspace with several
    humans and agents working at once; the board is the cheapest collision
    signal we have.
-2. **Work on a branch, not on the shared mainline.** One branch per task, merge
-   small and often. The TASKBOARD is advisory; branch discipline is the real
-   safety. Collisions should surface as merge conflicts (visible, recoverable),
-   never as silent overwrites (invisible, destructive).
+2. **When you finish working, land it on `main` and push — every time, no
+   exceptions.** Finished work does not get to sit on a feature branch or inside a
+   worktree where no one else can see it. The moment a piece of work is done and
+   verified: commit it (surgically, by explicit path — this is a shared checkout,
+   never `git add -A`), get it onto `main`, and `git push origin main`. Pull/rebase
+   first if `main` moved under you; collisions then surface as merge conflicts
+   (visible, recoverable), never as silent overwrites. Short-lived task branches
+   are fine *while work is in flight* — the rule is that the instant it is finished,
+   it converges on `main` and is pushed.
 3. **Read `.agent/conventions.md`** before writing code. It is the distilled
    house style and it points at the deeper skills.
 

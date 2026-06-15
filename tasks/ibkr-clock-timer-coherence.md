@@ -1,8 +1,7 @@
 # Task: derive the EOD capture timers from the calendar (kill the timer↔close drift)
 
-**Status:** queued (not urgent). Do NOT start before the post-close guard hotfix
-(`fix(1C): bound the close-capture look-ahead guard to the next session open`, commit
-`07c892d`) is live on the server tree.
+**Status:** done (2026-06-15, branch `ibkr-clock-timer-coherence`). Guard hotfix `07c892d`
+confirmed live as an ancestor of HEAD before the XEUR timer was moved. Gate green (2202 passed, 12 skipped).
 
 ## Why
 

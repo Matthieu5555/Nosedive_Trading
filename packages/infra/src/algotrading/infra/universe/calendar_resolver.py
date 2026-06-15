@@ -43,7 +43,7 @@ import exchange_calendars as xcals
 from exchange_calendars.exchange_calendar import ExchangeCalendar
 
 from .errors import CalendarResolutionError
-from .index_registry import IndexRegistry
+from .index_registry import IndexEntry, IndexRegistry
 
 # How far back the deterministic calendar window starts, in years before the as-of date. The
 # library otherwise picks an implicit ~20-year lookback that also drifts with the wall clock;
@@ -92,9 +92,7 @@ class _DayClock(Protocol):
 
 
 @lru_cache(maxsize=_CALENDAR_CACHE_SIZE)
-def _calendar(
-    code: str, as_of: date, forward: timedelta = timedelta(0)
-) -> ExchangeCalendar:
+def _calendar(code: str, as_of: date, forward: timedelta = timedelta(0)) -> ExchangeCalendar:
     """Return (and cache) the library calendar for a code, bounded to an explicit as-of date.
 
     Bounded — ``end = as_of + forward`` and ``start`` a fixed span before it — so the calendar's
@@ -147,19 +145,19 @@ class CalendarResolver:
     window is used and a determinism guarantee is *not* made; the EOD path always injects one.
     """
 
-    def __init__(
-        self, registry: IndexRegistry, *, as_of: date | _DayClock | None = None
-    ) -> None:
+    def __init__(self, registry: IndexRegistry, *, as_of: date | _DayClock | None = None) -> None:
         self._registry = registry
         self._as_of = _resolve_as_of(as_of)
 
-    def _entry_calendar(self, index: str) -> tuple[str, ExchangeCalendar]:
+    def _entry_calendar(self, index: str) -> tuple[IndexEntry, ExchangeCalendar]:
         # `registry.get` raises a labeled IndexRegistryError for an unknown index; the
         # calendar code is already validated at parse time, so `_calendar` will not miss.
+        # The entry is returned alongside the calendar so `session_close` can read its
+        # optional `option_settlement_close` time-of-day override.
         entry = self._registry.get(index)
         if self._as_of is None:
-            return entry.calendar, xcals.get_calendar(entry.calendar)
-        return entry.calendar, _calendar(entry.calendar, self._as_of)
+            return entry, xcals.get_calendar(entry.calendar)
+        return entry, _calendar(entry.calendar, self._as_of)
 
     def _check_coverage(self, index: str, code: str, cal: ExchangeCalendar, on: date) -> None:
         first = cal.first_session.date()
@@ -169,8 +167,7 @@ class CalendarResolver:
                 index,
                 code,
                 on,
-                f"date outside calendar coverage window [{first.isoformat()}, "
-                f"{last.isoformat()}]",
+                f"date outside calendar coverage window [{first.isoformat()}, {last.isoformat()}]",
             )
 
     def is_session(self, index: str, on_date: date) -> bool:
@@ -181,8 +178,8 @@ class CalendarResolver:
         :class:`CalendarResolutionError` rather than answering ``False`` for a date the
         library simply cannot speak to.
         """
-        code, cal = self._entry_calendar(index)
-        self._check_coverage(index, code, cal, on_date)
+        entry, cal = self._entry_calendar(index)
+        self._check_coverage(index, entry.calendar, cal, on_date)
         return bool(cal.is_session(on_date))
 
     def session_close(self, index: str, on_date: date) -> datetime:
@@ -193,22 +190,42 @@ class CalendarResolver:
         shortened session resolves to its early close, not the regular one. ``on_date`` must
         be a trading session: the close of a non-session date (a holiday/weekend) raises a
         labeled :class:`CalendarResolutionError`, never a guessed instant.
+
+        When the index carries an ``option_settlement_close`` override (e.g. SX5E's OESX
+        17:30 CET settlement, which differs from the XEUR calendar's 22:00 CET *futures*
+        close), the time-of-day is pulled back to that override **on the library's own
+        resolved close** — same session date, same DST offset the library computed — so the
+        override stays DST-correct (17:30 Berlin → 15:30 UTC in summer, 16:30 UTC in winter)
+        without re-deriving the date or reading a clock. Without an override the library close
+        is returned verbatim.
         """
-        code, cal = self._entry_calendar(index)
-        self._check_coverage(index, code, cal, on_date)
+        entry, cal = self._entry_calendar(index)
+        self._check_coverage(index, entry.calendar, cal, on_date)
         if not cal.is_session(on_date):
             raise CalendarResolutionError(
-                index, code, on_date, "not a trading session (holiday/weekend)"
+                index, entry.calendar, on_date, "not a trading session (holiday/weekend)"
             )
         try:
             close = cal.session_close(on_date)
         except xcals.errors.CalendarError as exc:  # pragma: no cover - guarded above
             raise CalendarResolutionError(
-                index, code, on_date, f"library could not resolve close: {exc}"
+                index, entry.calendar, on_date, f"library could not resolve close: {exc}"
             ) from exc
-        # The library returns a UTC-tz pandas Timestamp; hand back a stdlib aware datetime so
-        # our signature carries no pandas type. Normalise to UTC explicitly.
-        return close.to_pydatetime().astimezone(UTC)
+        # The library returns a UTC-tz pandas Timestamp. Without an override, hand back the
+        # stdlib aware datetime so our signature carries no pandas type (normalised to UTC).
+        if entry.option_settlement_close is None:
+            return close.to_pydatetime().astimezone(UTC)
+        # Override only the time-of-day, in the calendar's own tz. Taking it off the library's
+        # resolved local close inherits the right session date AND the right DST offset for the
+        # day, so the settlement instant is correct across CET/CEST without a tz-rules reimpl.
+        local_close = close.tz_convert(cal.tz).to_pydatetime()
+        settled_local = local_close.replace(
+            hour=entry.option_settlement_close.hour,
+            minute=entry.option_settlement_close.minute,
+            second=0,
+            microsecond=0,
+        )
+        return settled_local.astimezone(UTC)
 
     def next_session_open(self, index: str, on_date: date) -> datetime:
         """The timezone-aware UTC open of the session *after* ``on_date`` for ``index``.
@@ -229,7 +246,8 @@ class CalendarResolver:
         outside the built window — raises a labeled :class:`CalendarResolutionError` rather than
         guessing, the loud signal that the margin must grow for a newly-added calendar.
         """
-        code, _ = self._entry_calendar(index)
+        entry, _ = self._entry_calendar(index)
+        code = entry.calendar
         cal = (
             xcals.get_calendar(code)
             if self._as_of is None

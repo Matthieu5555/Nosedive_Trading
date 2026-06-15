@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import time
 from typing import Annotated, NoReturn
 
 import exchange_calendars as xcals
@@ -106,6 +107,9 @@ class _IndexEntryModel(BaseModel):
 
     name: _NonBlankStr
     calendar: str
+    # Optional local-time override for the close instant — see the matching field on
+    # :class:`IndexEntry`. Absent/null = derive the close from the calendar verbatim.
+    option_settlement_close: str | None = None
     currency: Annotated[str, AfterValidator(_require_iso_currency)]
     ibkr: _IbkrRefModel
     enabled: bool
@@ -123,6 +127,21 @@ class _IndexEntryModel(BaseModel):
                 "unknown exchange_calendars code (not in get_calendar_names()); "
                 "an unknown calendar is never defaulted"
             )
+        return value
+
+    @field_validator("option_settlement_close")
+    @classmethod
+    def _valid_settlement_close(cls, value: str | None) -> str | None:
+        # An ISO 24-hour time-of-day ("HH:MM"); a malformed value is rejected here, never
+        # silently dropped — a defaulted settlement close would capture the wrong instant
+        # (the same look-ahead hazard the calendar check guards). Parsed to a `time` in
+        # `_parse_entry`; validated here so a bad entry names the field the registry way.
+        if value is None:
+            return None
+        try:
+            time.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("must be an ISO 24-hour time-of-day 'HH:MM' (e.g. '17:30')") from exc
         return value
 
 
@@ -164,6 +183,14 @@ class IndexEntry:
     code (validated against the library's known names at parse time, never defaulted) from
     which the close instant is *derived* at run time — the resolved time is not stored.
     ``enabled`` is the on/off switch the scheduler reads.
+
+    ``option_settlement_close`` is an optional time-of-day override (a stdlib
+    :class:`datetime.time`) for the close instant: the calendar still owns the trading-*day*
+    set and DST, but where the index's options settle at a different time than the calendar's
+    own close, this pins that time-of-day. SX5E is the live case — its OESX options settle
+    17:30 CET, while the XEUR calendar's close is the 22:00 CET *futures* close. ``None`` (the
+    default) means derive the close from the calendar verbatim (correct for SPX/XNYS, where
+    the index and its options share the 16:00 ET close).
     """
 
     symbol: str
@@ -172,6 +199,7 @@ class IndexEntry:
     currency: str
     ibkr: IbkrRef
     enabled: bool
+    option_settlement_close: time | None = None
 
     @property
     def ibkr_search_symbol(self) -> str:
@@ -268,6 +296,11 @@ def _parse_entry(symbol: str, raw: object, known_calendars: frozenset[str]) -> I
         name=model.name,
         calendar=model.calendar,
         currency=model.currency,
+        option_settlement_close=(
+            time.fromisoformat(model.option_settlement_close)
+            if model.option_settlement_close is not None
+            else None
+        ),
         ibkr=IbkrRef(
             conid=model.ibkr.conid,
             sec_type=model.ibkr.sec_type,

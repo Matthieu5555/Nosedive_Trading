@@ -136,6 +136,12 @@ indices:
   SX5E:
     name: "EURO STOXX 50"
     calendar: XEUR
+    # OESX (Euro Stoxx 50 options) settle at 17:30 CET — NOT the 22:00 CET XEUR *futures*
+    # close the calendar resolves to. The calendar still owns the trading-day set, holidays,
+    # half-days and DST; this overrides ONLY the close time-of-day, so the 1C capture stamps
+    # the right settlement instant (Berlin local; resolves to 15:30 UTC in summer / 16:30 in
+    # winter). Drop this line and the close falls back to the calendar's 22:00 futures close.
+    option_settlement_close: "17:30"
     currency: EUR
     # IBKR lists Euro Stoxx 50 as ESTX50 (NOT SX5E) — `symbol` is the secdef search override; the
     # registry key SX5E stays the platform-wide vocabulary. conid + symbol VERIFIED live 2026-06-08

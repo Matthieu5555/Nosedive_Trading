@@ -240,6 +240,95 @@ def test_next_session_open_does_not_widen_backward_coverage() -> None:
         res.is_session("SPX", date(2026, 6, 11))
 
 
+# --- option_settlement_close override: OESX 17:30 CET, not the XEUR 22:00 futures close ----
+# A registry where SX5E carries the OESX option-settlement-close override; SPX deliberately has
+# none (its options share the index's 16:00 ET close), proving the override is per-index and
+# opt-in. Independent oracle: OESX (Euro Stoxx 50 options) settle 17:30 Europe/Berlin, while the
+# XEUR calendar close is the 22:00 Berlin futures close.
+_BLOCK_OESX = {
+    "SX5E": {
+        "name": "EURO STOXX 50",
+        "calendar": "XEUR",
+        "option_settlement_close": "17:30",
+        "currency": "EUR",
+        "ibkr": {"conid": 1, "secType": "IND", "exchange": "EUREX"},
+        "enabled": True,
+    },
+    "SPX": {
+        "name": "S&P 500",
+        "calendar": "XNYS",
+        "currency": "USD",
+        "ibkr": {"conid": 2, "secType": "IND", "exchange": "CBOE"},
+        "enabled": True,
+    },
+}
+
+
+def test_option_settlement_close_override_is_dst_correct() -> None:
+    # The override pins 17:30 Berlin; the UTC instant must track DST off the resolved session.
+    # Independent oracle (hand-computed from the Europe/Berlin offset on each date):
+    #   2026-06-12 is CEST (UTC+2): 17:30 CEST = 15:30 UTC
+    #   2026-01-15 is CET  (UTC+1): 17:30 CET  = 16:30 UTC
+    # Both are ordinary Eurex sessions (Fri / Thu).
+    res = CalendarResolver(parse_index_registry(_BLOCK_OESX))
+    assert res.session_close("SX5E", date(2026, 6, 12)) == datetime(2026, 6, 12, 15, 30, tzinfo=UTC)
+    assert res.session_close("SX5E", date(2026, 1, 15)) == datetime(2026, 1, 15, 16, 30, tzinfo=UTC)
+
+
+def test_override_pulls_the_close_earlier_than_the_calendar_futures_close() -> None:
+    # The whole point: with the override the close is the 17:30 settlement, NOT the 22:00 futures
+    # close the same calendar resolves without it. Same date, two registries, different instant.
+    d = date(2026, 6, 12)
+    with_override = CalendarResolver(parse_index_registry(_BLOCK_OESX)).session_close("SX5E", d)
+    without = CalendarResolver(parse_index_registry(_BLOCK)).session_close("SX5E", d)
+    assert with_override == datetime(2026, 6, 12, 15, 30, tzinfo=UTC)  # 17:30 CEST
+    assert without == datetime(2026, 6, 12, 20, 0, tzinfo=UTC)  # 22:00 CEST futures close
+    assert with_override < without
+
+
+def test_no_override_leaves_the_library_close_verbatim() -> None:
+    # SPX carries no override in either block — its close is the library's, unchanged.
+    res = CalendarResolver(parse_index_registry(_BLOCK_OESX))
+    # 2026-06-08 NYSE close 16:00 EDT = 20:00 UTC.
+    assert res.session_close("SPX", date(2026, 6, 8)) == datetime(2026, 6, 8, 20, 0, tzinfo=UTC)
+
+
+def test_override_still_raises_on_a_non_session() -> None:
+    # The override applies only AFTER the session check — a holiday close still raises labeled.
+    res = CalendarResolver(parse_index_registry(_BLOCK_OESX))
+    with pytest.raises(CalendarResolutionError) as exc:
+        res.session_close("SX5E", date(2026, 5, 1))  # Eurex Labour Day
+    assert "not a trading session" in exc.value.reason
+
+
+def test_override_close_stays_inside_the_half_open_close_set() -> None:
+    # The 1C close set is [session_close, next_session_open); pulling the close EARLIER (17:30 vs
+    # 22:00) only tightens it — the invariant close < next_open must still hold.
+    res = CalendarResolver(parse_index_registry(_BLOCK_OESX), as_of=date(2026, 6, 12))
+    close = res.session_close("SX5E", date(2026, 6, 11))  # 17:30 CEST = 15:30 UTC, Thu
+    next_open = res.next_session_open("SX5E", date(2026, 6, 11))  # Fri open 06:00 UTC
+    assert close == datetime(2026, 6, 11, 15, 30, tzinfo=UTC)
+    assert close < next_open
+
+
+def test_malformed_settlement_close_is_a_labeled_parse_error() -> None:
+    # A bad time-of-day is rejected at parse, naming the field — never silently dropped to the
+    # calendar close (that would be the wrong-instant look-ahead the validator guards).
+    bad = {
+        "SX5E": {
+            "name": "EURO STOXX 50",
+            "calendar": "XEUR",
+            "option_settlement_close": "25:99",
+            "currency": "EUR",
+            "ibkr": {"conid": 1, "secType": "IND", "exchange": "EUREX"},
+            "enabled": True,
+        }
+    }
+    with pytest.raises(IndexRegistryError) as exc:
+        parse_index_registry(bad)
+    assert exc.value.field == "option_settlement_close"
+
+
 def test_next_session_within_margin() -> None:
     """Every registry calendar's widest closure fits inside ``_NEXT_SESSION_MARGIN``.
 

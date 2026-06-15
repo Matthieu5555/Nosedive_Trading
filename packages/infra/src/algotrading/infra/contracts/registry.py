@@ -54,6 +54,14 @@ class TableSpec:
     in disjoint partitions and a scan that omits ``provider`` cannot cross sources. It
     defaults ``False`` — the historical ``(trade_date, underlying[, version])`` layout —
     so every pre-existing table is byte-for-byte unchanged.
+
+    ``cold_compactable`` marks a table that supports the ADR 0034 §3 cold-compaction
+    layout: ``provider=<P>/underlying=<SYM>/data.parquet`` with ``trade_date`` as a
+    sorted column (no ``trade_date=<D>`` path segment). The hot per-day partitions remain
+    the write target (the capture cadence is unchanged); the read path unions hot + cold
+    and deduplicates on ``(provider, underlying, trade_date)``.  Only ``daily_bar``
+    carries this flag — the one table that is bulk-immutable history queried by date range
+    (ADR 0034 OQ-4).
     """
 
     name: str
@@ -66,6 +74,7 @@ class TableSpec:
     positive_fields: tuple[str, ...]
     non_negative_fields: tuple[str, ...]
     provider_partitioned: bool = False
+    cold_compactable: bool = False
 
 
 REGISTRY: dict[str, TableSpec] = {
@@ -106,6 +115,10 @@ REGISTRY: dict[str, TableSpec] = {
         positive_fields=("open", "high", "low", "close"),
         non_negative_fields=("volume",),
         provider_partitioned=True,
+        # ADR 0034 §3: bulk-immutable price history; compacted into one file per ticker
+        # (provider=<P>/underlying=<SYM>/data.parquet) with trade_date as a sorted column.
+        # The read path unions hot + cold and deduplicates on the primary key (OQ-4).
+        cold_compactable=True,
     ),
     "index_constituents": TableSpec(
         name="index_constituents",

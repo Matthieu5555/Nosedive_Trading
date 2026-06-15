@@ -65,6 +65,13 @@ Disjoint lanes; anything touching the same file/contract serializes. TARGET §7 
 on order. Grouped by owning layer; each item links its full spec. **★ = new spec from the
 planning pass.**
 
+> **⛔ EMERGENCY — capture integrity (from the 2026-06-15 SX5E canary, run_id
+> `89421177611f42ff85b55ba9144f8662`).** The whole platform rests on the close capture, and the
+> canary showed it can bank junk, drop a whole lane silently, and run too slow to be a *close*.
+> Three orthogonal `ibkr-` specs below own the fix — **quote integrity** (discard the bullshit),
+> **constituent-lane activation** (capture what we want), **throughput** (do it in time). Clear
+> these before trusting the unattended week.
+
 **`core-` — config & lineage spine (level 0)**
 - [core-explicit-rate-config](core-explicit-rate-config.md) — **step 1 landed** (typed `ForwardConfig.rate` home + Eq-5 carry-split override, zero-churn `null` default; open = `forward_curve` contract/display, `r(T)` curve; the compute-wiring slice is infra's)
 > **Landed & archived (2026-06-14):** [core-pricing-config-completeness](archive/core-pricing-config-completeness.md) (ADR 0028 — the two deferred slices: `SurfaceConfig.model`/`fallback_model` give the surface-fit method choice a typed home and `fit_slice` reads the labels from config instead of the `METHOD_*` literals — fallback honestly named `nonparametric`, not the blueprint's `spline`; `ForwardConfig.max_candidate_count`/`outlier_method`/`max_robust_zscore` give the forward engine's candidate-cap + outlier policy a typed home in the existing `forward:` block, with `robust.outlier_flags` parameterised by `rejection_z` so the shared util stays decoupled. Zero-churn defaults — None-cap / `mad` / 3.5 = byte-identical fits & forwards; only the `pricing` config-hash moved. `outlier_method: none` and `max_candidate_count` are real opt-in behaviours, tested).
@@ -88,6 +95,9 @@ planning pass.**
 > **R2 per-side surfaces (2026-06-14):** [infra-per-side-surfaces](archive/infra-per-side-surfaces.md) **infra core landed** (ADR 0048 — per-side fit, `surface_side` grid PK, put−call IV spread signal + QC), then [infra-basket-leg-per-side-routing](archive/infra-basket-leg-per-side-routing.md) **landed** — `BasketLeg.surface_side` opt-in routes the summed basket + BFF reprice to each leg's wing (booking stays combined). Front remainder: [frontend-per-side-surfaces-toggle](frontend-per-side-surfaces-toggle.md).
 
 **`ibkr-` — IBKR capture lane & connectivity**
+- ⛔ ★ [EMERGENCY-quote-integrity-gate](EMERGENCY-quote-integrity-gate.md) (**EMERGENCY** — refuse to bank a last-only / market-closed capture as a real close; quarantine single-sided/zero-spread rows; enforce `completeness`/`flags`. The canary fit a clean-looking surface off bid==ask==0, completeness 0.333, flags `["closed"]`)
+- ⛔ ★ [EMERGENCY-constituent-lane-activation](EMERGENCY-constituent-lane-activation.md) (**EMERGENCY** — scope `index+constituents` captured **0** constituents silently; make the 10 fire + per-name entitlement verdict + fail-loud on empty. Feeds S1)
+- ⛔ ★ [EMERGENCY-capture-throughput](EMERGENCY-capture-throughput.md) (**EMERGENCY/timeliness** — bounded, output-identical concurrency on the sequential `/secdef/info` discovery walk; ~7 min index-only ⇒ unworkable ×11. Land with the constituent lane)
 - [ibkr-option-volume-capture](ibkr-option-volume-capture.md) (#7)
 - [ibkr-clock-timer-coherence](ibkr-clock-timer-coherence.md) (the live SX5E/XEUR timer shift)
 - ★ [ibkr-unattended-reauth](ibkr-unattended-reauth.md) (§5.9 — close the ~daily SMS-2FA wall; OAuth bring-up + SSO-expiry ALARM delivery. **Load-bearing for the unattended-week story**)

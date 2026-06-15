@@ -677,7 +677,7 @@ def _discover_with_pool(pool_size: int) -> tuple[Any, dict[str, str], int]:
     strike_selection = StrikeSelectionConfig(
         version="ss-pool", min_strikes_per_side=3, discovery_pool_size=pool_size
     )
-    chain, conid_by_contract = _discover_chain(
+    chain, conid_by_contract, _month_by_token = _discover_chain(
         discovery,
         target=target_from_index(SPX),
         conid=INDEX_CONID,

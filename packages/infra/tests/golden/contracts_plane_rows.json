@@ -106,6 +106,18 @@
       "underlying": "AAPL",
       "volume": 1000000.0
     },
+    "discovery_conid_cache": {
+      "as_of_date": {
+        "$date": "2026-05-29"
+      },
+      "entries": "[{\"conid\":\"265598001\",\"expiry\":\"2026-06-19\",\"month\":\"JUN26\",\"right\":\"C\",\"strike\":185.0},{\"conid\":\"265598002\",\"expiry\":\"2026-06-19\",\"month\":\"JUN26\",\"right\":\"P\",\"strike\":185.0}]",
+      "exchange": "SMART",
+      "expirations": "[\"20260619\",\"20260918\"]",
+      "months": "[\"JUN26\",\"SEP26\"]",
+      "multiplier": "100",
+      "strikes": "[180.0,185.0,190.0]",
+      "underlying": "AAPL"
+    },
     "forward_curve": {
       "day_count": "ACT/365",
       "diagnostics": "{\"candidate_count\":5,\"method\":\"parity\",\"quality_label\":\"good\",\"residual_mad\":0.01}",
@@ -196,6 +208,7 @@
       "dollar_delta": 50.0,
       "dollar_gamma": 2.0,
       "dollar_rho": null,
+      "dollar_rt_vega": null,
       "dollar_theta": null,
       "dollar_vanna": null,
       "dollar_vega": 10.0,
@@ -205,6 +218,7 @@
       "pricer_version": "px-1",
       "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
       "rho": 0.03,
+      "rt_vega": null,
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -214,9 +228,7 @@
       "theta": -0.01,
       "vanna": null,
       "vega": 0.1,
-      "volga": null,
-      "rt_vega": null,
-      "dollar_rt_vega": null
+      "volga": null
     },
     "projected_option_analytics": {
       "delta": 0.3,
@@ -230,6 +242,8 @@
       "dollar_rho": 1.0,
       "dollar_rho_mirror": null,
       "dollar_rho_unit": "per 1% rate move",
+      "dollar_rt_vega": null,
+      "dollar_rt_vega_unit": null,
       "dollar_theta": -2.0,
       "dollar_theta_mirror": null,
       "dollar_theta_unit": "per calendar day",
@@ -248,6 +262,7 @@
       "provider": "IBKR",
       "rho": 0.01,
       "rho_mirror": null,
+      "rt_vega": null,
       "snapshot_ts": {
         "$datetime": "2026-05-29T15:30:00+00:00"
       },
@@ -262,10 +277,7 @@
       "theta_mirror": null,
       "total_variance": 0.004,
       "underlying": "AAPL",
-      "vega": 0.12,
-      "rt_vega": null,
-      "dollar_rt_vega": null,
-      "dollar_rt_vega_unit": null
+      "vega": 0.12
     },
     "qc_results": {
       "check_name": "forward_stability",

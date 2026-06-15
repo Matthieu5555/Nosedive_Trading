@@ -80,7 +80,9 @@ from .cp_rest_close_capture import (
     collect_target_basket,
 )
 from .cp_rest_discovery import CpRestDiscovery
+from .cp_rest_discovery_cache import DiscoveryCache
 from .cp_rest_index import option_months_for_conid
+from .cp_rest_snapshot import WarmupConfig
 
 __all__ = ["ConstituentLaneError", "collect_index_and_constituents_basket"]
 
@@ -202,6 +204,9 @@ def _attempt_constituent(
     next_open: datetime,
     config: PlatformConfig,
     selection: ChainSelection | None,
+    discovery_cache: DiscoveryCache | None = None,
+    revalidate_cached_conids: bool = False,
+    warmup: WarmupConfig | None = None,
 ) -> _ConstituentResult:
     """Attempt one constituent's option capture and return its labelled outcome.
 
@@ -253,6 +258,9 @@ def _attempt_constituent(
             next_open=next_open,
             config=config,
             selection=selection,
+            discovery_cache=discovery_cache,
+            revalidate_cached_conids=revalidate_cached_conids,
+            warmup=warmup,
         )
     except CpRestTransportError as exc:
         if exc.status_code in _UNENTITLED_STATUS:
@@ -364,6 +372,9 @@ def collect_index_and_constituents_basket(
     config: PlatformConfig,
     selection: ChainSelection | None = None,
     run_id: str | None = None,
+    discovery_cache: DiscoveryCache | None = None,
+    revalidate_cached_conids: bool = False,
+    warmup: WarmupConfig | None = None,
 ) -> IndexBasket | None:
     """Capture the index *and* its top-N-by-weight constituents' option chains as one basket (§7.4).
 
@@ -407,6 +418,9 @@ def collect_index_and_constituents_basket(
         next_open=next_open,
         config=config,
         selection=selection,
+        discovery_cache=discovery_cache,
+        revalidate_cached_conids=revalidate_cached_conids,
+        warmup=warmup,
     )
     if index_basket is None:
         log.info(
@@ -450,6 +464,9 @@ def collect_index_and_constituents_basket(
             next_open=next_open,
             config=config,
             selection=selection,
+            discovery_cache=discovery_cache,
+            revalidate_cached_conids=revalidate_cached_conids,
+            warmup=warmup,
         )
         for rank, member in enumerate(top_n, start=1)
     ]

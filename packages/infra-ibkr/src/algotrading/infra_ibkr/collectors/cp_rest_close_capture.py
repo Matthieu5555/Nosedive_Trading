@@ -80,9 +80,14 @@ from .cp_rest_chain_window import (
     select_discovery_months,
 )
 from .cp_rest_discovery import CpRestDiscovery
+from .cp_rest_discovery_cache import (
+    CachedChain,
+    DiscoveryCache,
+    revalidate_conids,
+)
 from .cp_rest_index import resolve_index
 from .cp_rest_normalize import snapshot_to_events
-from .cp_rest_snapshot import snapshot_index_spot, snapshot_with_warmup
+from .cp_rest_snapshot import WarmupConfig, snapshot_index_spot, snapshot_with_warmup
 from .cp_rest_wire import SnapshotRow, coerce_int_or_none
 
 __all__ = [
@@ -209,13 +214,14 @@ def _discover_chain(
     spot: float | None,
     as_of: date,
     strike_selection: StrikeSelectionConfig,
-) -> tuple[AvailableChain, dict[str, str]]:
+) -> tuple[AvailableChain, dict[str, str], dict[str, str]]:
     """Discover the listed chain for the underlying and build the broker-neutral ``AvailableChain``.
 
     Drives the CP three-step ``strikes`` → ``info`` sequence (the ``search`` already resolved
-    the conid and the listed ``months``). Returns the assembled chain menu *and* a
+    the conid and the listed ``months``). Returns the assembled chain menu, a
     ``(expiry,strike,right) -> conid`` map so the capture stage can snapshot exactly the
-    selected contracts by their resolved conid.
+    selected contracts by their resolved conid, and a ``token -> listing-month`` map so the
+    discovery cache can record which IBKR month each contract listed under.
 
     Per expiry the qualified strike window is **delta-driven and tenor-aware**
     (:func:`qualify_strikes_for_expiry` → ``select_discovery_strikes``): it contains the
@@ -267,12 +273,14 @@ def _discover_chain(
     expirations: set[str] = set()
     strikes: set[float] = set()
     conid_by_contract: dict[str, str] = {}
+    month_by_token: dict[str, str] = {}
     multiplier = "100"
-    for token, contract in sorted(contracts, key=lambda pair: pair[0]):
+    for month, token, contract in sorted(contracts, key=lambda triple: triple[1]):
         multiplier = str(contract.multiplier)
         expirations.add(contract.expiry.strftime("%Y%m%d"))
         strikes.add(float(contract.strike))
         conid_by_contract[token] = str(contract.broker_contract_id)
+        month_by_token[token] = month
     chain = AvailableChain(
         exchange=target.exchange,
         trading_class=target.symbol,
@@ -280,7 +288,23 @@ def _discover_chain(
         expirations=tuple(sorted(expirations)),
         strikes=tuple(sorted(strikes)),
     )
-    return chain, conid_by_contract
+    return chain, conid_by_contract, month_by_token
+
+
+def _chain_from_cache(cached: CachedChain, target: CaptureTarget) -> AvailableChain:
+    """Rebuild the broker-neutral ``AvailableChain`` from a warm cache hit (no ``/secdef`` walk).
+
+    The cached row holds the discovered expirations (``YYYYMMDD`` tokens) and strikes plus the
+    listing multiplier, which is exactly the ``AvailableChain`` shape the live discovery assembles —
+    so a warm hit reconstructs the identical menu the plan stage consumes, with zero broker calls.
+    """
+    return AvailableChain(
+        exchange=target.exchange,
+        trading_class=target.symbol,
+        multiplier=cached.multiplier or "100",
+        expirations=tuple(cached.expirations),
+        strikes=tuple(cached.strikes),
+    )
 
 
 def _qualify_contracts_concurrently(
@@ -291,20 +315,21 @@ def _qualify_contracts_concurrently(
     work_items: Sequence[tuple[str, float, str]],
     pool_size: int,
     log: Any,
-) -> list[tuple[str, OptionContract]]:
+) -> list[tuple[str, str, OptionContract]]:
     """Run the per-(month, strike, right) ``/secdef/info`` walk through a bounded thread pool.
 
-    Returns ``(contract_token, contract)`` pairs for every contract that qualified (carries a
-    broker conid), to be folded into the chain in a deterministic order by the caller. The walk
+    Returns ``(listing_month, contract_token, contract)`` triples for every contract that qualified
+    (carries a broker conid), to be folded into the chain in a deterministic order by the caller.
+    The walk
     is order-independent, so concurrency changes only the wall-clock, never the assembled output.
     A pool of size 1 reproduces the sequential walk exactly. The transport's 429/503 backoff is
     the pacing valve; a worker that exhausts it raises, and that propagates (loud-fail discipline —
     a discovery that cannot resolve its chain is not a silently-thinner chain).
     """
 
-    def qualify(item: tuple[str, float, str]) -> list[tuple[str, OptionContract]]:
+    def qualify(item: tuple[str, float, str]) -> list[tuple[str, str, OptionContract]]:
         month, strike, right = item
-        resolved: list[tuple[str, OptionContract]] = []
+        resolved: list[tuple[str, str, OptionContract]] = []
         for contract in discovery.contracts(
             conid,
             symbol=target.resolved_search_symbol,
@@ -315,7 +340,7 @@ def _qualify_contracts_concurrently(
             if contract.broker_contract_id is None:
                 continue
             token = _contract_token(contract.expiry, float(contract.strike), right)
-            resolved.append((token, contract))
+            resolved.append((month, token, contract))
         return resolved
 
     log.info(
@@ -324,7 +349,7 @@ def _qualify_contracts_concurrently(
         work_items=len(work_items),
         pool_size=pool_size,
     )
-    contracts: list[tuple[str, OptionContract]] = []
+    contracts: list[tuple[str, str, OptionContract]] = []
     with ThreadPoolExecutor(max_workers=pool_size) as pool:
         for resolved in pool.map(qualify, work_items):
             contracts.extend(resolved)
@@ -427,6 +452,7 @@ def _snapshot_events(
     as_of: datetime,
     next_open: datetime,
     max_spread_pct: float,
+    warmup: WarmupConfig | None = None,
 ) -> _PromotedSnapshots:
     """Snapshot the selected contracts at the close, gate on quote integrity, normalize to events.
 
@@ -457,7 +483,7 @@ def _snapshot_events(
         return _PromotedSnapshots(events=(), option_row_count=0, two_sided_count=0, drop_reasons=())
     # Warm-up polled like the spot snapshot: a cold first call returns metadata-only rows (no
     # marks), which would yield a basket of contracts with no quotes — IV/Greeks could not price.
-    rows = snapshot_with_warmup(transport, conids=sorted(keys_by_conid))
+    rows = snapshot_with_warmup(transport, conids=sorted(keys_by_conid), warmup=warmup)
     next_open_ms = int(next_open.timestamp() * 1000)
     # First pass: keep the admitted (instrument, row) pairs, dropping unrequested conids, malformed
     # payloads, and post-close prints. Sequence is NOT assigned here — row order is not trusted.
@@ -530,6 +556,108 @@ def _snapshot_events(
     )
 
 
+def _resolve_chain(
+    transport: SupportsRestGet,
+    discovery: CpRestDiscovery,
+    *,
+    target: CaptureTarget,
+    conid: int,
+    months: Sequence[str],
+    selection: ChainSelection,
+    spot: float | None,
+    as_of: datetime,
+    config: PlatformConfig,
+    discovery_cache: DiscoveryCache | None,
+    revalidate_cached_conids: bool,
+    log: Any,
+) -> tuple[AvailableChain, dict[str, str]]:
+    """Get the chain + conid map from cache when fresh (lever B/C), else from a live secdef walk.
+
+    Warm hit: rebuild the ``AvailableChain`` and ``token -> conid`` map from the cached row — ZERO
+    ``/secdef`` calls. With ``revalidate_cached_conids`` the cached conids are first bulk-checked
+    via ``/trsrv/secdef`` (200/call) and any conid the gateway no longer lists is dropped; if the
+    warm hit survives with at least one conid it is used, else it falls through to a live walk.
+    Miss / staleness: run the live discovery and, when a cache is supplied, persist the result keyed
+    on ``as_of`` so the next fire is warm. The live walk's behaviour is unchanged.
+    """
+    if discovery_cache is not None:
+        cached = discovery_cache.load(underlying=target.symbol, capture_date=as_of.date())
+        if cached is not None:
+            conid_by_contract = dict(cached.conid_by_contract)
+            if revalidate_cached_conids:
+                conid_by_contract = _revalidate_cached(
+                    transport, conid_by_contract, log=log, underlying=target.symbol
+                )
+            if conid_by_contract:
+                log.info(
+                    "ibkr.close_capture.cache_hit",
+                    underlying=target.symbol,
+                    cache_as_of=cached.as_of_date.isoformat(),
+                    contracts=len(conid_by_contract),
+                    revalidated=revalidate_cached_conids,
+                )
+                return _chain_from_cache(cached, target), conid_by_contract
+            log.info(
+                "ibkr.close_capture.cache_empty_after_revalidate",
+                underlying=target.symbol,
+                reason="every cached conid delisted — falling back to live discovery",
+            )
+
+    chain, conid_by_contract, month_by_token = _discover_chain(
+        discovery,
+        target=target,
+        conid=conid,
+        months=months,
+        selection=selection,
+        spot=spot,
+        as_of=as_of.date(),
+        strike_selection=config.universe.strike_selection,
+    )
+    if discovery_cache is not None and conid_by_contract:
+        discovery_cache.store_chain(
+            underlying=target.symbol,
+            as_of=as_of.date(),
+            exchange=target.exchange,
+            multiplier=chain.multiplier,
+            months=tuple(months),
+            expirations=chain.expirations,
+            strikes=chain.strikes,
+            conid_by_contract=conid_by_contract,
+            entry_month_by_token=month_by_token,
+        )
+    return chain, conid_by_contract
+
+
+def _revalidate_cached(
+    transport: SupportsRestGet,
+    conid_by_contract: dict[str, str],
+    *,
+    log: Any,
+    underlying: str,
+) -> dict[str, str]:
+    """Drop cached contracts whose conid ``/trsrv/secdef`` no longer lists (lever C, 200/call)."""
+    candidate_conids = [
+        coerced
+        for raw in conid_by_contract.values()
+        if (coerced := coerce_int_or_none(raw)) is not None
+    ]
+    valid = revalidate_conids(transport, candidate_conids)
+    kept = {
+        token: raw
+        for token, raw in conid_by_contract.items()
+        if (coerced := coerce_int_or_none(raw)) is not None and coerced in valid
+    }
+    dropped = len(conid_by_contract) - len(kept)
+    if dropped:
+        log.info(
+            "ibkr.close_capture.revalidate_dropped",
+            underlying=underlying,
+            dropped=dropped,
+            kept=len(kept),
+        )
+    return kept
+
+
 def collect_target_basket(
     transport: SupportsRestGet,
     *,
@@ -540,6 +668,9 @@ def collect_target_basket(
     next_open: datetime,
     config: PlatformConfig,
     selection: ChainSelection | None = None,
+    discovery_cache: DiscoveryCache | None = None,
+    revalidate_cached_conids: bool = False,
+    warmup: WarmupConfig | None = None,
 ) -> IndexBasket | None:
     """Capture one underlying's EOD close option basket over CP REST (the underlying-generic body).
 
@@ -565,22 +696,36 @@ def collect_target_basket(
     promotion). If the *whole* basket falls below ``config.qc_threshold.quote_integrity``'s
     two-sided floor — a closed / last-only / degenerate capture (the 2026-06-15 SX5E canary) —
     this returns ``None`` (a labelled no-capture), NOT a surface fit off last-only marks.
+
+    **Discovery cache (speed lever B/C).** The ``(underlying, month, strike, right) -> conid`` map
+    is static, so when a ``discovery_cache`` is supplied and holds a fresh entry for the underlying,
+    the live ``/secdef`` walk (hundreds of paced calls) is SKIPPED and the chain + conid map are
+    rebuilt from cache, going straight to the cheap batched snapshot. A cache miss / staleness falls
+    back to the live walk, whose result is then stored for the next fire. With
+    ``revalidate_cached_conids=True`` the cached conids are bulk-checked via ``/trsrv/secdef``
+    (200/call) before snapshotting and any delisted conid is dropped. ``warmup`` tunes the snapshot
+    cold-warm poll budget (speed lever E); all three default off / to the legacy behaviour, so
+    existing callers are unchanged.
     """
     log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
     selection = selection or _selection_from_config(config, as_of.date())
     discovery = CpRestDiscovery(
         transport, exchange=target.exchange, currency=target.currency
     )
-    spot = snapshot_index_spot(transport, conid)
-    chain, conid_by_contract = _discover_chain(
+    spot = snapshot_index_spot(transport, conid, warmup=warmup)
+    chain, conid_by_contract = _resolve_chain(
+        transport,
         discovery,
         target=target,
         conid=conid,
         months=months,
         selection=selection,
         spot=spot,
-        as_of=as_of.date(),
-        strike_selection=config.universe.strike_selection,
+        as_of=as_of,
+        config=config,
+        discovery_cache=discovery_cache,
+        revalidate_cached_conids=revalidate_cached_conids,
+        log=log,
     )
     if not conid_by_contract:
         log.info("ibkr.close_capture.no_options", reason="underlying lists no qualifiable options")
@@ -637,6 +782,7 @@ def collect_target_basket(
         as_of=as_of,
         next_open=next_open,
         max_spread_pct=qc.max_spread_pct,
+        warmup=warmup,
     )
     events = list(promoted.events)
 
@@ -699,6 +845,9 @@ def collect_live_basket(
     next_open: datetime,
     config: PlatformConfig,
     selection: ChainSelection | None = None,
+    discovery_cache: DiscoveryCache | None = None,
+    revalidate_cached_conids: bool = False,
+    warmup: WarmupConfig | None = None,
 ) -> IndexBasket | None:
     """Capture one fired index's EOD close basket over CP REST (the live ``BasketSource`` body).
 
@@ -720,6 +869,9 @@ def collect_live_basket(
         next_open=next_open,
         config=config,
         selection=selection,
+        discovery_cache=discovery_cache,
+        revalidate_cached_conids=revalidate_cached_conids,
+        warmup=warmup,
     )
 
 

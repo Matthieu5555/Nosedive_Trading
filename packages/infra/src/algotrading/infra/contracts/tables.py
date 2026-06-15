@@ -989,3 +989,46 @@ class BrokerAccountSnapshot:
     positions: tuple[BrokerPosition, ...]
     cash_balances: tuple[BrokerCashBalance, ...]
     fills: tuple[BrokerFill, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ConidEntry:
+    """One resolved option contract in a cached discovery chain map.
+
+    ``month`` is the IBKR listing month token the discovery walked under (e.g. ``"JUN26"``);
+    ``expiry`` is the concrete ISO date the contract expires; ``conid`` is the broker contract
+    id as a string (the same form the option :class:`InstrumentKey` carries). Stored as a row in
+    a :class:`DiscoveryCacheRow`'s ``entries`` tuple, which the storage codec persists as one JSON
+    column (the same tuple-of-dataclass pattern as :class:`BasketLeg` inside :class:`Basket`).
+    """
+
+    month: str
+    expiry: str
+    strike: float
+    right: str
+    conid: str
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryCacheRow:
+    """One persisted option-chain discovery for an underlying as known on ``as_of_date``.
+
+    The static ``(month, strike, right) → conid`` map an option-chain discovery resolved, banked
+    so a later capture reuses it and skips the throttled per-contract ``/secdef`` walk (the
+    dominant capture cost). The composite key ``(underlying, as_of_date)`` makes the row
+    point-in-time: a re-discovery on a later date lands a new row beside the old one (append-only),
+    and the freshest non-stale one is read back. ``entries`` is the full conid map; ``expirations``
+    / ``strikes`` are the discovered chain menu (the broker-neutral ``AvailableChain`` shape) so a
+    warm load reconstructs both the chain and the conid map with zero ``/secdef`` calls. ``months``
+    is the listed month tokens the discovery covered, retained so a warm load can re-drive a live
+    walk for the same months on a later staleness miss without a fresh ``/secdef/search``.
+    """
+
+    underlying: str
+    as_of_date: date
+    exchange: str
+    multiplier: str
+    months: tuple[str, ...]
+    expirations: tuple[str, ...]
+    strikes: tuple[float, ...]
+    entries: tuple[ConidEntry, ...]

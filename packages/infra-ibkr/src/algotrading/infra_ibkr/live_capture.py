@@ -36,6 +36,8 @@ from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
 from .collectors.cp_rest_constituent_capture import collect_index_and_constituents_basket
+from .collectors.cp_rest_discovery_cache import DiscoveryCache
+from .collectors.cp_rest_snapshot import WarmupConfig
 from .connectivity.cp_rest_transport import SupportsRestGet
 from .session_factory import (
     build_credentialed_session,
@@ -59,6 +61,7 @@ def live_basket_source(
     selection: ChainSelection | None = None,
     now: Callable[[], date] | None = None,
     store: ParquetStore | None = None,
+    use_discovery_cache: bool = True,
 ) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     """Build the credentialed live ``BasketSource``, or ``None`` when not configured.
 
@@ -104,6 +107,18 @@ def live_basket_source(
     resolved_config = config if config is not None else _load_config()
     today = now or _utc_today
 
+    # Speed levers (ibkr-capture-speedup). The static (month, strike, right) → conid map is cached
+    # so a warm fire skips the throttled per-contract /secdef walk (the dominant cost) and goes
+    # straight to snapshot at full maturity depth; cached conids are bulk-revalidated via
+    # /trsrv/secdef (200/call) first. The first fire of a (re)listed chain is a cold miss that walks
+    # live and warms the cache. ``use_discovery_cache=False`` opts back out to the legacy live walk.
+    # The warmup trim (dead-wing early-stop) applies on every path. Pacing/penalty-box safety lives
+    # in the transport itself, so it needs no wiring here.
+    discovery_cache = (
+        DiscoveryCache(store) if (store is not None and use_discovery_cache) else None
+    )
+    warmup = WarmupConfig() if use_discovery_cache else None
+
     def source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
         current_day = today()
         if trade_date < current_day:
@@ -125,6 +140,9 @@ def live_basket_source(
                 next_open=fired.next_open,
                 config=resolved_config,
                 selection=selection,
+                discovery_cache=discovery_cache,
+                revalidate_cached_conids=discovery_cache is not None,
+                warmup=warmup,
             )
         return collect_live_basket(
             transport,
@@ -133,6 +151,9 @@ def live_basket_source(
             next_open=fired.next_open,
             config=resolved_config,
             selection=selection,
+            discovery_cache=discovery_cache,
+            revalidate_cached_conids=discovery_cache is not None,
+            warmup=warmup,
         )
 
     _LOGGER.info(
@@ -151,6 +172,7 @@ def gateway_basket_source(
     selection: ChainSelection | None = None,
     now: Callable[[], date] | None = None,
     store: ParquetStore | None = None,
+    use_discovery_cache: bool = True,
 ) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     """Build the live ``BasketSource`` over the local CP Gateway, or ``None`` when not requested.
 
@@ -184,6 +206,7 @@ def gateway_basket_source(
         selection=selection,
         now=now,
         store=store,
+        use_discovery_cache=use_discovery_cache,
     )
 
 

@@ -28,6 +28,7 @@ from .tables import (
     BrokerPosition,
     ConstituentCaptureOutcome,
     DailyBar,
+    DiscoveryCacheRow,
     ForwardCurvePoint,
     IndexConstituent,
     InstrumentMaster,
@@ -145,6 +146,25 @@ REGISTRY: dict[str, TableSpec] = {
         non_negative_fields=(),
         # Reference data describes the index, not a quote source — provider-agnostic by
         # design (ADR 0034 §5). The vendor is a field, not a partition segment.
+        provider_partitioned=False,
+    ),
+    "discovery_conid_cache": TableSpec(
+        name="discovery_conid_cache",
+        contract=DiscoveryCacheRow,
+        # A discovery on a given date is an immutable fact; a re-discovery on a later date lands a
+        # new row under (underlying, as_of_date). ``entries`` round-trips as a single JSON column
+        # (the codec already handles a tuple-of-dataclass, as with ``baskets.legs``).
+        primary_key=("underlying", "as_of_date"),
+        layer="reference",
+        # Append-only: the static (month, strike, right) → conid map for that as-of date. A
+        # byte-identical same-day re-discovery is the store's idempotent no-op; a later date is a
+        # new row. It is its own input (resolved off the broker secdef), so no provenance stamp.
+        append_only=True,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        positive_fields=(),
+        non_negative_fields=(),
+        # The conid map is broker-resolved reference data, not a partitioned quote source.
         provider_partitioned=False,
     ),
     "market_state_snapshots": TableSpec(

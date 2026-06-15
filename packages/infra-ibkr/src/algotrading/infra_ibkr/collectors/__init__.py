@@ -18,6 +18,12 @@ from .cp_rest_close_capture import (
 )
 from .cp_rest_constituent_capture import collect_index_and_constituents_basket
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
+from .cp_rest_discovery_cache import (
+    CachedChain,
+    DiscoveryCache,
+    DiscoveryCacheRow,
+    revalidate_conids,
+)
 from .cp_rest_history import (
     BackfillResult,
     CpRestHistoryCollector,
@@ -67,6 +73,11 @@ __all__ = [
     "CaptureTarget",
     "collect_index_and_constituents_basket",
     "CloseCaptureError",
+    # Discovery → conid cache (speed lever B/C)
+    "DiscoveryCache",
+    "DiscoveryCacheRow",
+    "CachedChain",
+    "revalidate_conids",
     # Historical OHLC backfill (ADR 0031)
     "CpRestHistoryCollector",
     "HistoryRequest",

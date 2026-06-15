@@ -30,8 +30,10 @@ from algotrading.infra.contracts import (
     BrokerCashBalance,
     BrokerFill,
     BrokerPosition,
+    ConidEntry,
     ConstituentCaptureOutcome,
     DailyBar,
+    DiscoveryCacheRow,
     ForwardCurvePoint,
     ForwardDiagnostics,
     IndexConstituent,
@@ -383,6 +385,23 @@ def baseline_records() -> dict[str, Any]:
             dollar_rho=1.0,
             dollar_theta_unit="per calendar day",
             dollar_rho_unit="per 1% rate move",
+        ),
+        "discovery_conid_cache": DiscoveryCacheRow(
+            underlying="AAPL",
+            as_of_date=TRADE_DATE,
+            exchange="SMART",
+            multiplier="100",
+            months=("JUN26", "SEP26"),
+            expirations=("20260619", "20260918"),
+            strikes=(180.0, 185.0, 190.0),
+            entries=(
+                ConidEntry(
+                    month="JUN26", expiry="2026-06-19", strike=185.0, right="C", conid="265598001"
+                ),
+                ConidEntry(
+                    month="JUN26", expiry="2026-06-19", strike=185.0, right="P", conid="265598002"
+                ),
+            ),
         ),
         "baskets": Basket(
             basket_id="rr-aapl-1m",

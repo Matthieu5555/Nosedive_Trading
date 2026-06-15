@@ -230,7 +230,9 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
   );
   render(<MarketPage />);
 
-  const greeks = await screen.findByRole("table", { name: /Dollar Greeks by delta band/i });
+  // The per-maturity Greeks transpose (Greeks as columns, deltas as rows) carries the €-currency
+  // unit strings in its column subheaders — the index's real quote currency from /api/indices.
+  const greeks = await screen.findByRole("table", { name: /Dollar Greeks — / });
   // "$ per 1% move" → "€ per 1% move"; "$ per $1 of underlying" → "€ per €1 of underlying".
   expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();

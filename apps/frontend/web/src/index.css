@@ -487,6 +487,50 @@ h2 {
   }
 }
 
+/* The per-maturity Greeks transpose (Greeks as columns, deltas as rows). One maturity is in view
+   at a time, so the column count is bounded (5 Greeks × 2 = a fixed 11 columns) — but it is still
+   wrapped in its own horizontal scroller so it can NEVER push the page wide the way the old
+   all-strikes matrix did (global `table { width: 100% }` + nowrap let that table stretch the
+   layout to ~3700px). The scroller clips the overflow to the panel; the page width stays bounded. */
+.greeks-by-maturity-controls {
+  margin: 6px 0 10px;
+}
+.greeks-by-maturity-controls label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.greeks-by-maturity-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+/* The table sizes to its content inside the scroller, not to 100% of the (now scrollable) box —
+   otherwise a narrow grid would stretch and a wide one would still overflow the page. */
+.greeks-by-maturity-scroll table {
+  width: auto;
+  min-width: 100%;
+}
+/* The two sub-columns of each Greek (raw | currency) read as a pair: a faint divider opens before
+   each Greek group so the eye groups (raw, $) together. */
+.greeks-by-maturity th.greek-group {
+  text-align: center;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+.greeks-by-maturity th .unit {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: none;
+}
+/* A row seated on a railed slice is tinted so it reads as flagged, not clean — the served values
+   are shown intact, only marked. */
+.greeks-by-maturity tr.flagged-row {
+  background: rgba(255, 196, 0, 0.06);
+}
+.greeks-by-maturity tr.flagged-row th[scope="row"] {
+  color: var(--negative);
+}
+
 /* lightweight-charts fills its container's box rather than auto-sizing like Plotly, so the
    candlestick panel needs an explicit height to render. position:relative anchors the hover
    read-out box overlaid on the chart. */

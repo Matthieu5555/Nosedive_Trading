@@ -403,6 +403,123 @@ export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
   },
 };
 
+// A DEGENERATE analytics day (the live 2026-06-15 SX5E 10d shape, in miniature): one maturity
+// whose smile carries an absurd railed IV (108%), a NaN IV, and a duplicate log-moneyness (the
+// duplicated 0.0 delta), plus the matching railed Greeks points — so a test can assert the front
+// renders the GOOD points clamped/flagged, never blown. The dense surface likewise carries a
+// railed cell (1.4) and a duplicate column. Values are chosen independently of the backend.
+export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
+  underlying: "AAA",
+  trade_date: "2026-05-29",
+  n_maturities: 1,
+  maturities: [
+    {
+      maturity_years: 0.027,
+      tenor_label: "10d",
+      label: "10d (0.027y)",
+      smile: {
+        axis_type: "delta",
+        deltas: [-0.3, -0.14, -0.12, 0.0, 0.0, 0.3],
+        // -0.14/-0.12 are the railed absurd IVs; the second 0.0 is the duplicate delta; one NaN.
+        implied_vols: [0.19, 1.08, Number.NaN, 0.152, 0.152, 0.143],
+        log_moneyness: [-0.03, -0.18, -0.25, 0.0, 0.0, 0.03],
+      },
+      surface_slice: {
+        snapshot_ts: "2026-05-29T21:00:00+00:00",
+        underlying: "AAA",
+        maturity_years: 0.027,
+        model_version: "svi-test",
+        svi_a: 1e-28,
+        svi_b: 0.05,
+        svi_rho: -0.999,
+        svi_m: 0.0,
+        svi_sigma: 0.2,
+        expiry_date: "2026-06-08",
+        day_count: "ACT/365",
+        diagnostics: {
+          rmse: 1e-6,
+          n_points: 6,
+          arb_free: false,
+          bound_hits: ["rho_lower"],
+          converged: false,
+        },
+        degenerate: true,
+        degenerate_reasons: ["param_at_bound:rho_lower", "not_converged"],
+        source_snapshot_ts: "2026-05-29T21:00:00+00:00",
+        provenance: PROV,
+      },
+      points: [
+        // A GOOD ATM-ish point and two RAILED points (IV out of band): the transpose must flag the
+        // railed rows and the term structure must exclude them, but neither may blow up.
+        {
+          delta_band: "30dp",
+          target_delta: -0.3,
+          log_moneyness: -0.03,
+          strike: 190.0,
+          forward_price: 195.0,
+          implied_vol: 0.19,
+          total_variance: 0.001,
+          price: 1.2,
+          metrics: {
+            delta: { raw: -0.3, dollar: -58.5, unit: "$ per $1 of underlying" },
+            gamma: { raw: 0.02, dollar: 7.6, unit: "$ per 1% move" },
+            vega: { raw: 0.31, dollar: 0.31, unit: "$ per 1 vol point" },
+            theta: { raw: -0.05, dollar: -0.000041, unit: "$ per calendar day" },
+            rho: { raw: 0.04, dollar: 0.0005, unit: "$ per 1% rate" },
+          },
+          provenance: PROV,
+        },
+        {
+          delta_band: "14dp",
+          target_delta: -0.14,
+          log_moneyness: -0.18,
+          strike: 162.0,
+          forward_price: 195.0,
+          implied_vol: 1.08, // railed — out of the sane band
+          total_variance: 0.03,
+          price: 0.4,
+          metrics: {
+            delta: { raw: -0.14, dollar: -2700.0, unit: "$ per $1 of underlying" },
+            gamma: { raw: 0.9, dollar: 77.3, unit: "$ per 1% move" },
+            vega: { raw: 2.3, dollar: 2.3, unit: "$ per 1 vol point" },
+            theta: { raw: -9.0, dollar: -0.008, unit: "$ per calendar day" },
+            rho: { raw: 0.001, dollar: 0.00001, unit: "$ per 1% rate" },
+          },
+          provenance: PROV,
+        },
+        {
+          delta_band: "12dp",
+          target_delta: -0.12,
+          log_moneyness: -0.25,
+          strike: 152.0,
+          forward_price: 195.0,
+          implied_vol: 1.4, // railed — out of the sane band
+          total_variance: 0.05,
+          price: 0.3,
+          metrics: {
+            delta: { raw: -0.12, dollar: -3100.0, unit: "$ per $1 of underlying" },
+            gamma: { raw: 0.8, dollar: 53.8, unit: "$ per 1% move" },
+            vega: { raw: 2.07, dollar: 2.07, unit: "$ per 1 vol point" },
+            theta: { raw: -8.0, dollar: -0.007, unit: "$ per calendar day" },
+            rho: { raw: 0.001, dollar: 0.00001, unit: "$ per 1% rate" },
+          },
+          provenance: PROV,
+        },
+      ],
+    },
+  ],
+  surface: {
+    log_moneyness: [-0.2, -0.1, -0.1, 0.0, 0.1],
+    maturity_years: [0.027, 1.0],
+    implied_vol: [
+      [1.4, 0.55, 0.55, 0.15, 0.11], // short slice rails to 1.4 in the deep put wing
+      [0.24, 0.22, 0.22, 0.21, 0.2],
+    ],
+    model_version: "svi-test",
+    degenerate_maturity_years: [0.027],
+  },
+};
+
 // A priced long strangle on AAA (WS 2A): long 30Δ call + long 30Δ put. The aggregate dollar
 // Greeks are the hand sum of the two legs' contributions (delta cancels, gamma/vega/theta/rho add).
 export const BASKET_RISK_AAA: BasketRiskResponse = {

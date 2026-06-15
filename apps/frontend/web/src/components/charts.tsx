@@ -10,6 +10,13 @@ import type { Data } from "plotly.js";
 
 import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
 import { sci, withCurrency } from "../lib/format";
+import {
+  cleanDenseSurface,
+  cleanSmile,
+  flaggedNote,
+  isSaneIv,
+  IV_SANE_MAX,
+} from "../lib/volRobust";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
@@ -17,8 +24,10 @@ import { Plot } from "./Plot";
 
 // The z-axis is pinned to [0, SURFACE_Z_MAX] (anchored at 0), not auto-ranged, so the surface
 // reads at a stable height — and, via cmin/cmax, a stable colour — across trade dates instead of
-// re-zooming on every capture. 35% IV comfortably covers the index-option body.
-const SURFACE_Z_MAX = 0.35;
+// re-zooming on every capture. The cap is the shared sane IV band (IV_SANE_MAX): a railed slice's
+// absurd IVs are excluded from the geometry (cleanDenseSurface), and pinning the height/colour to
+// the same band means even a residual outlier cannot re-stretch the scale.
+const SURFACE_Z_MAX = IV_SANE_MAX;
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
   const label = `${data.underlying} — daily price (OHLC candlestick)`;
@@ -41,20 +50,32 @@ const SURFACE_LABEL = "Implied-volatility surface (vol vs log-moneyness vs matur
 // polyline. y is maturity in *years* (a real continuous axis; the dense grid never bunches the way
 // the 8 raw tenors did, so the index hack the fallback needs is unnecessary here).
 function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
+  // Robustness (render layer only — the served values are never mutated): a railed slice serves
+  // absurd IVs (108%, 140% at deep-OTM deltas) and duplicate log-moneyness columns; left raw they
+  // spike the nappe's height and stretch its colour band. Clamp out-of-band / non-finite cells to
+  // null holes (bridged by connectgaps) and collapse duplicate-k columns, then surface an honest
+  // count of the flagged slices instead of rendering the garbage peak.
+  const cleaned = cleanDenseSurface(
+    surface.log_moneyness,
+    surface.maturity_years,
+    surface.implied_vol,
+  );
+  const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
   const trace = {
     type: "surface",
-    x: surface.log_moneyness,
-    y: surface.maturity_years,
-    z: surface.implied_vol,
+    x: cleaned.logMoneyness,
+    y: cleaned.maturityYears,
+    z: cleaned.impliedVol,
     name: "IV surface",
     colorscale: VOL_COLORSCALE,
     cmin: 0,
     cmax: SURFACE_Z_MAX,
+    connectgaps: true,
     colorbar: { title: { text: "IV" } },
   } as Data;
   return (
     <Plot
-      label={SURFACE_LABEL}
+      label={note ? `${SURFACE_LABEL} — ⚠ ${note}` : SURFACE_LABEL}
       height={480}
       data={[trace]}
       layout={{
@@ -92,11 +113,22 @@ export function VolSurface({
   // bunch near zero and the mesh looks spiky; an even index lays the surface flat and regular.
   // Plotly `surface` over a (maturity × x) z-grid reads as a true surface, not a mesh3d cloud.
   // A missing (x, maturity) cell is a null hole, bridged only visually by connectgaps.
-  const sorted = [...maturities]
-    .filter((maturity) => maturity.smile.log_moneyness.length > 0)
-    .sort((a, b) => a.maturity_years - b.maturity_years);
-  const label = SURFACE_LABEL;
-  if (sorted.length === 0) {
+  // Clean each slice (drop non-finite / out-of-band IV + duplicate-k points) BEFORE building the
+  // z-grid, so a railed fallback slice cannot spike the surface — same render-only policy as the
+  // dense path. The served values are untouched; only the plotted geometry is cleaned.
+  const cleaned = [...maturities]
+    .map((maturity) => ({
+      maturity,
+      clean: cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols),
+    }))
+    .filter(({ clean }) => clean.logMoneyness.length > 0)
+    .sort((a, b) => a.maturity.maturity_years - b.maturity.maturity_years);
+  const nFlaggedSlices = cleaned.filter(
+    ({ clean }) => clean.nDroppedAbsurd + clean.nDroppedNonFinite > 0,
+  ).length;
+  const note = flaggedNote(nFlaggedSlices, "slice");
+  const label = note ? `${SURFACE_LABEL} — ⚠ ${note}` : SURFACE_LABEL;
+  if (cleaned.length === 0) {
     return (
       <figure aria-label={label} className="plot">
         <figcaption>{label}</figcaption>
@@ -104,11 +136,12 @@ export function VolSurface({
       </figure>
     );
   }
-  // Common x grid (union of every maturity's log-moneyness axis), so the z-grid stays rectangular
-  // even where a coarse long-dated tenor lacks the wing bands.
-  const xGrid = [...new Set(sorted.flatMap((m) => m.smile.log_moneyness))].sort((a, b) => a - b);
-  const z: (number | null)[][] = sorted.map((maturity) => {
-    const byK = new Map(maturity.smile.log_moneyness.map((k, i) => [k, maturity.smile.implied_vols[i]]));
+  const sorted = cleaned.map(({ maturity }) => maturity);
+  // Common x grid (union of every maturity's CLEANED log-moneyness axis), so the z-grid stays
+  // rectangular even where a coarse long-dated tenor lacks the wing bands.
+  const xGrid = [...new Set(cleaned.flatMap(({ clean }) => clean.logMoneyness))].sort((a, b) => a - b);
+  const z: (number | null)[][] = cleaned.map(({ clean }) => {
+    const byK = new Map(clean.logMoneyness.map((k, i) => [k, clean.impliedVols[i]]));
     return xGrid.map((k) => byK.get(k) ?? null);
   });
   const yIndex = sorted.map((_, i) => i);
@@ -177,11 +210,17 @@ export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
   // A degenerate calibration (parameter railed to a bound, non-converged, or arb-breached)
   // is shown flagged, never as a clean fit — the flag clears once real term structure lands.
   const degenerate = maturity.surface_slice?.degenerate ?? false;
+  // Robustness (render layer only): drop non-finite / absurd-IV / duplicate-k points before
+  // plotting the wings, so a railed slice's 108%/140% spikes and its duplicated 0.0 delta do not
+  // distort the curve. The served smile is untouched; we plot the good points and note the rest.
+  const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
+  const nDropped = clean.nDroppedNonFinite + clean.nDroppedAbsurd + clean.nDroppedDuplicate;
+  const dropNote = nDropped > 0 ? ` — ${nDropped} pt${nDropped === 1 ? "" : "s"} flagged` : "";
   const label = `Smile — ${maturity.label} (implied vol vs log-moneyness; puts ◄ ATM ► calls)${
     degenerate ? " ⚠ degenerate fit" : ""
-  }`;
-  const ks = maturity.smile.log_moneyness;
-  const vols = maturity.smile.implied_vols;
+  }${dropNote}`;
+  const ks = clean.logMoneyness;
+  const vols = clean.impliedVols;
   const puts: LightweightLineSeries = { label: "puts", color: PUT_COLOR, points: [] };
   const calls: LightweightLineSeries = { label: "calls", color: CALL_COLOR, points: [] };
   ks.forEach((k, i) => {
@@ -241,14 +280,23 @@ function maturityMonths(maturity: AnalyticsMaturity): number {
 }
 
 // One line series per band: (maturity in months, dollar value) for the points that carry a
-// non-null dollar (an older partition can carry a null $; it is skipped, never plotted as 0).
+// finite dollar (an older partition can carry a null $; it is skipped, never plotted as 0).
+// Robustness (render layer only): a point on a RAILED slice carries an absurd implied vol
+// (108%/140%), and its dollar Greeks are outliers that, plotted, spike the whole panel and flatten
+// every real line. Such points are excluded from the term structure (the served data is untouched;
+// the point is still visible in the per-maturity transpose table, flagged). A non-finite dollar is
+// likewise excluded rather than plotted as a spike.
 function bandSeries(maturities: AnalyticsMaturity[], greek: GreekName): LightweightLineSeries[] {
   return orderedBands(maturities)
     .map((band, index): LightweightLineSeries => {
       const points = maturities.flatMap((maturity) => {
         const point = maturity.points.find((p) => p.delta_band === band);
-        const dollar = point?.metrics[greek].dollar;
-        if (point === undefined || dollar === null || dollar === undefined) return [];
+        if (point === undefined) return [];
+        // Exclude a point seated on a railed slice (its IV is out of the sane band) — its Greeks
+        // are the outliers that spike the panel.
+        if (!isSaneIv(point.implied_vol)) return [];
+        const dollar = point.metrics[greek].dollar;
+        if (dollar === null || dollar === undefined || !Number.isFinite(dollar)) return [];
         return [{ x: maturityMonths(maturity), label: maturity.tenor_label, value: dollar }];
       });
       return { label: band, color: BAND_COLORS[index % BAND_COLORS.length], points };

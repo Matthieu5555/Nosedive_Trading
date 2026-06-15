@@ -1,21 +1,20 @@
-// One accordion item per maturity (shadcn/Radix), each holding the 2D smile and that
-// maturity's dollar Greeks with their unit strings. The accordion lets the operator drill into
-// one tenor at a time without scrolling a wall of grids.
+// One accordion item per maturity (shadcn/Radix), each holding that maturity's 2D vol smile.
+// The accordion lets the operator drill into one tenor's smile at a time. The dollar Greeks now
+// live in the per-maturity TRANSPOSE table above (DollarGreeksByMaturity) — the single Greeks
+// readout — so the accordion no longer carries a per-band matrix.
 
 import * as Accordion from "@radix-ui/react-accordion";
 
 import type { AnalyticsMaturity } from "../api";
-import { DollarGreeksMatrix } from "./DollarGreeks";
 import { SmileChart } from "./charts";
 
 export function MaturityAccordion({
   maturities,
-  currency = "$",
 }: {
   maturities: AnalyticsMaturity[];
-  currency?: string;
+  // currency was used by the dropped per-band matrix; kept off the signature now.
 }) {
-  const label = "Per-maturity smile and dollar Greeks";
+  const label = "Per-maturity smile";
   if (maturities.length === 0) {
     return (
       <section aria-label={label}>
@@ -35,7 +34,6 @@ export function MaturityAccordion({
             </Accordion.Header>
             <Accordion.Content>
               <SmileChart maturity={maturity} />
-              <DollarGreeksMatrix points={maturity.points} currency={currency} />
             </Accordion.Content>
           </Accordion.Item>
         ))}

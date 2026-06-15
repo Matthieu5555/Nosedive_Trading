@@ -39,6 +39,19 @@
         "$datetime": "2026-05-29T15:30:00+00:00"
       }
     },
+    "constituent_capture_outcomes": {
+      "detail": "captured 6 option leg(s)",
+      "index": "SX5E",
+      "n_options": 6,
+      "outcome": "captured",
+      "rank": 1,
+      "run_id": "run-1",
+      "run_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "underlying": "ASML",
+      "weight": 0.12
+    },
     "daily_bar": {
       "bar_type": "1d-TRADES",
       "close": 190.5,

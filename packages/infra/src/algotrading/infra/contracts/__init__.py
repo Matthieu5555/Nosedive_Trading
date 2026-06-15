@@ -36,11 +36,13 @@ from .registry import (
     table_for_contract,
 )
 from .tables import (
+    CONSTITUENT_OUTCOMES,
     SURFACE_SIDE_COMBINED,
     SURFACE_SIDES,
     Basket,
     BasketLeg,
     BookGreeks,
+    ConstituentCaptureOutcome,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -68,6 +70,8 @@ __all__ = [
     "Basket",
     "BookGreeks",
     "BasketLeg",
+    "CONSTITUENT_OUTCOMES",
+    "ConstituentCaptureOutcome",
     "ContractError",
     "ContractValidationError",
     "DailyBar",

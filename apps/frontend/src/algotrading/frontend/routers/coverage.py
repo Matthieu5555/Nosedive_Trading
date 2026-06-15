@@ -7,7 +7,12 @@ returns two already-on-disk facts, **no recompute**:
   strike span actually captured at each listed expiry, each tagged with the pinned tenor it serves;
 * **per-tenor coverage** — from ``qc_results`` (WS 1H's ``tenor_coverage_floor``): the whole pinned
   grid, so a tenor with **zero** captured expiries shows as a labeled zero-row, not an omission —
-  the term-structure gap (e.g. 1m…3y empty) is then visible at a glance.
+  the term-structure gap (e.g. 1m…3y empty) is then visible at a glance;
+* **per-constituent capture outcomes** — from ``constituent_capture_outcomes`` (the widened S1
+  capture lane's per-name ledger): for an index underlying, the labelled verdict
+  (``captured`` / ``no_options`` / ``unentitled`` / ``unresolved``) of each of its heaviest
+  constituents, so the entitlement question — *which* names return option chains on this account —
+  is answered per name, never a silent absence.
 
 Plus the date's overall QC verdict and the ``delta_band_completeness`` status (30Δ-band health).
 ``trade_date`` defaults to the latest date with ``instrument_master`` data, mirroring ``health``. A
@@ -140,6 +145,32 @@ def _overall_qc_status(qc_rows: list, underlying: str) -> str:
     return "pass"
 
 
+def _constituent_outcome_rows(outcomes: list, index: str) -> list[dict[str, object]]:
+    """Per-constituent capture verdicts for one index, heaviest first (the entitlement ledger).
+
+    Drives off ``constituent_capture_outcomes`` rows for ``index``: one labelled row per attempted
+    constituent. Ordered by the recorded weight rank (ascending — rank 1 = heaviest), so the panel
+    reads top-down exactly as the capture lane selected. A name's outcome is the captured verdict
+    the lane recorded; ``n_options`` is the captured option-leg count (0 for a non-capture). With no
+    ledger for this index/date (an index-only capture, or a date before the widened lane fired) the
+    list is empty — the panel then simply shows no constituent section, never a fabricated row.
+    """
+    rows = [
+        {
+            "symbol": outcome.underlying,
+            "rank": outcome.rank,
+            "weight": outcome.weight,
+            "outcome": outcome.outcome,
+            "n_options": outcome.n_options,
+            "detail": outcome.detail,
+        }
+        for outcome in outcomes
+        if outcome.index == index
+    ]
+    rows.sort(key=lambda row: (row["rank"], row["symbol"]))
+    return rows
+
+
 def _check_status(qc_rows: list, check_name: str, underlying: str) -> str:
     """The status of one named check for ``underlying`` (``pass``/``fail``/``unknown``)."""
     for row in qc_rows:
@@ -167,6 +198,7 @@ def get_coverage(
                 "n_expiries": 0,
                 "expiries": [],
                 "tenors": [],
+                "constituents": [],
                 "qc_status": "unknown",
                 "delta_band_status": "unknown",
             }
@@ -176,10 +208,12 @@ def get_coverage(
         "instrument_master", trade_date=resolved_date, underlying=resolved_underlying
     )
     qc_rows = ctx.store.read("qc_results", trade_date=resolved_date)
+    outcomes = ctx.store.read("constituent_capture_outcomes", trade_date=resolved_date)
 
     targets = _tenor_targets(resolved_date)
     expiry_rows = _expiry_rows(masters, targets)
     tenor_rows, _ = _tenor_coverage_rows(qc_rows, resolved_underlying)
+    constituent_rows = _constituent_outcome_rows(outcomes, resolved_underlying)
 
     return JSONResponse(
         {
@@ -188,6 +222,7 @@ def get_coverage(
             "n_expiries": len(expiry_rows),
             "expiries": expiry_rows,
             "tenors": tenor_rows,
+            "constituents": constituent_rows,
             "qc_status": _overall_qc_status(qc_rows, resolved_underlying),
             "delta_band_status": _check_status(qc_rows, _CHECK_DELTA_BAND, resolved_underlying),
         }

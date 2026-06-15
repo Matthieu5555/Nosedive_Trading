@@ -138,6 +138,16 @@ The BFF exposes (all under `/api` except the liveness probe):
   record for the `(portfolio, date)` is a labelled-empty `found=false` body (HTTP 200), a bad
   `trade_date` a labelled `400`. The web `AttributionWaterfall` (Plotly waterfall) renders it on
   the Basket page beside the stress surface.
+- `GET /api/coverage[?underlying=&trade_date=]` — the captured option chain as a plain quality
+  table (no recompute), rendered by the web `CoverageTable`/`CoveragePanel`. Three already-on-disk
+  facts: **per-expiry capture** (strikes/calls/puts/span from `instrument_master`), **per-tenor
+  coverage** over the whole pinned grid (from `qc_results` `tenor_coverage_floor`, so an empty
+  tenor shows as a labelled zero-row), and — for an index underlying — the **per-constituent
+  capture-outcome ledger** from `constituent_capture_outcomes`: each of the index's heaviest names
+  with its labelled verdict (`captured`/`no_options`/`unentitled`/`unresolved`), heaviest-first, so
+  the entitlement question (*which* names return chains on this account) is visible per name rather
+  than a silent absence. A missing partition is a labelled-empty payload (`n_expiries == 0`,
+  `constituents == []`, HTTP 200); a bad `trade_date` a `400`.
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

@@ -13,6 +13,20 @@ import { AsyncBlock } from "./AsyncBlock";
 
 export type QcStatus = "pass" | "fail" | "unknown";
 
+// The closed set of per-constituent capture verdicts the widened S1 lane records (one per
+// attempted name): the chain landed, the name lists none, the account is not entitled, or the
+// underlying conid would not resolve. Mirrors `CONSTITUENT_OUTCOMES` in the contracts plane.
+export type ConstituentOutcomeLabel = "captured" | "no_options" | "unentitled" | "unresolved";
+
+export interface ConstituentOutcome {
+  symbol: string;
+  rank: number;
+  weight: number;
+  outcome: ConstituentOutcomeLabel;
+  n_options: number;
+  detail: string;
+}
+
 export interface CoverageExpiry {
   expiry: string;
   tenor: string;
@@ -36,11 +50,23 @@ export interface CoverageData {
   n_expiries: number;
   expiries: CoverageExpiry[];
   tenors: CoverageTenor[];
+  // Per-constituent capture outcomes for an index underlying (empty for a single name or an
+  // index-only capture day). Ordered heaviest-first by the lane's recorded weight rank.
+  constituents: ConstituentOutcome[];
   qc_status: QcStatus;
   delta_band_status: QcStatus;
 }
 
 const STATUS_GLYPH: Record<QcStatus, string> = { pass: "✓", fail: "✗", unknown: "—" };
+
+// A captured name is healthy; everything else is a gap an operator should see. `unknown` keeps a
+// neutral glyph for any future label the front does not yet model.
+const OUTCOME_STATUS: Record<ConstituentOutcomeLabel, QcStatus> = {
+  captured: "pass",
+  no_options: "fail",
+  unentitled: "fail",
+  unresolved: "fail",
+};
 
 function StatusBadge({ status, label }: { status: QcStatus; label: string }) {
   return (
@@ -118,6 +144,33 @@ export function CoverageTable({ data }: { data: CoverageData }) {
           ))}
         </tbody>
       </table>
+
+      {data.constituents.length > 0 && (
+        <table role="table" aria-label="Constituent capture outcomes">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Constituent</th>
+              <th>Weight</th>
+              <th>Outcome</th>
+              <th>Options</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.constituents.map((row) => (
+              <tr key={row.symbol} data-status={OUTCOME_STATUS[row.outcome]} data-outcome={row.outcome}>
+                <td>{row.rank}</td>
+                <td>{row.symbol}</td>
+                <td>{row.weight.toFixed(4)}</td>
+                <td title={row.detail}>
+                  <StatusBadge status={OUTCOME_STATUS[row.outcome]} label={row.outcome} />
+                </td>
+                <td>{row.n_options}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }

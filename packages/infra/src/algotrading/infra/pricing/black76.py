@@ -61,7 +61,9 @@ def _discounted_intrinsic(state: PricingState) -> PriceGreeks:
     price = df * intrinsic
     delta = sign * math.exp((state.carry - rate) * maturity) if in_the_money else 0.0
     # No convexity and no remaining time value, so every second-order sensitivity is
-    # zero — vanna/volga (no vol response) and charm (no further delta decay).
+    # zero — vanna/volga (no vol response) and charm (no further delta decay). RT-Vega
+    # (vega / sqrt(T), ADR 0050) is 0.0 here too: vega is 0 and sqrt(T) -> 0, so it is
+    # *defined* zero rather than a 0/0 — the right limit (no vol sensitivity at expiry).
     return PriceGreeks(
         price=price,
         delta=delta,
@@ -72,6 +74,7 @@ def _discounted_intrinsic(state: PricingState) -> PriceGreeks:
         vanna=0.0,
         volga=0.0,
         charm=0.0,
+        rt_vega=0.0,
     )
 
 
@@ -133,6 +136,13 @@ def price_european(state: PricingState) -> PriceGreeks:
     n_for_charm = cdf_d1 if state.is_call else cdf_d1 - 1.0
     charm = -carry_discount * (carry_drift * n_for_charm + pdf_d1 * d1_decay)
 
+    # RT-Vega (running-time / annualised vega, ADR 0050) = vega / sqrt(T) =
+    # spot * e^{(b-r)T} * phi(d1) — vega with the sqrt(T) maturity factor stripped, in the
+    # same per-1.00-of-vol unit, so it is comparable across tenors. Taken as vega / sqrt_t
+    # against this engine's own vega so the unit and carry/discount convention can never
+    # drift from vega; sqrt_t > 0 here (the T -> 0 case is the degenerate branch above).
+    rt_vega = vega / sqrt_t
+
     return PriceGreeks(
         price=price,
         delta=delta,
@@ -143,4 +153,5 @@ def price_european(state: PricingState) -> PriceGreeks:
         vanna=vanna,
         volga=volga,
         charm=charm,
+        rt_vega=rt_vega,
     )

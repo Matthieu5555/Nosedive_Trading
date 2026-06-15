@@ -123,11 +123,15 @@ AN_DOLLAR_GAMMA_UNIT = "$ per 1% move"
 AN_DOLLAR_VEGA_UNIT = "$ per 1 vol point"
 AN_DOLLAR_THETA_UNIT = "$ per calendar day"
 AN_DOLLAR_RHO_UNIT = "$ per 1% rate"
+AN_DOLLAR_RT_VEGA_UNIT = "$ per 1 vol point"
 # Per-cell dollar Greeks shared by both band points (the basket sum oracle restates these).
 AN_DOLLAR_GAMMA = 7.6
 AN_DOLLAR_VEGA = 0.31
 AN_DOLLAR_THETA = -0.000041
 AN_DOLLAR_RHO = 0.0005
+# RT-Vega (running-time / annualised vega, ADR 0050) per strike, raw + cash.
+AN_RT_VEGA = 0.62
+AN_DOLLAR_RT_VEGA = 0.0062
 AN_PRICE = 4.2
 
 UNDERLYING_KEY = InstrumentKey(
@@ -276,6 +280,9 @@ def analytics_cell(
         dollar_rho=AN_DOLLAR_RHO,
         dollar_theta_unit=AN_DOLLAR_THETA_UNIT,
         dollar_rho_unit=AN_DOLLAR_RHO_UNIT,
+        rt_vega=AN_RT_VEGA,
+        dollar_rt_vega=AN_DOLLAR_RT_VEGA,
+        dollar_rt_vega_unit=AN_DOLLAR_RT_VEGA_UNIT,
     )
 
 

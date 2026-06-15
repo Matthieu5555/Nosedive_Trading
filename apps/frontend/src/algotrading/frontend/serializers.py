@@ -313,7 +313,7 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
     }
 
 
-def _metric(raw: float, value: float | None, unit: str) -> dict[str, object]:
+def _metric(raw: float | None, value: float | None, unit: str) -> dict[str, object]:
     """One dollar metric for the front: the dollar value, its unit, and the raw per-unit Greek.
 
     The BFF metric contract (P0.2 / OQ-1, ADR 0036): a dollar number never crosses the
@@ -349,6 +349,9 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
                 UNIT_STRINGS["dollar_gamma_one_pct"],
             ),
             "vega": _metric(row.vega, row.dollar_vega, UNIT_STRINGS["dollar_vega"]),
+            # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0050) beside vega,
+            # raw + cash with its unit; additive-nullable so an older partition reads back None.
+            "rt_vega": _metric(row.rt_vega, row.dollar_rt_vega, UNIT_STRINGS["dollar_rt_vega"]),
             "theta": _metric(row.theta, row.dollar_theta, UNIT_STRINGS["dollar_theta_365"]),
             "rho": _metric(row.rho, row.dollar_rho, UNIT_STRINGS["dollar_rho"]),
         },
@@ -357,7 +360,9 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
     }
 
 
-def _analytics_metric(raw: float, dollar: float | None, unit: str | None) -> dict[str, object]:
+def _analytics_metric(
+    raw: float | None, dollar: float | None, unit: str | None
+) -> dict[str, object]:
     """One dollar metric off a projected-analytics cell.
 
     The cell stores the dollar number *and* its unit string side by side (P0.2 / ADR 0036),
@@ -396,6 +401,11 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
             "delta": _analytics_metric(row.delta, row.dollar_delta, row.dollar_delta_unit),
             "gamma": _analytics_metric(row.gamma, row.dollar_gamma, row.dollar_gamma_unit),
             "vega": _analytics_metric(row.vega, row.dollar_vega, row.dollar_vega_unit),
+            # RT-Vega per strike (running-time / annualised vega = vega/sqrt(T), ADR 0050),
+            # raw + cash with the cell's stored unit; additive-nullable.
+            "rt_vega": _analytics_metric(
+                row.rt_vega, row.dollar_rt_vega, row.dollar_rt_vega_unit
+            ),
             "theta": _analytics_metric(row.theta, row.dollar_theta, row.dollar_theta_unit),
             "rho": _analytics_metric(row.rho, row.dollar_rho, row.dollar_rho_unit),
         },

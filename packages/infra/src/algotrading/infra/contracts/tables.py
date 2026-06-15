@@ -168,6 +168,12 @@ class PricingResult:
     for the first-order dollar Greeks — Vanna\\$/Volga\\$ per 1 vol point, Charm\\$ per
     calendar day). Charm is emitted for risk display only; it is *not* one of the
     P&L-attribution terms (those are Δ/Γ/Vega/Θ/Rho/Vanna/Volga — TARGET §2.5).
+
+    ``rt_vega`` (running-time / annualised vega, ADR 0050) and its ``dollar_rt_vega`` ride
+    the same dual representation and the same additive-nullable schema-evolution rule:
+    ``rt_vega = vega / sqrt(T)`` strips the maturity factor so vega is comparable across
+    strikes/tenors; the dollar form is per 1 vol point like Vega\\$ (its unit string is
+    looked up in :data:`~algotrading.infra.pricing.dollar_greeks.UNIT_STRINGS`, not stored).
     """
 
     snapshot_ts: datetime
@@ -192,6 +198,8 @@ class PricingResult:
     dollar_vanna: float | None = None
     dollar_volga: float | None = None
     dollar_charm: float | None = None
+    rt_vega: float | None = None
+    dollar_rt_vega: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,7 +309,11 @@ class ProjectedOptionAnalytics:
     Provider-partitioned (ADR 0017 / 0034 §4): two sources of the same ``(underlying,
     trade_date)`` land in disjoint partitions. ``dollar_theta``/``dollar_rho`` and their
     unit strings are additive-nullable (``| None``) for the same schema-evolution reason
-    as :class:`PricingResult`.
+    as :class:`PricingResult`. ``rt_vega``/``dollar_rt_vega`` (running-time / annualised
+    vega ``vega/sqrt(T)``, ADR 0050) are carried per strike in the same dual representation,
+    additive-nullable for the same reason; ``dollar_rt_vega_unit`` is fixed (``"$ per 1 vol
+    point"``, no convention fork) and stored beside the value so the cell stays
+    self-describing like the other dollar Greeks.
     """
 
     snapshot_ts: datetime
@@ -336,6 +348,11 @@ class ProjectedOptionAnalytics:
     dollar_rho: float | None = None
     dollar_theta_unit: str | None = None
     dollar_rho_unit: str | None = None
+    # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0050) per strike, raw + cash,
+    # additive-nullable; the unit is unforked ("$ per 1 vol point") and stored for self-description.
+    rt_vega: float | None = None
+    dollar_rt_vega: float | None = None
+    dollar_rt_vega_unit: str | None = None
     # Which fitted surface supplied this cell's IV (ADR 0048). Part of the primary key. Defaults
     # to ``combined`` so every pre-per-side row and fixture reads back as the legacy single
     # surface unchanged; ``put``/``call`` rows are additive, emitted only where the per-side fits

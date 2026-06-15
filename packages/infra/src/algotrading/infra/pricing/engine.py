@@ -25,6 +25,8 @@ disagree on a monetized number for the same option. Under the pinned defaults
 * ``dollar_vanna = vanna * spot * 0.01`` — change in Delta\\$ per 1 vol point.
 * ``dollar_volga = volga * 0.01**2`` — change in Vega\\$ per 1 vol point.
 * ``dollar_charm = charm * spot / 365`` — change in Delta\\$ per calendar day.
+* ``dollar_rt_vega = rt_vega * 0.01`` — RT-Vega\\$ per 1 vol point (ADR 0050, the dollar
+  form of the running-time vega ``vega/sqrt(T)``).
 """
 
 from __future__ import annotations
@@ -95,6 +97,7 @@ def pricing_result(
         vanna=greeks.vanna,
         volga=greeks.volga,
         charm=greeks.charm,
+        rt_vega=greeks.rt_vega,
         multiplier=1.0,
         quantity=1.0,
         config=_PRICING_RESULT_MONETIZATION,
@@ -120,6 +123,8 @@ def pricing_result(
         dollar_vanna=monetized.dollar_vanna,
         dollar_volga=monetized.dollar_volga,
         dollar_charm=monetized.dollar_charm,
+        rt_vega=greeks.rt_vega,
+        dollar_rt_vega=monetized.dollar_rt_vega,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
     )

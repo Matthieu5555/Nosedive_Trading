@@ -433,8 +433,13 @@ def test_dollar_greeks_carry_unit_strings() -> None:
     assert cell.dollar_vega_unit == UNIT_STRINGS["dollar_vega"]
     assert cell.dollar_theta_unit == UNIT_STRINGS["dollar_theta_365"]
     assert cell.dollar_rho_unit == UNIT_STRINGS["dollar_rho"]
+    # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0049) per strike: raw +
+    # cash + unit on the cell, with cash == vega's per-1-vol-point monetization of rt_vega.
+    assert cell.dollar_rt_vega_unit == UNIT_STRINGS["dollar_rt_vega"]
+    assert cell.rt_vega == pytest.approx(cell.vega / math.sqrt(cell.maturity_years), rel=1e-12)
+    assert cell.dollar_rt_vega == pytest.approx(cell.rt_vega * 0.01, rel=1e-12)
     # Decimal Greeks present and finite beside the dollar layer.
-    for name in ("delta", "gamma", "vega", "theta", "rho"):
+    for name in ("delta", "gamma", "vega", "rt_vega", "theta", "rho"):
         assert math.isfinite(getattr(cell, name))
 
 

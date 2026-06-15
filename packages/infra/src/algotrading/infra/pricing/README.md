@@ -58,20 +58,28 @@ These are asserted by the convention tests, not just written here:
 - `theta` — per year of calendar time, `dPrice/dt` (time decay, so usually < 0 for
   a long option); divide by 365 for a one-day figure.
 - `rho` — per 1.00 of rate, holding the forward fixed, so `rho = -T * price`.
+- `vanna`/`volga`/`charm` — the second-order cross/convexity Greeks (TARGET §7.2);
+  vanna/volga per 1.00 of vol (the vega clock), charm per year (the theta clock).
+- `rt_vega` — running-time / annualised vega (ADR 0050): `vega / sqrt(T)` =
+  `S · N'(d1) · e^{(b-r)T}`, in the same per-1.00-of-vol unit as `vega`. Raw vega scales with
+  `sqrt(T)` and so is not comparable across maturities; RT-Vega strips that factor so a vega
+  figure reads straight across the tenor grid. At `T -> 0` it is `0.0` (a guard, not a `0/0`).
 
 `pricing_result(...)` projects these into A's `PricingResult` contract and adds the
 monetized Greeks, per unit of underlying (the risk engine multiplies by the
 contract multiplier and quantity): `dollar_delta = delta * spot`,
-`dollar_gamma = gamma * spot**2`, `dollar_vega = vega * 0.01`. The provenance stamp is
+`dollar_gamma = gamma * spot**2`, `dollar_vega = vega * 0.01`,
+`dollar_rt_vega = rt_vega * 0.01` (per 1 vol point, like Vega$). The provenance stamp is
 built by the caller with an injected `calc_ts` and passed in, so the engine itself
 reads no wall clock and is a pure function of its inputs.
 
 ## Limiting cases
 
 `sigma -> 0` or `maturity -> 0` returns the discounted intrinsic with zero gamma
-and vega — the engine is total over its whole domain rather than dividing by zero.
-Deep in/out of the money and very high vol are unit-tested against their analytic
-asymptotes.
+and vega (and zero vanna/volga/charm and `rt_vega` — the `rt_vega = vega/sqrt(T)` guard
+returns `0.0` here rather than dividing by a vanishing `sqrt(T)`) — the engine is total over
+its whole domain rather than dividing by zero. Deep in/out of the money and very high vol are
+unit-tested against their analytic asymptotes.
 
 ## Worked example
 

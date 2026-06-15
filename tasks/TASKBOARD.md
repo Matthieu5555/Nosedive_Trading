@@ -153,11 +153,12 @@ planning pass.**
 - [execution-operational-hardening](execution-operational-hardening.md) (§7.9 umbrella — margin / kill switch / broker recon / alert delivery; margin sub-lane gates S2, rest post-week)
 
 **`frontend-` — BFF + web delivery (apps/frontend)**
-- [frontend-page1-cdc-buildout](frontend-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards; **+ phase 7 (2026-06-15): robustness to degenerate slices + Greeks-table transpose** — Greeks as raw+devise columns, deltas as rows, scrollable by maturity — absorbed the page-A live-render audit) · [frontend-sigfig-scientific-display](frontend-sigfig-scientific-display.md) (#6)
+- [frontend-page1-cdc-buildout](frontend-page1-cdc-buildout.md) (vol scorecards, nappe heatmap, ATM term structure, Greeks-vs-strike cards; **+ phase 7 (2026-06-15): robustness to degenerate slices + Greeks-table transpose** — Greeks as raw+devise columns, deltas as rows, scrollable by maturity — absorbed the page-A live-render audit)
 - [frontend-capture-coverage-panel](frontend-capture-coverage-panel.md) (capture-quality table; BFF + `CoverageTable` landed **and the panel drop is mounted** at `Market.tsx:172` — only the phase-2 quote-completeness add remains)
 - ★ [frontend-second-order-greeks-panels](frontend-second-order-greeks-panels.md) (step 3 of infra-second-order-greeks; after 3A + sigfig) · ★ [frontend-scenario-rate-axis-wiring](frontend-scenario-rate-axis-wiring.md) (BFF/front slice of infra-scenario-rate-axis)
 - ★ [frontend-per-side-surfaces-toggle](frontend-per-side-surfaces-toggle.md) (R2 front half — put/call/combined toggle on the 3D surface + smiles, put−call IV-spread view; infra core landed ADR 0048)
 - ✓ **Landed 2026-06-14 (core-fleet):** [frontend-attribution-view](archive/frontend-attribution-view.md) (§7 #2 — BFF router + attribution waterfall over `ScenarioAttribution`, wired on Basket) · [frontend-orders-booking-reconcile](archive/frontend-orders-booking-reconcile.md) (§7 #1 coherence — dead `Orders.tsx` retired, `/orders` redirects to the one booking home on Basket)
+- ✓ **Landed 2026-06-15, archived:** [frontend-sigfig-scientific-display](archive/frontend-sigfig-scientific-display.md) (#6 — sci-notation @ 6 sig-figs + currency landed via the sci-notation + `T-front-currency-and-bands` passes; `lib/format.ts` `sci`/`sciUnit` is the single home). *(Stale active duplicates of the two attribution/orders specs were also removed this pass — the archived copies are canonical.)*
 
 **`platform-` — CI/CD, deploy, security, ops & audits (cross-cutting; not a package)**
 - [platform-security-review](platform-security-review.md) (pre-live-order pass; auth/secrets/BFF/deps runnable now, order-seam §2 opens with 3A/3B)

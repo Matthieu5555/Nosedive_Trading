@@ -13,7 +13,12 @@ from datetime import UTC, date, datetime
 
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
-from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, QcResult
+from algotrading.infra.contracts import (
+    ConstituentCaptureOutcome,
+    InstrumentKey,
+    InstrumentMaster,
+    QcResult,
+)
 from fastapi.testclient import TestClient
 
 _TRADE_DATE = date(2026, 6, 11)
@@ -52,7 +57,50 @@ def test_coverage_empty_store_is_well_formed(infra_client: TestClient) -> None:
     assert payload["n_expiries"] == 0
     assert payload["expiries"] == []
     assert payload["tenors"] == []
+    assert payload["constituents"] == []
     assert payload["qc_status"] == "unknown"
+
+
+def test_coverage_surfaces_the_per_constituent_capture_outcome_ledger(ctx: AppContext) -> None:
+    """The per-name capture verdicts ride the coverage payload, heaviest-first (the ledger).
+
+    Independent oracle: three SX5E constituents with hand-set ranks/weights and distinct outcomes
+    — ASML captured(6 legs, rank 1), SAN1 unentitled(rank 2), ENEL no_options(rank 3). The payload
+    must carry all three, ordered by rank (1 first), each with its labelled outcome — so the front
+    can show which of the heaviest names return chains on this account.
+    """
+    ctx.store.write(
+        "constituent_capture_outcomes",
+        [
+            ConstituentCaptureOutcome(
+                run_id="run-cov", run_ts=_RUN_TS, index="SX5E", underlying="ASML",
+                outcome="captured", rank=1, weight=0.40, n_options=6,
+                detail="captured 6 option leg(s)",
+            ),
+            ConstituentCaptureOutcome(
+                run_id="run-cov", run_ts=_RUN_TS, index="SX5E", underlying="SAN1",
+                outcome="unentitled", rank=2, weight=0.30, n_options=0,
+                detail="account not entitled (HTTP 403) for conid 29612249",
+            ),
+            ConstituentCaptureOutcome(
+                run_id="run-cov", run_ts=_RUN_TS, index="SX5E", underlying="ENEL",
+                outcome="no_options", rank=3, weight=0.10, n_options=0,
+                detail="conid 600004 lists no option months",
+            ),
+        ],
+    )
+
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/coverage", params={"underlying": "SX5E", "trade_date": "2026-06-11"}
+        ).json()
+
+    constituents = payload["constituents"]
+    assert [row["symbol"] for row in constituents] == ["ASML", "SAN1", "ENEL"]  # rank order
+    assert [row["outcome"] for row in constituents] == ["captured", "unentitled", "no_options"]
+    assert constituents[0]["n_options"] == 6
+    assert constituents[1]["n_options"] == 0
+    assert "not entitled" in constituents[1]["detail"]
 
 
 def test_coverage_bad_trade_date_is_400(infra_client: TestClient) -> None:

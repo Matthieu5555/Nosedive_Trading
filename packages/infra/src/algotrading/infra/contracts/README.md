@@ -14,7 +14,7 @@ request routed through M0, because every field ripples to the other workstreams.
   `RawMarketEvent`, `DailyBar`, `MarketStateSnapshot`, `ForwardCurvePoint`, `IvPoint`,
   `SurfaceParameters`, `SurfaceGrid`, `PricingResult`, `ProjectedOptionAnalytics`,
   `Position`, `Basket`/`BasketLeg`, `RiskAggregate`, `ScenarioResult`, `ScenarioAttribution`,
-  `QcResult`, `TriageRecord`. Each derived
+  `QcResult`, `TriageRecord`, `ConstituentCaptureOutcome`. Each derived
   record carries a `ProvenanceStamp` (from `algotrading.core`) and a `source_snapshot_ts`.
   `DailyBar` is the underlying daily-OHLC price-history product (index + constituents, for
   the candlestick charts) — a **distinct** product from the option `MarketStateSnapshot`,
@@ -37,6 +37,12 @@ request routed through M0, because every field ripples to the other workstreams.
   carries no per-contract key; `side`↔`quantity`-sign consistency is enforced at construction.
   The basket is priced by **book-additive summation** of the per-leg dollar Greeks WS-1F already
   produced (`risk.multileg.basket_risk`), never a recompute — see the risk README.
+  `ConstituentCaptureOutcome` is the widened S1-capture lane's **per-name ledger** (one row per
+  attempted top-N constituent): the labelled verdict `outcome` from the closed set
+  `CONSTITUENT_OUTCOMES` (`captured`/`no_options`/`unentitled`/`unresolved`), the `rank`/`weight`
+  that put the name in the top-N, the captured `n_options`, and a one-line `detail`. Stored under
+  the `qc` layer partitioned by `(trade_date, underlying=<constituent>)`, so a name that returns no
+  chain is a recorded fact, never a silent absence — see the infra-ibkr constituent collector.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).

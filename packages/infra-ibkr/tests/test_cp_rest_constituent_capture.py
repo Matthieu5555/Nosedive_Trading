@@ -12,9 +12,10 @@ the membership store carries hand-set weights, and the test hand-derives which u
 capture *must* return (the top-N by weight) and asserts the merged basket matches — never reading
 back what the code emitted.
 
-The membership top-N selector (``_top_n_by_weight``) is the local stand-in for the parallel
-``infra-sx5e-weighted-membership`` resolver; its ranking + incomplete-weight rejection are pinned
-here so the swap-on-merge is provably equivalent.
+The membership top-N selector is now the shared :func:`algotrading.infra.universe.top_n_by_weight`
+resolver (the stand-in stub was swapped for it on merge). Its ranking + incomplete-weight rejection
+live in the membership tests; here we pin the lane's *use* of it: activation (all N attempted),
+the fail-loud-on-empty guard, and the per-name outcome ledger.
 """
 
 from __future__ import annotations
@@ -39,11 +40,11 @@ from algotrading.infra.universe import (
     IbkrRef,
     IndexEntry,
     MembershipChange,
-    MembershipError,
+    MembershipRankingError,
     ingest_membership_changes,
 )
 from algotrading.infra_ibkr.collectors.cp_rest_constituent_capture import (
-    _top_n_by_weight,
+    ConstituentLaneError,
     collect_index_and_constituents_basket,
 )
 from algotrading.infra_ibkr.live_capture import live_basket_source
@@ -267,38 +268,6 @@ def _capture(store: ParquetStore, top_n: int) -> IndexBasket | None:
 
 
 # ---------------------------------------------------------------------------------------------
-# The membership top-N selector (the stubbed seam).
-# ---------------------------------------------------------------------------------------------
-def test_top_n_by_weight_ranks_descending_and_truncates(store: ParquetStore) -> None:
-    top3 = _top_n_by_weight(store, "SX5E", TRADE_DATE, 3)
-    # Independently: the three largest weights are ASML(.40), TTE(.25), SIE(.20), in that order.
-    assert [m.constituent for m in top3] == ["ASML", "TTE", "SIE"]
-    assert [m.weight for m in top3] == [0.40, 0.25, 0.20]
-
-
-def test_top_n_by_weight_rejects_a_basket_with_missing_weights(tmp_path: Any) -> None:
-    partial = ParquetStore(tmp_path)
-    ingest_membership_changes(
-        partial,
-        [
-            MembershipChange("SX5E", "ASML", KNOWN, None, KNOWN, VENDOR, 0.40),
-            MembershipChange("SX5E", "TTE", KNOWN, None, KNOWN, VENDOR, None),  # unknown weight
-        ],
-    )
-    with pytest.raises(MembershipError, match="cannot resolve top-2 by weight"):
-        _top_n_by_weight(partial, "SX5E", TRADE_DATE, 2)
-
-
-def test_top_n_by_weight_empty_when_no_membership(tmp_path: Any) -> None:
-    assert _top_n_by_weight(ParquetStore(tmp_path), "SX5E", TRADE_DATE, 3) == ()
-
-
-def test_top_n_by_weight_rejects_non_positive_n(store: ParquetStore) -> None:
-    with pytest.raises(MembershipError, match="top-N count must be >= 1"):
-        _top_n_by_weight(store, "SX5E", TRADE_DATE, 0)
-
-
-# ---------------------------------------------------------------------------------------------
 # The widened capture.
 # ---------------------------------------------------------------------------------------------
 def test_capture_widens_to_the_top_n_constituents_by_weight(store: ParquetStore) -> None:
@@ -425,18 +394,118 @@ def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
     assert {k.underlying_symbol for k in only.instruments} == {"SX5E"}
 
 
-def test_no_banked_membership_captures_the_index_leg_only(tmp_path: Any) -> None:
-    # An empty membership store (no banked names) must not fail: the index is captured, no
-    # constituents are swept (a degraded-but-valid day, not a crash).
+def test_no_banked_membership_is_a_loud_failure_not_a_silent_index_only_capture(
+    tmp_path: Any,
+) -> None:
+    # The 2026-06-15 canary's exact gap: scope is index+constituents but the store has NO banked
+    # 1A membership weights. The OLD behaviour captured the index leg only and exited cleanly
+    # (silent) — the bug. It must now RAISE a CRITICAL ConstituentLaneError naming the missing
+    # input, so the runner exits non-zero and OnFailure= alerts fire.
     empty = ParquetStore(tmp_path)
-    basket = collect_index_and_constituents_basket(
+    with pytest.raises(ConstituentLaneError, match="no banked 1A membership weights"):
+        collect_index_and_constituents_basket(
+            _FakeGateway(),
+            store=empty,
+            index=SX5E,
+            as_of=CLOSE,
+            next_open=NEXT_OPEN,
+            config=_config(3),
+            selection=_selection(),
+        )
+
+
+def test_a_missing_weight_basket_is_a_loud_membership_ranking_failure(tmp_path: Any) -> None:
+    # Membership present but unrankable (a labeled-unavailable weight): the shared resolver raises
+    # MembershipRankingError (loud), never a quietly-truncated top-N. (b) of the fail-loud cases.
+    partial = ParquetStore(tmp_path)
+    ingest_membership_changes(
+        partial,
+        [
+            MembershipChange("SX5E", "ASML", KNOWN, None, KNOWN, VENDOR, 0.40),
+            MembershipChange("SX5E", "TTE", KNOWN, None, KNOWN, VENDOR, None),  # unknown weight
+        ],
+    )
+    with pytest.raises(MembershipRankingError, match="cannot rank a basket"):
+        collect_index_and_constituents_basket(
+            _FakeGateway(),
+            store=partial,
+            index=SX5E,
+            as_of=CLOSE,
+            next_open=NEXT_OPEN,
+            config=_config(2),
+            selection=_selection(),
+        )
+
+
+def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_each(
+    store: ParquetStore,
+) -> None:
+    # Activation + ledger: a top-5 over the 5-name basket must ATTEMPT every name and persist
+    # exactly one labelled outcome row per attempted name. Independently derived from the fixture:
+    #   ASML/TTE/SIE -> captured (chains listed), SAN1 -> captured (pinned chain),
+    #   ENEL -> no_options (the gateway lists none). No unresolved/unentitled here.
+    collect_index_and_constituents_basket(
         _FakeGateway(),
-        store=empty,
+        store=store,
         index=SX5E,
         as_of=CLOSE,
         next_open=NEXT_OPEN,
-        config=_config(3),
+        config=_config(5),
+        selection=_selection(),
+    )
+    rows = store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
+    by_name = {row.underlying: row for row in rows}
+    assert set(by_name) == {"ASML", "TTE", "SIE", "SAN1", "ENEL"}  # all 5 attempted
+    assert {name: row.outcome for name, row in by_name.items()} == {
+        "ASML": "captured",
+        "TTE": "captured",
+        "SIE": "captured",
+        "SAN1": "captured",
+        "ENEL": "no_options",
+    }
+    # The captured names carry the full listed ladder (3 strikes × 2 rights × 1 month = 6 legs);
+    # the no_options name carries zero, and only a captured outcome carries a non-zero count.
+    assert by_name["ASML"].n_options == len(_STRIKES) * 2 * len(_MONTHS)
+    assert by_name["ENEL"].n_options == 0
+    # Rank is the 1-based weight order: ASML(.40)=1, TTE(.25)=2, SIE(.20)=3, SAN1(.10)=4, ENEL(.05)=5.
+    assert {name: row.outcome for name, row in by_name.items()} and by_name["ASML"].rank == 1
+    assert by_name["ENEL"].rank == 5
+    assert by_name["SAN1"].rank == 4
+    # Each name's ledger row lands under its own ``underlying=<SYMBOL>`` partition (Done criteria).
+    partitions = {
+        p.parent.name
+        for p in store.root.rglob("constituent_capture_outcomes/**/*.parquet")
+    }
+    assert partitions == {f"underlying={name}" for name in by_name}
+
+
+def test_an_unresolved_constituent_is_recorded_not_silently_dropped(tmp_path: Any) -> None:
+    # A name the gateway does not list (no STK conid, not pinned) must land an `unresolved` ledger
+    # row — never a silent drop. GHOST is the heaviest so it is unambiguously inside the top-N.
+    store = ParquetStore(tmp_path)
+    ingest_membership_changes(
+        store,
+        [
+            MembershipChange("SX5E", "GHOST", KNOWN, None, KNOWN, VENDOR, 0.60),
+            MembershipChange("SX5E", "ASML", KNOWN, None, KNOWN, VENDOR, 0.40),
+        ],
+        complete_snapshot=True,
+    )
+    basket = collect_index_and_constituents_basket(
+        _FakeGateway(),
+        store=store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(2),
         selection=_selection(),
     )
     assert basket is not None
-    assert {k.underlying_symbol for k in basket.instruments} == {"SX5E"}
+    # ASML still captured (one bad name never aborts the fire); GHOST omitted from the basket.
+    assert {k.underlying_symbol for k in basket.instruments} == {"SX5E", "ASML"}
+    by_name = {
+        row.underlying: row
+        for row in store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
+    }
+    assert by_name["GHOST"].outcome == "unresolved"
+    assert by_name["ASML"].outcome == "captured"

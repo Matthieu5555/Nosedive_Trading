@@ -586,6 +586,70 @@ class TriageRecord:
     threshold_version: str
 
 
+# The labelled per-name results the constituent capture lane records, one per attempted
+# constituent (S1 dispersion / EMERGENCY-constituent-lane-activation). The set is closed: a
+# name's fate on a given close is exactly one of these, so the entitlement question — which
+# of the index's heaviest names actually return an option chain on this account — is answered
+# per name, never a silent absence.
+#   captured   — the name's option chain was captured (``n_options`` carries the count)
+#   no_options — the name resolved to a conid but lists no qualifiable options (a real outcome)
+#   unentitled — the account is not entitled to the name's option data (a recorded, expected gap)
+#   unresolved — the name's underlying conid would not resolve (a ticker IBKR does not list here)
+CONSTITUENT_OUTCOMES = ("captured", "no_options", "unentitled", "unresolved")
+
+
+@dataclass(frozen=True, slots=True)
+class ConstituentCaptureOutcome:
+    """One constituent's labelled outcome from one close's widened capture (S1 dispersion).
+
+    The per-name ledger the widened EOD capture writes: for each of the index's point-in-time
+    top-N constituents it *attempted*, exactly one labelled :data:`CONSTITUENT_OUTCOMES` row
+    — so a name that returns no chain is a recorded ``no_options``/``unentitled``/``unresolved``
+    fact, never a silent absence. ``underlying`` is the constituent symbol (the partition key,
+    so a name lands under ``…/underlying=<SYMBOL>``); ``index`` names the basket it was selected
+    from; ``weight`` is its as-of index weight (what put it in the top-N); ``rank`` its 1-based
+    position in the weight ranking. ``n_options`` is the captured option-leg count for a
+    ``captured`` outcome and ``0`` otherwise. ``detail`` is a one-line human reason (e.g. the
+    unresolved ticker, or the entitlement error text), never a generic banner.
+
+    ``run_ts`` places the row on the time-partitioned layout (the close instant the capture ran
+    at); the ``(run_id, index, underlying)`` key makes a re-fire of the same close idempotent.
+    """
+
+    run_id: str
+    run_ts: datetime
+    index: str
+    underlying: str
+    outcome: str
+    rank: int
+    weight: float
+    n_options: int
+    detail: str
+
+    def __post_init__(self) -> None:
+        if self.outcome not in CONSTITUENT_OUTCOMES:
+            raise ContractValidationError(
+                "ConstituentCaptureOutcome",
+                "outcome",
+                self.outcome,
+                f"must be one of {CONSTITUENT_OUTCOMES}",
+            )
+        if self.n_options < 0:
+            raise ContractValidationError(
+                "ConstituentCaptureOutcome",
+                "n_options",
+                self.n_options,
+                "captured option count must be non-negative",
+            )
+        if self.outcome != "captured" and self.n_options != 0:
+            raise ContractValidationError(
+                "ConstituentCaptureOutcome",
+                "n_options",
+                self.n_options,
+                "only a 'captured' outcome carries a non-zero option count",
+            )
+
+
 # A leg names exactly one tradable thing: an option grid cell, or the underlying itself.
 INSTRUMENT_KINDS = ("option", "stock")
 # Side is explicit and must agree with the quantity sign — a "long" leg is a positive

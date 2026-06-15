@@ -23,6 +23,7 @@ from .errors import UnknownTableError
 from .tables import (
     Basket,
     BookGreeks,
+    ConstituentCaptureOutcome,
     DailyBar,
     ForwardCurvePoint,
     IndexConstituent,
@@ -344,6 +345,21 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+    ),
+    "constituent_capture_outcomes": TableSpec(
+        name="constituent_capture_outcomes",
+        contract=ConstituentCaptureOutcome,
+        # One row per (run, index, attempted constituent). A re-fire of the same close replaces
+        # the row rather than colliding, mirroring the qc_results re-fire discipline.
+        primary_key=("run_id", "index", "underlying"),
+        layer="qc",
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        # rank is 1-based positive; weight is a non-negative index weight; n_options is guarded
+        # non-negative by the contract's own __post_init__ (and is 0 for a non-captured outcome).
+        positive_fields=("rank",),
+        non_negative_fields=("weight", "n_options"),
     ),
 }
 

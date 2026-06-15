@@ -131,15 +131,29 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   the close capture to the index's **point-in-time top-N constituents by index weight** (the S1
   dispersion / implied-correlation input, TARGET §7.4). It captures the index leg (the spine), then
   resolves the top-N by weight (`UniverseConfig.constituent_top_n`, from 1A membership — never a
-  hand-set list), resolves each constituent's equity conid (verified `constituent_conids` pins
-  first, then a `STK` search — the OHLC-backfill pattern), and captures each constituent's chain
-  over the *same* grid / close instant via `collect_target_basket`, merging all underlyings into
-  one `IndexBasket`. A constituent that lists no options or fails to resolve is logged and
-  **skipped** — one bad name never aborts the fire. The analytics engine is already
-  underlying-generic, so this is a *capture-scope* widening with no engine change. The membership
-  **top-N seam** is currently a local stand-in (`_top_n_by_weight`) pending the parallel
-  `infra-sx5e-weighted-membership` resolver — see the WIRING note in the module
-  (`test_cp_rest_constituent_capture.py`).
+  hand-set list) through the shared `algotrading.infra.universe.top_n_by_weight` resolver,
+  resolves each constituent's equity conid (verified `constituent_conids` pins first, then a `STK`
+  search — the OHLC-backfill pattern), and captures each constituent's chain over the *same* grid /
+  close instant via `collect_target_basket`, merging all captured underlyings into one
+  `IndexBasket`. The analytics engine is already underlying-generic, so this is a *capture-scope*
+  widening with no engine change.
+
+  **Per-name outcome ledger (entitlement verdict).** Every attempted constituent records exactly
+  one labelled `ConstituentCaptureOutcome` — `captured(n_options)` / `no_options` / `unentitled`
+  (a 401/403 from the transport) / `unresolved` (conid would not resolve) — persisted to the
+  `constituent_capture_outcomes` table under `…/underlying=<SYMBOL>`. This is how we learn *which*
+  of the index's heaviest names return option chains on this account; the capture-coverage panel
+  (`apps/frontend` `CoverageTable` + `/api/coverage`) surfaces it. A per-name failure never aborts
+  the fire — one bad name is a recorded outcome, the rest still capture.
+
+  **Fail-loud, never silent (EMERGENCY-constituent-lane-activation).** "Scope says constituents but
+  zero were resolved/attempted" raises `ConstituentLaneError` (logged CRITICAL), so the runner
+  exits non-zero and `OnFailure=` alerts fire — never the clean exit that hid the 2026-06-15 SX5E
+  canary. The cases stay distinct: **no banked 1A membership** for the trade date → loud
+  `ConstituentLaneError` naming the missing input (ingest a weighted source first); a **missing-weight
+  basket** → loud `MembershipRankingError` from the shared resolver (you cannot rank what you do not
+  know); **names resolved but all unentitled / no-options / unresolved** → a real, recorded outcome
+  in the ledger (loud only if not one name could be attempted at all).
 - `collectors/cp_rest_chain_window.py` — the discovery-window policy: `MMMYY` month-token
   parsing/bracketing (tenor-targeted discovery reaching the 2y/3y long end) and the
   **delta-driven, tenor-aware strike qualification** (T-delta-window): per expiry it qualifies

@@ -1,8 +1,12 @@
 # daily-bar-compaction — fix the daily_bar small-files bloat (ADR 0034 cold-compaction)
 
-> **READY — rulings recorded (owner, 2026-06-10); awaiting explicit go on implementation.** The
-> threshold ADR 0034 names ("adding SP500, or file-count past a bound") is **crossed**. Options
-> OQ-1…4 are ruled (see Rulings). No code until the owner says "go implémentation".
+> **DONE — 2026-06-15.** Implemented on branch `agent-a2da7533e14eb5ceb`:
+> `TableSpec.cold_compactable` flag; `storage.compaction` module (`compact_ticker`,
+> `compacted_file_path`, `is_compacted_file`, `list_hot_files_for_ticker`); `ParquetStore`
+> hot+cold union read with DuckDB `DISTINCT ON` dedup; `scripts/compact_daily_bar.py`
+> one-shot idempotent migration with `--dry-run`/`--underlying`/`--force`; 17 gate-green
+> tests (row-identity, date-range, hot+cold union, idempotency, provider isolation). Gate:
+> 2092 passed, 12 skipped; ruff/mypy/lint-imports clean. ADR 0034 §3 marked landed.
 
 - **Owns:** `packages/infra/src/algotrading/infra/storage/adapter.py` (`_partition_files` date-range
   pruning at ~237-360, `read` at ~362); the daily_bar `TableSpec` in

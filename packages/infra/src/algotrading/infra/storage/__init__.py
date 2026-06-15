@@ -31,6 +31,12 @@ Public API of the analytics data plane (M1):
 """
 
 from .adapter import ParquetStore, primary_key_of
+from .compaction import (
+    compact_ticker,
+    compacted_file_path,
+    is_compacted_file,
+    list_hot_files_for_ticker,
+)
 from .errors import (
     AppendOnlyViolation,
     DuplicateKeyInBatch,
@@ -63,6 +69,11 @@ __all__ = [
     "from_row",
     "primary_key_of",
     "to_row",
+    # Cold-compaction helpers (ADR 0034 §3).
+    "compact_ticker",
+    "compacted_file_path",
+    "is_compacted_file",
+    "list_hot_files_for_ticker",
     # Raw-event JSON codec (M5 slice, ADR 0021) — for committed offline samples. The
     # collector-level EAV capture event is ``storage.events.CollectorEvent`` (renamed from
     # ``RawMarketEvent`` to end the collision with the frozen analytics contract

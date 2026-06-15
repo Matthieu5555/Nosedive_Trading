@@ -34,6 +34,7 @@ import pyarrow.parquet as pq
 from algotrading.infra.contracts.registry import TableSpec, spec_for_table
 from algotrading.infra.contracts.validation import validate_record
 
+from .compaction import is_compacted_file
 from .errors import AppendOnlyViolation, DuplicateKeyInBatch, VersionedWriteNotAllowed
 from .partitioning import (
     partition_dir,
@@ -440,6 +441,53 @@ class ParquetStore:
             return [path for path in files if self._is_live_file(path)]
         return [path for path in files if path.parent.name == f"version={version}"]
 
+    def _cold_files_for(
+        self,
+        table: str,
+        spec: Any,
+        underlying: str | None,
+        provider: str | None,
+    ) -> list[Path]:
+        """Return existing cold (compacted) Parquet files for a cold-compactable table.
+
+        Cold files sit at ``provider=<P>/underlying=<SYM>/data.parquet`` — the ADR 0034 §3
+        layout where ``trade_date`` is a column, not a directory segment.  When ``underlying``
+        or ``provider`` are given, only that subset is returned.  An absent directory or no
+        cold files yields an empty list.
+
+        This method is only meaningful for tables with ``cold_compactable=True`` (currently
+        only ``daily_bar``).  It is not called for other tables.
+        """
+        base = table_dir(self.root, table)
+        if not base.exists():
+            return []
+
+        if spec.provider_partitioned and provider is not None:
+            provider_dirs: list[Path] = [base / f"provider={provider}"]
+        elif spec.provider_partitioned:
+            provider_dirs = [
+                p for p in base.iterdir() if p.is_dir() and p.name.startswith("provider=")
+            ]
+        else:
+            provider_dirs = [base]
+
+        files: list[Path] = []
+        for prov_dir in provider_dirs:
+            if not prov_dir.exists():
+                continue
+            if underlying is not None:
+                candidate = prov_dir / f"underlying={underlying}" / "data.parquet"
+                if candidate.exists() and is_compacted_file(candidate):
+                    files.append(candidate)
+            else:
+                for und_dir in prov_dir.iterdir():
+                    if not und_dir.is_dir() or not und_dir.name.startswith("underlying="):
+                        continue
+                    candidate = und_dir / "data.parquet"
+                    if candidate.exists() and is_compacted_file(candidate):
+                        files.append(candidate)
+        return sorted(files)
+
     def _partition_files(
         self,
         table: str,
@@ -463,6 +511,11 @@ class ParquetStore:
         ``None`` a table-wide read globs across every provider, which is correct for the
         non-provider-partitioned tables (no provider segment exists) and a deliberate
         cross-source scan for provider-partitioned ones.
+
+        For ``cold_compactable`` tables (``daily_bar``), cold compacted files
+        (``provider=<P>/underlying=<SYM>/data.parquet``) are collected alongside hot
+        per-day files and appended to the returned list so the read path unions both.
+        The caller (``read``) handles deduplication on the primary key.
         """
         spec = spec_for_table(table)
         if (
@@ -482,7 +535,11 @@ class ParquetStore:
             single = partition_file(
                 self.root, table, trade_date, underlying, version, provider
             )
-            return [single] if single.exists() else []
+            hot_files = [single] if single.exists() else []
+            if spec.cold_compactable:
+                cold_files = self._cold_files_for(table, spec, underlying, provider)
+                return sorted(set(hot_files + cold_files))
+            return hot_files
 
         # For short date ranges prefer a per-day stat walk over a recursive glob.
         if start_date is not None and end_date is not None:
@@ -492,13 +549,21 @@ class ParquetStore:
                 or (underlying is None and 0 <= delta.days <= 31)
             )
             if can_direct:
-                return self._files_by_date_range_direct(
+                hot_files = self._files_by_date_range_direct(
                     table, spec, start_date, end_date, underlying, version, provider
                 )
+                if spec.cold_compactable:
+                    cold_files = self._cold_files_for(table, spec, underlying, provider)
+                    return sorted(set(hot_files + cold_files))
+                return hot_files
 
-        return self._files_by_glob(
+        hot_files = self._files_by_glob(
             table, trade_date, underlying, version, provider, start_date, end_date
         )
+        if spec.cold_compactable:
+            cold_files = self._cold_files_for(table, spec, underlying, provider)
+            return sorted(set(hot_files + cold_files))
+        return hot_files
 
     def read(
         self,
@@ -527,6 +592,14 @@ class ParquetStore:
         ``provider`` narrows a provider-partitioned read to one source; left ``None`` it
         reads across every provider (the only behaviour for non-provider-partitioned
         tables, which have no provider segment).
+
+        For ``cold_compactable`` tables (``daily_bar``), the file list may contain both
+        hot per-day files and a cold compacted file for the same ticker.  When cold files
+        are present the query uses ``DISTINCT ON`` to deduplicate on the primary key —
+        the hot row wins over the cold copy for any date that appears in both (the hot
+        partition is written after the cold file was produced, so it is the more recent
+        capture).  Date-range filtering is pushed into SQL when ``start_date``/``end_date``
+        are given, so cold-file reads still benefit from DuckDB predicate pushdown.
         """
         spec = spec_for_table(table)
         files = self._partition_files(
@@ -534,13 +607,41 @@ class ParquetStore:
         )
         if not files:
             return []
+
+        has_cold = spec.cold_compactable and any(is_compacted_file(f) for f in files)
+        file_list = [str(path) for path in files]
+
         connection = duckdb.connect()
         try:
             connection.execute("SET TimeZone='UTC'")
-            relation = connection.execute(
-                "SELECT * FROM read_parquet(?, union_by_name=true, hive_partitioning=false)",
-                [[str(path) for path in files]],
-            )
+            source = "read_parquet(?, union_by_name=true, hive_partitioning=false)"
+            if has_cold:
+                # Build WHERE clause for date-range pushdown onto the trade_date column
+                # of the cold file (DuckDB row-group min/max stats = implicit date index).
+                where_parts: list[str] = []
+                params: list[object] = [file_list]
+                if start_date is not None:
+                    where_parts.append("trade_date >= ?")
+                    params.append(start_date)
+                if end_date is not None:
+                    where_parts.append("trade_date <= ?")
+                    params.append(end_date)
+                where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+                pk_cols = ", ".join(spec.primary_key)
+                # DISTINCT ON deduplicates: the cold file row loses to any hot row sharing
+                # the same (provider, underlying, trade_date) primary key.  The ORDER BY
+                # here is arbitrary among ties — both carry the same data when the
+                # migration script ran correctly.
+                query = (
+                    f"SELECT DISTINCT ON ({pk_cols}) * "
+                    f"FROM {source} {where_clause}"
+                )
+                relation = connection.execute(query, params)
+            else:
+                relation = connection.execute(
+                    f"SELECT * FROM {source}",
+                    [file_list],
+                )
             column_names = [description[0] for description in relation.description]
             rows = [
                 dict(zip(column_names, values, strict=True)) for values in relation.fetchall()

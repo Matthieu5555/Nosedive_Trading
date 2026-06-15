@@ -1,6 +1,10 @@
 # 0034 — Data retention tiers, cold-compaction, and backend disposition
 
 - **Status:** accepted, 2026-06-07 (owner-confirmed in design review).
+  **§3 cold-compaction for `daily_bar` landed 2026-06-15** (branch
+  `agent-a2da7533e14eb5ceb`): `TableSpec.cold_compactable` flag, `storage.compaction`
+  module, `ParquetStore` hot+cold union read, `scripts/compact_daily_bar.py` one-shot
+  migration, 17 gate-green tests.
 - **Date:** 2026-06-07.
 - **Implements:** blueprint **Part XV** (data governance: retention tiers, lineage) and **Step 4(f)**
   ("decide retention policy"). Completes the storage-architecture decision set for the index pipeline.

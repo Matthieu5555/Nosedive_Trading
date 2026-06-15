@@ -68,3 +68,33 @@ absorb (folded in here; the standalone `frontend-page-a-robustness-audit` was me
 
 Pairs with [[infra-surface-fit-quality]] (the data side — clean slices) and
 `frontend-per-side-surfaces-toggle`. P1 once the close-settled data confirms the slices.
+
+### Live-render findings — what landed and what the front CANNOT fix (2026-06-15)
+
+**Landed** (branch `front-page-a-robustness`, render-layer only, no backend change; gate green —
+eslint + 125 vitest + tsc): the **Greeks transpose** (Greeks as raw+currency columns, deltas as
+rows, maturity selector, scrollable — overflow gone, `scrollWidth == innerWidth`); the nappe Z/colour
+**clamped to the sane IV band** (no more page-blowing spike); NaN/absurd/dup points dropped; a
+"N slices flagged" note; and **currency from the registry** (`/api/indices` → `€` for SX5E, `$` for
+SPX, fallback `$`; no hard-coded `€` — verified `Market.tsx:120` → `IndexAnalytics` → the transpose).
+
+**What it CANNOT fix — confirmed by the close-up screenshots (`docs/_temp/`):** two residual defects
+that are **DATA, not front** — both rooted in the **railed short-maturity slices**:
+1. **Nappe short-end spike** — a railed short-tenor wing sits at ~0.55 IV, i.e. **inside** the
+   `[0, 0.6]` sane band, so the value-clamp cannot tell it from a genuine steep skew and keeps it.
+2. **2D Greeks term-structure bunched at the long end** — `charts.tsx bandSeries` excludes points
+   whose IV is out-of-band (`!isSaneIv`); the railed short tenors are out-of-band, so they drop and
+   only 1y/1.5y survive → every panel collapses to a vertical sliver at the right.
+
+**Blueprint reading:** the front is band-aiding bad data with an **IV-value heuristic**, which the
+blueprint rules against (render honestly; fix upstream). The front cannot make railed data clean —
+exclude→hidden, show→spike. The correct front signal is the **per-slice QC flag** the backend already
+computes (`surface_fit_error`), NOT an IV-value guess — so the BFF should expose the per-slice
+flag and the front should grey/flag those slices (and span all maturities in the 2D panels) rather
+than drop-by-value. But the **real** fix is the data: upstream QC + the settled-close capture +
+the longer-term fallback routing ([[infra-surface-fit-quality]]). **Re-judge the nappe + 2D panels
+on settled-close data**, not intraday — on railed intraday data no front layer renders clean.
+
+**Follow-up (front, after the data side):** swap the IV-value heuristic for the BFF-exposed per-slice
+QC flag; span all maturities in the 2D term-structure (flag the railed ones, clamp the Y-axis) instead
+of excluding them.

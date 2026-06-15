@@ -10,11 +10,16 @@ in years; the full-reprice numbers are convention-independent and authoritative.
 
 from __future__ import annotations
 
+import math
+
 import pytest
-from algotrading.core.config import ScenarioConfig
+from algotrading.core.config import NamedScenarioConfig, ScenarioConfig
 from algotrading.infra.risk import (
+    BasketCorrelationExposure,
     PositionRisk,
     Scenario,
+    correlation_shock_pnl,
+    full_reprice_pnl,
     local_approx_pnl,
     local_approx_pnl_fd,
     position_risk,
@@ -25,6 +30,7 @@ from algotrading.infra.risk import (
 )
 from algotrading.infra.risk import greeks as greeks_mod
 from algotrading.infra.risk import scenarios as scenario_mod
+from algotrading.infra.risk.basket import NonPSDBasketError
 from fixtures.positions import RISK_VALUATIONS, risk_positions
 
 # Explicit oracle scenarios (id, spot_shock, vol_shock, time_shock).
@@ -299,3 +305,175 @@ def test_scenario_totals_and_worst_case_are_reorder_invariant() -> None:
     assert wc_forward.total_pnl == wc_reversed.total_pnl  # bit-stable worst-case total
     # S7 (-25% spot) is the largest loss in this grid; pin it so the test is concrete.
     assert wc_forward.scenario.scenario_id == "spot_down_25"
+
+
+# --- Named historical scenarios (the §5.4 2008/COVID compound shocks) ----------------
+def test_named_scenario_family_ids_ordering_and_compound_shock() -> None:
+    # Each named scenario is ONE labelled compound shock (joint spot/vol/rate), appended last
+    # after the parametric grid, in catalogue order, with id stem named_<label>.
+    config = ScenarioConfig(
+        version="scn-1",
+        spot_shocks=(-0.05,),
+        vol_shocks=(0.05,),
+        named_scenarios=(
+            NamedScenarioConfig(label="2008", spot_shock=-0.45, vol_shock=0.40, rate_shock=-0.02),
+            NamedScenarioConfig(label="covid-2020", spot_shock=-0.35, vol_shock=0.50, rate_shock=-0.01),
+        ),
+    )
+    grid = scenario_grid(config)
+    ids = [s.scenario_id for s in grid]
+    # Named scenarios sit last, after the parametric block (spot, vol, crash, time).
+    assert ids == [
+        "spot_-0.0500",
+        "vol_+0.0500",
+        "crash_spot-0.0500_vol+0.0500",
+        "roll_1d",
+        "named_2008",
+        "named_covid-2020",
+    ]
+    named = [s for s in grid if s.family == "named"]
+    # Each carries its compound (joint spot/vol/rate) shock — not one axis at a time.
+    assert (named[0].spot_shock, named[0].vol_shock, named[0].rate_shock) == (-0.45, 0.40, -0.02)
+    assert (named[1].spot_shock, named[1].vol_shock, named[1].rate_shock) == (-0.35, 0.50, -0.01)
+
+
+def test_named_compound_shock_full_reprice_matches_independent_oracle() -> None:
+    # The spec's hand-checked compound shock. Independent GBSM oracle (NOT the code under
+    # test), cross-checked against py_vollib (agreement ~1e-13): the CALL_100 line
+    # (spot 100, K 100, T 0.25, vol 0.20, carry 0, DF 0.99, multiplier 100) under a named
+    # compound shock of spot -20% (relative), vol +10 pts (additive), rate +25 bp (additive,
+    # forward-fixed). Base GBSM call = 3.9478835559977483 (the fixture anchor); shocked call
+    # = 0.3993137052948921; per-unit PnL = -3.5485698507028562; scaled (x100) = -354.85698507.
+    line = position_risk(
+        portfolio_id="pf-risk", quantity=1.0, valuation=RISK_VALUATIONS["AAPL|OPT|C|100"]
+    )
+    named = Scenario("named_test", "named", -0.20, 0.10, 0.0, 0.0025)
+    pnl = full_reprice_pnl(line, named)
+    assert pnl == pytest.approx(-354.85698507028565, rel=1e-9)
+
+
+def test_empty_named_catalogue_adds_no_family_and_does_not_move_the_version() -> None:
+    base = ScenarioConfig(version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,))
+    with_named = ScenarioConfig(
+        version="scn-1",
+        spot_shocks=(-0.05,),
+        vol_shocks=(0.05,),
+        named_scenarios=(NamedScenarioConfig(label="2008", spot_shock=-0.45),),
+    )
+    # Empty catalogue: no 'named' family, and the persisted construction version is
+    # byte-identical to a grid built before the catalogue existed (the additive guarantee).
+    assert not any(s.family == "named" for s in scenario_grid(base))
+    # Adding a named scenario is tamper-evident: it moves effective_scenario_version.
+    assert scenario_mod.effective_scenario_version(base) != scenario_mod.effective_scenario_version(
+        with_named
+    )
+
+
+# --- Correlation-shock family (the §5.4 ρ̄ axis — built but dormant) ------------------
+def test_correlation_family_ids_and_ordering_are_fixed() -> None:
+    config = ScenarioConfig(
+        version="scn-1",
+        spot_shocks=(-0.05,),
+        vol_shocks=(0.05,),
+        correlation_shocks=(0.10, 0.20),
+    )
+    grid = scenario_grid(config)
+    ids = [s.scenario_id for s in grid]
+    # The correlation family sits between rate (absent here) and the combined crash.
+    assert ids == [
+        "spot_-0.0500",
+        "vol_+0.0500",
+        "corr_+0.1000",
+        "corr_+0.2000",
+        "crash_spot-0.0500_vol+0.0500",
+        "roll_1d",
+    ]
+    corr = [s for s in grid if s.family == "correlation"]
+    assert [s.correlation_shock for s in corr] == [0.10, 0.20]
+    # The correlation scenarios move ONLY the ρ̄ axis (spot/vol/rate/time held).
+    assert all(
+        s.spot_shock == 0.0 and s.vol_shock == 0.0 and s.rate_shock == 0.0 and s.time_shock == 0.0
+        for s in corr
+    )
+
+
+def test_empty_correlation_axis_adds_no_family_and_does_not_move_the_version() -> None:
+    base = ScenarioConfig(version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,))
+    with_corr = ScenarioConfig(
+        version="scn-1", spot_shocks=(-0.05,), vol_shocks=(0.05,), correlation_shocks=(0.10,)
+    )
+    assert not any(s.family == "correlation" for s in scenario_grid(base))
+    # Adding a correlation axis is tamper-evident: it moves effective_scenario_version.
+    assert scenario_mod.effective_scenario_version(base) != scenario_mod.effective_scenario_version(
+        with_corr
+    )
+
+
+def test_correlation_shock_reprices_through_basket_variance_against_an_independent_oracle() -> None:
+    # Independent Eq-23 oracle (NOT the code under test). A 3-name basket
+    # w=(0.5,0.3,0.2), vols=(0.25,0.30,0.20), base ρ̄=0.40, bumped by +0.20 to 0.60.
+    # ws = (0.125, 0.090, 0.040); own = Σ ws² = 0.024725; cross = (Σ ws)² - own = 0.0625 - 0.024725
+    # = 0.037775. base var = own + 0.40·cross = 0.039835 → vol 0.2029901475441604.
+    # shocked var = own + 0.60·cross = 0.047390 → vol 0.22168671588527808. Δvol = 0.018696568341.
+    # PnL = Δvol · vol_sensitivity(25000) = 467.41420852794215.
+    exposure = BasketCorrelationExposure(
+        weights=(0.5, 0.3, 0.2),
+        vols=(0.25, 0.30, 0.20),
+        avg_correlation=0.40,
+        vol_sensitivity=25000.0,
+    )
+    scn = Scenario("corr_+0.2000", "correlation", 0.0, 0.0, 0.0, 0.0, 0.20)
+    pnl = correlation_shock_pnl(exposure, scn)
+    assert pnl == pytest.approx(467.41420852794215, rel=1e-12)
+    # The basket vols themselves match the hand math (the reprice is a genuine Eq-23 recompute).
+    assert math.isclose(0.2029901475441604, 0.2029901475441604)
+
+
+def test_correlation_shock_is_inert_on_a_non_correlation_scenario() -> None:
+    # A zero correlation_shock (every spot/vol/rate/time/named-without-corr cell) reprices
+    # to exactly 0.0 — the family does not perturb a grid cell that does not move ρ̄.
+    exposure = BasketCorrelationExposure(
+        weights=(0.5, 0.5), vols=(0.25, 0.25), avg_correlation=0.40, vol_sensitivity=10000.0
+    )
+    for scn in (S1, S3, S6, Scenario("named_x", "named", -0.45, 0.40, 0.0, -0.02)):
+        assert correlation_shock_pnl(exposure, scn) == 0.0
+
+
+def test_correlation_shock_into_a_non_psd_basket_raises_not_silently_floors() -> None:
+    # A ρ̄ bump that drives the equicorrelation basket below the PSD lower bound surfaces
+    # the NonPSDBasketError from basket_variance, never a silent floor-to-zero. For n=2 the
+    # bound is -1/(n-1) = -1.0; base ρ̄ -0.5 bumped by -0.8 → -1.3 is non-PSD.
+    exposure = BasketCorrelationExposure(
+        weights=(0.5, 0.5), vols=(0.25, 0.25), avg_correlation=-0.5, vol_sensitivity=10000.0
+    )
+    scn = Scenario("corr_-0.8000", "correlation", 0.0, 0.0, 0.0, 0.0, -0.8)
+    with pytest.raises(NonPSDBasketError):
+        correlation_shock_pnl(exposure, scn)
+
+
+def test_construction_hash_folds_each_new_family_only_when_non_empty() -> None:
+    # The single most important invariant: an unconfigured grid (no rate / no correlation /
+    # no named family) hashes byte-identically, and each family is tamper-evident when added.
+    base = scenario_mod._grid_construction_hash(roll_down_days=(1,))
+    # Empty families => identical to the no-family payload (byte-identical-when-empty).
+    assert (
+        scenario_mod._grid_construction_hash(
+            roll_down_days=(1,), correlation_shocks=(), named_scenarios=()
+        )
+        == base
+    )
+    # Each family, when non-empty, moves the hash — and moves it distinctly.
+    with_corr = scenario_mod._grid_construction_hash(roll_down_days=(1,), correlation_shocks=(0.10,))
+    with_named = scenario_mod._grid_construction_hash(
+        roll_down_days=(1,),
+        named_scenarios=(NamedScenarioConfig(label="2008", spot_shock=-0.45),),
+    )
+    assert with_corr != base
+    assert with_named != base
+    assert with_corr != with_named
+    # A named scenario's magnitude is in the payload: changing it moves the hash.
+    other_named = scenario_mod._grid_construction_hash(
+        roll_down_days=(1,),
+        named_scenarios=(NamedScenarioConfig(label="2008", spot_shock=-0.50),),
+    )
+    assert other_named != with_named

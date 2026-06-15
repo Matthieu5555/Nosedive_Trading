@@ -41,11 +41,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
-from algotrading.core.config import ScenarioConfig
+from algotrading.core.config import NamedScenarioConfig, ScenarioConfig
 from algotrading.core.provenance import ProvenanceStamp
 from algotrading.infra.contracts import ScenarioResult
 from algotrading.infra.pricing import PriceGreeks, price
 
+from .basket import basket_variance
 from .bumps import DEFAULT_BUMPS, BumpSpec
 from .config import AttributionConfig
 from .greeks import PositionRisk, central_difference_greeks, net_lots
@@ -72,21 +73,48 @@ class ScenarioGridError(Exception):
     """The configured shocks produced a grid with colliding scenario ids."""
 
 
+def _named_scenario_payload(
+    named_scenarios: tuple[NamedScenarioConfig, ...],
+) -> list[dict[str, object]]:
+    """The canonical, order-preserving payload of a named-scenario catalogue.
+
+    Each named scenario contributes its label and its four shock magnitudes (the
+    correlation leg included so a future correlation-carrying named scenario is
+    tamper-evident). Built in catalogue order, so two catalogues that differ in order or in
+    any magnitude hash differently.
+    """
+    return [
+        {
+            "label": named.label,
+            "spot_shock": named.spot_shock,
+            "vol_shock": named.vol_shock,
+            "rate_shock": named.rate_shock,
+            "correlation_shock": named.correlation_shock,
+        }
+        for named in named_scenarios
+    ]
+
+
 def _grid_construction_hash(
     roll_down_days: tuple[int, ...],
     rate_shocks: tuple[float, ...] = (),
+    correlation_shocks: tuple[float, ...] = (),
+    named_scenarios: tuple[NamedScenarioConfig, ...] = (),
     crash_rule_tag: str = _CRASH_RULE_TAG,
 ) -> str:
     """A short, stable hash of the grid-construction constants.
 
     Folded into the persisted scenario version, so changing the configured
-    ``roll_down_days``, the crash rule, or adding a ``rate_shocks`` axis moves the version
-    automatically even when ``config.version`` does not. The encoding (canonical-JSON
-    SHA-256, 12 hex chars) is the shared :func:`~.grid_versioning.short_construction_hash`.
+    ``roll_down_days``, the crash rule, or adding a ``rate_shocks`` / ``correlation_shocks``
+    axis or a ``named_scenarios`` catalogue moves the version automatically even when
+    ``config.version`` does not. The encoding (canonical-JSON SHA-256, 12 hex chars) is the
+    shared :func:`~.grid_versioning.short_construction_hash`.
 
-    ``rate_shocks`` is added to the payload **only when non-empty**, so a grid with no rate
-    axis (every grid built before this axis existed) hashes byte-identically to before —
-    the rate axis is a strictly additive construction rule, not a silent version bump.
+    Each new family is added to the payload **only when non-empty**, so a grid with no rate
+    axis / no correlation axis / no named catalogue (every grid built before those families
+    existed) hashes byte-identically to before — each is a strictly additive construction
+    rule, not a silent version bump. This byte-identical-when-empty property is the single
+    invariant the new families are built around: an unconfigured grid is identical to today.
     """
     payload: dict[str, object] = {
         "version": GRID_CONSTRUCTION_VERSION,
@@ -95,6 +123,10 @@ def _grid_construction_hash(
     }
     if rate_shocks:
         payload["rate_shocks"] = list(rate_shocks)
+    if correlation_shocks:
+        payload["correlation_shocks"] = list(correlation_shocks)
+    if named_scenarios:
+        payload["named_scenarios"] = _named_scenario_payload(named_scenarios)
     return short_construction_hash(payload)
 
 
@@ -104,10 +136,19 @@ def effective_scenario_version(config: ScenarioConfig) -> str:
     Combines the config section version with a hash of the grid-construction
     constants, so a report regenerates exactly from positions + snapshot + this
     version: changing either the economic shocks (config) or the construction rules
-    (``config.roll_down_days``, the rate axis, the crash rule) moves it. Persisting
-    ``config.version`` alone would let two different grids share one version.
+    (``config.roll_down_days``, the rate / correlation axes, the named catalogue, the crash
+    rule) moves it. Persisting ``config.version`` alone would let two different grids share
+    one version.
     """
-    return f"{config.version}+{_grid_construction_hash(config.roll_down_days, config.rate_shocks)}"
+    return (
+        f"{config.version}+"
+        + _grid_construction_hash(
+            config.roll_down_days,
+            config.rate_shocks,
+            config.correlation_shocks,
+            config.named_scenarios,
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +158,17 @@ class Scenario:
     ``rate_shock`` defaults to ``0.0`` so the four-field construction (and every grid built
     without a rate axis) is unchanged; the rate family sets it to the configured additive
     rate move.
+
+    ``correlation_shock`` is the **additive bump to the basket's average implied correlation
+    ρ̄** (Eq 23). It defaults to ``0.0``, so the option-pricing reprice (``shock_valuation`` →
+    ``price``) never sees it — the spot/vol/rate/time families and a named compound shock all
+    leave it zero. It is consumed only by the basket-variance reprice path
+    (:func:`correlation_shock_pnl`), which is the **correlation family** and a **named
+    scenario's** optional correlation leg. That path is built but **dormant** on the live
+    book: a standard option line carries no ρ̄ exposure, so a ρ̄ bump reprices to zero through
+    the pricer. It becomes meaningful once a real ρ̄ exposure (constituent capture + the
+    signal layer, both downstream) lands; until then it is exercised only against a
+    constructed basket exposure in tests.
     """
 
     scenario_id: str
@@ -125,6 +177,7 @@ class Scenario:
     vol_shock: float
     time_shock: float
     rate_shock: float = 0.0
+    correlation_shock: float = 0.0
 
 
 def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
@@ -132,15 +185,20 @@ def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
 
     Families: one parallel spot move per ``spot_shock``, one parallel vol shift per
     ``vol_shock``, one parallel rate shift per ``rate_shock`` (the course's third axis;
-    absent when ``rate_shocks`` is empty), one combined crash (the most adverse spot move
-    with the largest vol spike), and a small time roll-down. Ordering is fixed
-    (spot, vol, rate, combined, time) and the ids are stable, so the grid is a pure
-    function of the config — and a config with no rate axis is byte-identical to before
-    this family existed.
+    absent when ``rate_shocks`` is empty), one parallel ρ̄ bump per ``correlation_shock``
+    (the correlation axis; absent when ``correlation_shocks`` is empty — and dormant on the
+    live book, see :class:`Scenario`), one combined crash (the most adverse spot move with
+    the largest vol spike), a small time roll-down, and one labelled compound scenario per
+    named-catalogue entry (the 2008 / COVID historical stress; absent when
+    ``named_scenarios`` is empty). Ordering is fixed (spot, vol, rate, correlation, combined,
+    time, named) and the ids are stable, so the grid is a pure function of the config — and a
+    config with no rate / correlation / named family is byte-identical to before those
+    families existed.
     """
     spot_shocks = dedup_preserving_order(config.spot_shocks)
     vol_shocks = dedup_preserving_order(config.vol_shocks)
     rate_shocks = dedup_preserving_order(config.rate_shocks)
+    correlation_shocks = dedup_preserving_order(config.correlation_shocks)
     scenarios: list[Scenario] = [
         Scenario(f"spot_{shock:+.4f}", "spot", shock, 0.0, 0.0) for shock in spot_shocks
     ]
@@ -151,6 +209,14 @@ def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
     # scenario holds spot/vol/time fixed and shifts only the rate (forward-fixed).
     scenarios += [
         Scenario(f"rate_{shock:+.4f}", "rate", 0.0, 0.0, 0.0, shock) for shock in rate_shocks
+    ]
+    # The correlation family is a pure parallel sweep of the ρ̄ axis; each scenario holds
+    # spot/vol/rate/time fixed and bumps only the average implied correlation. It reprices
+    # through basket_variance (correlation_shock_pnl), never the option pricer, so it is a
+    # zero on the live option book until a real ρ̄ exposure lands (built but dormant).
+    scenarios += [
+        Scenario(f"corr_{shock:+.4f}", "correlation", 0.0, 0.0, 0.0, 0.0, shock)
+        for shock in correlation_shocks
     ]
     if spot_shocks and vol_shocks:
         crash_spot = min(spot_shocks)
@@ -167,6 +233,21 @@ def scenario_grid(config: ScenarioConfig) -> tuple[Scenario, ...]:
     scenarios += [
         Scenario(f"roll_{days}d", "time", 0.0, 0.0, days / _DAYS_PER_YEAR)
         for days in config.roll_down_days
+    ]
+    # Named historical scenarios: each is one labelled compound shock (joint spot/vol/rate,
+    # plus an optional correlation leg) applied as a single full-reprice scenario alongside
+    # the parametric grid. Appended last so the parametric block stays byte-identical.
+    scenarios += [
+        Scenario(
+            f"named_{named.label}",
+            "named",
+            named.spot_shock,
+            named.vol_shock,
+            0.0,
+            named.rate_shock,
+            named.correlation_shock,
+        )
+        for named in config.named_scenarios
     ]
     grid = tuple(scenarios)
     ids = [scenario.scenario_id for scenario in grid]
@@ -210,6 +291,61 @@ def full_reprice_pnl(line: PositionRisk, scenario: Scenario, *, steps: int | Non
     state = pricing_state_for(shocked)
     shocked_price = price(state, steps=steps).price if steps is not None else price(state).price
     return (shocked_price - line.greeks.price) * line.scale
+
+
+# --- Correlation shock: the basket-variance (Eq 23) reprice path ----------------------
+# BUILT BUT DORMANT. The correlation family reprices through the basket-variance identity,
+# not the option pricer, so it needs a book that carries a real ρ̄ exposure. The live option
+# book does not yet (that needs constituent capture + the signal layer, both downstream), so
+# this path is exercised only against a constructed exposure in tests. It is spec-and-wired
+# now so the §5.4 fourth axis exists the day the exposure becomes real (the rate-axis pattern:
+# parallel family, empty-by-default, byte-identical when unconfigured).
+
+
+@dataclass(frozen=True, slots=True)
+class BasketCorrelationExposure:
+    """A book's implied-correlation exposure: the basket whose vol a ρ̄ bump reprices through.
+
+    ``weights`` and ``vols`` are the constituent weights and vols of the dispersion basket
+    (the Eq-23 inputs); ``avg_correlation`` is the book's base average implied correlation ρ̄.
+    ``vol_sensitivity`` is the book's **monetized** PnL per unit change in the basket's
+    implied vol — the dollar basket-vega the position carries against index implied
+    correlation (signed: a long-correlation book gains when ρ̄ rises and basket vol with it).
+    A correlation shock recomputes the basket vol under the bumped ρ̄ through
+    :func:`~algotrading.infra.risk.basket.basket_variance` (a genuine reprice, never a Taylor
+    multiplier) and monetizes the basket-vol change against this sensitivity.
+    """
+
+    weights: tuple[float, ...]
+    vols: tuple[float, ...]
+    avg_correlation: float
+    vol_sensitivity: float
+
+
+def correlation_shock_pnl(exposure: BasketCorrelationExposure, scenario: Scenario) -> float:
+    """Monetized PnL of an implied-correlation exposure under a ρ̄ bump (full reprice, Eq 23).
+
+    Bumps the base ρ̄ by the scenario's additive ``correlation_shock``, reprices the basket
+    vol under the bumped correlation through the basket-variance identity (Eq 23), and
+    monetizes the basket-vol change against the exposure's dollar basket-vega. The base and
+    shocked basket vols are both recomputed from the same Eq-23 path, so the difference is a
+    true reprice, not a sensitivity multiplier. A zero ``correlation_shock`` (every non-named,
+    non-correlation scenario) returns exactly ``0.0`` — the family is inert on a grid cell
+    that does not move ρ̄. A bumped ρ̄ that drives the basket non-PSD surfaces the
+    :class:`~algotrading.infra.risk.basket.NonPSDBasketError` from ``basket_variance`` rather
+    than silently flooring, so a corrupt shock is visible at the boundary.
+    """
+    if scenario.correlation_shock == 0.0:
+        return 0.0
+    base = basket_variance(
+        exposure.weights, exposure.vols, avg_correlation=exposure.avg_correlation
+    )
+    shocked = basket_variance(
+        exposure.weights,
+        exposure.vols,
+        avg_correlation=exposure.avg_correlation + scenario.correlation_shock,
+    )
+    return (shocked.vol - base.vol) * exposure.vol_sensitivity
 
 
 @dataclass(frozen=True, slots=True)

@@ -80,6 +80,7 @@ from .reconciliation import (
 )
 from .scenarios import (
     GRID_CONSTRUCTION_VERSION,
+    BasketCorrelationExposure,
     FamilyAttribution,
     Scenario,
     ScenarioGridError,
@@ -89,6 +90,7 @@ from .scenarios import (
     UnderlyingAttribution,
     WorstCase,
     build_scenario_report,
+    correlation_shock_pnl,
     effective_scenario_version,
     full_reprice_pnl,
     local_approx_pnl,
@@ -162,6 +164,8 @@ __all__ = [
     "effective_scenario_version",
     "shock_valuation",
     "full_reprice_pnl",
+    "BasketCorrelationExposure",
+    "correlation_shock_pnl",
     "local_approx_pnl",
     "local_approx_pnl_fd",
     "scenario_line_pnls",

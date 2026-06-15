@@ -7,11 +7,32 @@
 # 0036).
 
 scenario:                                          # the stress grid (ScenarioConfig)
-  version: "2026.06.13"                            # bumped: added the rate-shock axis (3rd stress axis)
+  version: "2026.06.15"                            # bumped: added named historical scenarios + correlation-shock axis
   spot_shocks: [-0.10, -0.05, 0.0, 0.05, 0.10]     # fractional spot moves (families grid)
   vol_shocks: [-0.05, 0.0, 0.05]                   # absolute vol moves (families grid)
   rate_shocks: [-0.0025, 0.0, 0.0025]              # absolute rate moves (±25 bp); the course's 3rd
                                                    # axis (~±10% of rate). Empty list = no rate family.
+  # Correlation-shock axis (§5.4 fourth axis): additive bumps to the basket's average implied
+  # correlation ρ̄ (Eq 23). BUILT BUT DORMANT — it reprices a ρ̄ exposure through basket_variance,
+  # which the live option book does not yet carry (needs constituent capture + the signal layer,
+  # both downstream). Seeded empty so the live grid is unchanged; uncomment to exercise once ρ̄
+  # exposure is real, e.g. [0.10, 0.20] = ρ̄ +0.10 / +0.20.
+  correlation_shocks: []                           # additive ρ̄ bumps; empty = no correlation family
+  # Named historical scenarios (§5.4): each is ONE labelled compound shock — a joint spot/vol/rate
+  # move applied as a single full-reprice scenario alongside the parametric grid. The magnitudes
+  # below are OWNER-TUNABLE SEED magnitudes, sized to the broad shape of each crisis (a large spot
+  # crash + a big vol spike + a rate cut), NOT calibrated to a specific source — tune them to the
+  # course/blueprint reference once the owner sets the bar. spot_shock is relative (−0.45 = −45%),
+  # vol_shock additive in vol points (+0.40 = +40 pts), rate_shock additive (−0.02 = −200 bp).
+  named_scenarios:
+    - label: "2008"                                # global financial crisis (Lehman): deep, sustained
+      spot_shock: -0.45                            #   ~−45% index drawdown (seed)
+      vol_shock: 0.40                              #   ~+40 vol-pt implied spike (seed)
+      rate_shock: -0.02                            #   ~−200 bp rate cut (seed)
+    - label: "covid-2020"                          # COVID March 2020: sharper, faster crash, rate→~0
+      spot_shock: -0.35                            #   ~−35% index drawdown over weeks (seed)
+      vol_shock: 0.50                              #   ~+50 vol-pt implied spike, faster (seed)
+      rate_shock: -0.01                            #   ~−100 bp cut toward ~0 (seed)
   roll_down_days: [1]                              # time-roll scenarios (days), one per entry
   stress_surface:                                  # the 2B ±range (spot × vol) PnL surface grid
     version: "2026.06.07"

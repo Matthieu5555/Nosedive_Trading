@@ -15,8 +15,8 @@ dollar-Greeks term structure. What's missing is the rest of the CDC's §3.3–3.
 | §3.1 control bar + QC badge | ✅ | yes |
 | §3.2 index history + [list \| component] row | ✅ | yes |
 | §3.3 **vol scorecards** (ATM, 25Δ skew, convexity, realized vol) | ❌ | partial — ATM/skew/convexity from the smile; realized vol from `daily_bar` |
-| §3.4 nappe = **heatmap** + 3D, shared colour scale | ⚠️ 3D only | yes (`surface_grid`) |
-| §3.5 **2D cuts side by side**: smile + **ATM term structure** | ⚠️ smile in an accordion; term structure absent | yes (`surface_grid`) |
+| §3.4 nappe = **heatmap** + 3D, shared colour scale | ✅ **landed 2026-06-15** (`VolHeatmap`, stacked below the 3D, same Plasma + pinned cmin/cmax band) | yes (`surface_grid`) |
+| §3.5 **2D cuts side by side**: smile + **ATM term structure** | ⚠️ **ATM term structure landed 2026-06-15** (`AtmTermStructure`); smile still in the accordion (true side-by-side = phase 1) | yes (`surface_grid`) |
 | §3.6 **Greeks = 4 shape cards vs strike** (selected maturity) | ⚠️ greeks vs *maturity*, and empty | ❌ needs **path A** (`projected_analytics` populated) |
 | global maturity selector | ❌ | — |
 
@@ -27,8 +27,19 @@ dollar-Greeks term structure. What's missing is the rest of the CDC's §3.3–3.
    accordion. *(front only; reuses existing hooks)*
 2. **Heatmap (§3.4)** — Plotly heatmap of `surface_grid` (maturity × log-moneyness, colour = IV),
    stacked above the 3D, **sharing one value→colour scale** with it. *(data OK today)*
+   **— LANDED 2026-06-15** (branch `frontend-cdc-nappe-heatmap-atm-term`): `VolHeatmap` in
+   `charts.tsx` plots the dense lattice with the SAME `VOL_COLORSCALE` (Plasma) and the SAME pinned
+   `zmin/zmax = [0, IV_SANE_MAX]` as `DenseVolSurface`, so a colour means the same IV in both and
+   across dates; reuses `cleanDenseSurface` (railed cell → null hole, dup column collapsed, slice
+   count flagged on the label); honest empty state. Mounted in `IndexAnalytics` below the 3D.
 3. **ATM term structure (§3.5)** — 2D ATM-vol vs maturity, side-by-side with the smile, each with
    its own maturity selector. *(data OK today)*
+   **— ATM CUT LANDED 2026-06-15**: `AtmTermStructure` plots ATM IV (the log-moneyness column
+   nearest 0) vs maturity, off the dense lattice when present (more tenors), else each maturity's
+   smile k≈0 point; out-of-band ATM cells excluded + flagged; honest empty state; on the shared
+   `LightweightLineChart` (x = maturity in months). **Still open:** the true side-by-side layout
+   (lift the smile out of the accordion) and per-panel maturity selectors — those belong to the
+   phase-1 reading-order reflow.
 4. **Vol scorecards (§3.3)** + a **global maturity selector** — ATM/25Δ-skew/convexity from the
    smile; realized vol from `daily_bar` returns. *(some BFF compute; explicit rounding)*
 5. **Greeks shape cards (§3.6)** — 4 cards of the Greek's shape **along strike** for the selected

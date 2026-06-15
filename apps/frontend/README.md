@@ -59,7 +59,9 @@ Three operator pages over `react-router`, wrapped in the shared top-bar shell:
   point-in-time, price-first constituent list (TanStack Table), preload the daily OHLC history for
   **every constituent** through `/api/price-history/batch`, then select a ticker to see its
   **price-first** detail — the daily **candlestick** (TradingView Lightweight Charts), the **3D IV
-  surface**, and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
+  surface** with the flat **nappe heatmap** stacked below it (same Plasma scale, pinned so a colour
+  means the same IV in both — CDC §3.4), the **ATM term structure** (at-the-money IV vs maturity —
+  CDC §3.5), and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
   **dollar Greeks**, each tagged with its P0.2 unit string. TradingView Lightweight Charts
   renders the daily candlesticks and dollar-Greek term-structure line charts; Plotly remains
   the 3D/heatmap/non-line chart path (ADR 0030). Every panel self-labels. Picking a past date

@@ -189,6 +189,152 @@ export function VolSurface({
   );
 }
 
+const HEATMAP_LABEL = "Implied-volatility nappe (heatmap: IV over log-moneyness × maturity)";
+
+// The nappe as a flat heatmap, meant to sit stacked with the 3D surface (§3.4). It plots the SAME
+// dense (maturity × log-moneyness) lattice, the SAME Plasma colourscale, and — crucially — the
+// SAME pinned colour band (zmin/zmax = [0, SURFACE_Z_MAX]) as the 3D nappe, so a colour reads as
+// the same IV in both panels and stays stable across trade dates (the CDC's "shared value→colour
+// scale"). Render-layer robustness mirrors DenseVolSurface: a railed/non-finite cell is clamped to
+// a null hole and the flagged-slice count rides the label, never plotted as a colour spike. The
+// served values are untouched.
+export function VolHeatmap({ surface }: { surface?: SurfaceDense | null }) {
+  if (!surface || surface.maturity_years.length === 0 || surface.log_moneyness.length === 0) {
+    return (
+      <figure aria-label={HEATMAP_LABEL} className="plot">
+        <figcaption>{HEATMAP_LABEL}</figcaption>
+        <p>No reconstructed surface to plot yet.</p>
+      </figure>
+    );
+  }
+  const cleaned = cleanDenseSurface(surface.log_moneyness, surface.maturity_years, surface.implied_vol);
+  const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
+  const trace = {
+    type: "heatmap",
+    x: cleaned.logMoneyness,
+    y: cleaned.maturityYears,
+    z: cleaned.impliedVol,
+    name: "IV nappe",
+    colorscale: VOL_COLORSCALE,
+    zmin: 0,
+    zmax: SURFACE_Z_MAX,
+    connectgaps: true,
+    colorbar: { title: { text: "IV" } },
+  } as Data;
+  return (
+    <Plot
+      label={note ? `${HEATMAP_LABEL} — ⚠ ${note}` : HEATMAP_LABEL}
+      height={360}
+      data={[trace]}
+      layout={{
+        xaxis: { title: { text: "log-moneyness" } },
+        yaxis: { title: { text: "maturity (years)" } },
+      }}
+    />
+  );
+}
+
+const ATM_TERM_LABEL = "ATM term structure (at-the-money implied vol vs maturity)";
+
+// A compact maturity label for a point sourced from the dense lattice (which carries years, not a
+// tenor label): months under a year, else years to 2 dp. Smile-sourced points keep their tenor.
+function maturityYearsLabel(years: number): string {
+  if (years < 1) return `${Math.max(1, Math.round(years * 12))}m`;
+  return `${Number(years.toFixed(2))}y`;
+}
+
+interface AtmPoint {
+  months: number;
+  iv: number;
+  label: string;
+}
+
+// ATM cut of the dense nappe: the column nearest log-moneyness 0 is at-the-money for every
+// maturity row. Drives off the reconstructed lattice (the same grid the heatmap/3D use), which
+// carries more maturities than the sparse band points. Out-of-band/non-finite ATM cells are
+// excluded (cleanDenseSurface) and counted as flagged.
+function atmTermFromDense(surface: SurfaceDense): { points: AtmPoint[]; nFlagged: number } {
+  const cleaned = cleanDenseSurface(surface.log_moneyness, surface.maturity_years, surface.implied_vol);
+  if (cleaned.logMoneyness.length === 0) return { points: [], nFlagged: cleaned.nFlaggedSlices };
+  let atmCol = 0;
+  cleaned.logMoneyness.forEach((k, j) => {
+    if (Math.abs(k) < Math.abs(cleaned.logMoneyness[atmCol])) atmCol = j;
+  });
+  const points: AtmPoint[] = [];
+  cleaned.maturityYears.forEach((years, i) => {
+    const iv = cleaned.impliedVol[i]?.[atmCol];
+    if (isSaneIv(iv)) {
+      points.push({ months: Math.max(1, Math.round(years * 12)), iv, label: maturityYearsLabel(years) });
+    }
+  });
+  return { points, nFlagged: cleaned.nFlaggedSlices };
+}
+
+// Fallback ATM term structure when no dense surface was fitted: each maturity's own smile, its
+// point nearest log-moneyness 0. A maturity whose smile cleans to nothing is counted as flagged.
+function atmTermFromSmiles(maturities: AnalyticsMaturity[]): { points: AtmPoint[]; nFlagged: number } {
+  let nFlagged = 0;
+  const points: AtmPoint[] = [];
+  for (const maturity of maturities) {
+    const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
+    if (clean.logMoneyness.length === 0) {
+      nFlagged += 1;
+      continue;
+    }
+    let atm = 0;
+    clean.logMoneyness.forEach((k, i) => {
+      if (Math.abs(k) < Math.abs(clean.logMoneyness[atm])) atm = i;
+    });
+    points.push({
+      months: Math.max(1, Math.round(maturity.maturity_years * 12)),
+      iv: clean.impliedVols[atm],
+      label: maturity.tenor_label || maturity.label,
+    });
+  }
+  return { points, nFlagged };
+}
+
+// The §3.5 2D cut beside the smile: at-the-money IV vs maturity, read off the dense nappe when
+// present (more tenors, smooth fit), else off the per-maturity smiles. Drawn on the numeric-x
+// yield-curve line panel (x = maturity in months; the shared formatter renders 3m / 1y); IV is an
+// analytics quantity, so scientific notation. Honest empty state, never a blank.
+export function AtmTermStructure({
+  surface,
+  maturities,
+}: {
+  surface?: SurfaceDense | null;
+  maturities: AnalyticsMaturity[];
+}) {
+  const hasDense =
+    surface != null && surface.maturity_years.length > 0 && surface.log_moneyness.length > 0;
+  const { points, nFlagged } = hasDense
+    ? atmTermFromDense(surface)
+    : atmTermFromSmiles(maturities);
+  const note = flaggedNote(nFlagged, "slice");
+  const label = note ? `${ATM_TERM_LABEL} — ⚠ ${note}` : ATM_TERM_LABEL;
+  if (points.length === 0) {
+    return (
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p>No ATM term structure to plot yet.</p>
+      </figure>
+    );
+  }
+  const series: LightweightLineSeries = {
+    label: "ATM IV",
+    color: CHART_COLORS.positive,
+    points: points.map((p) => ({ x: p.months, label: p.label, value: p.iv })),
+  };
+  return (
+    <LightweightLineChart
+      label={label}
+      series={[series]}
+      yUnit="IV"
+      valueFormatter={(value) => sci(value)}
+    />
+  );
+}
+
 // Smile wing colours: puts (downside) read red, calls (upside) green — the convention an
 // operator expects, read off the shared --negative / --positive design tokens.
 const PUT_COLOR = CHART_COLORS.negative;

@@ -34,9 +34,11 @@ from .errors import StorageError
 
 # Datetime fields, in priority order, used to derive a trade date when a record
 # has no explicit trade_date column. snapshot_ts covers the derived analytics
-# tables, valuation_ts the portfolio/risk tables, canonical_ts raw events, and
-# run_ts the QC results (whose only timestamp is when the check ran).
-_TRADE_DATE_TIMESTAMPS = ("snapshot_ts", "valuation_ts", "canonical_ts", "run_ts")
+# tables, valuation_ts the portfolio/risk tables, canonical_ts raw events, run_ts
+# the QC results (whose only timestamp is when the check ran), and as_of_ts the
+# broker read-side tables (broker_positions / broker_cash_balances — the instant
+# the broker account was read; broker_fills carries an explicit trade_date instead).
+_TRADE_DATE_TIMESTAMPS = ("snapshot_ts", "valuation_ts", "canonical_ts", "run_ts", "as_of_ts")
 
 # Date fields (not timestamps) used to derive a partition date when a record has no
 # explicit trade_date column and no partitioning timestamp. effective_add_date places

@@ -413,7 +413,12 @@ Each row is roughly one spec.
    is the first case. **Research machine LANDED** (`strategy/backtest/`, S2 target met);
    production shadow + store-backed adapter remain.
 9. **Operational hardening:** margin forecasting (S2), alert delivery, kill switch,
-   reconciliation (§5.9 + autonomy audit).
+   reconciliation (§5.9 + autonomy audit). **Recon broker-read foundation landed
+   (ibkr-broker-account-read):** the read-only CP-REST positions/cash/fills collector
+   (`infra-ibkr` `cp_rest_account`) + its frozen-seam contracts (`BrokerPosition`/
+   `BrokerCashBalance`/`BrokerFill`/`BrokerAccountSnapshot`) — the recon sub-lane's broker side.
+   Remaining in this item: the recon diff/tolerance/alert logic
+   (execution-operational-hardening), margin forecasting, alert delivery, kill switch.
 10. **Residual diagnosis (destination):** once realized attribution (#2) and a week-plus of
     banked realized P&L exist, regress the attribution residual against candidate unmodeled
     exposures (skew/vanna dynamics, liquidity, jump/gap, vol-of-vol, regime) to name what the

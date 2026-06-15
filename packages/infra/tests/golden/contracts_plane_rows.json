@@ -39,6 +39,45 @@
         "$datetime": "2026-05-29T15:30:00+00:00"
       }
     },
+    "broker_cash_balances": {
+      "account_id": "DU1234567",
+      "as_of_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "cash_balance": 100000.0,
+      "currency": "USD",
+      "net_liquidation": 109310.0,
+      "settled_cash": 98000.0
+    },
+    "broker_fills": {
+      "account_id": "DU1234567",
+      "conid": 265598,
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "currency": "USD",
+      "execution_id": "0000e0d5.0000abcd.01",
+      "price": 9.2,
+      "quantity": 10.0,
+      "side": "BUY",
+      "trade_date": {
+        "$date": "2026-05-29"
+      },
+      "venue_ts": {
+        "$datetime": "2026-05-29T15:29:59+00:00"
+      }
+    },
+    "broker_positions": {
+      "account_id": "DU1234567",
+      "as_of_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "avg_cost": 9.2,
+      "conid": 265598,
+      "contract_key": "AAPL|OPT|SMART|USD|100|o-AAPL-C-100|2026-06-19|100|C",
+      "currency": "USD",
+      "market_price": 9.31,
+      "market_value": 9310.0,
+      "quantity": 10.0
+    },
     "constituent_capture_outcomes": {
       "detail": "captured 6 option leg(s)",
       "index": "SX5E",

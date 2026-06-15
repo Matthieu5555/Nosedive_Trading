@@ -50,6 +50,20 @@ request routed through M0, because every field ripples to the other workstreams.
   that put the name in the top-N, the captured `n_options`, and a one-line `detail`. Stored under
   the `qc` layer partitioned by `(trade_date, underlying=<constituent>)`, so a name that returns no
   chain is a recorded fact, never a silent absence — see the infra-ibkr constituent collector.
+- **Broker read-side contracts (reconciliation input)** — `BrokerPosition`,
+  `BrokerCashBalance`, `BrokerFill`, and the in-memory `BrokerAccountSnapshot` that bundles one
+  read. These are what the **broker reports** at a read instant — the recon left-hand side (§6,
+  the `execution-operational-hardening` recon sub-lane), diffed against the fills-based `Position`
+  store to catch book-vs-broker drift. Read-off-the-broker INPUTs (like `Position`/`Basket`), so
+  **no provenance stamp**. `BrokerPosition` keeps a **signed** quantity (short is negative) and
+  joins to the book on `conid` / `contract_key`; `BrokerCashBalance` is one row per currency off
+  the ledger (signed cash/NLV); `BrokerFill` is one broker-reported execution keyed on the
+  broker's unique `execution_id` (append-only — a fill is immutable), with an **unsigned**
+  quantity (direction in `side` ∈ `FILL_SIDES`) stamped at its **own venue time** (no
+  look-ahead). The broker leaf's read-only collector (`infra-ibkr`
+  `collectors/cp_rest_account.py`) produces them; this contract is the seam the recon layer
+  consumes. `broker_positions` / `broker_cash_balances` partition by their `as_of_ts` read
+  instant; `broker_fills` by its own `trade_date`.
 - **Diagnostics bundles** — `ForwardDiagnostics`, `IvDiagnostics`, `SurfaceFitDiagnostics`.
 - **Registry + validation** — `spec_for_table` / `table_for_contract` and
   `validate` / `validate_record` (write-ahead validation; rejects, never coerces).

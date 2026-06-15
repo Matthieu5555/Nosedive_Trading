@@ -23,6 +23,9 @@ from .errors import UnknownTableError
 from .tables import (
     Basket,
     BookGreeks,
+    BrokerCashBalance,
+    BrokerFill,
+    BrokerPosition,
     ConstituentCaptureOutcome,
     DailyBar,
     ForwardCurvePoint,
@@ -247,6 +250,57 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+    ),
+    "broker_positions": TableSpec(
+        name="broker_positions",
+        contract=BrokerPosition,
+        # One position row per (read instant, account, broker contract). A re-read of the same
+        # account at a new instant lands under a new as_of_ts; two reads never collide.
+        primary_key=("as_of_ts", "account_id", "conid"),
+        layer="portfolio",
+        # A broker-reported INPUT (the recon left-hand side), like ``positions`` — read off the
+        # broker, not a derived analytic, so no provenance stamp. Not append-only: each read of an
+        # account replaces that instant's rows.
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        # quantity is signed (short positions are negative); cost/marks the broker reports as-is
+        # and recon's job is to surface a discrepancy, not reject the row — the registry only
+        # guards finiteness here.
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "broker_cash_balances": TableSpec(
+        name="broker_cash_balances",
+        contract=BrokerCashBalance,
+        # One row per (read instant, account, currency) — the per-currency ledger entries of one
+        # read, plus the synthetic BASE summary row.
+        primary_key=("as_of_ts", "account_id", "currency"),
+        layer="portfolio",
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        # Cash/NLV are signed (a debit balance is negative) — finiteness only.
+        positive_fields=(),
+        non_negative_fields=(),
+    ),
+    "broker_fills": TableSpec(
+        name="broker_fills",
+        contract=BrokerFill,
+        # The broker's execution id is globally unique, so it is the natural key on its own and a
+        # re-read of the day is idempotent. account_id rides the key too so two accounts' fills
+        # never share a partition row.
+        primary_key=("account_id", "execution_id"),
+        layer="portfolio",
+        # Append-only: a reported execution is immutable (accounting from fills, §6) — a fill,
+        # once booked by the broker, never changes.
+        append_only=True,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        # quantity is the unsigned filled size and price a positive fill price (direction lives in
+        # ``side``); both are non-negative magnitudes.
+        positive_fields=(),
+        non_negative_fields=("quantity", "price"),
     ),
     "baskets": TableSpec(
         name="baskets",

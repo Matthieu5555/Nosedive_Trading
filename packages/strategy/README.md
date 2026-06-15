@@ -121,6 +121,42 @@ the `SignalSnapshot`, now sourced from the persisted infra signal layer via
 `signal_snapshot_from_store`; the *realized*-correlation kill reading is still future, so
 `decide_exit` uses the net-vega-collapse proxy for the position-side kill until then.
 
+## S2 — the index short-put line (course p.128–130, "Allocation Factory")
+
+`s2_put_line.py` is a different shape from S1/S3: not one delta-neutral structure but a **rolling
+line** (TARGET §3 S2) — the deliberate **opposite tail to S1**. It harvests the **index left-tail
+variance premium**: index downside implied vol runs richer than realized, so a systematic line
+that sells one ~25Δ, ~30-day index put per day collects that premium as theta.
+
+- **`PutLineStrategy`** — pure over a `PutLineConfig` (the economic parameters: `index`,
+  `put_tenor`, the steered `put_delta_band`, `line_capacity`, `max_rv_minus_iv`,
+  `exit_delta_ceiling`, from typed platform config, never `.py` literals) plus injected
+  signals/market. It needs **no store-backed data adapter** — construction is config-only, the
+  signal arrives through the existing `signal_snapshot_from_store` bridge, and the open-contract
+  count for the capacity gate is derived by the caller from the booked line.
+  - **Daily sell** — `decide_sell(as_of, signals, open_contracts=…)` is the operational decision:
+    `ENTER` only when the premium is on offer (`decide_entry`: index `RV − IV ≤ max_rv_minus_iv`,
+    i.e. implied richer than realized) **and** the line is under capacity (`line_at_capacity`).
+    `construct` then emits the one short put to add, at the steered `put_delta_band` / `put_tenor`,
+    routed to the **put wing** (ADR 0048). `decide_entry` (the protocol method the §6 harness
+    calls) is the signal half alone, so it stays pure of position state.
+  - **Capacity** — `line_at_capacity(open_contracts)` is the pure cap rule (course: 30 open,
+    rolling so one expires daily); at the cap the line stops adding even with the signal open.
+  - **Steering** — the `put_delta_band` *is* the steering lever: moving it deeper OTM (a lower-Δ
+    band) lowers assignment frequency. Config-driven, deterministic — a rule, not discretion.
+  - **Kill** — `decide_exit` flattens when net delta breaches `exit_delta_ceiling` (the
+    position-side proxy: short puts going ITM as spot falls — the short left tail hitting). With
+    no ceiling configured it **holds and defers** the flatten to the execution kill switch.
+  - **Rebalance** — a no-op: S2 carries its short-put delta intentionally (unlike S1/S3 it is not
+    delta-neutral by rule), so there is nothing to band-hedge.
+
+**Cross-lane seam:** the *enforcing* kill switch and the up-front margin/assignment sizing (the
+course's InvWC number) live in `execution-operational-hardening` (§5.9/§6) — S2 is their first
+consumer; this object emits the decision, execution enforces it. The signal layer must publish
+index-level `IV_VS_REALIZED` for the live feed (like S1's ρ̄ before its source landed); research/
+backtest inject the snapshot directly. **First backtester target** (§7.8): S2 replays through a
+banked stretch + the 2008 stress (course 2021-vs-2008, p.129–130).
+
 ## S3 — the gamma-trading strategy (course p.107–108)
 
 `s3_gamma.py` is the second concrete strategy object (TARGET §3 S3) — and the second consumer
@@ -173,10 +209,11 @@ the exit/rebalance decisions over real `PositionRisk` lines, and the stamp's two
 
 ## Known limitations / out of scope
 
-- **S1 and S3 live here; S2/S4/S5 do not yet.** The spine
+- **S1, S2 and S3 live here; S4/S5 do not yet.** The spine
   (`contract`/`signals`/`strategy`/`harness`) is strategy-agnostic; `s1_dispersion.py` +
-  `dispersion_data.py` (S1) and `s3_gamma.py` + `gamma_data.py` (S3) are the concrete strategies
-  so far. S2/S4/S5's construction/entry/exit rules are still owned by their S-tasks.
+  `dispersion_data.py` (S1), `s2_put_line.py` (S2, config-only), and `s3_gamma.py` +
+  `gamma_data.py` (S3) are the concrete strategies so far. S4/S5's construction/entry/exit rules
+  are still owned by their S-tasks.
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
   layer (`algotrading.infra.signals`) derives and persists it, and `signal_snapshot_from_store`
   bridges the two. A caller can still build a snapshot from any source (research/backtest);

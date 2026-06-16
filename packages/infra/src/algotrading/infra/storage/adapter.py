@@ -17,6 +17,7 @@ from algotrading.infra.contracts.validation import validate_record
 from .compaction import is_compacted_file
 from .errors import AppendOnlyViolation, DuplicateKeyInBatch, VersionedWriteNotAllowed
 from .partitioning import (
+    ADHOC_RUN,
     partition_dir,
     partition_file,
     provider_of,
@@ -535,6 +536,53 @@ class ParquetStore:
                         seen.add(key)
                         found.append(key)
         return found
+
+    def runs_for(
+        self, table: str, trade_date: date, *, provider: str | None = None
+    ) -> list[str]:
+        """Run ids that have data on disk for a run-partitioned table on a trade date.
+
+        Returns the ``run=`` segment values present under ``trade_date=<trade_date>``, newest
+        first by directory mtime. Empty when the table is not run-partitioned, or when its data
+        predates run-partitioning (the legacy flat layout has no ``run=`` level) — callers read
+        that as "no per-run handle here, address this date by the date itself". This is the
+        truth a picker must gate on: only a run id with a ``run=`` directory actually resolves
+        to data, so listing ledger run ids without a partition would offer dead selections.
+
+        The ``_adhoc`` catch-all (writes made without a run id, e.g. backfills) is excluded: it
+        is not a fetch identity, carries no run-state ledger entry, and stays reachable as the
+        default newest-fetch read — so a date holding only ``_adhoc`` data reads as date-only.
+        """
+        spec = spec_for_table(table)
+        if not spec.run_partitioned:
+            return []
+        base = table_dir(self.root, table)
+        if not base.exists():
+            return []
+        if provider is not None:
+            date_roots = [base / f"provider={provider}"]
+        elif spec.provider_partitioned:
+            date_roots = [
+                p for p in base.iterdir() if p.is_dir() and p.name.startswith("provider=")
+            ]
+        else:
+            date_roots = [base]
+        newest: dict[str, float] = {}
+        segment = f"trade_date={trade_date.isoformat()}"
+        for date_root in date_roots:
+            date_dir = date_root / segment
+            if not date_dir.is_dir():
+                continue
+            for run_dir in date_dir.glob("run=*"):
+                if not run_dir.is_dir():
+                    continue
+                run_id = run_dir.name.split("=", 1)[1]
+                if run_id == ADHOC_RUN:
+                    continue
+                mtime = run_dir.stat().st_mtime
+                if run_id not in newest or mtime > newest[run_id]:
+                    newest[run_id] = mtime
+        return [run_id for run_id, _ in sorted(newest.items(), key=lambda kv: -kv[1])]
 
     def list_versions(
         self, table: str, trade_date: date, underlying: str, provider: str | None = None

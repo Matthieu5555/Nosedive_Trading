@@ -28,8 +28,16 @@ def read_for_underlying(
     *,
     trade_date: date | None = None,
     provider: str | None = None,
+    run_id: str | None = None,
 ) -> list[Any]:
+    # ``run_id`` pins the read to one fetch's ``run=`` partition for run-partitioned tables; with
+    # ``run_id=None`` the store resolves the newest fetch (and legacy flat data passes through),
+    # so callers without a selected fetch keep the prior behaviour.
     rows = store.read(
-        table, trade_date=trade_date, underlying=underlying, provider=provider
+        table,
+        trade_date=trade_date,
+        underlying=underlying,
+        provider=provider,
+        run_id=run_id,
     )
     return [row for row in rows if row.underlying == underlying]

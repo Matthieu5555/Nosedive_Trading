@@ -236,9 +236,11 @@ export type QcVerdict = "pass" | "fail" | "unknown";
 
 // One capture run (fetch). Re-fetching a trade date adds another entry — same `date`, distinct
 // `run_id` and `recorded_ts` — so the selector lists fetches newest-first, never collapsing them.
+// `run_id`/`recorded_ts` are null for legacy flat data that predates run-partitioning: there is no
+// addressable run= partition, so the date itself is the only handle and the time is unknown.
 export interface AvailableDate {
   date: string;
-  run_id: string;
+  run_id: string | null;
   recorded_ts: string | null;
   qc: QcVerdict;
 }

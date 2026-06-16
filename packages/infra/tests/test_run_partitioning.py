@@ -67,3 +67,25 @@ def test_non_run_partitioned_table_keeps_the_legacy_layout(tmp_path: Path) -> No
 
     assert not list(tmp_path.glob("**/run=*")), "non-run tables must not gain a run= segment"
     assert store.read("instrument_master"), "legacy read path still returns the rows"
+
+
+def test_runs_for_lists_each_fetch_newest_first(tmp_path: Path) -> None:
+    store = ParquetStore(tmp_path)
+    trade_date = make_record("market_state_snapshots").trade_date
+
+    store.write("market_state_snapshots", [_snapshot(100.0)], run_id="fetch-A")
+    time.sleep(0.01)  # distinct run-dir mtimes so the newest-first ordering is unambiguous
+    store.write("market_state_snapshots", [_snapshot(200.0)], run_id="fetch-B")
+
+    assert store.runs_for("market_state_snapshots", trade_date) == ["fetch-B", "fetch-A"]
+
+
+def test_runs_for_ignores_the_adhoc_catch_all(tmp_path: Path) -> None:
+    store = ParquetStore(tmp_path)
+    trade_date = make_record("market_state_snapshots").trade_date
+    # No run_id → lands under run=_adhoc, which is not an addressable fetch identity, so runs_for
+    # reports nothing selectable even though the default read still resolves the data.
+    store.write("market_state_snapshots", [_snapshot(100.0)])
+
+    assert store.runs_for("market_state_snapshots", trade_date) == []
+    assert [row.reference_spot for row in store.read("market_state_snapshots")] == [100.0]

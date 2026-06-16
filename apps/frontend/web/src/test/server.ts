@@ -3,12 +3,14 @@ import { setupServer } from "msw/node";
 
 import {
   ANALYTICS_AAA,
+  ATTRIBUTION_EMPTY,
   CONSTITUENTS_TWO,
   DELTA_BANDS_32,
   INDICES_SPX_SX5E,
   PORTFOLIOS_ONE,
   PRICE_HISTORY_AAA,
   PRICE_HISTORY_BATCH_TWO,
+  RECONCILIATION_AGREES,
   RECORDED_TWO_DATES,
   SCENARIOS_EMPTY,
   SIGNAL_UNDERLYINGS,
@@ -36,6 +38,8 @@ export const server = setupServer(
   jsonPost("/api/price-history/batch", PRICE_HISTORY_BATCH_TWO),
   jsonGet("/api/risk/portfolios", PORTFOLIOS_ONE),
   jsonGet("/api/risk/scenarios", SCENARIOS_EMPTY),
+  jsonGet("/api/attribution", ATTRIBUTION_EMPTY),
+  jsonGet("/api/reconciliation", RECONCILIATION_AGREES),
   jsonGet("/api/config/delta-bands", { delta_bands: DELTA_BANDS_32 }),
   jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc"] }),
   jsonGet("/api/signals/underlyings", SIGNAL_UNDERLYINGS),

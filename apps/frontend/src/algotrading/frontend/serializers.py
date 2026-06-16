@@ -183,6 +183,38 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
     }
 
 
+_NAMED_ID_PREFIX = "named_"
+
+
+def _named_label(scenario_id: str) -> str:
+    return scenario_id[len(_NAMED_ID_PREFIX) :]
+
+
+def named_scenarios_to_list(rows: list[ScenarioResult]) -> list[dict[str, object]]:
+    named_rows = [row for row in rows if row.scenario_id.startswith(_NAMED_ID_PREFIX)]
+    totals: dict[str, float] = {}
+    leg_counts: dict[str, int] = {}
+    seed: dict[str, ScenarioResult] = {}
+    for row in named_rows:
+        totals[row.scenario_id] = totals.get(row.scenario_id, 0.0) + row.scenario_pnl
+        leg_counts[row.scenario_id] = leg_counts.get(row.scenario_id, 0) + 1
+        seed.setdefault(row.scenario_id, row)
+    return [
+        {
+            "scenario_id": scenario_id,
+            "label": _named_label(scenario_id),
+            "spot_shock": seed[scenario_id].spot_shock,
+            "vol_shock": seed[scenario_id].vol_shock,
+            "rate_shock": seed[scenario_id].rate_shock,
+            "scenario_pnl": totals[scenario_id],
+            "scenario_version": seed[scenario_id].scenario_version,
+            "n_legs": leg_counts[scenario_id],
+            "unit": SCENARIO_PNL_UNIT,
+        }
+        for scenario_id in sorted(totals)
+    ]
+
+
 ATTRIBUTION_TERM_UNIT = "$ (PnL contribution)"
 ATTRIBUTION_RESIDUAL_UNIT = "$ (residual vs full reprice)"
 

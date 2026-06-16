@@ -73,7 +73,14 @@ places. The built operator pages:
   `/api/risk/scenarios`, with the portfolio selector from `/api/risk/portfolios`. The same
   surface rendering (the shared `StressSurface` component) also backs the Basket Builder's
   on-demand **Stress basket** action (`POST /api/basket/scenarios`), so a composed basket can be
-  stressed live without a persisted portfolio.
+  stressed live without a persisted portfolio. The page is meaningful on first load: it also
+  shows the **named historical scenarios** (2008 / COVID-2020 …, the `named` rows on
+  `/api/risk/scenarios`) ranked worst-loss-first (`NamedScenarios`), the **book-level P&L
+  attribution** waterfall (`/api/attribution?level=book`, the shared `AttributionWaterfall`), and
+  the **broker reconciliation** (`/api/reconciliation`, the `Reconciliation` panel) framed plainly
+  as *does the broker agree with our book?* — per-status counts (match / break / broker-only /
+  book-only) and the break lines, with a broker-account selector. A no-broker-account `400` is a
+  labelled empty state, not an error.
 - **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
   disabled until the explicit order-gate work lands.
 
@@ -132,7 +139,13 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/health[?trade_date=YYYY-MM-DD]` — operator dashboard status.
 - `GET /api/surfaces[?underlying=&trade_date=]`, `GET /api/surfaces/underlyings`.
 - `GET /api/risk[?portfolio_id=]`, `GET /api/risk/portfolios`,
-  `GET /api/risk/scenarios[?portfolio_id=]`.
+  `GET /api/risk/scenarios[?portfolio_id=]`. Beside the parametric `surface` and the raw `cells`,
+  the scenarios payload carries an additive `named` list (`n_named`): the **named historical
+  scenarios** (`scenario_id` `named_<label>`) bucketed per scenario, each a labelled compound shock
+  (`spot_shock`/`vol_shock`/`rate_shock`) with its book-summed `scenario_pnl` and `n_legs`. Empty
+  list on an unconfigured / parametric-only grid, so the surface contract stays byte-identical when
+  there are no named scenarios. The correlation family stays dormant (a ρ̄ bump reprices to zero on
+  the live option book until a real `BasketCorrelationExposure` lands — `frontend-named-scenarios-wiring`).
 - `POST /api/basket/risk` — price/risk a composed multi-leg basket as the book-additive sum of
   its legs' stored dollar Greeks (WS 2A; summation, never a reprice).
 - `POST /api/basket/scenarios` — the **on-demand** full-reprice stress surface for a composed

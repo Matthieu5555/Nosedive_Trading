@@ -430,6 +430,15 @@ SURFACE_TOTALS = {
 }
 SURFACE_CENTRE_LEGS = (250.0, -250.0)
 
+NAMED_2008_SPOT = -0.40
+NAMED_2008_VOL = 0.30
+NAMED_2008_RATE = -0.01
+NAMED_2008_LEGS = (-1200.0, -800.0)
+NAMED_2008_PNL = NAMED_2008_LEGS[0] + NAMED_2008_LEGS[1]
+NAMED_COVID_SPOT = -0.34
+NAMED_COVID_VOL = 0.45
+NAMED_COVID_PNL = -1500.0
+
 
 def _surface_id(spot_shock: float, vol_shock: float) -> str:
     return f"surf_s{spot_shock:+.4f}_v{vol_shock:+.4f}"
@@ -485,6 +494,49 @@ def seed_surface_store(root: Path) -> None:
             provenance=prov("fam:spot"),
         )
     )
+    store.write("scenario_results", rows)
+
+
+def seed_named_scenarios_store(root: Path) -> None:
+    store = ParquetStore(root)
+    rows: list[tables.ScenarioResult] = []
+    for contract_key, leg_pnl in (
+        (CALL_100.canonical(), NAMED_2008_LEGS[0]),
+        (GMMA_CALL.canonical(), NAMED_2008_LEGS[1]),
+    ):
+        rows.append(
+            tables.ScenarioResult(
+                valuation_ts=AS_OF,
+                portfolio_id=SURFACE_PORTFOLIO,
+                scenario_id="named_2008",
+                contract_key=contract_key,
+                spot_shock=NAMED_2008_SPOT,
+                vol_shock=NAMED_2008_VOL,
+                time_shock=0.0,
+                scenario_pnl=leg_pnl,
+                scenario_version=SURFACE_VERSION,
+                source_snapshot_ts=AS_OF,
+                provenance=prov(f"named:2008:{contract_key}"),
+                rate_shock=NAMED_2008_RATE,
+            )
+        )
+    rows.append(
+        tables.ScenarioResult(
+            valuation_ts=AS_OF,
+            portfolio_id=SURFACE_PORTFOLIO,
+            scenario_id="named_covid-2020",
+            contract_key=CALL_100.canonical(),
+            spot_shock=NAMED_COVID_SPOT,
+            vol_shock=NAMED_COVID_VOL,
+            time_shock=0.0,
+            scenario_pnl=NAMED_COVID_PNL,
+            scenario_version=SURFACE_VERSION,
+            source_snapshot_ts=AS_OF,
+            provenance=prov("named:covid"),
+            rate_shock=0.0,
+        )
+    )
+    rows.append(surface_cell(0.0, 0.0, 0.0, CALL_100.canonical()))
     store.write("scenario_results", rows)
 
 
@@ -571,6 +623,20 @@ def seeded_client(tmp_path: Path) -> Iterator[TestClient]:
 def surface_client(tmp_path: Path) -> Iterator[TestClient]:
     store_root = tmp_path / "data"
     seed_surface_store(store_root)
+    app_ctx = AppContext(
+        store_root=store_root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root),
+        default_underlying=UNDERLYING,
+    )
+    with TestClient(create_app(app_ctx)) as client:
+        yield client
+
+
+@pytest.fixture
+def named_client(tmp_path: Path) -> Iterator[TestClient]:
+    store_root = tmp_path / "data"
+    seed_named_scenarios_store(store_root)
     app_ctx = AppContext(
         store_root=store_root,
         configs_dir=tmp_path / "configs",

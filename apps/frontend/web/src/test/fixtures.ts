@@ -1,11 +1,13 @@
 import type {
   AnalyticsResponse,
+  AttributionResponse,
   BasketRiskResponse,
   ConstituentsResponse,
   HealthResponse,
   IndicesResponse,
   PriceHistoryBatchResponse,
   PriceHistoryResponse,
+  ReconciliationResponse,
   RecordedDatesResponse,
   RiskResponse,
   SignalsResponse,
@@ -655,5 +657,51 @@ export const SCENARIOS_EMPTY: ScenariosResponse = {
     n_cells: 0,
     has_holes: false,
     n_holes: 0,
+  },
+  named: [],
+  n_named: 0,
+};
+
+export const ATTRIBUTION_EMPTY: AttributionResponse = {
+  trade_date: null,
+  portfolio_id: null,
+  level: "book",
+  contract_key: "__book__",
+  found: false,
+  terms: [],
+  residual: { dollars: null, unit: "$ (residual vs full reprice)" },
+  verdict: null,
+};
+
+export const RECONCILIATION_AGREES: ReconciliationResponse = {
+  account_id: "DUQ574355",
+  as_of_ts: "2026-06-12T16:30:00+00:00",
+  book_source: "fills.jsonl",
+  book_source_ts: "2026-06-12T16:30:00+00:00",
+  threshold_version: "recon-1",
+  ok: true,
+  positions: {
+    counts: { match: 2, break: 0, broker_only: 0, book_only: 0 },
+    n_lines: 2,
+    lines: [],
+  },
+  cash: {
+    counts: { match: 0, break: 0, broker_only: 1, book_only: 0 },
+    n_lines: 1,
+    lines: [
+      {
+        currency: "EUR",
+        broker_cash_balance: 100000,
+        broker_settled_cash: 98000,
+        broker_net_liquidation: 109310,
+        status: "broker_only",
+        threshold_version: "recon-1",
+      },
+    ],
+  },
+  fills: {
+    counts: { match: 2, break: 0, broker_only: 0, book_only: 0 },
+    n_lines: 2,
+    lines: [],
   },
 };

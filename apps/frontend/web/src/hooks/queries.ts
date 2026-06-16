@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  type AttributionResponse,
+  fetchAttribution,
+  fetchReconciliation,
   getJson,
   type HealthResponse,
   type Job,
   postJson,
   type ProvidersResponse,
+  type ReconciliationResponse,
   type RecordedDatesResponse,
   type RunRequest,
 } from "../api";
@@ -94,5 +98,20 @@ export function useRiskScenarios(portfolioId: string) {
   return useQuery({
     queryKey: ["risk", "scenarios", portfolioId] as const,
     queryFn: ({ signal }) => getJson<ScenariosResponse>(`/api/risk/scenarios${query}`, signal),
+  });
+}
+
+export function useBookAttribution(portfolioId: string) {
+  return useQuery<AttributionResponse>({
+    queryKey: ["attribution", "book", portfolioId] as const,
+    queryFn: ({ signal }) =>
+      fetchAttribution({ level: "book", portfolioId: portfolioId || undefined }, signal),
+  });
+}
+
+export function useReconciliation(accountId: string) {
+  return useQuery<ReconciliationResponse>({
+    queryKey: ["reconciliation", accountId] as const,
+    queryFn: ({ signal }) => fetchReconciliation(accountId || undefined, signal),
   });
 }

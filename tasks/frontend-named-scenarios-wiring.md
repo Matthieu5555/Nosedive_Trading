@@ -29,3 +29,20 @@ The §5.4 risk screen renders the parametric spot/vol/(rate) families. It does n
 The correlation half is only *meaningful* once a real ρ̄ exposure lands (the realized-vol ρ̄ signal
 layer — constituent **bars** + the signal set, ADR 0051; **not** constituent option capture). The
 named half stands alone and is the nearer-term piece.
+
+## State (2026-06-16, `frontend-risk-scenarios-rework`)
+**Named half landed.** The Risk Scenarios page (tab 3) was reworked to be meaningful on first
+load. The BFF read is additive and consumes what already exists: `named_scenarios_to_list`
+(serializers.py) buckets the `scenario_id` `named_<label>` rows the EOD cron already persists into
+`scenario_results`, and `/api/risk/scenarios` now returns a `named` list (`n_named`) beside the
+parametric `surface` — byte-identical-when-empty preserved (an unconfigured grid has no `named_`
+rows → `named: []`). No new persisted table, no recompute. The web `NamedScenarios` component shows
+them worst-loss-first with plain captions. The page also surfaces book-level P&L attribution
+(`/api/attribution?level=book`) and broker reconciliation (`/api/reconciliation`).
+
+**Still deferred (unchanged):** the **correlation axis** stays dormant — a ρ̄ bump reprices to zero
+on the live option book until a real `BasketCorrelationExposure` lands; not fabricated. **On-demand
+book-level stress** (a fresh full-reprice over an arbitrary grid for the *persisted book*, no cron)
+has no backend endpoint — the Basket Builder's `POST /api/basket/scenarios` remains the only
+interactive stress path (for a *composed* basket). Building a book-level on-demand stress endpoint
+is the open follow-up if the persisted-portfolio path needs live re-stressing.

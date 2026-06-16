@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from ..deps import CtxDep
 from ..serializers import (
+    named_scenarios_to_list,
     pricing_result_to_dict,
     risk_aggregate_to_dict,
     scenario_result_to_dict,
@@ -47,11 +48,14 @@ def get_scenarios(ctx: CtxDep, portfolio_id: str | None = None) -> JSONResponse:
         rows = [row for row in rows if row.portfolio_id == portfolio_id]
     cells = [scenario_result_to_dict(row) for row in rows]
     surface = scenario_surface_to_dict(rows)
+    named = named_scenarios_to_list(rows)
     return JSONResponse(
         {
             "portfolio_id": portfolio_id,
             "n_cells": len(cells),
             "cells": cells,
             "surface": surface,
+            "named": named,
+            "n_named": len(named),
         }
     )

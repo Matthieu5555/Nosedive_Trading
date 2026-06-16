@@ -3,6 +3,7 @@ import type { Page, Route } from "@playwright/test";
 import type { CoverageData } from "../src/components/CoverageTable";
 import {
   ANALYTICS_AAA,
+  ATTRIBUTION_EMPTY,
   BASKET_RISK_AAA,
   CONSTITUENTS_TWO,
   DELTA_BANDS_32,
@@ -11,6 +12,7 @@ import {
   PORTFOLIOS_ONE,
   PRICE_HISTORY_AAA,
   PRICE_HISTORY_BATCH_TWO,
+  RECONCILIATION_AGREES,
   RECORDED_TWO_DATES,
   SCENARIOS_EMPTY,
   SIGNAL_UNDERLYINGS,
@@ -179,6 +181,8 @@ const ROUTES: Record<string, unknown> = {
   "/api/analytics": ANALYTICS_AAA,
   "/api/risk/portfolios": PORTFOLIOS_ONE,
   "/api/risk/scenarios": SCENARIOS_EMPTY,
+  "/api/attribution": ATTRIBUTION_EMPTY,
+  "/api/reconciliation": RECONCILIATION_AGREES,
   "/api/basket/risk": BASKET_RISK_AAA,
   "/api/ticket/preview": TICKET_AAA,
   "/api/config/delta-bands": { delta_bands: DELTA_BANDS_32 },

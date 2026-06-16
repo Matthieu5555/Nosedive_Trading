@@ -776,3 +776,80 @@ export async function fetchAttribution(
   const suffix = params.toString();
   return getJson<AttributionResponse>(`/api/attribution${suffix ? `?${suffix}` : ""}`, signal);
 }
+
+// --- Broker reconciliation (§7.9): does the broker agree with our book? ---------------------
+// Mirrors apps/frontend/src/algotrading/frontend/reconciliation_view.py::reconciliation_report_to_dict
+// and the /api/reconciliation router body. The BFF runs infra.risk.reconcile_account; the front
+// only displays the diff. The HTTP shape is the seam — keep both sides in lockstep.
+
+export type ReconStatus = "match" | "break" | "broker_only" | "book_only";
+
+// Per-status line counts for one section (positions / cash / fills).
+export interface ReconCounts {
+  match: number;
+  break: number;
+  broker_only: number;
+  book_only: number;
+}
+
+export interface ReconPositionLine {
+  join_key: string;
+  broker_contract_key: string | null;
+  book_contract_key: string | null;
+  broker_quantity: number | null;
+  book_quantity: number | null;
+  quantity_diff: number | null;
+  status: ReconStatus;
+  threshold: number | null;
+  threshold_version: string;
+}
+
+export interface ReconCashLine {
+  currency: string;
+  broker_cash_balance: number | null;
+  broker_settled_cash: number | null;
+  broker_net_liquidation: number | null;
+  status: ReconStatus;
+  threshold_version: string;
+}
+
+export interface ReconFillLine {
+  join_key: string;
+  broker_contract_key: string | null;
+  book_contract_key: string | null;
+  broker_signed_quantity: number | null;
+  book_signed_quantity: number | null;
+  quantity_diff: number | null;
+  status: ReconStatus;
+  threshold: number | null;
+  threshold_version: string;
+}
+
+export interface ReconSection<L> {
+  counts: ReconCounts;
+  n_lines: number;
+  lines: L[];
+}
+
+// The /api/reconciliation body. `ok` is true when nothing breaks across all three sections.
+export interface ReconciliationResponse {
+  account_id: string;
+  as_of_ts: string;
+  book_source: string;
+  book_source_ts: string;
+  threshold_version: string;
+  ok: boolean;
+  positions: ReconSection<ReconPositionLine>;
+  cash: ReconSection<ReconCashLine>;
+  fills: ReconSection<ReconFillLine>;
+}
+
+// Fetch the broker-vs-book reconciliation. `account_id` absent resolves the account on the latest
+// banked broker positions; no broker positions captured is a labelled 400 the ApiError surfaces.
+export async function fetchReconciliation(
+  accountId?: string,
+  signal?: AbortSignal,
+): Promise<ReconciliationResponse> {
+  const suffix = accountId ? `?account_id=${encodeURIComponent(accountId)}` : "";
+  return getJson<ReconciliationResponse>(`/api/reconciliation${suffix}`, signal);
+}

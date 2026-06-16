@@ -2,11 +2,7 @@ import { expect, test } from "vitest";
 
 import { buildTemplate } from "./basketTemplates";
 
-// Expected legs are hand-listed here (not read from the template code). The simple scenario is the
-// three pillars −30Δ put / ATM / +30Δ call. See basketTemplates.ts for the straddle limitation.
-
 test("straddle composes the two ATM legs (long atm call + long atmp put, same strike)", () => {
-  // NOT the ±30Δ pair (that is the strangle) and NOT two atm calls (delta +1, not a straddle).
   expect(buildTemplate("straddle", "AAA", "1m")).toEqual([
     {
       instrument_kind: "option",
@@ -70,7 +66,6 @@ test("risk_reversal is long the +30Δ call, short the −30Δ put (signed +1 / -
 });
 
 test("straddle and strangle do NOT compose identical legs", () => {
-  // The expert's dispositive check: two template buttons that produce the same legs is a bug.
   const straddle = buildTemplate("straddle", "AAA", "1m");
   const strangle = buildTemplate("strangle", "AAA", "1m");
   expect(straddle).not.toEqual(strangle);

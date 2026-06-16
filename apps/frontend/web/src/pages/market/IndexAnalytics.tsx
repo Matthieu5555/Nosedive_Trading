@@ -1,11 +1,3 @@
-// The INDEX's volatility analytics, full width below the constituents row: the 3D surface, the
-// per-maturity dollar-Greeks TRANSPOSE table (Greeks as columns, deltas as rows, one maturity in
-// view via a selector — owner directive 2026-06-15), then the per-maturity smile accordion. The
-// option chain is captured at the index level (SX5E/SPX), so this is index-keyed — not the
-// selected constituent. The 3D nappe, smile, and Greeks all clean degenerate (railed/non-finite/
-// duplicate) points at the RENDER layer only (lib/volRobust) — the served values are never
-// mutated; the backend flag-not-reject policy is honoured, just not plotted as garbage.
-
 import type { AnalyticsResponse, PriceHistoryResponse } from "../../api";
 import { AsyncBlock } from "../../components/AsyncBlock";
 import {
@@ -26,8 +18,7 @@ export function IndexAnalytics({
 }: {
   underlying: string;
   asOf: string;
-  // The index's quote-currency symbol (€ for SX5E), so the monetized Greeks below render in the
-  // right currency rather than a hard-coded "$" (05-math-notes). Defaults to "$".
+
   currency?: string;
 }) {
   const analytics = useFetch<AnalyticsResponse>(

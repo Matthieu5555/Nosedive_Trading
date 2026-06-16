@@ -1,4 +1,3 @@
-// shadcn/ui Tabs — themed onto the operator-console pill-nav grammar. `ui` layer.
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import * as React from "react";
 

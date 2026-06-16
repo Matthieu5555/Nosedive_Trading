@@ -1,17 +1,3 @@
-// Tab 2 — Risk Scenarios (roadmap 2B), wearing Antho's panel grammar.
-//
-// The *persisted* stress view: the cron-written full-reprice surface per configured portfolio
-// (ADR 0006), read back from GET /api/risk/scenarios and reshaped by the BFF — empty until a
-// portfolio is configured and a run lands. Rendered through the shared StressSurface (3D Plotly
-// surface + heatmap, ADR 0030). The *on-demand* counterpart (compose a basket, POST
-// /api/basket/scenarios) lives on the Basket tab beside pricing — it is deliberately NOT
-// duplicated here (owner report 2026-06-12: the two tabs had become near-copies).
-
-// Reference migration (phase-2 hardening): this page is the canonical example contributors copy
-// when reaching for the new shadcn primitives. It composes the `Card` family from src/ui over
-// the existing `.page` panel grammar — Tailwind utilities and legacy CSS coexist on the same
-// page. Note the native <select> is kept on purpose: the e2e/test selectors and the dark-theme
-// styling already work, and a Radix Select would change the accessibility tree for no gain here.
 import { useState } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";

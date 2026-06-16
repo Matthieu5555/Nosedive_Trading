@@ -1,12 +1,3 @@
-"""P0.2 — the $-Greek dollar layer: unit definitions, additivity, and the config flags.
-
-Independent oracle: the dollar numbers are computed by hand here from the ADR-0036 unit
-definitions (written in the comments), never read from the code under test. The two genuine
-convention forks (gamma 1%-vs-$1, theta 365-vs-252) are driven by
-:class:`MonetizationConfig`, and we assert each flag actually changes the output by the
-exact pinned ratio — a flag that is inert would pass a sloppy test and fail this one.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -27,23 +18,15 @@ from algotrading.infra.pricing.dollar_greeks import (
     theta_unit_string,
 )
 
-# Hand fixture (Δ, Γ, Vega, Θ, Rho, S, mult, qty). The expected dollar numbers below are
-# computed by hand from the ADR-0036 definitions, independent of the code under test.
 DELTA = 0.5
 GAMMA = 0.02
 VEGA = 0.10
-THETA = -7.3       # per year
+THETA = -7.3
 RHO = 0.40
 SPOT = 200.0
 MULT = 100.0
 QTY = 3.0
 
-# By hand (per-contract, mult=100, then ×qty=3 for per-position):
-#   Delta$ = Δ·S·mult       = 0.5 * 200 * 100        = 10_000  (per contract)
-#   Gamma$ = Γ·S²/100·mult  = 0.02 * 40000 / 100 *100 =  800   (per contract, one_pct)
-#   Vega$  = vega·0.01·mult  = 0.10 * 0.01 * 100      =    0.10 (per contract)
-#   Theta$ = theta·mult/365  = -7.3 * 100 / 365       =   -2.0  (per contract, 365)
-#   Rho$   = rho·0.01·mult   = 0.40 * 0.01 * 100      =    0.40 (per contract)
 DELTA_DOLLAR_PER_CONTRACT = 10_000.0
 GAMMA_DOLLAR_PER_CONTRACT = 800.0
 VEGA_DOLLAR_PER_CONTRACT = 0.10
@@ -66,7 +49,6 @@ def test_dollar_greek_unit_definitions_match_hand_values_per_contract() -> None:
 
 
 def test_per_position_is_per_contract_times_quantity() -> None:
-    # Position = contract × qty for every dollar number (the Phase-2 additivity invariant).
     assert dollar_delta(DELTA, SPOT, MULT, QTY) == pytest.approx(
         DELTA_DOLLAR_PER_CONTRACT * QTY, abs=TOL
     )
@@ -79,44 +61,34 @@ def test_per_position_is_per_contract_times_quantity() -> None:
 
 
 def test_book_dollar_delta_equals_the_hand_sum_over_a_three_leg_book() -> None:
-    # Risk-aggregation rule (TESTING): a 3-leg book's dollar delta equals the hand sum.
     legs = [
-        (0.5, 100.0, 1.0, 2.0),   # (delta, spot, mult, qty)
+        (0.5, 100.0, 1.0, 2.0),
         (-0.3, 100.0, 1.0, 5.0),
         (0.2, 100.0, 1.0, -1.0),
     ]
-    by_hand = sum(d * s * m * q for (d, s, m, q) in legs)  # 0.5*100*2 + -0.3*100*5 + 0.2*100*-1
-    # = 100 - 150 - 20 = -70
+    by_hand = sum(d * s * m * q for (d, s, m, q) in legs)
     assert by_hand == pytest.approx(-70.0, abs=TOL)
     total = sum(dollar_delta(d, s, m, q) for (d, s, m, q) in legs)
     assert total == pytest.approx(by_hand, abs=TOL)
 
 
 def test_gamma_normalisation_flag_changes_the_dollar_number_by_exactly_100x() -> None:
-    # one_pct (Γ·S²/100) vs one_dollar (Γ·S²): the ratio is exactly 100.
     one_pct = dollar_gamma(GAMMA, SPOT, MULT, normalisation="one_pct")
     one_dollar = dollar_gamma(GAMMA, SPOT, MULT, normalisation="one_dollar")
     assert one_dollar == pytest.approx(one_pct * 100.0, abs=1e-6)
-    assert one_pct != pytest.approx(one_dollar)  # the flag is not inert
+    assert one_pct != pytest.approx(one_dollar)
 
 
 def test_theta_day_count_flag_changes_theta_by_the_day_count_ratio() -> None:
-    # 365 -> 252 scales theta$ by 365/252 (a per-day number on fewer days is larger in mag).
     theta_365 = dollar_theta(THETA, MULT, day_count=365)
     theta_252 = dollar_theta(THETA, MULT, day_count=252)
     assert theta_252 == pytest.approx(theta_365 * (365.0 / 252.0), abs=1e-9)
-    assert theta_252 != pytest.approx(theta_365)  # the flag is not inert
+    assert theta_252 != pytest.approx(theta_365)
 
 
-# Second-order hand fixture (TARGET §7.2). Vanna/Volga/Charm raw, monetized by hand from
-# the module's documented definitions, independent of the code under test.
 VANNA = 0.05
 VOLGA = 1.2
-CHARM = -0.03  # ddelta/dt per year
-# By hand (per-contract, mult=100):
-#   Vanna$ = vanna·S·0.01·mult   = 0.05 * 200 * 0.01 * 100      =  10.0
-#   Volga$ = volga·0.01²·mult    = 1.2 * 0.0001 * 100           =   0.012
-#   Charm$ = charm·S·mult/365    = -0.03 * 200 * 100 / 365      =  -1.643835616...
+CHARM = -0.03
 VANNA_DOLLAR_PER_CONTRACT = 10.0
 VOLGA_DOLLAR_PER_CONTRACT = 0.012
 CHARM_DOLLAR_PER_CONTRACT = -0.03 * 200.0 * 100.0 / 365.0
@@ -141,22 +113,17 @@ def test_second_order_per_position_is_per_contract_times_quantity() -> None:
 
 
 def test_charm_rides_the_theta_day_count_fork() -> None:
-    # Charm is a per-time Greek, so its $-figure scales with the day-count exactly as theta's.
     charm_365 = dollar_charm(CHARM, SPOT, MULT, day_count=365)
     charm_252 = dollar_charm(CHARM, SPOT, MULT, day_count=252)
     assert charm_252 == pytest.approx(charm_365 * (365.0 / 252.0), abs=1e-9)
-    assert charm_252 != pytest.approx(charm_365)  # the flag is not inert
+    assert charm_252 != pytest.approx(charm_365)
 
 
-# RT-Vega hand fixture (ADR 0049). RT-Vega = vega/sqrt(T); its dollar form is per 1 vol
-# point exactly like Vega$, so the hand value mirrors the Vega$ definition.
-RT_VEGA = 0.18  # a running-time vega in per-1.00-of-vol units
-#   RT-Vega$ = rt_vega·0.01·mult = 0.18 * 0.01 * 100 = 0.18 (per contract)
+RT_VEGA = 0.18
 RT_VEGA_DOLLAR_PER_CONTRACT = 0.18
 
 
 def test_dollar_rt_vega_unit_definition_matches_hand_value() -> None:
-    # Per contract, then ×qty for per-position (the same additivity invariant as Vega$).
     assert dollar_rt_vega(RT_VEGA, MULT) == pytest.approx(RT_VEGA_DOLLAR_PER_CONTRACT, abs=TOL)
     assert dollar_rt_vega(RT_VEGA, MULT, QTY) == pytest.approx(
         RT_VEGA_DOLLAR_PER_CONTRACT * QTY, abs=TOL
@@ -164,8 +131,6 @@ def test_dollar_rt_vega_unit_definition_matches_hand_value() -> None:
 
 
 def test_dollar_rt_vega_is_monetized_like_vega() -> None:
-    # RT-Vega$ uses the same per-1-vol-point shock as Vega$ (ADR 0049): for the same raw
-    # number the two dollar conversions coincide.
     assert dollar_rt_vega(VEGA, MULT, QTY) == pytest.approx(dollar_vega(VEGA, MULT, QTY), abs=TOL)
 
 
@@ -176,7 +141,6 @@ def test_dollar_greeks_monetizes_rt_vega_with_a_fixed_unforked_unit() -> None:
         rt_vega=RT_VEGA, config=cfg,
     )
     assert d.dollar_rt_vega == pytest.approx(RT_VEGA_DOLLAR_PER_CONTRACT, abs=TOL)
-    # No config flag touches RT-Vega$: it is the same under any fork.
     cfg_alt = MonetizationConfig(
         version="m", gamma_normalisation="one_dollar", theta_day_count=252
     )
@@ -188,7 +152,7 @@ def test_dollar_greeks_monetizes_rt_vega_with_a_fixed_unforked_unit() -> None:
 
 
 def test_dollar_greeks_monetizes_the_second_order_set_and_forks_charm() -> None:
-    default_cfg = MonetizationConfig(version="m")  # one_pct, 365
+    default_cfg = MonetizationConfig(version="m")
     cfg_252 = MonetizationConfig(version="m", theta_day_count=252)
     base = dict(
         delta=DELTA, gamma=GAMMA, vega=VEGA, theta=THETA, rho=RHO, spot=SPOT, multiplier=MULT,
@@ -198,7 +162,6 @@ def test_dollar_greeks_monetizes_the_second_order_set_and_forks_charm() -> None:
     assert d1.dollar_vanna == pytest.approx(VANNA_DOLLAR_PER_CONTRACT, abs=TOL)
     assert d1.dollar_volga == pytest.approx(VOLGA_DOLLAR_PER_CONTRACT, abs=TOL)
     assert d1.dollar_charm == pytest.approx(CHARM_DOLLAR_PER_CONTRACT, abs=TOL)
-    # Vanna/Volga units are unforked; charm rides the theta day-count fork.
     assert d1.charm_unit == charm_unit_string(365) == "$ delta per calendar day"
     d2 = dollar_greeks(**base, config=cfg_252)
     assert d2.dollar_charm == pytest.approx(d1.dollar_charm * (365.0 / 252.0), abs=1e-9)
@@ -206,17 +169,15 @@ def test_dollar_greeks_monetizes_the_second_order_set_and_forks_charm() -> None:
 
 
 def test_dollar_greeks_reads_the_two_flags_from_the_config() -> None:
-    default_cfg = MonetizationConfig(version="m")  # one_pct, 365
+    default_cfg = MonetizationConfig(version="m")
     one_dollar_cfg = MonetizationConfig(
         version="m", gamma_normalisation="one_dollar", theta_day_count=252
     )
     base = dict(delta=DELTA, gamma=GAMMA, vega=VEGA, theta=THETA, rho=RHO, spot=SPOT, multiplier=MULT)
     d1 = dollar_greeks(**base, config=default_cfg)
     d2 = dollar_greeks(**base, config=one_dollar_cfg)
-    # gamma differs by ×100, theta by the day-count ratio; the flags drove the output.
     assert d2.dollar_gamma == pytest.approx(d1.dollar_gamma * 100.0, abs=1e-6)
     assert d2.dollar_theta == pytest.approx(d1.dollar_theta * (365.0 / 252.0), abs=1e-9)
-    # The unit strings reflect the chosen convention.
     assert d1.gamma_unit == gamma_unit_string("one_pct") == "$ per 1% move"
     assert d1.theta_unit == theta_unit_string(365) == "$ per calendar day"
     assert d2.gamma_unit == "$ per $1 move"

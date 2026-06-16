@@ -1,23 +1,3 @@
-"""The shared fixture library — the rogues' gallery, enumerated and named.
-
-Every pathology the analytics code must survive lives here as a named, immutable
-fixture so edge-case tests in any workstream reference one curated home instead of
-inventing ad-hoc literals. The minimum set seeded here (per spec 01, item 6 and
-TESTING.md):
-
-* three liquid chains with sane two-sided quotes;
-* a crossed/locked chain (bid > ask);
-* a zero-bid / one-sided-quote chain;
-* a single-strike maturity (a degenerate surface slice);
-* a contract with a missing multiplier and one with a missing currency;
-* a stale-option chain (a quote older than the age threshold);
-* negative and zero time-to-expiry instances;
-* a synthetic known-answer chain whose forward, vols, and SVI fit are recoverable.
-
-Look these up by name with :func:`get_fixture`; iterate them all with
-:data:`ALL_FIXTURES`.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -28,11 +8,8 @@ from algotrading.infra.contracts import InstrumentKey
 from .quotes import ChainFixture, OptionQuoteFixture
 from .synthetic import build_synthetic_surface
 
-# A fixed "now" for every fixture, so staleness and time-to-expiry are reproducible.
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 
-# The canonical surface-fit config for tests — the same SVI bounds/tolerances the
-# shipped configs/pricing.yaml carries, so test fits reproduce production fits exactly.
 SURFACE_CONFIG = SurfaceConfig(
     version="surface-test",
     svi_a_bounds=(0.0, 10.0),
@@ -44,8 +21,6 @@ SURFACE_CONFIG = SurfaceConfig(
     svi_max_iterations=200,
 )
 
-# The canonical forward-estimate config for tests — the same heuristics the shipped
-# configs/pricing.yaml carries, so test estimates reproduce production estimates exactly.
 FORWARD_CONFIG = ForwardConfig(
     version="forward-test",
     good_rel_residual=1e-3,
@@ -58,12 +33,10 @@ FORWARD_CONFIG = ForwardConfig(
 NEAR_EXPIRY = date(2026, 6, 19)
 FAR_EXPIRY = date(2026, 9, 18)
 
-# Default stale-quote threshold mirrors configs/qc.yaml (max_quote_age_seconds).
 _STALE_THRESHOLD_SECONDS = 30.0
 
 
 def make_underlying(symbol: str) -> InstrumentKey:
-    """An equity underlying key: no expiry/strike/right, multiplier 1.0."""
     return InstrumentKey(
         underlying_symbol=symbol,
         security_type="STK",
@@ -83,7 +56,6 @@ def make_option(
     multiplier: float = 100.0,
     currency: str = "USD",
 ) -> InstrumentKey:
-    """An option contract key for ``symbol`` at ``strike``/``right``/``expiry``."""
     tag = f"{symbol}-{expiry.isoformat()}-{right}-{strike:g}"
     return InstrumentKey(
         underlying_symbol=symbol,
@@ -111,11 +83,9 @@ def _quote(
 
 
 def _liquid_chain(symbol: str, spot: float) -> ChainFixture:
-    """A liquid chain: five strikes, both rights, sane two-sided quotes."""
     strikes = (spot - 10, spot - 5, spot, spot + 5, spot + 10)
     quotes = []
     for strike in strikes:
-        # Call value falls, put value rises, as strike increases; spreads are tight.
         call_mid = max(spot - strike, 0.0) + 3.0
         put_mid = max(strike - spot, 0.0) + 3.0
         call = make_option(symbol, strike, "C", NEAR_EXPIRY)
@@ -135,7 +105,6 @@ def _liquid_chain(symbol: str, spot: float) -> ChainFixture:
 def _crossed_quote_chain() -> ChainFixture:
     symbol = "AAPL"
     instrument = make_option(symbol, 100.0, "C", NEAR_EXPIRY)
-    # Crossed/locked: bid strictly above ask.
     quotes = (_quote(instrument, 2.50, 2.00, 2.20),)
     return ChainFixture(
         name="crossed_quote",
@@ -152,8 +121,8 @@ def _zero_bid_chain() -> ChainFixture:
     zero_bid = make_option(symbol, 130.0, "C", NEAR_EXPIRY)
     one_sided = make_option(symbol, 135.0, "C", NEAR_EXPIRY)
     quotes = (
-        _quote(zero_bid, 0.0, 0.05, 0.02),  # zero bid
-        _quote(one_sided, None, 0.05, None),  # one-sided: ask only
+        _quote(zero_bid, 0.0, 0.05, 0.02),
+        _quote(one_sided, None, 0.05, None),
     )
     return ChainFixture(
         name="zero_bid",
@@ -224,8 +193,8 @@ def _stale_option_chain() -> ChainFixture:
 
 def _negative_or_zero_tte_chain() -> ChainFixture:
     symbol = "AAPL"
-    expired = make_option(symbol, 100.0, "C", AS_OF.date() - timedelta(days=1))  # negative TTE
-    expiring_today = make_option(symbol, 100.0, "P", AS_OF.date())  # zero TTE
+    expired = make_option(symbol, 100.0, "C", AS_OF.date() - timedelta(days=1))
+    expiring_today = make_option(symbol, 100.0, "P", AS_OF.date())
     quotes = (
         _quote(expired, 2.90, 3.10, 3.00),
         _quote(expiring_today, 2.90, 3.10, 3.00),
@@ -247,7 +216,6 @@ def _synthetic_known_answer() -> ChainFixture:
     for point in surface.points:
         call = make_option(symbol, point.strike, "C", NEAR_EXPIRY)
         put = make_option(symbol, point.strike, "P", NEAR_EXPIRY)
-        # Prices set exactly to the generated values so they invert cleanly.
         quotes.append(_quote(call, point.call_price, point.call_price, point.call_price))
         quotes.append(_quote(put, point.put_price, point.put_price, point.put_price))
     return ChainFixture(
@@ -285,10 +253,8 @@ ALL_FIXTURES: dict[str, ChainFixture] = _build_all()
 
 
 def fixture_names() -> tuple[str, ...]:
-    """Return every fixture name in the library, sorted."""
     return tuple(sorted(ALL_FIXTURES))
 
 
 def get_fixture(name: str) -> ChainFixture:
-    """Return the named fixture, or raise ``KeyError`` if it does not exist."""
     return ALL_FIXTURES[name]

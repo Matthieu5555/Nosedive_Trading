@@ -1,24 +1,3 @@
-"""Aggregate per-position risk lines into net sensitivities, by grouping dimension.
-
-Step 11 aggregates the line-level risk "by instrument, maturity, underlying, and any
-desk grouping key", and the blueprint's ``risk/aggregation.py`` responsibility is to
-"merge positions with analytics results and produce line-level and aggregate
-sensitivities ... support grouping by any configured key such as underlying, maturity
-bucket, or desk category" while "preserv[ing] line-level outputs for audit". The
-headline invariants are that the sum of the lines equals the aggregate and that the
-aggregate does not depend on the order positions arrive in (``tasks/TESTING.md``,
-``documentation/blueprint/08-acceptance-tests.md`` §risk: "Portfolio aggregates
-reconcile to line-level sums"). Both fall out of summing a deterministic, order-free
-reduction over signed, multiplier-scaled per-position sensitivities.
-
-Net sensitivities are the contract-level (``per_unit * multiplier * quantity``) Greeks
-— share/contract-equivalent — so contracts with different multipliers sum coherently.
-Dollar monetization stays at the line (it is currency-tagged and not summed across
-currencies); the aggregate carries the raw net sensitivities the frozen
-:class:`algotrading.infra.contracts.RiskAggregate` contract defines, and the stamp is
-injected at the emission boundary, never read from a clock here.
-"""
-
 from __future__ import annotations
 
 import math
@@ -31,18 +10,12 @@ from algotrading.infra.contracts import RiskAggregate
 
 from .greeks import PositionRisk, net_lots
 
-# The grouping dimensions step 11 names. A desk key is supplied by the caller as an
-# explicit mapping (a desk is an operational grouping risk does not define), handled by
-# ``aggregate_by_desk``; these three are intrinsic to the line.
 GROUP_DIMENSIONS = ("instrument", "maturity", "underlying")
 
-# The desk dimension is config-addressable too, but resolves through a caller-supplied
-# ``contract_key -> desk`` mapping rather than an intrinsic field on the line.
 DESK_DIMENSION = "desk"
 
 
 class AggregationError(Exception):
-    """An aggregation was asked for an unknown grouping dimension."""
 
     def __init__(self, dimension: str) -> None:
         self.dimension = dimension
@@ -54,12 +27,6 @@ class AggregationError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class NetSensitivities:
-    """The net risk of one portfolio group: summed sensitivities plus its lines.
-
-    Keeps the contributing lines so the aggregate stays explainable — debugging
-    starts at the line, and a top-contributor view needs them. Net Greeks are the
-    signed sums of the lines' position-level sensitivities.
-    """
 
     portfolio_id: str
     group_key: str
@@ -71,7 +38,6 @@ class NetSensitivities:
 
 
 def group_key_for(line: PositionRisk, dimension: str) -> str:
-    """The group key string for a line under a named intrinsic dimension."""
     if dimension == "instrument":
         return f"instrument:{line.contract_key}"
     if dimension == "maturity":
@@ -82,7 +48,6 @@ def group_key_for(line: PositionRisk, dimension: str) -> str:
 
 
 def _by_contract(lines: list[PositionRisk]) -> tuple[PositionRisk, ...]:
-    """Lines in a fixed order (by contract key), so a group is order-free."""
     return tuple(sorted(lines, key=lambda line: line.contract_key))
 
 
@@ -103,14 +68,6 @@ def _net_over(
 def aggregate_lines(
     lines: Iterable[PositionRisk], *, portfolio_id: str, dimension: str
 ) -> list[NetSensitivities]:
-    """Group lines by an intrinsic dimension and net each group.
-
-    The result is ordered by ``group_key`` and each group's lines are ordered by
-    contract key, so the output is a pure function of the input *set* — shuffling
-    the input cannot change it (the reordering-invariance property test binds here).
-    Same-contract lots are netted first (:func:`net_lots`), so duplicate lots of one
-    contract collapse to a single canonical line rather than ordering by arrival.
-    """
     if dimension not in GROUP_DIMENSIONS:
         raise AggregationError(dimension)
     buckets: dict[str, list[PositionRisk]] = {}
@@ -125,13 +82,6 @@ def aggregate_lines(
 def aggregate_by_desk(
     lines: Iterable[PositionRisk], *, portfolio_id: str, desk_of: Mapping[str, str]
 ) -> list[NetSensitivities]:
-    """Group lines by a caller-supplied desk key (contract_key -> desk name).
-
-    A line whose contract is not in ``desk_of`` falls into the ``"desk:unassigned"``
-    group rather than being silently dropped — an unmapped position is a visible
-    fact, not a hole in the book. Same-contract lots are netted first, so a desk's
-    lines are one-per-contract in canonical order.
-    """
     buckets: dict[str, list[PositionRisk]] = {}
     for line in net_lots(lines):
         desk = desk_of.get(line.contract_key, "unassigned")
@@ -149,14 +99,6 @@ def aggregate_by_key(
     key: str,
     desk_of: Mapping[str, str] | None = None,
 ) -> list[NetSensitivities]:
-    """Config-driven dispatch: aggregate by a named grouping key.
-
-    ``instrument``/``maturity``/``underlying`` resolve to the intrinsic
-    :func:`aggregate_lines`; ``desk`` resolves to :func:`aggregate_by_desk` and
-    requires ``desk_of``. An unknown key is an error (no silent fallback) — this is
-    the seam the configured ``grouping_keys`` in :mod:`config` drive, so a typo in
-    config fails loudly before any snapshot is published.
-    """
     if key == DESK_DIMENSION:
         if desk_of is None:
             raise AggregationError(
@@ -167,11 +109,6 @@ def aggregate_by_key(
 
 
 def resolve_grouping_key(key: str) -> Callable[..., list[NetSensitivities]]:
-    """Resolve a configured grouping-key name to its aggregator, or fail loudly.
-
-    Used to validate ``config.grouping_keys`` at load time so an unknown key is caught
-    before any snapshot is built, not at aggregation time.
-    """
     known = (*GROUP_DIMENSIONS, DESK_DIMENSION)
     if key not in known:
         raise AggregationError(key)
@@ -187,12 +124,6 @@ def risk_aggregate(
     source_snapshot_ts: datetime,
     provenance: ProvenanceStamp,
 ) -> RiskAggregate:
-    """Project net sensitivities into the frozen ``RiskAggregate`` contract.
-
-    The provenance stamp is built by the caller (with an injected ``calc_ts``) and
-    passed in, so this stays a pure function of its inputs with no wall-clock read —
-    the discipline that makes a risk row reproduce byte-for-byte in replay.
-    """
     return RiskAggregate(
         valuation_ts=valuation_ts,
         portfolio_id=net.portfolio_id,

@@ -77,22 +77,19 @@ const EMPTY: CoverageData = {
 test("renders the captured-expiries rows and the whole per-tenor grid", () => {
   render(<CoverageTable data={POPULATED} />);
 
-  // Captured expiries: one row per expiry with the hand-built counts.
   const expiriesTable = screen.getByRole("table", { name: /captured expiries/i });
-  const expiryRows = within(expiriesTable).getAllByRole("row").slice(1); // drop header
+  const expiryRows = within(expiriesTable).getAllByRole("row").slice(1);
   expect(expiryRows).toHaveLength(2);
   expect(within(expiryRows[0]).getByText("2026-06-19")).toBeInTheDocument();
-  // Strike span is two strikes in scientific notation, sharing one "$" unit: 7315 → 7.315 × 10³,
-  // 7470 → 7.47 × 10³. The strike counts (32 / 32) are cardinalities and stay plain.
+
   expect(within(expiryRows[0]).getByText("7.315 × 10³–7.47 × 10³ $")).toBeInTheDocument();
   expect(within(expiryRows[0]).getByText("32 / 32")).toBeInTheDocument();
   expect(within(expiryRows[1]).getByText("3 / 0")).toBeInTheDocument();
 
-  // Per-tenor coverage: every pinned tenor shows, empty tenors included as labeled rows.
   const tenorTable = screen.getByRole("table", { name: /per-tenor coverage/i });
   const tenorRows = within(tenorTable).getAllByRole("row").slice(1);
   expect(tenorRows).toHaveLength(4);
-  // 1m is an empty/failing tenor — it is SHOWN (measured 0), not omitted.
+
   const oneMonth = tenorRows.find((r) => within(r).queryByText("1m"));
   expect(oneMonth).toBeDefined();
   expect(oneMonth!.getAttribute("data-status")).toBe("fail");
@@ -108,14 +105,14 @@ test("renders the per-constituent capture-outcome ledger, heaviest-first with la
   render(<CoverageTable data={POPULATED} />);
 
   const table = screen.getByRole("table", { name: /constituent capture outcomes/i });
-  const rows = within(table).getAllByRole("row").slice(1); // drop header
+  const rows = within(table).getAllByRole("row").slice(1);
   expect(rows).toHaveLength(3);
-  // Rank order: ASML(1) captured, SAN1(2) unentitled, ENEL(3) no_options.
+
   expect(within(rows[0]).getByText("ASML")).toBeInTheDocument();
   expect(rows[0].getAttribute("data-outcome")).toBe("captured");
   expect(rows[0].getAttribute("data-status")).toBe("pass");
-  expect(within(rows[0]).getByText("6")).toBeInTheDocument(); // n_options
-  // A non-captured name is shown as a failing row — the entitlement gap is visible, not hidden.
+  expect(within(rows[0]).getByText("6")).toBeInTheDocument();
+
   expect(within(rows[1]).getByText("SAN1")).toBeInTheDocument();
   expect(rows[1].getAttribute("data-outcome")).toBe("unentitled");
   expect(rows[1].getAttribute("data-status")).toBe("fail");
@@ -132,7 +129,7 @@ test("omits the constituent table when there are no per-name outcomes", () => {
 test("renders a labeled empty state when nothing was captured", () => {
   render(<CoverageTable data={EMPTY} />);
   expect(screen.getByText(/No capture for this date/i)).toBeInTheDocument();
-  // The expiries table is absent, but the per-tenor grid still renders.
+
   expect(screen.queryByRole("table", { name: /captured expiries/i })).not.toBeInTheDocument();
   expect(screen.getByRole("table", { name: /per-tenor coverage/i })).toBeInTheDocument();
 });

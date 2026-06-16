@@ -1,14 +1,3 @@
-"""Broker-agnostic connectivity: the backoff supervisor, clocks, typed errors.
-
-The supervisor (:class:`SessionSupervisor`) is the one home for reconnect-with-backoff, the
-client-id convention, and loss-aware :class:`GapInterval` recording — it sits *beneath* the
-push :class:`~algotrading.infra.collectors.MarketDataAdapter` (ADR 0027) and manages only the
-session lifecycle, never a tick type or a pull loop. Import it, an injected :class:`Clock`, the
-market-data entitlement policy, and the content-addressed :func:`content_event_id` (the
-idempotency primitive, re-exported from the frozen ``contracts`` seam) from here. No broker SDK
-type is exported — the concrete live adapters live in the ``infra-{ibkr,saxo,deribit}`` leaves.
-"""
-
 from __future__ import annotations
 
 from algotrading.infra.contracts import content_event_id

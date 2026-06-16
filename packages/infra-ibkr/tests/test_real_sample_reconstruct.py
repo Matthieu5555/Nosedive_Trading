@@ -1,14 +1,3 @@
-"""The committed real IBKR samples replay into deterministic raw events — offline, no Gateway.
-
-Guards the redistributable demo artifacts (``samples/spy_real_2026-06-04.json`` and
-``samples/asml_real_2026-06-05.json`` — real delayed-IBKR slices), giving the repo a second
-provider's data alongside the Saxo sample. Unlike the adapter/discovery tests, this needs no
-``ib_async``: it exercises the captured raw layer, not the live wiring, so it runs in the gate.
-The full surface reconstruction (``reconstruct_day`` → multi-maturity SVI) lands when the
-analytics pipeline relocates into ``packages/infra`` (ADR 0021); until then this guards the
-deterministic raw-event replay that is available end to end.
-"""
-
 from __future__ import annotations
 
 from decimal import Decimal

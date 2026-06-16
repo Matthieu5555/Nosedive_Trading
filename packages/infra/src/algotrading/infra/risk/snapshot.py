@@ -1,17 +1,3 @@
-"""The canonical risk snapshot: line-level and aggregate risk with its provenance.
-
-The single object the rest of the system (scenarios, dashboards, the risk API) consumes. It
-bundles the per-line breakdown, the published aggregates grouped by each configured key, an
-optional reconciliation report, and the provenance that makes it reproducible. The blueprint
-mandates exactly this versioning (``risk/aggregation.py``: "Version the risk snapshot with
-analytics version and position source timestamp"; "Preserve line-level outputs for audit").
-
-The snapshot is a pure function of its inputs — positions, the resolved valuations, the
-analytics version, and the position source timestamp — so a stored result regenerates from a
-named, dated book. No clock is read here; the position source timestamp and analytics version
-are the time anchors, and ``code_version`` records the code that produced it.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -31,15 +17,11 @@ _DISTRIBUTION = "algotrading-infra"
 
 
 class MissingValuationError(KeyError):
-    """A position had no resolved valuation — risk cannot be computed for that line.
-
-    A line that cannot be priced is a gap in the risk picture, never silently dropped.
-    """
+    pass
 
 
 @dataclass(frozen=True, slots=True)
 class GroupedRisk:
-    """Net aggregates for one grouping key (e.g. ``underlying``), in sorted group order."""
 
     key: str
     groups: tuple[NetSensitivities, ...]
@@ -47,7 +29,6 @@ class GroupedRisk:
 
 @dataclass(frozen=True, slots=True)
 class RiskSnapshot:
-    """Line-level and aggregate risk plus provenance — reproducible from a dated book."""
 
     lines: tuple[PositionRisk, ...]
     aggregations: tuple[GroupedRisk, ...]
@@ -59,7 +40,6 @@ class RiskSnapshot:
     code_version: str
 
     def grouped(self, key: str) -> tuple[NetSensitivities, ...]:
-        """Aggregates published under grouping ``key``."""
         for grouped in self.aggregations:
             if grouped.key == key:
                 return grouped.groups
@@ -77,15 +57,6 @@ def build_risk_snapshot(
     desk_of: Mapping[str, str] | None = None,
     steps: int | None = None,
 ) -> RiskSnapshot:
-    """Build the canonical risk snapshot: lines, the configured aggregates, optional
-    reconciliation, and provenance. Deterministic in its inputs.
-
-    Each position is joined to its resolved valuation and priced into a
-    :class:`PositionRisk` line; a position with no valuation raises
-    :class:`MissingValuationError` (named), never a silent drop. Aggregates are produced
-    for every key in ``params.grouping_keys`` via the config-driven
-    :func:`aggregation.aggregate_by_key`; the ``desk`` key needs ``desk_of``.
-    """
     lines: list[PositionRisk] = []
     for pos in positions.positions:
         valuation = valuations.get(pos.contract_key)

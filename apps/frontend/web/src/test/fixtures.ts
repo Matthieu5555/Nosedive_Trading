@@ -1,6 +1,3 @@
-// Hand-built API fixtures for component tests. Values are chosen independently (not copied
-// from the backend's output) so a test asserts the page renders the contract faithfully.
-
 import type {
   AnalyticsResponse,
   BasketRiskResponse,
@@ -151,10 +148,6 @@ export const HEALTH_DEGRADED: HealthResponse = {
   is_healthy: false,
 };
 
-// --- WS 1I front-page fixtures (values chosen independently of the backend output) ---
-
-// The enabled-index set the selector is driven by (GET /api/indices). SPX leads so the page's
-// default index matches the SPX-centric recorded/analytics fixtures below.
 export const INDICES_SPX_SX5E: IndicesResponse = {
   indices: [
     { symbol: "SPX", name: "S&P 500", currency: "USD" },
@@ -162,8 +155,6 @@ export const INDICES_SPX_SX5E: IndicesResponse = {
   ],
 };
 
-// The platform-wide delta-band axis the leg selector consumes (GET /api/config/delta-bands).
-// The pinned ±30Δ pas-2 grid: 15 puts → atm/atmp → 15 calls = 32, chosen independently here.
 export const DELTA_BANDS_32: string[] = [
   "30dp",
   "28dp",
@@ -220,7 +211,7 @@ export const CONSTITUENTS_TWO: ConstituentsResponse = {
   index: "SPX",
   as_of: "2026-05-29",
   n_constituents: 2,
-  // Already price-first: AAA (close 192) before BBB (close 45.5).
+
   constituents: [
     {
       instrument_key: "AAA",
@@ -360,14 +351,10 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
       ],
     },
   ],
-  // One fitted maturity → no dense surface (a smile, not a surface); the front builds the coarse
-  // surface from the band points. The dense-surface path is exercised by ANALYTICS_AAA_DENSE.
+
   surface: null,
 };
 
-// The surface-grid fallback day (no projected analytics yet): the smile axis is moneyness
-// buckets, declared as such (F-BFF-04), and the attached SVI slice is a degenerate
-// calibration (rho railed to its bound, not converged, arb breached — the live shape).
 export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
   underlying: "AAA",
   trade_date: "2026-05-29",
@@ -413,9 +400,6 @@ export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
   surface: null,
 };
 
-// The dense-surface day: ≥2 fitted slices → the BFF reconstructs the smooth (maturity ×
-// log-moneyness) lattice the 3D nappe renders, instead of the sparse band points. A tiny 2×3
-// grid keeps the fixture legible; the real payload is 40×41.
 export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
   ...ANALYTICS_AAA,
   surface: {
@@ -430,11 +414,6 @@ export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
   },
 };
 
-// A DEGENERATE analytics day (the live 2026-06-15 SX5E 10d shape, in miniature): one maturity
-// whose smile carries an absurd railed IV (108%), a NaN IV, and a duplicate log-moneyness (the
-// duplicated 0.0 delta), plus the matching railed Greeks points — so a test can assert the front
-// renders the GOOD points clamped/flagged, never blown. The dense surface likewise carries a
-// railed cell (1.4) and a duplicate column. Values are chosen independently of the backend.
 export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
   underlying: "AAA",
   trade_date: "2026-05-29",
@@ -447,7 +426,7 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
       smile: {
         axis_type: "delta",
         deltas: [-0.3, -0.14, -0.12, 0.0, 0.0, 0.3],
-        // -0.14/-0.12 are the railed absurd IVs; the second 0.0 is the duplicate delta; one NaN.
+
         implied_vols: [0.19, 1.08, Number.NaN, 0.152, 0.152, 0.143],
         log_moneyness: [-0.03, -0.18, -0.25, 0.0, 0.0, 0.03],
       },
@@ -476,8 +455,6 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
         provenance: PROV,
       },
       points: [
-        // A GOOD ATM-ish point and two RAILED points (IV out of band): the transpose must flag the
-        // railed rows and the term structure must exclude them, but neither may blow up.
         {
           delta_band: "30dp",
           target_delta: -0.3,
@@ -502,7 +479,7 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
           log_moneyness: -0.18,
           strike: 162.0,
           forward_price: 195.0,
-          implied_vol: 1.08, // railed — out of the sane band
+          implied_vol: 1.08,
           total_variance: 0.03,
           price: 0.4,
           metrics: {
@@ -520,7 +497,7 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
           log_moneyness: -0.25,
           strike: 152.0,
           forward_price: 195.0,
-          implied_vol: 1.4, // railed — out of the sane band
+          implied_vol: 1.4,
           total_variance: 0.05,
           price: 0.3,
           metrics: {
@@ -539,7 +516,7 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
     log_moneyness: [-0.2, -0.1, -0.1, 0.0, 0.1],
     maturity_years: [0.027, 1.0],
     implied_vol: [
-      [1.4, 0.55, 0.55, 0.15, 0.11], // short slice rails to 1.4 in the deep put wing
+      [1.4, 0.55, 0.55, 0.15, 0.11],
       [0.24, 0.22, 0.22, 0.21, 0.2],
     ],
     model_version: "svi-test",
@@ -547,8 +524,6 @@ export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {
   },
 };
 
-// A priced long strangle on AAA (WS 2A): long 30Δ call + long 30Δ put. The aggregate dollar
-// Greeks are the hand sum of the two legs' contributions (delta cancels, gamma/vega/theta/rho add).
 export const BASKET_RISK_AAA: BasketRiskResponse = {
   basket_id: "strangle-AAA",
   trade_date: "2026-05-29",
@@ -612,11 +587,8 @@ export const BASKET_RISK_AAA: BasketRiskResponse = {
   n_gaps: 0,
 };
 
-// --- Risk-scenarios shell fixtures (shared by the msw default handlers and the page tests) ---
-
 export const PORTFOLIOS_ONE = { portfolios: ["CORE-INDEX-OPTIONS"] };
 
-// No persisted stress surface yet: empty axes, zero cells — the labelled-empty page state.
 export const SCENARIOS_EMPTY: ScenariosResponse = {
   portfolio_id: null,
   n_cells: 0,

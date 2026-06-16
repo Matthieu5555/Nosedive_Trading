@@ -1,17 +1,3 @@
-// Tab 1 — the data foundation (roadmap 1I), wearing Antho's panel grammar.
-//
-// Page-1 layout (price-first):
-//   • the INDEX's own daily OHLC candlestick leads the page;
-//   • below, a master-detail row — the scrollable point-in-time constituent list on the LEFT,
-//     the selected ticker's detail on the RIGHT (its daily candlestick, 3D IV surface, and a
-//     per-maturity accordion of the smile + dollar Greeks in decimal AND currency).
-//
-// This file is the page SHELL only: index/as-of selection state and the composition of the
-// self-fetching panels (IndexHistory, ConstituentsWorkspace, IndexAnalytics, CoveragePanel),
-// each of which owns its own BFF fetch and its own ErrorBoundary — so one panel throwing (a
-// Plotly choke on a degenerate vol-surface cell, say) degrades to a labelled tile and the rest
-// of the page survives, instead of unwinding the whole tab to a blank screen.
-
 import { useEffect, useMemo, useState } from "react";
 
 import type { IndicesResponse, RecordedDatesResponse } from "../api";
@@ -24,22 +10,15 @@ import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { IndexAnalytics, IndexHistory } from "./market/IndexAnalytics";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
-// Re-exported here because the test imports it from `./Market`; the cache itself lives with the
-// batch hook it guards (`./market/constituentHistory`).
 export { resetConstituentHistoryBatchCacheForTests } from "./market/constituentHistory";
 
 export function MarketPage() {
-  // The index selector is driven by the registry's ENABLED set (GET /api/indices) — never a
-  // hard-coded list. Parking an index (enabled:false) drops it here automatically and enabling
-  // one makes it appear, so the selector can never offer an index the backend is not capturing.
   const indices = useFetch<IndicesResponse>("/api/indices");
-  // Memoised so its identity is stable across renders (the `?? []` would otherwise be a fresh
-  // array each render and re-fire the selection effect below).
+
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
 
   const [index, setIndex] = useState("");
-  // Land on the first enabled index as soon as the registry list arrives, and keep the
-  // selection valid if the enabled set ever changes (e.g. an index is parked) under it.
+
   useEffect(() => {
     if (indexOptions.length === 0) return;
     if (!index || !indexOptions.some((o) => o.symbol === index)) {
@@ -50,8 +29,6 @@ export function MarketPage() {
   const [asOf, setAsOf] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
 
-  // Only fetch recorded dates once the index is resolved from the registry — an empty path
-  // skips the fetch, so the page never briefly queries a non-existent / default index.
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );

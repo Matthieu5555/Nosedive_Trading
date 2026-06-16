@@ -1,19 +1,8 @@
-// The leg-entry grid for the basket builder (TanStack Table, ADR 0030).
-//
-// Lists the composed legs (each removable) and an add-leg form. Leg entry is validated
-// user-side before it is accepted — the side must agree with the quantity sign (a "long" leg is
-// positive, "short" negative) and the quantity must be non-zero — mirroring the backend contract
-// so a malformed leg is caught here, not only at the BFF. An option leg must name its grid cell
-// (tenor + delta band); a stock leg must not.
-
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useState } from "react";
 
 import type { BasketLegInput, InstrumentKind, LegSide } from "../api";
 
-// A minimal fallback band axis for when the platform axis (GET /api/config/delta-bands) has not
-// arrived yet (loading) or failed — so the leg form is still usable. The live axis is threaded in
-// from the page as a prop; this is never the primary source.
 const FALLBACK_BANDS = ["30dp", "20dp", "10dp", "atm", "atmp", "10dc", "20dc", "30dc"];
 
 function validateLeg(leg: BasketLegInput): string | null {

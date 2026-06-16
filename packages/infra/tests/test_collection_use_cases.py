@@ -1,20 +1,3 @@
-"""The four collection-coupled use cases on the one unified collector (C6 / ADR 0027).
-
-Covers the use cases the merge had deferred behind the dual collection seam, now ported onto
-the single push ``RawCollector``:
-
-* ``surface_job.build_surface`` — capture quotes, run the actor, summarize the SVI surface;
-* ``provider_flow.run_provider_flow`` — capture from several providers into one raw layer;
-* live==replay byte-identity *through the unified collector* — a day captured live and the
-  same day replayed through the collector produce byte-identical raw partitions, and the same
-  actor over either yields identical derived outputs (extends the C3 replay gate to the live
-  capture path).
-
-Each drives a fake push adapter (no broker) and asserts a real artifact. The expected counts
-are hand-derived from the scripted ticks (an independent oracle); the byte-identity check reads
-raw partition bytes off disk, not decoded records.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -52,7 +35,6 @@ _AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 _CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
 _TRADE_DATE = _AS_OF.date()
 _CONFIG_HASH = {"cfg": "cfg-hash-usecases"}
-# Saxo's delayed-feed market-data type code, recorded on the surface job's feed status.
 _MARKET_DATA_TYPE = 3
 
 
@@ -81,11 +63,6 @@ def _master(instrument: InstrumentKey) -> InstrumentMaster:
 
 
 def _capture_ticks(chain: ChainFixture) -> tuple[list[BrokerTick], list[InstrumentMaster]]:
-    """A live-feed bid/ask/last tick script for a chain, plus the masters to value it.
-
-    Sequence is assigned by the shared per-(instrument, field) rule, so the captured ids are
-    stable and a replay re-derives them identically.
-    """
     spot = chain.underlying_spot
     counters: dict[tuple[str, str], int] = {}
     ticks: list[BrokerTick] = []
@@ -110,7 +87,6 @@ def _capture_ticks(chain: ChainFixture) -> tuple[list[BrokerTick], list[Instrume
 
 
 class _FakePushAdapter:
-    """A push MarketDataAdapter that replays a fixed tick list when driven — no broker."""
 
     def __init__(self, ticks: Sequence[BrokerTick]) -> None:
         self._ticks = list(ticks)
@@ -128,9 +104,6 @@ class _FakePushAdapter:
             self._tick_cb(tick)  # type: ignore[misc]
 
 
-# --------------------------------------------------------------------------- #
-# surface_job.build_surface                                                    #
-# --------------------------------------------------------------------------- #
 def test_build_surface_captures_quotes_and_fits_a_surface(tmp_path: Path) -> None:
     chain = get_fixture("synthetic_known_answer")
     ticks, masters = _capture_ticks(chain)
@@ -147,12 +120,10 @@ def test_build_surface_captures_quotes_and_fits_a_surface(tmp_path: Path) -> Non
         clock=ManualClock(start=_AS_OF), correlation_id="surface-corr",
     )
 
-    assert result.collection.event_count == len(ticks)  # every scripted quote captured
-    assert not result.outputs.is_empty()  # the actor ran over the captured raw layer
-    assert result.fitted_maturities >= 1  # at least one SVI smile calibrated
-    # The feed status records what was subscribed/producing even without live diagnostics.
+    assert result.collection.event_count == len(ticks)
+    assert not result.outputs.is_empty()
+    assert result.fitted_maturities >= 1
     assert result.market_data_status.subscribed > 0
-    # The surface params were persisted (persist defaults to True).
     assert len(store.read("surface_parameters")) > 0
 
 
@@ -171,15 +142,10 @@ def test_build_surface_status_reflects_no_diagnostics(tmp_path: Path) -> None:
         clock=ManualClock(start=_AS_OF), correlation_id="surface-corr",
         diagnostics=None,
     )
-    # With no diagnostics the requested type is echoed and there are no classified notices.
     assert result.market_data_status.requested_type == _MARKET_DATA_TYPE
 
 
-# --------------------------------------------------------------------------- #
-# provider_flow.run_provider_flow                                              #
-# --------------------------------------------------------------------------- #
 def test_provider_flow_captures_two_providers_into_one_raw_layer(tmp_path: Path) -> None:
-    # Two providers (named distinctly) capture into the same store through the one collector.
     chain = get_fixture("synthetic_known_answer")
     ticks, _ = _capture_ticks(chain)
     keys = sorted({t.instrument_key for t in ticks})
@@ -200,18 +166,13 @@ def test_provider_flow_captures_two_providers_into_one_raw_layer(tmp_path: Path)
     )
 
     assert len(result.captures) == 2
-    # Both provider sessions wrote into the one raw layer; the union equals all scripted ticks.
     all_events = store.read("raw_market_events")
     assert len(all_events) == len(ticks)
     assert result.total_events == len(ticks)
-    # Each provider's events are attributable by its session id.
     sessions = {e.session_id for e in all_events}
     assert sessions == {f"deribit-{_TRADE_DATE.isoformat()}", f"saxo-{_TRADE_DATE.isoformat()}"}
 
 
-# --------------------------------------------------------------------------- #
-# live == replay, byte-identical, through the unified collector                #
-# --------------------------------------------------------------------------- #
 def _partition_bytes(store: ParquetStore, table: str) -> dict[str, bytes]:
     base = table_dir(store.root, table)
     if not base.exists():
@@ -223,7 +184,6 @@ def _partition_bytes(store: ParquetStore, table: str) -> dict[str, bytes]:
 
 
 def _capture_live(store: ParquetStore, ticks: list[BrokerTick], keys: list[str], clock_start):  # type: ignore[no-untyped-def]
-    """Capture a day live through the one unified collector and return the stored events."""
     adapter = _FakePushAdapter(ticks)
     collector = RawCollector(
         store=store, adapter=adapter, session_id="live-day",
@@ -238,9 +198,6 @@ def _capture_live(store: ParquetStore, ticks: list[BrokerTick], keys: list[str],
 def test_replaying_a_captured_day_into_the_same_store_is_a_byte_identical_no_op(
     tmp_path: Path,
 ) -> None:
-    # The raw layer's byte-identity guarantee under re-capture: replaying a captured day through
-    # the SAME collector into the SAME store writes nothing new (the content-addressed ids are
-    # already present), so the raw partition bytes are unchanged — exactly-once.
     chain = get_fixture("synthetic_known_answer")
     ticks, masters = _capture_ticks(chain)
     keys = [m.instrument.canonical() for m in masters]
@@ -265,10 +222,6 @@ def test_replaying_a_captured_day_into_the_same_store_is_a_byte_identical_no_op(
 def test_live_and_replay_capture_yield_identical_content_and_derived_outputs(
     tmp_path: Path,
 ) -> None:
-    # live==replay on the unified collector: a day captured live and the same day replayed into a
-    # fresh store carry identical content (event ids and values — receipt_ts honestly records when
-    # each process received the tick), and the SAME actor over either raw layer yields identical
-    # derived outputs (the C3 byte-identical gate, now extended to the live capture path).
     chain = get_fixture("synthetic_known_answer")
     ticks, masters = _capture_ticks(chain)
     instruments = [m.instrument for m in masters]
@@ -292,7 +245,6 @@ def test_live_and_replay_capture_yield_identical_content_and_derived_outputs(
         (e.event_id, e.value) for e in replay_events
     ]
 
-    # The same actor over either captured raw layer yields identical derived outputs.
     live_out = run_analytics(
         live_events, [], instruments=instruments, masters=masters,
         config=_config(), config_hashes=_CONFIG_HASH, as_of=_AS_OF, calc_ts=_CALC_TS,

@@ -1,21 +1,3 @@
-"""IBKR Client Portal market-data adapter (ADR 0024) — REST snapshot + WS stream → RawMarketEvent.
-
-The adapter binds a set of subscribed instruments (our instrument key ↔ IBKR conid) and turns
-Client Portal market data into our immutable ``RawMarketEvent`` rows via :mod:`.cp_rest_normalize`.
-Two ingestion modes share that one normalizer:
-
-* :meth:`snapshot` — a REST pull through the shared snapshot engine (:mod:`.cp_rest_snapshot`),
-  inheriting its URI-safe conid batching (the HTTP-414 fix) and its cold-snapshot warm-up, so a
-  freshly-subscribed line returns marks instead of metadata. Fully exercised in CI against a fake
-  transport; this is the verifiable REST market-data path.
-* :meth:`subscribe` / :meth:`_handle_frame` — the live WebSocket stream (``smd+conid``). The frame
-  parsing is unit-tested; the socket itself runs only on a machine with a live CP Gateway.
-
-**Read-only invariant (ADR 0024 §4):** the adapter only ever touches ``/iserver/marketdata/*`` and
-the WS market-data topics — never an order endpoint. The read-only test asserts this against the
-fake transport.
-"""
-
 import json
 import threading
 import time
@@ -31,13 +13,11 @@ from .cp_rest_snapshot import snapshot_with_warmup
 from .cp_rest_wire import SnapshotRow
 from .market_fields import to_datetime
 
-# The market-data field tags the adapter subscribes/snapshots — the ones the normalizer maps.
 _REQUEST_FIELDS: tuple[str, ...] = REQUEST_FIELD_TAGS
 
 
 @dataclass(frozen=True)
 class CpInstrument:
-    """One subscribed instrument: our canonical key, its IBKR conid, and its underlying."""
 
     instrument_key: str
     conid: int
@@ -49,17 +29,14 @@ def _now_utc() -> datetime:
 
 
 def subscribe_message(conid: int) -> str:
-    """The CP WebSocket market-data subscribe frame for one conid."""
     return f"smd+{conid}+{json.dumps({'fields': list(_REQUEST_FIELDS)})}"
 
 
 def unsubscribe_message(conid: int) -> str:
-    """The CP WebSocket market-data unsubscribe frame for one conid."""
     return f"umd+{conid}+{{}}"
 
 
 class CpRestMarketDataAdapter:
-    """Bind subscribed instruments and normalize CP market data into ``RawMarketEvent`` rows."""
 
     def __init__(
         self,
@@ -87,13 +64,6 @@ class CpRestMarketDataAdapter:
         self._fault_cb = callback
 
     def snapshot(self) -> tuple[RawMarketEvent, ...]:
-        """REST pull of the current quote for every subscribed instrument → events.
-
-        Rides the shared snapshot engine: the request is split into URI-safe conid batches and
-        each batch is warm-up polled, so a cold first snapshot does not come back metadata-only
-        (the 414/cold-snapshot fixes the close capture proved live). ``_sleep`` is the injected
-        warm-up sleep — tests poll with no real waiting.
-        """
         rows = snapshot_with_warmup(
             self._transport, conids=tuple(self._by_conid), sleep=self._sleep
         )
@@ -124,7 +94,6 @@ class CpRestMarketDataAdapter:
         return events
 
     def _handle_frame(self, raw: str | bytes) -> None:
-        """Parse one CP WebSocket market-data frame and emit its events to the tick callback."""
         try:
             message = json.loads(raw)
         except (json.JSONDecodeError, TypeError):
@@ -133,17 +102,15 @@ class CpRestMarketDataAdapter:
             return
         topic = message.get("topic")
         if not (isinstance(topic, str) and topic.startswith("smd+")):
-            return  # control frames (heartbeats, system) are not observations
+            return
         row = SnapshotRow.model_validate(message)
         for event in self._row_to_events(row, receipt_ts=self._now_fn()):
             if self._tick_cb is not None:
                 self._tick_cb(event)
 
     def subscribe_frames(self) -> tuple[str, ...]:
-        """The WS subscribe frames to send for the bound instruments (live wiring sends these)."""
         return tuple(subscribe_message(conid) for conid in self._by_conid)
 
     def unsubscribe_all(self) -> tuple[str, ...]:
-        """Stop streaming: the WS unsubscribe frames for the bound instruments."""
         self._stop_event.set()
         return tuple(unsubscribe_message(conid) for conid in self._by_conid)

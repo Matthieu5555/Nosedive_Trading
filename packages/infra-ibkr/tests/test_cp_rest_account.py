@@ -1,16 +1,3 @@
-"""Read-only CP REST account collector (positions / cash / fills) — driven by a fake transport.
-
-No live Gateway: ``FakeCpTransport`` answers each GET with canned account payloads. The pins:
-
-* the three endpoints normalize into the typed broker contracts with the right field mapping;
-* a fill is stamped at its **own venue time** (``trade_time_r``), never the read clock
-  (no look-ahead) — the venue epoch-ms is derived independently here, not read from the code;
-* a malformed row is rejected at the door (one bad row never loses the good rows), and a fill
-  with an unrecognized side / missing id is dropped;
-* the collector is **read-only** — only ``/portfolio/*`` and ``/iserver/account/trades`` GETs are
-  ever touched, never an order endpoint, and no POST is issued (mirrors ``test_cp_rest_adapter``).
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -33,16 +20,13 @@ _ACCOUNT = "DU1234567"
 _READ_TS = datetime(2026, 5, 29, 16, 0, 0, tzinfo=UTC)
 _CONID = 265598
 
-# The fill's venue time, derived independently of the collector: 2026-05-29T15:29:59Z as epoch-ms.
-# (datetime(2026,5,29,15,29,59,UTC).timestamp() * 1000 == 1_780_068_599_000.) The collector must
-# stamp the fill at THIS instant, not at _READ_TS — the no-look-ahead pin.
 _VENUE_TS = datetime(2026, 5, 29, 15, 29, 59, tzinfo=UTC)
 _VENUE_MS = 1_780_068_599_000
 
 _POSITIONS_BODY = [
     {
         "conid": _CONID,
-        "position": -3.0,  # a short position — quantity stays signed
+        "position": -3.0,
         "avgCost": 9.20,
         "mktPrice": 9.31,
         "mktValue": -2793.0,
@@ -69,7 +53,7 @@ _TRADES_BODY = [
         "execution_id": "0000e0d5.0000abcd.01",
         "conid": _CONID,
         "symbol": "SPY",
-        "side": "S",  # broker raw code → SELL
+        "side": "S",
         "size": 3.0,
         "price": 9.31,
         "currency": "USD",
@@ -80,7 +64,6 @@ _TRADES_BODY = [
 
 
 def _transport(**overrides: Any) -> FakeCpTransport:
-    """A fake CP transport routing each account GET to its canned body."""
     routes: dict[str, Any] = {
         f"/portfolio/{_ACCOUNT}/positions/0": _POSITIONS_BODY,
         f"/portfolio/{_ACCOUNT}/ledger": _LEDGER_BODY,
@@ -103,13 +86,12 @@ def test_positions_normalize_with_signed_quantity_and_mapped_fields() -> None:
         account_id=_ACCOUNT,
         conid=_CONID,
         contract_key=f"conid={_CONID}",
-        quantity=-3.0,  # short stays negative
+        quantity=-3.0,
         avg_cost=9.20,
         market_price=9.31,
         market_value=-2793.0,
         currency="USD",
     )
-    # the normalized contract passes the frozen-seam write door.
     validate_record("broker_positions", pos)
 
 
@@ -138,14 +120,13 @@ def test_fill_is_stamped_at_its_own_venue_time_not_the_read_clock() -> None:
         execution_id="0000e0d5.0000abcd.01",
         conid=_CONID,
         contract_key=f"conid={_CONID}",
-        side="SELL",  # "S" → SELL
-        quantity=3.0,  # unsigned magnitude
+        side="SELL",
+        quantity=3.0,
         price=9.31,
         currency="USD",
         venue_ts=_VENUE_TS,
         trade_date=date(2026, 5, 29),
     )
-    # the no-look-ahead pin: the stamp is the venue instant, strictly before the read clock.
     assert fill.venue_ts == _VENUE_TS
     assert fill.venue_ts < _READ_TS
     validate_record("broker_fills", fill)
@@ -160,7 +141,6 @@ def test_collect_assembles_one_coherent_snapshot_at_one_instant() -> None:
     assert len(snapshot.positions) == 1
     assert len(snapshot.cash_balances) == 2
     assert len(snapshot.fills) == 1
-    # every position/cash row shares the one read instant; the fill keeps its venue time.
     assert all(p.as_of_ts == _READ_TS for p in snapshot.positions)
     assert all(c.as_of_ts == _READ_TS for c in snapshot.cash_balances)
     assert snapshot.fills[0].venue_ts == _VENUE_TS
@@ -175,12 +155,10 @@ def test_collector_is_read_only_only_portfolio_and_trades_gets_no_post() -> None
         f"/portfolio/{_ACCOUNT}/positions/0",
     ]
     assert transport.post_paths == []
-    # the load-bearing invariant: not a single endpoint touched is order-related.
     assert not any("order" in path for path in transport.get_paths + transport.post_paths)
 
 
 def test_a_malformed_position_row_is_rejected_not_coerced() -> None:
-    # second row is missing the required ``mktPrice`` — it must be dropped, the good row kept.
     bad = [
         _POSITIONS_BODY[0],
         {"conid": 111, "position": 1.0, "avgCost": 1.0, "mktValue": 1.0, "currency": "USD"},
@@ -188,7 +166,7 @@ def test_a_malformed_position_row_is_rejected_not_coerced() -> None:
     positions = _collector(
         _transport(**{f"/portfolio/{_ACCOUNT}/positions/0": bad})
     ).read_positions()
-    assert [p.conid for p in positions] == [_CONID]  # the malformed row is gone, the good one stays
+    assert [p.conid for p in positions] == [_CONID]
 
 
 def test_a_fill_with_an_unrecognized_side_is_dropped() -> None:

@@ -1,16 +1,3 @@
-"""Risk seams: risk -> contracts (round-trip + stamp) and risk -> pricing (pin the pricer).
-
-risk -> contracts: ``Position``, ``RiskAggregate``, and ``ScenarioResult`` are produced
-by risk's *real* code, round-trip through M1's ``ParquetStore`` equal, and the derived
-two carry a provenance stamp that survives storage; a malformed instance of each is
-refused by the contracts' write-ahead validation (per ``tasks/TESTING.md``).
-
-risk -> pricing: the risk engine builds against M2's frozen pricing interface, so a pin
-of that interface lives here — an M2-side change to the state vector, the Greeks shape,
-the public surface, or an entry-point parameter breaks risk's suite loudly (ADR 0004
-places the breaking pin here; pricing keeps a lighter shape-pin of its own).
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -93,7 +80,6 @@ def make_scenario_attribution() -> ScenarioAttribution:
     )
 
 
-# --- risk -> contracts round-trips -------------------------------------------
 def test_position_round_trips_through_storage(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
     record = risk_positions()[0]
@@ -120,7 +106,6 @@ def test_derived_contract_round_trips_and_keeps_its_stamp(
     assert read_back[0].provenance.stamp_hash == record.provenance.stamp_hash
 
 
-# --- risk -> contracts malformed rejection -----------------------------------
 @pytest.mark.parametrize(
     "table, factory, field",
     [
@@ -140,7 +125,6 @@ def test_malformed_contract_is_rejected_by_validation(
     assert info.value.field == field
 
 
-# --- risk -> pricing interface pin (an M2-side change breaks risk's suite here) ----
 def test_pricing_state_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PricingState))
     assert names == (
@@ -153,16 +137,12 @@ def test_price_greeks_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PriceGreeks))
     assert names == (
         "price", "delta", "gamma", "vega", "theta", "rho",
-        # Second-order set (TARGET §7.2), appended with 0.0 defaults.
         "vanna", "volga", "charm",
-        # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0049).
         "rt_vega",
     )
 
 
 def test_pricing_public_surface_covers_what_risk_imports() -> None:
-    # The names the risk engine reaches into ``pricing`` for. A drop here is a real
-    # interface break for risk, surfaced in risk's own suite.
     assert {"PriceGreeks", "PricingState", "from_spot", "price", "pricing_result"} <= set(
         pricing.__all__
     )

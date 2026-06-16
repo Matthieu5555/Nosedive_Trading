@@ -1,11 +1,3 @@
-"""IBKR history config loads, validates, and rejects malformed values (ADR 0031 / C7).
-
-The connectivity knobs (base_url, timeouts, the 5-concurrent cap, established-wait, retry) come
-from validated config, not .py literals (the C7 no-hardcode discipline). These tests pin that the
-committed ``configs/ibkr_history.yaml`` loads into the typed object and that a malformed field is a
-labeled error, never a silent default.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,10 +14,10 @@ from algotrading.infra_ibkr.config import (
 def test_committed_config_loads_with_expected_shape() -> None:
     cfg = load_ibkr_history_config()
     assert cfg.base_url.startswith("https://")
-    assert cfg.max_concurrent_requests == 5  # ADR 0031 §5 cap
+    assert cfg.max_concurrent_requests == 5
     assert cfg.warmup_required is True
-    assert cfg.bar == "1d"  # /iserver/marketdata/history, never the deprecated /hmds
-    assert cfg.config_hash  # carries a provenance hash
+    assert cfg.bar == "1d"
+    assert cfg.config_hash
     assert cfg.established_wait.max_polls > 0
     assert cfg.retry.max_attempts > 0
 
@@ -33,7 +25,6 @@ def test_committed_config_loads_with_expected_shape() -> None:
 def test_retry_delay_is_exponential_with_cap() -> None:
     cfg = load_ibkr_history_config()
     r = cfg.retry
-    # Independent oracle: min(cap, base*factor**a), recomputed here from the config fields.
     for attempt in range(6):
         expected = min(r.cap_seconds, r.base_seconds * r.factor**attempt)
         assert r.delay_for(attempt) == pytest.approx(expected)
@@ -41,7 +32,7 @@ def test_retry_delay_is_exponential_with_cap() -> None:
 
 def test_missing_required_field_is_a_labeled_error(tmp_path: Path) -> None:
     bad = tmp_path / "ibkr_history.yaml"
-    bad.write_text("version: '1'\nbase_url: 'https://x'\n")  # missing most required fields
+    bad.write_text("version: '1'\nbase_url: 'https://x'\n")
     with pytest.raises(IbkrHistoryConfigError, match="missing required field"):
         load_ibkr_history_config(bad)
 

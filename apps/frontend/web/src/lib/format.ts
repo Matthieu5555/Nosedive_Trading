@@ -1,14 +1,3 @@
-// Display formatters — restored from Antho's demo so every panel renders numbers the way
-// operators read them (currency, signed PnL, percentages, fractional vol as a percent).
-//
-// House rule (owner ruling 2026-06-15): every quantitative analytics number on screen is
-// rendered in SCIENTIFIC NOTATION at six significant figures with trailing zeros stripped,
-// and never without its unit. `sci`/`sciUnit` below are the single home of that rule; the
-// `UNITS` vocabulary is the single home of the unit tokens. Pure cardinalities (counts),
-// dates, ids, and enum labels are not analytics quantities and keep their plain rendering.
-
-// Unicode superscript digits + minus, so an exponent renders as "× 10⁻¹" inline anywhere a
-// string goes (table cell, chart axis, SVG tooltip) without needing JSX <sup>.
 const SUPERSCRIPT: Record<string, string> = {
   "0": "⁰",
   "1": "¹",
@@ -30,18 +19,11 @@ function superscript(exponent: number): string {
     .join("");
 }
 
-/**
- * Scientific notation at `sigFigs` significant figures (default six) with trailing zeros
- * stripped: 0.58 → "5.8 × 10⁻¹", 0.032 → "3.2 × 10⁻²", 12.5 → "1.25 × 10¹",
- * 0.123456789 → "1.23457 × 10⁻¹". Zero is "0" (scientific notation of zero is just zero);
- * a non-finite or missing value is the labelled "n/a"/"∞" rather than a bare blank.
- */
 export function sci(value: number | null | undefined, sigFigs = 6): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
   if (!Number.isFinite(value)) return value > 0 ? "∞" : "−∞";
   if (value === 0) return "0";
-  // toExponential(sigFigs-1) gives exactly `sigFigs` significant figures with padding zeros;
-  // strip the trailing zeros (and a now-dangling decimal point) from the mantissa.
+
   const [mantissaRaw, expRaw] = value.toExponential(sigFigs - 1).split("e");
   const mantissa = mantissaRaw.includes(".")
     ? mantissaRaw.replace(/0+$/, "").replace(/\.$/, "")

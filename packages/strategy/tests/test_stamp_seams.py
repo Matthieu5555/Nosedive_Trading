@@ -1,14 +1,3 @@
-"""Seam tests: the ``strategy_id`` stamp flows into 2D composition and per-strategy attribution.
-
-The stamp's entire reason to exist (TARGET §5.2/§7.2): a strategy-emitted position set carries
-its identity so (a) 2D ``book.py`` can layer it as a *named* book layer and (b) attribution can
-group P&L *by strategy*. These tests prove both consumers can key off the stamp the strategy
-emits, using the toy strategy and real risk lines.
-
-Expected values are derived independently: two strategies' lines summed give a known net delta;
-the per-strategy grouping must recover each strategy's own subtotal from the stamp.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -63,7 +52,6 @@ def _provenance() -> ProvenanceStamp:
 
 
 def test_strategy_emits_a_stamped_basket() -> None:
-    # The construction step stamps the emitted set with the strategy's own identity.
     step = run_strategy(
         ToyStrategy(),
         context=StrategyContext.BACKTEST,
@@ -77,11 +65,8 @@ def test_strategy_emits_a_stamped_basket() -> None:
 
 
 def test_stamp_keys_a_named_book_layer_in_2d_composition() -> None:
-    # 2D book.py layers PositionRisk lines under a label. The strategy_id stamp IS that label:
-    # build a two-strategy book keyed by stamp and check the combined row is the additive sum.
-    lines_a = (_line("S-A", 2.0),)   # long 2
-    lines_b = (_line("S-B", -1.0),)  # short 1
-    # Independent expected net delta of the union = (2 - 1) * per_unit_delta.
+    lines_a = (_line("S-A", 2.0),)
+    lines_b = (_line("S-B", -1.0),)
     per_unit_delta = lines_a[0].greeks.delta
     expected_net_delta = (2.0 - 1.0) * per_unit_delta
 
@@ -96,7 +81,6 @@ def test_stamp_keys_a_named_book_layer_in_2d_composition() -> None:
         source_snapshot_ts=VALUATION_TS,
         provenance=_provenance(),
     )
-    # Layers are named by the stamp; the combined ("book") row is their additive sum.
     layer_labels = {r.layer_label for r in rows if r.level == "layer"}
     assert layer_labels == {"S-A", "S-B"}
     book_row = next(r for r in rows if r.level == "book")
@@ -104,9 +88,6 @@ def test_stamp_keys_a_named_book_layer_in_2d_composition() -> None:
 
 
 def test_stamp_groups_pnl_per_strategy() -> None:
-    # The §7.2 per-strategy grouping: lines tagged by two strategy_ids must split into each
-    # strategy's own subtotal. We model the tag as the line's portfolio_id (the grouping key
-    # attribution already nets by) seeded from the stamp, and check the per-strategy net delta.
     lines = [_line("S-A", 2.0), _line("S-A", 1.0), _line("S-B", -4.0)]
     per_unit_delta = lines[0].greeks.delta
 
@@ -114,10 +95,8 @@ def test_stamp_groups_pnl_per_strategy() -> None:
     for line in lines:
         by_strategy[line.portfolio_id] = by_strategy.get(line.portfolio_id, 0.0) + line.position_delta
 
-    # Independent expected subtotals: S-A = (2+1)*d, S-B = -4*d.
     assert by_strategy["S-A"] == pytest.approx(3.0 * per_unit_delta)
     assert by_strategy["S-B"] == pytest.approx(-4.0 * per_unit_delta)
-    # And the grouping is exhaustive — every line landed in exactly one strategy bucket.
     assert sum(by_strategy.values()) == pytest.approx(
         sum(line.position_delta for line in lines)
     )

@@ -1,12 +1,3 @@
-"""Unit tests for the backtest position book — the rolling roll-off and the priced-line join.
-
-The book is a thin ledger over the landed risk engine: it accumulates held contracts, rolls off
-expired ones (S2's "one expires daily"), and prices the survivors into landed
-:class:`PositionRisk` lines. These tests pin the two behaviours that are the book's own — the
-expiry roll-off boundary and the labelled-absence drop of an unpriceable contract — against
-hand-built fixtures. Pricing itself is the landed engine's, tested there.
-"""
-
 from __future__ import annotations
 
 from datetime import date
@@ -48,9 +39,9 @@ def _valuation(key: str, spot: float) -> ContractValuationInput:
 @pytest.mark.parametrize(
     ("expiry_offset_days", "rolls_off"),
     [
-        (-1, True),   # expired yesterday -> rolls off.
-        (0, True),    # expires today -> rolls off (expiry <= as_of).
-        (1, False),   # expires tomorrow -> survives.
+        (-1, True),
+        (0, True),
+        (1, False),
     ],
 )
 def test_expire_rolls_off_contracts_at_or_before_the_day(
@@ -78,14 +69,12 @@ def test_expire_keeps_the_survivors_and_returns_the_rolled() -> None:
 
 
 def test_price_drops_an_unpriceable_contract_as_a_labelled_absence() -> None:
-    """A held contract with no mark on the day is recorded in ``unpriced``, not given a fake mark."""
     as_of = date(2026, 1, 20)
     book = BacktestBook()
     book.add([_held("PRICED", date(2026, 3, 1)), _held("GAPPED", date(2026, 3, 1))])
     data: BacktestData = InMemoryBacktestData(
         signals_by_day={},
         concrete_by_cell={},
-        # Only PRICED has a mark on the day; GAPPED is absent -> dropped, not invented.
         marks_by_contract={"PRICED": ContractMarks(by_day={as_of: _valuation("PRICED", 3900.0)})},
     )
     priced = book.price(data, as_of)
@@ -105,7 +94,6 @@ def test_price_of_an_empty_book_is_empty_lines() -> None:
 
 
 def test_inmemory_signals_absence_is_an_empty_snapshot() -> None:
-    """A day with no persisted signal yields an empty snapshot (labelled absence, not a crash)."""
     data = InMemoryBacktestData(signals_by_day={}, concrete_by_cell={}, marks_by_contract={})
     snapshot = data.signals(date(2026, 1, 20))
     assert isinstance(snapshot, SignalSnapshot)
@@ -113,6 +101,5 @@ def test_inmemory_signals_absence_is_an_empty_snapshot() -> None:
 
 
 def test_inmemory_concretize_absent_cell_is_none() -> None:
-    """A grid cell the adapter has no template for concretizes to None (the engine skips the leg)."""
     data = InMemoryBacktestData(signals_by_day={}, concrete_by_cell={}, marks_by_contract={})
     assert data.concretize_leg(_leg(), date(2026, 1, 20)) is None

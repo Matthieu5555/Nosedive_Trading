@@ -1,10 +1,3 @@
-"""The transport adds the OAuth signer's Authorization header when one is configured (ADR 0031).
-
-No live Gateway: a fake httpx-like client records the request headers. With no signer the
-transport is the unchanged ADR 0024 cookie path; with a signer every request carries the
-``Authorization: OAuth …`` header the signer returns, computed over the method/url/query.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping

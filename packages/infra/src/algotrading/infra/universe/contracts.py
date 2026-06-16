@@ -1,16 +1,3 @@
-"""Canonical instrument model and its string key.
-
-These frozen dataclasses are the project's own representation of an underlying and an
-option contract — independent of any broker SDK type, so they can be built in fixtures
-and replayed offline. Field types are normalized for analytics (strike as ``Decimal``,
-multiplier as ``int``, expiry as ``date``, right as an enum); the broker's own contract id
-is kept only as an optional foreign key, never as the identity.
-
-The canonical key is a deterministic, reversible string identity built from the economic
-fields. It is a logical identifier, not a filesystem path — escaping for storage is the
-storage layer's concern, not this module's.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -26,18 +13,16 @@ EXPIRY_FMT = "%Y%m%d"
 
 
 class InstrumentKeyError(ValueError):
-    """Raised when a canonical key cannot be built or parsed."""
+    pass
 
 
 class Right(StrEnum):
-    """Option right. Values match the compact form used in the canonical key."""
 
     CALL = "C"
     PUT = "P"
 
     @classmethod
     def from_raw(cls, value: str) -> Right:
-        """Map any of P, PUT, C, CALL (case-insensitive) to a :class:`Right`."""
         token = value.strip().upper()
         if token in ("C", "CALL"):
             return cls.CALL
@@ -57,12 +42,6 @@ def _require(value: str, field_name: str) -> str:
 
 @dataclass(frozen=True)
 class Underlying:
-    """An underlying instrument (stock/ETF/index).
-
-    ``security_type`` classifies the instrument (e.g. ``STK`` for a stock/ETF). It is part
-    of the economic identity and the canonical key, distinguishing instruments that share a
-    symbol but trade as different security types.
-    """
 
     symbol: str
     exchange: str
@@ -78,14 +57,6 @@ class Underlying:
 
 @dataclass(frozen=True)
 class OptionContract:
-    """A single option contract.
-
-    Identity (used for equality and the canonical key) is the economic tuple:
-    symbol, security_type, expiry, strike, right, multiplier, exchange, currency.
-    ``security_type`` classifies the instrument (e.g. ``OPT`` for a vanilla option).
-    ``trading_class``, ``broker_contract_id`` and ``raw`` are metadata/foreign-key/audit
-    fields and do not participate in identity.
-    """
 
     symbol: str
     expiry: date
@@ -113,16 +84,10 @@ class OptionContract:
 
 
 def _canonical_strike(strike: Decimal) -> str:
-    """Strike as a stable fixed-point string (no trailing zeros, no exponent)."""
     return format(strike.normalize(), "f")
 
 
 def instrument_key(instrument: Underlying | OptionContract) -> str:
-    """Build the deterministic canonical key for an instrument.
-
-    Uses the stored field values directly — they were validated at construction, so the
-    key matches the instrument byte-for-byte and ``parse_instrument_key`` round-trips it.
-    """
     if isinstance(instrument, Underlying):
         parts = [
             _UNDERLYING_TAG,
@@ -147,7 +112,6 @@ def instrument_key(instrument: Underlying | OptionContract) -> str:
 
 
 def parse_instrument_key(key: str) -> Underlying | OptionContract:
-    """Rebuild an instrument from its canonical key (inverse of :func:`instrument_key`)."""
     parts = key.split(_SEP)
     tag = parts[0] if parts else ""
     try:

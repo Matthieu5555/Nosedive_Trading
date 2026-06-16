@@ -1,11 +1,3 @@
-"""Health router: the operator dashboard, wired to real recorded state.
-
-Assembles ``orchestration.build_dashboard`` from the store's partitions (snapshots,
-surfaces, scenarios), the latest QC verdict for the date, and the run-state ledger — so
-the four health flags reflect what is actually on disk, not a hardcoded OK. The trade
-date defaults to the most recent date with snapshot data.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -24,7 +16,6 @@ router = APIRouter(prefix="/api/health", tags=["health"])
 
 
 def _qc_status_for(ctx: AppContext, trade_date: date) -> str:
-    """Reduce the date's QC results to passing / failing / unknown."""
     rows = ctx.store.read("qc_results", trade_date=trade_date)
     if not rows:
         return QC_UNKNOWN
@@ -35,7 +26,6 @@ def _qc_status_for(ctx: AppContext, trade_date: date) -> str:
 
 @router.get("")
 def get_health(ctx: CtxDep, trade_date: TradeDateDep) -> JSONResponse:
-    """Return the operator dashboard status for a trade date (latest with data by default)."""
     snapshot_partitions = ctx.store.list_partitions("market_state_snapshots")
     surface_partitions = ctx.store.list_partitions("surface_parameters")
     scenario_partitions = ctx.store.list_partitions("scenario_results")

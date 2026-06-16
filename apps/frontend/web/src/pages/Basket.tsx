@@ -22,29 +22,20 @@ import type { BasketScenariosResponse } from "../stressApi";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
 
-// Compose a multi-leg basket and price/risk it off the Tab-1 analytics (WS 2A). The operator
-// picks an underlying, trade date and tenor, builds legs (by hand or a one-click template), then
-// prices the basket — the panel shows the book-additive dollar Greeks and the per-leg breakdown.
 export function BasketPage() {
-  // The underlying is chosen from the registry's enabled set (GET /api/indices) — never a
-  // hard-coded ticker. A basket can only be priced on a captured index (the chain is captured
-  // at the index level), so the picker is constrained to enabled indices.
   const indices = useFetch<IndicesResponse>("/api/indices");
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
   const [underlying, setUnderlying] = useState("");
-  // Land on the first enabled index when the registry list arrives, and keep the selection
-  // valid if the enabled set changes (e.g. an index is parked) under it.
+
   useEffect(() => {
     if (indexOptions.length === 0) return;
     if (!underlying || !indexOptions.some((o) => o.symbol === underlying)) {
       setUnderlying(indexOptions[0].symbol);
     }
   }, [indexOptions, underlying]);
-  // The currency symbol of the selected underlying's quote currency (from the registry) — every
-  // monetized number on the page renders in this, never a hard-coded "$" (blueprint 05-math-notes).
+
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === underlying)?.currency);
-  // The platform-wide delta-band axis the leg selector offers — the single source, fetched once
-  // and threaded into the (presentational) leg grid as a prop.
+
   const deltaBands = useFetch<DeltaBandsResponse>("/api/config/delta-bands");
   const [tradeDate, setTradeDate] = useState("");
   const [tenor, setTenor] = useState("1m");
@@ -55,8 +46,7 @@ export function BasketPage() {
   const [stress, setStress] = useState<BasketScenariosResponse | null>(null);
   const [stressError, setStressError] = useState<string | null>(null);
   const [stressLoading, setStressLoading] = useState(false);
-  // The persisted P&L attribution is keyed on a portfolio id + trade date (not the ad-hoc
-  // composed basket), so the operator names the portfolio to drill into its decomposition.
+
   const [portfolioId, setPortfolioId] = useState("");
   const [attribution, setAttribution] = useState<AttributionResponse | null>(null);
   const [attributionError, setAttributionError] = useState<string | null>(null);

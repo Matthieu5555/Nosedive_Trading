@@ -1,11 +1,3 @@
-"""JSON-safe serialization for typed contracts at the presentation boundary.
-
-Pure functions: no I/O, no clock, no mutation of inputs. Each function converts
-one frozen contract dataclass to a plain dict with JSON-primitive values.
-Provenance is carried through in a compact form (code version, config hash,
-calc time, stamp hash) per the "provenance through to the UI" principle.
-"""
-
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -30,19 +22,14 @@ from algotrading.infra.surfaces import DenseSurface, SlicePlotSeries, degeneracy
 from .basket_scenarios import BasketStressResult
 
 if TYPE_CHECKING:
-    # Used only as the annotation on dashboard_status_to_dict; imported under
-    # TYPE_CHECKING to keep this module's runtime import surface to the contracts it
-    # serializes. The body uses duck-typed attribute access, not the type.
     from algotrading.infra.orchestration import DashboardStatus
 
 
 def _iso(value: datetime | date) -> str:
-    """ISO-8601 string for a timezone-aware datetime or a date."""
     return value.isoformat()
 
 
 def provenance_to_dict(stamp: ProvenanceStamp) -> dict[str, object]:
-    """Compact, operator-facing provenance: the lineage handles, not every source ref."""
     return {
         "calc_ts": _iso(stamp.calc_ts),
         "code_version": stamp.code_version,
@@ -53,14 +40,6 @@ def provenance_to_dict(stamp: ProvenanceStamp) -> dict[str, object]:
 
 
 def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
-    """Serialize one fitted SVI slice (parameters + fit diagnostics + provenance).
-
-    The degeneracy facts travel with the slice: ``bound_hits``/``converged`` are passed
-    through (``None`` for rows persisted before the fields existed — unknown, not clean),
-    and the derived ``degenerate``/``degenerate_reasons`` flag applies the one policy home
-    (:func:`~algotrading.infra.surfaces.degeneracy_reasons`) so a railed or arb-breached
-    calibration is never served as if it were clean.
-    """
     reasons = degeneracy_reasons(row.diagnostics)
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
@@ -93,13 +72,6 @@ def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
 
 
 def dense_surface_to_dict(surface: DenseSurface) -> dict[str, object]:
-    """Serialize the reconstructed dense vol surface for the 3D nappe (blueprint surface grid).
-
-    A regularized ``(maturity × log-moneyness)`` implied-vol lattice sampled from the fitted
-    SVI slices, so the front renders the smooth fitted model rather than the sparse delta-band
-    points. ``implied_vol[i][j]`` is the vol at ``maturity_years[i]`` / ``log_moneyness[j]``;
-    ``degenerate_maturity_years`` carries the flagged slices so the caveat is surfaced, not hidden.
-    """
     return {
         "log_moneyness": list(surface.log_moneyness),
         "maturity_years": list(surface.maturity_years),
@@ -110,13 +82,6 @@ def dense_surface_to_dict(surface: DenseSurface) -> dict[str, object]:
 
 
 def daily_bar_to_dict(row: DailyBar) -> dict[str, object]:
-    """Serialize one daily OHLC bar — the candlestick chart's row (WS 1C/1E).
-
-    Field names are the :class:`DailyBar` contract's, verbatim: ``trade_date`` plus
-    ``open``/``high``/``low``/``close``/``volume``, with ``provider``/``bar_type``/``source``
-    as lineage and a compact provenance stamp. A renamed OHLC field on the contract turns the
-    field-name conformance assertion red.
-    """
     return {
         "provider": row.provider,
         "underlying": row.underlying,
@@ -133,13 +98,6 @@ def daily_bar_to_dict(row: DailyBar) -> dict[str, object]:
 
 
 def index_constituent_to_dict(row: IndexConstituent) -> dict[str, object]:
-    """Serialize one bitemporal membership fact (WS 1A).
-
-    Carries the constituent symbol, its as-of ``weight`` (nullable — labeled unavailable,
-    never zeroed), and the half-open effective interval
-    ``[effective_add_date, effective_remove_date)`` so the front can show when a name was in
-    the basket. ``effective_remove_date`` is ``None`` for a current, never-removed member.
-    """
     return {
         "index": row.index,
         "constituent": row.constituent,
@@ -154,7 +112,6 @@ def index_constituent_to_dict(row: IndexConstituent) -> dict[str, object]:
 
 
 def risk_aggregate_to_dict(row: RiskAggregate) -> dict[str, object]:
-    """Serialize one portfolio group's net sensitivities."""
     return {
         "valuation_ts": _iso(row.valuation_ts),
         "portfolio_id": row.portfolio_id,
@@ -169,7 +126,6 @@ def risk_aggregate_to_dict(row: RiskAggregate) -> dict[str, object]:
 
 
 def scenario_result_to_dict(row: ScenarioResult) -> dict[str, object]:
-    """Serialize one stress-scenario PnL cell."""
     return {
         "valuation_ts": _iso(row.valuation_ts),
         "portfolio_id": row.portfolio_id,
@@ -185,30 +141,11 @@ def scenario_result_to_dict(row: ScenarioResult) -> dict[str, object]:
     }
 
 
-# The surface cells (WS 2B) are the cartesian (spot × vol) stress grid, persisted into the
-# same ``scenario_results`` contract as the families cells and distinguished by this id
-# prefix (see ``infra.risk.stress_surface._surface_scenario_id``). Selecting on it lets the
-# surface reshape coexist with the families cell list — 2C reads the cells, 2B the surface.
 _SURFACE_ID_PREFIX = "surf_"
-# The full-reprice scenario PnL is a monetized account-currency amount, not a per-unit Greek,
-# so it carries its own label rather than a ``UNIT_STRINGS`` Greek unit.
 SCENARIO_PNL_UNIT = "$ (full-reprice PnL)"
 
 
 def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
-    """Reshape the cartesian (spot × vol) surface cells into a Plotly-ready surface payload.
-
-    Selects the ``surf_``-prefixed cells from ``rows`` (the cartesian grid 2B persists),
-    sums ``scenario_pnl`` over contracts per ``(spot_shock, vol_shock)`` to the portfolio
-    total, and arranges it as a z-grid aligned to the sorted shock axes — spot-major, so
-    ``scenario_pnl[i][j]`` is the total under ``spot_shock[i]`` / ``vol_shock[j]``. A
-    ``(spot, vol)`` combination with no persisted cell is a **labelled hole** — ``None`` in
-    the z-grid plus the ``has_holes``/``n_holes`` flags — never a silent ``0.0``, which would
-    read as a real "this stress costs nothing" quote (F-BFF-03). Field names follow ADR 0029
-    (``spot_shock`` / ``vol_shock`` axes, ``scenario_pnl`` z-grid); the dollar PnL carries its
-    ``unit`` string. An absent surface (no ``surf_`` cells, e.g. an unknown or empty basket)
-    is a labelled empty surface — empty axes, HTTP 200 at the caller, never a 500.
-    """
     surface_rows = [row for row in rows if row.scenario_id.startswith(_SURFACE_ID_PREFIX)]
     if not surface_rows:
         return {
@@ -231,8 +168,6 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
         [totals.get((s, v)) for v in vol_axis] for s in spot_axis
     ]
     n_holes = sum(1 for grid_row in pnl_grid for value in grid_row if value is None)
-    # One surface is one scenario version; if a stale mix is present, surface the smallest
-    # deterministically rather than guessing (the cron rewrites a partition wholesale).
     versions = sorted({row.scenario_version for row in surface_rows})
     return {
         "spot_shock": spot_axis,
@@ -246,17 +181,9 @@ def scenario_surface_to_dict(rows: list[ScenarioResult]) -> dict[str, object]:
     }
 
 
-# A by-Greek attribution contribution and its residual are *already* dollar PnL amounts (the
-# local Taylor split of the scenario reprice — see infra/risk/attribution.py), not per-unit
-# Greeks, so they do not take a ``UNIT_STRINGS`` Greek unit. They carry these PnL labels.
 ATTRIBUTION_TERM_UNIT = "$ (PnL contribution)"
 ATTRIBUTION_RESIDUAL_UNIT = "$ (residual vs full reprice)"
 
-# The waterfall term order is the ADR-0030 / TARGET §2.5 dPnL identity, left to right. Each
-# entry is (display name, the ``ScenarioAttribution`` field carrying the dollar contribution).
-# The frozen seam on this branch carries Δ/Γ/Vega/Θ; the second-order-greeks lane appends
-# Rho/Vanna/Volga entries here once the contract field lands (purely additive — a new tuple
-# row), and the residual stays its own bar after all named terms, never folded in.
 _ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
     ("Delta", "delta_pnl"),
     ("Gamma", "gamma_pnl"),
@@ -266,19 +193,6 @@ _ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
 
 
 def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
-    """Serialize one by-Greek attribution record into the front's waterfall payload.
-
-    Projects the frozen :class:`~algotrading.infra.contracts.ScenarioAttribution` seam verbatim
-    — the BFF re-decomposes nothing and reprices nothing: every ``dollars`` value is the engine's
-    own term, passed through. ``terms`` are the named dollar contributions in the ADR-0030 dPnL
-    order (Δ → Γ → Vega → Θ, with Rho/Vanna/Volga appended by the second-order-greeks lane), each
-    a labelled ``{name, dollars, unit}``. ``residual`` is the honesty meter (§5.2) —
-    ``full_reprice_pnl - approx_pnl`` against the full reprice oracle — carried as its **own**
-    bar, never hidden or folded into a term. ``verdict`` is the engine's tolerance ruling:
-    ``within_tolerance`` beside the ``residual_abs_tol``/``residual_rel_tol`` it was judged
-    against (the persisted seam carries no diagnostic string — the in-memory split owns that —
-    so the verdict the front shows is the boolean against its echoed bounds).
-    """
     terms = [
         {
             "name": name,
@@ -300,8 +214,6 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
             "residual_abs_tol": row.residual_abs_tol,
             "residual_rel_tol": row.residual_rel_tol,
         },
-        # The lumped Taylor sum and the full-reprice oracle, so the front can show the
-        # residual *against* the reprice without re-summing the bars itself.
         "approx_pnl": row.approx_pnl,
         "full_reprice_pnl": row.full_reprice_pnl,
         "residual_abs_tol": row.residual_abs_tol,
@@ -314,28 +226,10 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
 
 
 def _metric(raw: float | None, value: float | None, unit: str) -> dict[str, object]:
-    """One dollar metric for the front: the dollar value, its unit, and the raw per-unit Greek.
-
-    The BFF metric contract (P0.2 / OQ-1, ADR 0036): a dollar number never crosses the
-    boundary as a bare float — it carries the explicit ``unit`` it is quoted in and the
-    ``raw`` per-unit Greek it derives from, so the front can label it and re-derive it.
-    """
     return {"raw": raw, "dollar": value, "unit": unit}
 
 
 def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
-    """Serialize one contract's price, raw Greeks, and the unit-carrying dollar layer.
-
-    Each ``dollar_*`` metric is emitted with the unit string of the pinned convention
-    (gamma → "$ per 1% move", theta → "$ per calendar day") beside the raw per-unit Greek,
-    so the front receives a labelled metric, not a bare float. ``dollar_theta`` /
-    ``dollar_rho`` are additive-nullable; an older partition that lacks them serializes
-    them as ``None`` dollar values rather than failing.
-
-    The stored ``dollar_gamma`` is already in ``one_pct`` units (ADR 0036's canonical default:
-    Γ·S²/100 per 1% move) — the pricing engine emits it that way. The BFF passes the value
-    through unchanged under the matching ``one_pct`` unit label; no rescaling is needed here.
-    """
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
         "contract_key": row.contract_key,
@@ -349,8 +243,6 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
                 UNIT_STRINGS["dollar_gamma_one_pct"],
             ),
             "vega": _metric(row.vega, row.dollar_vega, UNIT_STRINGS["dollar_vega"]),
-            # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0050) beside vega,
-            # raw + cash with its unit; additive-nullable so an older partition reads back None.
             "rt_vega": _metric(row.rt_vega, row.dollar_rt_vega, UNIT_STRINGS["dollar_rt_vega"]),
             "theta": _metric(row.theta, row.dollar_theta, UNIT_STRINGS["dollar_theta_365"]),
             "rho": _metric(row.rho, row.dollar_rho, UNIT_STRINGS["dollar_rho"]),
@@ -363,48 +255,16 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
 def _analytics_metric(
     raw: float | None, dollar: float | None, unit: str | None
 ) -> dict[str, object]:
-    """One dollar metric off a projected-analytics cell.
-
-    The cell stores the dollar number *and* its unit string side by side (P0.2 / ADR 0036),
-    so the BFF passes the stored unit straight through — it does not re-derive the convention.
-    ``dollar_theta``/``dollar_rho`` and their units are additive-nullable; an older partition
-    serializes them as ``None`` rather than failing.
-    """
     return {"raw": raw, "dollar": dollar, "unit": unit}
 
 
 def _nullable_analytics_metric(
     raw: float | None, dollar: float | None, unit: str | None
 ) -> dict[str, object]:
-    """One dollar metric where the raw value itself is additive-nullable.
-
-    Used for mirror-Greek fields (T-mirror-greeks-putcall) that are ``None`` on partitions
-    written before the mirror-greeks lane landed. A ``None`` raw is a labelled-unavailable
-    reading, not a silent zero.
-    """
     return {"raw": raw, "dollar": dollar, "unit": unit}
 
 
 def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[str, object]:
-    """Serialize one tenor × delta-band analytics cell (WS 1F) for the front.
-
-    Field names follow ADR 0029: ``forward_price``, ``implied_vol``, ``log_moneyness``,
-    ``dollar_*``. Each dollar Greek is emitted as a metric carrying the **unit string stored on
-    the cell** (Delta\\$ per \\$1, Gamma\\$ per 1% move, Vega\\$ per vol point, Theta\\$ per
-    calendar day, Rho\\$ per 1% rate) beside its raw per-unit Greek — the BFF tags the unit, it
-    does not redefine or recompute it (the blueprint / 1F own that). The analytics router groups
-    these by maturity into smile + surface-grid + dollar-Greek views.
-
-    ``mirror_metrics`` carries the opposite option right's delta/theta/rho at the same IV and
-    strike (T-mirror-greeks-putcall). ``price_mirror`` is its model price. These are
-    additive-nullable — ``None`` on older partitions before the lane landed. Gamma and vega are
-    not mirrored (they are identical call vs put at one strike and one IV, already in ``metrics``).
-    The unit strings are the same as for the primary delta/theta/rho (the unit does not change
-    with option right — only the sign of delta and the direction of theta/rho differ).
-    """
-    # Mirror metrics: delta/theta/rho of the opposite right. The dollar_*_unit strings match the
-    # primary (same monetization convention, same unit, only the raw value differs). Gamma/vega
-    # are omitted from the mirror — they are identical by put-call parity at one strike and one IV.
     mirror_delta_unit = row.dollar_delta_unit if row.delta_mirror is not None else None
     mirror_theta_unit = row.dollar_theta_unit if row.theta_mirror is not None else None
     mirror_rho_unit = row.dollar_rho_unit if row.rho_mirror is not None else None
@@ -426,16 +286,12 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
             "delta": _analytics_metric(row.delta, row.dollar_delta, row.dollar_delta_unit),
             "gamma": _analytics_metric(row.gamma, row.dollar_gamma, row.dollar_gamma_unit),
             "vega": _analytics_metric(row.vega, row.dollar_vega, row.dollar_vega_unit),
-            # RT-Vega per strike (running-time / annualised vega = vega/sqrt(T), ADR 0050),
-            # raw + cash with the cell's stored unit; additive-nullable.
             "rt_vega": _analytics_metric(
                 row.rt_vega, row.dollar_rt_vega, row.dollar_rt_vega_unit
             ),
             "theta": _analytics_metric(row.theta, row.dollar_theta, row.dollar_theta_unit),
             "rho": _analytics_metric(row.rho, row.dollar_rho, row.dollar_rho_unit),
         },
-        # Mirror: opposite right at the same IV and strike (T-mirror-greeks-putcall). Nullable
-        # on pre-lane partitions. Gamma/vega omitted (identical by put-call parity).
         "price_mirror": row.price_mirror,
         "mirror_metrics": {
             "delta": _nullable_analytics_metric(
@@ -456,23 +312,10 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
 
 
 def _basket_metric(dollar: float | None, unit: str | None) -> dict[str, object]:
-    """One aggregate basket dollar Greek: the summed dollar value and the unit it is quoted in.
-
-    Unlike a per-contract metric there is no single ``raw`` per-unit Greek for a multi-leg sum,
-    so the basket aggregate carries just ``dollar`` + ``unit``. A ``None`` dollar is a labelled
-    unavailable Greek (an additive-nullable theta/rho missing on a contributing leg), not zero.
-    """
     return {"dollar": dollar, "unit": unit}
 
 
 def _basket_leg_to_dict(line: LegRisk) -> dict[str, object]:
-    """One leg's signed contribution to each basket Greek, beside its cell context.
-
-    This is the per-leg breakdown that proves the basket number is the sum of the Tab-1
-    per-position dollar Greeks. ADR-0029 names (``dollar_*``, ``forward_price``, ``implied_vol``,
-    ``log_moneyness``); the matched cell's context is echoed for resolved option legs (``None``
-    for a stock or unresolved leg). An unresolved leg carries its ``gap_reason``.
-    """
     leg = line.leg
     return {
         "instrument_kind": leg.instrument_kind,
@@ -499,16 +342,6 @@ def _basket_leg_to_dict(line: LegRisk) -> dict[str, object]:
 
 
 def basket_risk_to_dict(result: BasketRisk) -> dict[str, object]:
-    """Serialize a priced/risked multi-leg basket for the front (WS 2A).
-
-    The basket's dollar Greeks are the **book-additive sum** of the per-position dollar Greeks
-    WS-1F produced (``infra.risk.multileg.basket_risk`` — summation, never a recompute), each
-    carried with its unit string (Delta\\$ per \\$1, Gamma\\$ per 1% move, Vega\\$ per vol point,
-    Theta\\$ per calendar day, Rho\\$ per 1% rate) from the analytics rows. The per-leg
-    ``legs`` breakdown carries each leg's signed contribution; ``gaps`` names every leg that
-    could not be fully priced (unpriced cell, ambiguous provider, missing spot, unavailable
-    theta/rho) — a labelled gap, never a silent zero, and HTTP 200 at the router, never a 500.
-    """
     return {
         "basket_id": result.basket_id,
         "trade_date": result.trade_date.isoformat(),
@@ -537,15 +370,6 @@ def basket_risk_to_dict(result: BasketRisk) -> dict[str, object]:
 
 
 def basket_scenarios_to_dict(result: BasketStressResult) -> dict[str, object]:
-    """Serialize an on-demand basket stress surface for the front (WS 2B, interactive).
-
-    The ``surface`` view matches ``scenario_surface_to_dict``'s shape (the seam the
-    ``StressSurface`` web component already renders): sorted shock axes + a spot-major
-    ``scenario_pnl`` z-grid carrying its ``unit`` string. The cartesian reprice is complete, so
-    there are no labelled holes (``has_holes`` is always ``False``). ``worst_case`` is the
-    largest-loss cell; ``gaps`` names every leg that could not be repriced (HTTP 200 at the
-    router, never a 500).
-    """
     n_cells = len(result.spot_axis) * len(result.vol_axis)
     return {
         "basket_id": result.basket_id,
@@ -583,7 +407,6 @@ def basket_scenarios_to_dict(result: BasketStressResult) -> dict[str, object]:
 
 
 def slice_plot_series_to_dict(series: SlicePlotSeries) -> dict[str, object]:
-    """Serialize a fitted smile's raw-vs-fitted plot series (log-moneyness grid)."""
     return {
         "raw_k": list(series.raw_k),
         "raw_w": list(series.raw_w),
@@ -593,11 +416,6 @@ def slice_plot_series_to_dict(series: SlicePlotSeries) -> dict[str, object]:
 
 
 def dashboard_status_to_dict(status: DashboardStatus) -> dict[str, object]:
-    """Serialize the operator dashboard status (four flags + headline facts).
-
-    Uses duck-typed attribute access so this works with whatever shape
-    ``DashboardStatus`` takes when orchestration lands.
-    """
     return {
         "trade_date": _iso(status.trade_date),
         "data_flowing": status.data_flowing,
@@ -616,23 +434,12 @@ def dashboard_status_to_dict(status: DashboardStatus) -> dict[str, object]:
 
 
 def _price_spec_to_dict(spec: object) -> dict[str, object]:
-    """A price spec as a tagged dict: ``{"kind": "market"}`` or ``{"kind": "limit", "price": …}``.
-
-    Mirrors the closed :data:`~algotrading.infra.orders.PriceSpec` set; the ``kind`` tag is the
-    discriminator the web client switches on (the HTTP shape is the seam)."""
     if isinstance(spec, Limit):
         return {"kind": "limit", "price": spec.price}
     return {"kind": "market"}
 
 
 def ticket_to_dict(ticket: OrderTicket) -> dict[str, object]:
-    """Serialize a built :class:`~algotrading.infra.orders.OrderTicket` for preview (WS 3A).
-
-    Read-only/paper by construction: the payload carries an explicit ``gated`` flag stating that
-    transmission (sign-and-send) is WS 3B behind an owner gate — there is no transmit field and no
-    code path from this payload to a broker. Each leg mirrors the basket's grid identity
-    (``tenor_label``/``delta_band`` for options, ``None`` for stock) plus the order side/qty/price
-    spec; the concrete contract is bound later, at 3B."""
     return {
         "source_basket_id": ticket.source_basket_id,
         "trade_date": ticket.trade_date.isoformat(),
@@ -653,7 +460,6 @@ def ticket_to_dict(ticket: OrderTicket) -> dict[str, object]:
             for leg in ticket.legs
         ],
         "n_legs": len(ticket.legs),
-        # The gate, made explicit in the payload: nothing here transmits; sending is 3B.
         "gated": {
             "transmit": False,
             "reason": "3B — sign-and-send is behind an explicit owner gate",

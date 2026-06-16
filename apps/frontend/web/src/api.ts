@@ -1,20 +1,6 @@
-// Typed client for the BFF.
-//
-// Request bodies and any pydantic-modelled payloads are sourced from the generated
-// `./api/schema.d.ts` (run `npm run gen:api` after a backend contract change; CI's
-// `web-contract` gate fails on un-regenerated drift). The BFF's GET responses are
-// currently served as bare `JSONResponse` dicts with no `response_model=`, so they do
-// not appear in the OpenAPI schema; those response shapes are hand-maintained below and
-// mirror apps/frontend/src/algotrading/frontend/serializers.py — keep them in sync when a
-// serializer changes (the HTTP contract is the seam). Enriching the routers with
-// `response_model=` would let these aliases come from the schema too; that is the
-// follow-up that makes the GET contract drift-proof end to end.
-
 import type { components } from "./api/schema";
 import type { BasketScenariosResponse } from "./stressApi";
 
-// The run-launch body is a real pydantic model on the BFF, so its type comes straight
-// from the generated schema rather than a hand-written duplicate.
 export type RunRequest = components["schemas"]["RunRequest"];
 
 export interface Provenance {
@@ -37,9 +23,7 @@ export interface SurfaceSlice {
   svi_sigma: number;
   expiry_date: string;
   day_count: string;
-  // bound_hits/converged are null on rows persisted before the degeneracy fields existed
-  // (unknown, not clean). degenerate applies the backend policy: a railed, non-converged,
-  // or arb-breached calibration is flagged, never served as clean.
+
   diagnostics: {
     rmse: number;
     n_points: number;
@@ -114,10 +98,6 @@ export interface Job {
   summary: Record<string, unknown>;
 }
 
-// --- WS 1I front-page seams: price-history, constituents, analytics, recorded-dates ---
-// Each interface mirrors a serializer in
-// apps/frontend/src/algotrading/frontend/serializers.py / the matching router.
-
 export interface DailyBar {
   provider: string;
   underlying: string;
@@ -167,8 +147,6 @@ export interface ConstituentsResponse {
   constituents: Constituent[];
 }
 
-// One dollar metric: the raw per-unit Greek, the dollar value, and the unit string it is
-// quoted in (P0.2 / ADR 0036). dollar/unit are null on an older partition that predates them.
 export interface DollarMetric {
   raw: number;
   dollar: number | null;
@@ -194,9 +172,6 @@ export interface AnalyticsPoint {
   provenance: Provenance;
 }
 
-// The smile x-axis declares what it is (F-BFF-04): the rich projection serves signed target
-// deltas; the surface-grid fallback serves moneyness buckets (in log-moneyness units) and
-// must never relabel them as deltas.
 export type SmileAxis =
   | { axis_type: "delta"; deltas: number[]; implied_vols: number[]; log_moneyness: number[] }
   | {
@@ -215,10 +190,6 @@ export interface AnalyticsMaturity {
   points: AnalyticsPoint[];
 }
 
-// The dense vol surface reconstructed from the fitted SVI slices (the blueprint's regularized
-// surface grid). The 3D nappe renders this smooth lattice rather than the sparse delta-band
-// points: `implied_vol[i][j]` is the vol at `maturity_years[i]` / `log_moneyness[j]`. Null when
-// fewer than two fitted slices exist, in which case the front falls back to the band-point grid.
 export interface SurfaceDense {
   log_moneyness: number[];
   maturity_years: number[];
@@ -235,13 +206,10 @@ export interface AnalyticsResponse {
   surface: SurfaceDense | null;
 }
 
-// One enabled index from the registry (GET /api/indices). The selector is driven by this —
-// never a hard-coded list — so it can only ever offer indices the backend actually captures.
 export interface IndexOption {
   symbol: string;
   name: string;
-  // ISO quote currency from the registry (e.g. "EUR" for SX5E). The front renders monetized
-  // Greeks/PnL in this currency's symbol — never a hard-coded "$" (blueprint 05-math-notes).
+
   currency: string;
 }
 
@@ -249,16 +217,12 @@ export interface IndicesResponse {
   indices: IndexOption[];
 }
 
-// The platform-wide delta-band axis (GET /api/config/delta-bands) the basket leg selector
-// offers — the single source, so the selector is never a hard-coded band list.
 export interface DeltaBandsResponse {
   delta_bands: string[];
 }
 
 export type QcVerdict = "pass" | "fail" | "unknown";
 
-// A trade date the page can show, with its QC verdict. ``available`` includes qc-failing days
-// (shown with a fail badge), not just the clean ones in ``dates`` (cahier des charges §3.1/§5).
 export interface AvailableDate {
   date: string;
   qc: QcVerdict;
@@ -268,20 +232,13 @@ export interface RecordedDatesResponse {
   index: string;
   count: number;
   dates: string[];
-  // Optional only for resilience during a rolling BFF restart (an older BFF omits it); the
-  // current BFF always returns it. Callers guard with ``?? []``.
+
   available?: AvailableDate[];
 }
-
-// --- WS 2A: multi-leg basket builder -------------------------------------------------
-// Mirrors apps/frontend/src/algotrading/frontend/serializers.py::basket_risk_to_dict and the
-// /api/basket/risk router body. The HTTP shape is the seam — keep both sides in lockstep.
 
 export type InstrumentKind = "option" | "stock";
 export type LegSide = "long" | "short";
 
-// One leg the operator composes (the request shape). For an option leg, tenor_label + delta_band
-// name the WS-1F grid cell; a stock leg omits them. quantity is signed by side (long > 0, short < 0).
 export interface BasketLegInput {
   instrument_kind: InstrumentKind;
   side: LegSide;
@@ -299,8 +256,6 @@ export interface BasketRequest {
   legs: BasketLegInput[];
 }
 
-// One aggregate basket dollar Greek: the summed dollar value and the unit it is quoted in.
-// dollar is null when the Greek is unavailable (an additive-nullable theta/rho missing on a leg).
 export interface BasketMetric {
   dollar: number | null;
   unit: string | null;
@@ -314,7 +269,6 @@ interface BasketGreekMetrics {
   rho: BasketMetric;
 }
 
-// One leg's signed contribution to each basket Greek, beside its matched-cell context.
 export interface BasketLegResult {
   instrument_kind: InstrumentKind;
   side: LegSide;
@@ -351,12 +305,8 @@ export interface BasketRiskResponse {
   n_gaps: number;
 }
 
-// A request that the BFF never answers must not wedge a panel forever; abort past this.
 export const FETCH_TIMEOUT_MS = 30_000;
 
-// Combine an optional caller signal (cancel-on-unmount) with a timeout, so a fetch is aborted
-// by whichever fires first. AbortSignal.any/timeout are standard in every target runtime; guard
-// for a test/runtime that stubs an older fetch and lacks them rather than throwing.
 function requestSignal(signal?: AbortSignal): AbortSignal | undefined {
   if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") {
     return signal;
@@ -366,8 +316,6 @@ function requestSignal(signal?: AbortSignal): AbortSignal | undefined {
   return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal;
 }
 
-// A non-2xx BFF response, carrying the typed error detail the BFF deliberately serves (the
-// 400 `detail` of a malformed basket, a labelled error body) instead of a bare status line.
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: string;

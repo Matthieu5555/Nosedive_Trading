@@ -1,7 +1,3 @@
-// Render the three async states uniformly (Antho's demo signature): a loading note, a typed
-// error panel, or the children. Pages pass already-rendered children for the loaded case and
-// guard their data access, keeping the happy path declarative.
-
 import type { ReactNode } from "react";
 
 interface AsyncBlockProps {

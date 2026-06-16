@@ -1,23 +1,3 @@
-"""The recorded run-state ledger — the operator's memory of what ran and when.
-
-Restart safety and the "identify the last healthy run and the current backlog
-instantly" requirement both hang on one durable fact: an append-only record of which
-stage finished cleanly for which trade date. This module owns that record. It is a
-small JSON ledger under the store root (separate from A's contract tables, because it
-is operational bookkeeping, not a typed analytic), written atomically so a crash
-mid-write never corrupts it.
-
-Each step of the end-of-day pipeline records a :class:`StageRun` when it completes:
-the trade date, the stage name, the outcome, the run id, and the injected timestamp.
-The pipeline reads the ledger back on restart to skip stages that already finished
-for the date (idempotent resume), and the dashboard reads it to answer "what is the
-last healthy run, and what is still outstanding".
-
-Nothing here reads a clock: every timestamp is injected by the caller, the same
-discipline the actor and QC plane hold, so a replay of the same pipeline reproduces
-the same ledger.
-"""
-
 from __future__ import annotations
 
 import json
@@ -29,16 +9,6 @@ from pathlib import Path
 
 
 def _atomic_append_limit() -> int:
-    """The largest write() guaranteed atomic against concurrent appenders.
-
-    POSIX guarantees a single ``write()`` of at most ``PIPE_BUF`` bytes is atomic, and
-    for a file opened ``O_APPEND`` the kernel also serialises the seek-to-end + write,
-    so two concurrent appenders never interleave or overwrite when each record is one
-    write of ``<= PIPE_BUF`` bytes. ``select.PIPE_BUF`` is POSIX-only; 512 is its
-    portable floor (the standard minimum on every POSIX host) and the fallback on a
-    non-POSIX host. Resolved once via this helper so the module has no reassigned
-    module-level name (which mypy treats as final on the imported constant).
-    """
     try:
         from select import PIPE_BUF
     except ImportError:  # pragma: no cover - non-POSIX hosts only
@@ -48,8 +18,6 @@ def _atomic_append_limit() -> int:
 
 _PIPE_BUF = _atomic_append_limit()
 
-# The five canonical end-of-day stages, in run order (Part IV.F). A stage name is the
-# stable key the ledger, dashboard, and pipeline all agree on, so it lives once here.
 STAGE_UNIVERSE_REFRESH = "universe_refresh"
 STAGE_COLLECTION = "collection"
 STAGE_ANALYTICS = "analytics"
@@ -64,9 +32,6 @@ EOD_STAGES: tuple[str, ...] = (
     STAGE_QC,
 )
 
-# A stage outcome. "ok" means the stage finished cleanly; "failed" means it ran but
-# its work did not pass (a QC fail, a reconciliation breach). A stage that raised
-# never records — the absence of a record is exactly what marks it as backlog.
 OUTCOME_OK = "ok"
 OUTCOME_FAILED = "failed"
 
@@ -74,13 +39,6 @@ _LEDGER_FILENAME = "_run_state.jsonl"
 
 
 class LedgerLineTooLargeError(ValueError):
-    """A ledger record encodes to more bytes than an atomic append can guarantee.
-
-    The lock-free append relies on a single ``write()`` of at most ``PIPE_BUF`` bytes
-    being atomic against concurrent appenders. A line larger than that could interleave
-    with another writer and tear the ledger, so we refuse it loudly rather than risk a
-    silent corruption — carrying the offending size so the caller can see the breach.
-    """
 
     def __init__(self, line_bytes: int, limit: int) -> None:
         self.line_bytes = line_bytes
@@ -93,7 +51,6 @@ class LedgerLineTooLargeError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class StageRun:
-    """One recorded completion of one pipeline stage for one trade date."""
 
     trade_date: date
     stage: str
@@ -103,7 +60,6 @@ class StageRun:
 
     @property
     def is_ok(self) -> bool:
-        """True when the stage finished cleanly."""
         return self.outcome == OUTCOME_OK
 
 
@@ -137,23 +93,6 @@ def _decode(line: str) -> StageRun:
 
 
 def record_stage(root: Path, stage_run: StageRun) -> None:
-    """Append one stage completion to the ledger, concurrency-safely.
-
-    The ledger is JSON-lines: one record per line, append-only. The append is a single
-    ``os.write`` of one ``\\n``-terminated JSON line to a file opened ``O_APPEND``. On
-    POSIX the kernel serialises the implicit seek-to-end and the write for ``O_APPEND``,
-    and a write of at most ``PIPE_BUF`` bytes is atomic, so two processes appending
-    concurrently never interleave or overwrite each other — both records survive. This
-    replaces the earlier read-modify-rename, which let two writers read the same file,
-    each append, and have the last rename silently drop the other's record (the two
-    templated EOD timers share one ledger and a ``Persistent=true`` catch-up fires them
-    near-simultaneously). Recording the same stage twice (a re-run of an
-    already-finished stage) simply appends a second row; readers take the latest per
-    (trade_date, stage), so a duplicate is harmless rather than a conflict.
-
-    Raises :class:`LedgerLineTooLargeError` if the encoded record would exceed the
-    atomic-append size, rather than risk a torn write.
-    """
     line = (_encode(stage_run) + "\n").encode("utf-8")
     if len(line) > _PIPE_BUF:
         raise LedgerLineTooLargeError(len(line), _PIPE_BUF)
@@ -167,7 +106,6 @@ def record_stage(root: Path, stage_run: StageRun) -> None:
 
 
 def read_stage_runs(root: Path) -> list[StageRun]:
-    """Read every recorded stage run, oldest first. Empty when nothing has run."""
     path = _ledger_path(root)
     if not path.exists():
         return []
@@ -179,11 +117,6 @@ def read_stage_runs(root: Path) -> list[StageRun]:
 
 
 def latest_by_stage(runs: Sequence[StageRun], trade_date: date) -> dict[str, StageRun]:
-    """The most recent recorded run for each stage on one trade date.
-
-    A stage re-run after a fix appends a fresh row, so "did this stage finish, and how"
-    is answered by the last row for it — which is what this returns, keyed by stage.
-    """
     latest: dict[str, StageRun] = {}
     for run in runs:
         if run.trade_date == trade_date:
@@ -192,34 +125,16 @@ def latest_by_stage(runs: Sequence[StageRun], trade_date: date) -> dict[str, Sta
 
 
 def completed_stages(root: Path, trade_date: date) -> set[str]:
-    """The stages that finished cleanly (outcome ok) for a trade date.
-
-    Observability, not a gate: the pipeline re-runs every stage on a re-fire
-    (overwrite-by-re-run, ADR 0032 refined) and only *logs* this set at start. It is
-    the dashboard's health key — :func:`backlog_stages` and
-    :func:`last_healthy_trade_date` derive from it. A stage whose latest row recorded
-    a ``failed`` outcome is *not* completed.
-    """
     latest = latest_by_stage(read_stage_runs(root), trade_date)
     return {stage for stage, run in latest.items() if run.is_ok}
 
 
 def backlog_stages(root: Path, trade_date: date) -> list[str]:
-    """The canonical stages not yet finished cleanly for a trade date, in run order.
-
-    The operator's "current backlog" for the date: every EOD stage that has not
-    recorded a clean completion, listed in the order the pipeline would run them.
-    """
     done = completed_stages(root, trade_date)
     return [stage for stage in EOD_STAGES if stage not in done]
 
 
 def last_healthy_trade_date(root: Path) -> date | None:
-    """The most recent trade date whose full EOD sequence finished cleanly.
-
-    The operator's "last healthy run": the latest date for which every canonical
-    stage recorded a clean completion. ``None`` when no date is fully clean yet.
-    """
     runs = read_stage_runs(root)
     dates = sorted({run.trade_date for run in runs}, reverse=True)
     for trade_date in dates:

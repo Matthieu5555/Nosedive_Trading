@@ -1,5 +1,3 @@
-// shadcn/ui Card — themed onto the operator-console `.panel` grammar (same border, radius,
-// background and padding rhythm). `ui` layer.
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

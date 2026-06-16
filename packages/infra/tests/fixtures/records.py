@@ -1,21 +1,3 @@
-"""One valid baseline record per table family.
-
-These are the canonical "good" records: every table family, fully populated,
-passing validation, ready to write. Two jobs:
-
-* the storage round-trip test iterates all of them (write → read → equal);
-* the rejection tests take one and break a single field, so each malformed case
-  differs from a known-good record in exactly one way.
-
-They are built once and returned as a fresh dict each call, so a test that mutates
-a copy cannot disturb another test.
-
-``make_record`` is the keyword-override door onto the same baselines: tests that need
-"one good record with a few fields bent" build it as baseline + explicit overrides
-instead of re-enumerating every contract field. A contract gaining a field then needs
-editing here only — never in the consuming test files (M11).
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -89,8 +71,6 @@ INSTRUMENT_KEY = UNDERLYING_KEY.canonical()
 CONTRACT_KEY = OPTION_KEY.canonical()
 
 
-# The raw events the baseline derived records trace back to, keyed exactly as the
-# raw-event table is — (session_id, event_id) — so lineage resolves to one row.
 _DEFAULT_SOURCE_RECORDS = (
     source_ref("raw_market_events", "sess-1", "evt-1"),
     source_ref("raw_market_events", "sess-1", "evt-2"),
@@ -105,12 +85,6 @@ def make_stamp(
     config_hashes: dict[str, str] | None = None,
     source_timestamps: tuple[datetime, ...] = (SNAPSHOT_TS,),
 ) -> ProvenanceStamp:
-    """A valid provenance stamp pointing at the given source records.
-
-    Every ``stamp`` field is overridable so hash-pinned suites (the determinism
-    goldens) can pass their exact historical parameters and keep their stamp hashes
-    byte-identical; everything else rides the fixture defaults.
-    """
     return stamp(
         calc_ts=calc_ts,
         code_version=code_version,
@@ -121,18 +95,10 @@ def make_stamp(
 
 
 def make_record(table: str, **overrides: Any) -> Any:
-    """The baseline record for ``table`` with the named fields replaced.
-
-    Overrides go through ``dataclasses.replace``, so an unknown field name fails
-    loudly, and deliberately *invalid* values pass through unchecked — exactly what
-    the "break one field" rejection tests need (contract validation lives at the
-    write door, not in the constructors).
-    """
     return dataclasses.replace(baseline_records()[table], **overrides)
 
 
 def baseline_records() -> dict[str, Any]:
-    """Return a fresh mapping of table name to one valid record each."""
     return {
         "instrument_master": InstrumentMaster(
             instrument_key=INSTRUMENT_KEY,

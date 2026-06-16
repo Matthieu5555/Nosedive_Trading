@@ -17,7 +17,7 @@ createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
-      {/* Dev-only: tree-shaken out of the production bundle, never mounted for operators. */}
+      {}
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   </StrictMode>,

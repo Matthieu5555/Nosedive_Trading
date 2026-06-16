@@ -1,9 +1,3 @@
-// The dollar-Greek panel: each metric with its unit string visible (P0.2 / ADR 0036).
-//
-// The unit string is read straight from the BFF payload — it is never re-derived here. An
-// older partition can carry a null dollar/unit (the field predates that partition); we render
-// a labeled "n/a" rather than a bare blank so the absence is explicit.
-
 import type { AnalyticsPoint, DollarMetric } from "../api";
 import { sci, sciUnit, UNITS, withCurrency } from "../lib/format";
 
@@ -15,8 +9,6 @@ const GREEK_ORDER: Array<keyof AnalyticsPoint["metrics"]> = [
   "rho",
 ];
 
-// The raw per-unit Greek's mathematical unit (owner notation), shown inline beside the raw
-// number — the dollar column carries its own config-forked unit string from the backend.
 const RAW_UNIT: Record<(typeof GREEK_ORDER)[number], string> = {
   delta: UNITS.delta,
   gamma: UNITS.gamma,
@@ -25,8 +17,6 @@ const RAW_UNIT: Record<(typeof GREEK_ORDER)[number], string> = {
   rho: UNITS.rho,
 };
 
-// The $ value in scientific notation at six significant figures (its unit travels in the
-// adjacent column, straight from the backend metric — never re-derived here).
 function formatDollar(metric: DollarMetric): string {
   return sci(metric.dollar);
 }

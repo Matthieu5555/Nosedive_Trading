@@ -1,11 +1,3 @@
-"""core.log: standalone JSON logging, idempotent handlers, and the configured-root deferral.
-
-Expected payload shape is derived from the documented contract (one JSON object per line:
-``ts``/``level``/``logger``/``message`` + non-reserved ``extra=`` keys), not from the
-formatter's own output. Logger names are unique per test because stdlib loggers are
-process-global.
-"""
-
 from __future__ import annotations
 
 import io
@@ -26,7 +18,6 @@ def _unique(name: str) -> str:
 def _format_one(
     logger_name: str, level: int, message: str, extra: dict[str, object] | None = None
 ) -> dict[str, object]:
-    """Render one record through JsonFormatter and parse the JSON line back."""
     logger = logging.getLogger(logger_name)
     buffer = io.StringIO()
     handler = logging.StreamHandler(buffer)
@@ -77,8 +68,6 @@ def test_json_formatter_renders_exc_info_as_traceback_text() -> None:
 
 @pytest.fixture()
 def _standalone_root() -> Iterator[None]:
-    """Force the standalone mode: no marked root handler, regardless of what the
-    process ran earlier (any app built in-suite may have called configure_logging)."""
     root = logging.getLogger()
     removed = [h for h in root.handlers if getattr(h, HANDLER_MARKER, False)]
     for handler in removed:
@@ -95,13 +84,12 @@ def test_get_logger_is_idempotent_and_does_not_propagate(_standalone_root: None)
 
     assert again is logger
     marked = [h for h in logger.handlers if getattr(h, HANDLER_MARKER, False)]
-    assert len(marked) == 1  # a second call attached nothing
-    assert logger.propagate is False  # own handler only — no double emission via root
+    assert len(marked) == 1
+    assert logger.propagate is False
 
 
 @pytest.fixture()
 def _marked_root_handler() -> Iterator[io.StringIO]:
-    """Install a marked root handler, as the platform-wide configurator would."""
     buffer = io.StringIO()
     handler = logging.StreamHandler(buffer)
     handler.setFormatter(JsonFormatter())
@@ -119,7 +107,7 @@ def test_get_logger_defers_to_a_configured_root(_marked_root_handler: io.StringI
     name = _unique("deferring.module")
     logger = get_logger(name)
 
-    assert logger.handlers == []  # nothing attached — the configured root owns rendering
+    assert logger.handlers == []
     assert logger.propagate is True
 
     logger.info("routed via root", extra={"k": "v"})

@@ -1,5 +1,3 @@
-// shadcn/ui Button — copy-in primitive, themed onto the operator-console dark palette.
-// Lives in the `ui` layer; imports only `@/lib/utils` (lib) which the boundary DAG allows.
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";

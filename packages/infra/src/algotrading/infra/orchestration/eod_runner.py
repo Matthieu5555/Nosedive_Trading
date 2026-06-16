@@ -1,42 +1,3 @@
-"""The EOD runner: bind one fire of the daily close-capture and call ``run_end_of_day``.
-
-This is the importable core behind ``scripts/eod_run.py`` (WS 1G, ADR 0032). The systemd
-timer is the scheduler; this is the one-shot it fires. The runner does exactly four things
-and nothing the ledger already owns:
-
-* **Resolve which day, which indices.** The trade date defaults to the clock's current
-  market day; ``--trade-date`` overrides it for a catch-up/backfill fire. A *future* trade
-  date is rejected — never capture a session that has not closed (look-ahead). The index set
-  is read from the 1J registry's :func:`enabled_indices` (never a hardcoded list) and filtered
-  to the fired calendar group (``--calendar XEUR`` / ``--index SX5E``; default = all enabled).
-* **Skip a non-session cleanly.** A ``--trade-date`` the calendar marks a holiday/weekend for
-  *every* fired index is a clean no-op — not a failed run, not an empty set written. The
-  per-index session check uses the 1J resolver, so a half-day/holiday is handled by the
-  calendar, never by the timer's fixed local time. Each captured index's ``as_of`` is its own
-  :meth:`CalendarResolver.session_close` — the exact close instant 1C captures at.
-* **Bind one trace and run.** One ``correlation_id`` is bound for the whole fire (a UUID,
-  recorded in the start log line so journald and the ledger share it), the default
-  :class:`EodStages` wiring is built over the store/config/clock/correlation_id, and
-  :func:`run_end_of_day` is called. Idempotency, gap-tracking, and restart-convergence stay
-  entirely in the existing run-state ledger; the runner adds no dedupe of its own.
-* **Freeze a per-run manifest.** Every fire records its lineage manifest — resolved config
-  snapshot + per-bundle ``config_hashes`` + code identity (commit SHA + dirty flag) — in the
-  :class:`RunRepository`, so a scheduled run is reproducible *from its manifest*, not merely
-  traceable through the JSONL ledger.
-
-Determinism / no wall clock: the runner takes an injected :class:`Clock` (the same discipline
-the ledger and resolver hold); ``main`` never reads ``date.today()`` directly. Every external
-dependency (config, registry, resolver, the stage wiring, the run repository, the code-identity
-probe) is injectable through :class:`RunnerDeps` so a test drives the whole path with fakes and
-no broker, no git subprocess, and no real scheduler. The collection stage is the 1C seam: until
-1C closes the broker→raw-event bridge the default wiring uses a replay/fixture collection stage,
-swapped to ``collect_live`` when 1C lands — the timer path is fully exercisable today.
-
-Exit code: any stage raising propagates out of :func:`run_end_of_day`; :func:`main` records the
-fire as failed in the manifest and returns a non-zero code so ``Restart=on-failure`` and
-``OnFailure=`` engage. A clean fire (including a clean holiday no-op) returns ``0``.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -79,16 +40,6 @@ def run_fire(
     index: str | None = None,
     correlation_id: str | None = None,
 ) -> EodResult | None:
-    """Plan and run one fire end to end; return the ``EodResult`` (``None`` on a no-op).
-
-    Resolves the plan (:func:`plan_fire`), and — when at least one index is in session — builds
-    the default stage wiring over the fired set and calls :func:`run_end_of_day`, then freezes
-    the per-run manifest. A no-op fire (every fired index a holiday, or an empty scope) records
-    a clean manifest and returns ``None`` without running the pipeline. A stage raising
-    propagates after a *failed* manifest is recorded (so ``main`` exits non-zero and the failure
-    is reproducible). One ``correlation_id`` flows from the plan into the pipeline and the
-    manifest, so journald and the ledger resolve the same trace.
-    """
     plan = plan_fire(
         deps,
         trade_date=trade_date,
@@ -128,8 +79,6 @@ def run_fire(
             stages=stages,
         )
     except Exception:
-        # Record the failed fire (still reproducible from its manifest) before propagating, so
-        # Restart=on-failure / OnFailure= engage and the failure is auditable. Nothing swallowed.
         _record_manifest(deps, plan, status=RunStatus.FAILED)
         log.error("orchestration.eod_run.failed")
         raise
@@ -170,13 +119,6 @@ def main(
     deps: RunnerDeps | None = None,
     deps_factory: Callable[[], RunnerDeps] | None = None,
 ) -> int:
-    """Entrypoint: parse args, run one fire, return a process exit code.
-
-    Returns ``0`` on a clean fire (including a clean holiday no-op) and a non-zero code on any
-    stage failure or labeled runner error, so ``Restart=on-failure`` / ``OnFailure=`` engage.
-    ``deps`` (or ``deps_factory``) is injected by a test for a fully-faked path; production
-    passes neither and the deps are built by :func:`build_default_deps` from the environment.
-    """
     args = _parse_args(argv)
     if deps is None:
         deps = (deps_factory or build_default_deps)()

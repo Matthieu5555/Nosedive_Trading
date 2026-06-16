@@ -1,48 +1,12 @@
-"""Shared test plumbing for the infra-ibkr suite: the one CP REST transport fake (M39).
-
-Every CP REST unit test fakes the same two-verb seam — ``get(path, params)`` /
-``post(path, body)`` — and before this conftest each file minted its own
-``_FakeTransport`` with drifted attribute names. The variants differed only in
-*response policy*, so the policy is now an explicit parameter per verb; behavior
-differences stay visible at the construction site, never as a seventh copy.
-
-Test modules import it relatively (the suite runs under ``--import-mode=importlib``
-and this tests dir is a package)::
-
-    from .conftest import FakeCpTransport
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
-# Sentinel distinguishing "no fixed response configured" from "the response is None".
 _UNSET: Any = object()
 
 
 class FakeCpTransport:
-    """A canned CP REST transport: configurable responses, every call recorded.
-
-    Per verb, the response is resolved in this order (first configured policy wins):
-
-    * ``*_responder`` — a callable ``(path, params_or_body) -> payload`` for routing
-      that depends on more than the path (e.g. per-conid history payloads);
-    * ``*_routes`` — a dict keyed by path (a ``KeyError`` on an unexpected path is the
-      desired loud failure);
-    * ``*_queue`` — a FIFO of payloads, one per call, falling back to ``*_response``
-      once drained;
-    * ``*_response`` — one fixed payload for every call.
-
-    A call with no configured policy fails loudly (an unexpected verb/path in a test
-    is a bug, never a silent ``None``); pass ``*_response=None`` explicitly when the
-    canned answer really is ``None``.
-
-    ``get_errors`` raises queued exceptions ahead of responding, for retry/backoff
-    paths. Recorded state: ``get_calls``/``post_calls`` as ``(path, params)`` pairs,
-    with ``get_paths``/``post_paths`` as the path sequences the read-only-invariant
-    tests assert on.
-    """
 
     def __init__(
         self,

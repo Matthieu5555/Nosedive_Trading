@@ -1,4 +1,3 @@
-// shadcn/ui Label — themed onto the operator-console dark palette. `ui` layer.
 import * as LabelPrimitive from "@radix-ui/react-label";
 import * as React from "react";
 

@@ -112,6 +112,11 @@ the code is part of the change, not a follow-up.
   local gitignored `.env`.
 - Tests are not optional. Code without tests is not done. Expected values are
   derived independently, never copied from the code under test.
+- **No comments, no docstrings in code.** Make names and structure carry the
+  *what*; the *why* lives in `.agent/`, ADRs, and `README.md`, never inline. The
+  only thing that may start with `#`/`//` in code is a functional directive the
+  toolchain reads (`# type: ignore`, `# noqa`, `# pragma`, shebangs,
+  `// eslint-disable`). Full rule in `.agent/conventions.md`.
 - Financial/time-series code: no look-ahead bias. All data access through an
   as-of abstraction. See `.agent/conventions.md` and the `check-lookahead-bias` skill.
 - **Lean on well-maintained libraries; do not hand-roll what one already does.**

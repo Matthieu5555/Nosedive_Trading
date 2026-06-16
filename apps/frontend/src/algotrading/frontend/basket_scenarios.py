@@ -1,43 +1,3 @@
-"""On-demand full-reprice stress surface for an operator-composed basket (Phase 2 / 2B).
-
-Where :func:`algotrading.infra.risk.multileg.basket_risk` *sums* the stored per-leg dollar
-Greeks (no reprice), this reconstructs one :class:`~algotrading.infra.risk.ContractValuationInput`
-per option leg from the persisted :class:`~algotrading.infra.contracts.ProjectedOptionAnalytics`
-grid and runs the trusted full-reprice surface (:func:`algotrading.infra.risk.stress_surface`)
-over the composed basket — the cartesian (spot x vol) PnL surface the 2B page renders, computed
-live for an operator-composed basket with no cron and no persisted ``scenario_results``.
-
-This is the BFF's reconstruction path, deliberately distinct from the actor's
-``valuation_join`` (which reads the *rich in-memory* actor results — the discount factor and QC
-verdict the persisted contracts drop). Only the persisted grid is available here, so the
-valuation is rebuilt under the projection's own documented conventions, stated once and asserted
-by tests:
-
-* ``spot = forward_price`` and ``carry = 0`` — the projection's carry-0 (spot==forward) view
-  (``surfaces/projection.py`` ``SnapshotMarketState``), so spot and forward delta coincide.
-* ``discount_factor`` — **backed out of the stored price**: ``df = row.price / p_free`` where
-  ``p_free`` is the same contract priced rate-free (``df = 1``). The persisted row carries no
-  discount factor, so this is the only way to recover the exact factor the projection used —
-  and it makes the base reprice reproduce ``row.price`` by construction, robust to the
-  projection's DF vintage (pre/post the F-SURF-01 1.1.0 fix). For a (near-)zero ``p_free``
-  (deep OTM) the factor is undefined and falls back to 1.0; that cell's PnL is ~0 regardless.
-* ``volatility = implied_vol``, ``strike``, ``maturity_years`` — copied from the row.
-* ``option_right = "C"`` when the cell's signed ``target_delta >= 0`` else ``"P"``.
-* ``exercise_style = "european"`` — correct for the SPX / SX5E index options the grid holds.
-* ``multiplier`` / ``currency`` — from the underlying's ``instrument_master`` option row,
-  supplied by the caller.
-
-Each option leg reprices off the surface side it names (``combined`` by default, or a ``put`` /
-``call`` wing — ADR 0048), resolved through the same shared indexer the summed
-:func:`~algotrading.infra.risk.multileg.basket_risk` uses, so the stress surface and the summed
-Greeks agree on which wing a leg priced off.
-
-Stock legs are a linear overlay (``qty * spot * spot_shock``, vol-independent), added to the
-option surface rather than forced through the option pricer. A leg that resolves to no grid cell
-(ambiguous provider, missing spot, missing instrument master, or a requested wing with no curve)
-is a labelled :class:`~algotrading.infra.risk.BasketGap`, never a silent zero.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -61,23 +21,12 @@ from algotrading.infra.risk.multileg import (
 from algotrading.infra.risk.stress_surface import stress_surface
 from algotrading.infra.risk.valuation import pricing_state_for
 
-# A synthetic portfolio id for the reprice lines — the basket is a hypothetical book, never a
-# persisted portfolio (this never reaches the store).
 _PORTFOLIO_ID = "basket-stress"
-# Below this rate-free price the discount factor is not recoverable from the stored price
-# (a deep-OTM near-zero value); fall back to an undiscounted factor — the cell's PnL is ~0.
 _MIN_PRICE_FOR_DF = 1e-9
 
 
 @dataclass(frozen=True, slots=True)
 class BasketStressResult:
-    """A composed basket's full-reprice PnL over the cartesian (spot x vol) stress grid.
-
-    ``pnl_grid[i][j]`` is the basket's full-reprice PnL when spot is shocked by ``spot_axis[i]``
-    (relative) and vol by ``vol_axis[j]`` (additive), summed over the resolved option legs plus
-    the linear stock overlay. The worst cell is the largest loss over the grid. ``gaps`` names
-    every leg that could not be repriced; ``n_resolved`` counts the legs that were.
-    """
 
     basket_id: str
     trade_date: date
@@ -95,18 +44,12 @@ class BasketStressResult:
 
 
 def _option_right(target_delta: float) -> str:
-    """``"C"`` for a non-negative signed delta band, ``"P"`` otherwise (the pricer's codes)."""
     return "C" if target_delta >= 0.0 else "P"
 
 
 def reconstruct_valuation(
     row: ProjectedOptionAnalytics, *, multiplier: float, currency: str
 ) -> ContractValuationInput:
-    """Rebuild the valuation for one grid cell under the projection's conventions (module doc).
-
-    The discount factor is backed out of the stored ``row.price`` so the base reprice reproduces
-    it exactly, recovering the real factor the row carries no field for.
-    """
     base = ContractValuationInput(
         contract_key=f"{row.underlying}|{row.tenor_label}|{row.delta_band}",
         underlying=row.underlying,
@@ -124,8 +67,6 @@ def reconstruct_valuation(
     price_rate_free = price(pricing_state_for(base)).price
     if price_rate_free <= _MIN_PRICE_FOR_DF:
         return base
-    # Clamp to a valid factor: a stored price above its undiscounted value would imply df > 1
-    # (no real discount curve does that) — pin to 1.0 rather than carry a nonsense factor.
     discount_factor = min(row.price / price_rate_free, 1.0)
     return dataclasses.replace(base, discount_factor=discount_factor)
 
@@ -135,7 +76,6 @@ def _worst_cell(
     vol_axis: tuple[float, ...],
     pnl_grid: tuple[tuple[float, ...], ...],
 ) -> tuple[float, float, float]:
-    """The (spot_shock, vol_shock, pnl) of the largest loss over the grid; ties by axis order."""
     worst = (spot_axis[0], vol_axis[0], pnl_grid[0][0])
     for i, spot_shock in enumerate(spot_axis):
         for j, vol_shock in enumerate(vol_axis):
@@ -153,18 +93,10 @@ def basket_stress(
     spot_by_underlying: Mapping[str, float],
     config: ScenarioConfig,
 ) -> BasketStressResult:
-    """Full-reprice a composed basket over the cartesian (spot x vol) stress grid.
-
-    Reconstructs an option line per resolved leg (module conventions), reprices them over the
-    config-driven surface via :func:`stress_surface`, and adds the stock legs' linear overlay.
-    Pure: no store, no clock. Every unresolved leg is a labelled :class:`BasketGap`; an empty or
-    fully-unresolved basket still yields a valid (flat-zero + overlay) surface over the config
-    axes, never a 500.
-    """
     by_cell_side, ambiguous = index_rows_by_cell_and_side(analytics_rows)
     lines: list[PositionRisk] = []
     gaps: list[BasketGap] = []
-    stock_notional: float = 0.0  # sum(qty * spot) over resolved stock legs (linear delta base)
+    stock_notional: float = 0.0
     n_resolved = 0
 
     for leg in basket.legs:
@@ -182,9 +114,6 @@ def basket_stress(
             by_cell_side, ambiguous, key=key, surface_side=leg.surface_side
         )
         if row is None:
-            # reason is non-None whenever row is None (resolve_cell_side's contract). The
-            # reprice honours the leg's surface_side so the stress surface and the summed
-            # basket_risk agree on which wing a leg priced off (ADR 0048).
             assert reason is not None
             gaps.append(BasketGap(leg.underlying, leg.tenor_label, leg.delta_band, reason))
             continue
@@ -201,8 +130,6 @@ def basket_stress(
 
     surface = stress_surface(lines, config)
     spot_axis, vol_axis = surface.spot_axis, surface.vol_axis
-    # Stock overlay: qty*spot*spot_shock, independent of vol — one constant per spot row, added
-    # across every vol column.
     pnl_grid = tuple(
         tuple(
             surface.pnl_grid[i][j] + stock_notional * spot_axis[i]

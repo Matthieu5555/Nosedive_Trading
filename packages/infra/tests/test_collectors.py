@@ -1,16 +1,3 @@
-"""The unified push collector: idempotent capture, loss-aware gaps, summary, replay.
-
-The load-bearing cases are the idempotency proofs against the *real* store (not a fake):
-re-delivery on reconnect and kill/restart must each leave the raw layer with exactly the
-durably-written events — no duplicate, no partial. The event id is content-addressed on
-``(instrument_key, field_name, sequence)`` (ADR 0027), so the proof is mechanical, not timing.
-The replay case shows the same collector code records a stored day, byte-for-byte: re-pumping a
-captured day through the collector into the same store writes nothing new.
-
-These drive the canonical ``contracts.RawMarketEvent`` shape through a real ``ParquetStore``.
-The expected counts are hand-derived from the scripted ticks (an independent oracle).
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -48,7 +35,6 @@ class _FixedClock:
 
 
 class _PushAdapter:
-    """A no-op MarketDataAdapter that hands the test the collector's tick/fault callbacks."""
 
     def __init__(self) -> None:
         self.tick_cb = None
@@ -81,12 +67,6 @@ def _tick(sequence: int, value: float, *, key: str = _KEY, field: str = "bid") -
 
 
 def _live_stream(values: Sequence[tuple[float, str]]) -> list[BrokerTick]:
-    """A live tick stream with sequence assigned by the shared per-(instrument, field) rule.
-
-    Mirrors exactly what the live adapter emit boundary does (``next_sequence``): the n-th
-    observation of one field of one instrument gets sequence n, with a strictly increasing
-    exchange time so canonical order is unambiguous on replay.
-    """
     from algotrading.infra.collectors import next_sequence
 
     counters: dict[tuple[str, str], int] = {}
@@ -129,9 +109,6 @@ def _events(store: ParquetStore) -> list[RawMarketEvent]:
     return store.read("raw_market_events")
 
 
-# -- persistence and idempotency --------------------------------------------
-
-
 def test_collected_ticks_are_persisted_as_raw_events(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
     adapter = _PushAdapter()
@@ -148,7 +125,6 @@ def test_redelivered_tick_within_a_session_is_not_double_written(tmp_path: Path)
     store = ParquetStore(tmp_path)
     adapter = _PushAdapter()
     collector = _collector(store, adapter)
-    # The exact same observation (same sequence) is delivered twice, plus a new one.
     _feed(collector, adapter, [_tick(0, 10.0), _tick(1, 11.0), _tick(1, 11.0), _tick(2, 12.0)])
     events = _events(store)
     assert len({e.event_id for e in events}) == 3
@@ -156,32 +132,26 @@ def test_redelivered_tick_within_a_session_is_not_double_written(tmp_path: Path)
 
 
 def test_kill_and_restart_writes_each_event_exactly_once(tmp_path: Path) -> None:
-    # The non-negotiable invariant, against the real store. A first collector writes two
-    # events and "dies"; a fresh collector on the same session and store is re-fed those two
-    # (re-delivery) plus a third: the store must hold exactly three, no duplicate, no partial.
     first_store = ParquetStore(tmp_path)
     first_adapter = _PushAdapter()
     first = _collector(first_store, first_adapter)
     _feed(first, first_adapter, [_tick(0, 10.0), _tick(1, 11.0)])
     assert len(_events(first_store)) == 2
 
-    restart_store = ParquetStore(tmp_path)  # a fresh process view of the same root
+    restart_store = ParquetStore(tmp_path)
     restart_adapter = _PushAdapter()
     restart = _collector(restart_store, restart_adapter)
     _feed(restart, restart_adapter, [_tick(0, 10.0), _tick(1, 11.0), _tick(2, 12.0)])
 
     events = _events(restart_store)
     assert len(events) == 3
-    assert len({(e.session_id, e.event_id) for e in events}) == 3  # no collision
+    assert len({(e.session_id, e.event_id) for e in events}) == 3
     assert sorted(e.value for e in events) == [10.0, 11.0, 12.0]
 
 
 def test_a_failed_flush_leaves_no_partial_record_then_restart_recovers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Kill *mid-write*: the third per-event flush fails like a crash. The store must then hold
-    # exactly the two durably-written events (no partial third), and a restart re-feeds all
-    # three and completes the store.
     state = {"fail_on": 3, "count": 0}
     real_write_table = adapter_module.pq.write_table
 
@@ -195,23 +165,20 @@ def test_a_failed_flush_leaves_no_partial_record_then_restart_recovers(
 
     crash_store = ParquetStore(tmp_path)
     crash_adapter = _PushAdapter()
-    _collector(crash_store, crash_adapter, flush_batch_size=1)  # wires crash_adapter.tick_cb
+    _collector(crash_store, crash_adapter, flush_batch_size=1)
     with pytest.raises(OSError, match="injected"):
         for value, seq in [(10.0, 0), (11.0, 1), (12.0, 2)]:
             crash_adapter.tick_cb(_tick(seq, value))  # type: ignore[misc]
 
-    assert sorted(e.value for e in _events(crash_store)) == [10.0, 11.0]  # no partial third
+    assert sorted(e.value for e in _events(crash_store)) == [10.0, 11.0]
 
-    state["fail_on"] = -1  # the "restarted" process writes cleanly
+    state["fail_on"] = -1
     restart_store = ParquetStore(tmp_path)
     restart_adapter = _PushAdapter()
     restart = _collector(restart_store, restart_adapter, flush_batch_size=1)
     _feed(restart, restart_adapter, [_tick(0, 10.0), _tick(1, 11.0), _tick(2, 12.0)])
 
     assert sorted(e.value for e in _events(restart_store)) == [10.0, 11.0, 12.0]
-
-
-# -- absent / reserved ticks are not stored ---------------------------------
 
 
 def test_absent_value_tick_is_not_stored(tmp_path: Path) -> None:
@@ -224,7 +191,7 @@ def test_absent_value_tick_is_not_stored(tmp_path: Path) -> None:
     )
     _feed(collector, adapter, [absent, nonfinite, _tick(0, 10.0)])
     events = _events(store)
-    assert len(events) == 1  # only the finite bid landed
+    assert len(events) == 1
     assert events[0].value == 10.0
 
 
@@ -237,9 +204,6 @@ def test_reserved_field_tick_is_skipped_not_stored(tmp_path: Path) -> None:
     events = _events(store)
     assert len(events) == 1
     assert events[0].field_name == "bid"
-
-
-# -- loss-aware gap events ---------------------------------------------------
 
 
 def test_a_reconnect_records_a_gap_event_per_subscribed_instrument(tmp_path: Path) -> None:
@@ -256,7 +220,6 @@ def test_a_reconnect_records_a_gap_event_per_subscribed_instrument(tmp_path: Pat
     summary = collector.close()
 
     gaps = [e for e in _events(store) if e.field_name == GAP_FIELD]
-    # One outage, two subscribed instruments -> two gap events.
     assert len(gaps) == 2
     assert {e.instrument_key for e in gaps} == {_KEY, _KEY2}
     assert all(e.value == 3.0 for e in gaps)
@@ -279,11 +242,7 @@ def test_gap_events_are_idempotent_across_restart(tmp_path: Path) -> None:
     restart.record_reconnect(gap)
     gaps_second = [e for e in _events(restart_store) if e.field_name == GAP_FIELD]
 
-    # The reproduced outage hashes to the same gap id, so it is not double-written.
     assert len(gaps_first) == len(gaps_second) == 1
-
-
-# -- feed faults -------------------------------------------------------------
 
 
 def test_pacing_fault_is_counted_in_the_summary(tmp_path: Path) -> None:
@@ -294,18 +253,10 @@ def test_pacing_fault_is_counted_in_the_summary(tmp_path: Path) -> None:
     _feed(collector, adapter, [_tick(0, 10.0)])
     summary = collector.build_summary()
     assert summary.pacing_failures == 1
-    # A fault is counted, never written as a fake observation.
     assert all(e.field_name != "pacing" for e in _events(store))
 
 
-# -- replay through the same collector --------------------------------------
-
-
 def test_replaying_a_captured_day_through_the_collector_writes_nothing_new(tmp_path: Path) -> None:
-    # Capture a day live through the unified collector, then re-pump the stored events through
-    # the SAME collector code into the SAME store. The content-addressed ids make re-capture a
-    # no-op: the raw partition is unchanged, exactly-once. The live feed assigns sequence by the
-    # same per-(instrument, field) rule the replay source uses, which is what makes the ids line up.
     store = ParquetStore(tmp_path)
     adapter = _PushAdapter()
     collector = _collector(store, adapter)
@@ -315,7 +266,6 @@ def test_replaying_a_captured_day_through_the_collector_writes_nothing_new(tmp_p
     captured = sorted(_events(store), key=lambda e: e.event_id)
     assert len(captured) == 3
 
-    # Replay the captured day back through a fresh collector on the same session/store.
     replay_source = ReplaySource(captured)
     replay_collector = RawCollector(
         store=store, adapter=replay_source, session_id=_SESSION, trade_date=_TRADE_DATE,
@@ -325,13 +275,11 @@ def test_replaying_a_captured_day_through_the_collector_writes_nothing_new(tmp_p
     replay_collector.flush()
 
     after = sorted(_events(store), key=lambda e: e.event_id)
-    assert len(after) == 3  # nothing new written
+    assert len(after) == 3
     assert [e.event_id for e in after] == [e.event_id for e in captured]
 
 
 def test_replay_into_a_fresh_store_reproduces_the_same_event_ids(tmp_path: Path) -> None:
-    # The byte-identity mechanism: replay re-derives the same content-addressed ids because the
-    # live and replay paths assign sequence by the same per-(instrument, field) rule.
     live_store = ParquetStore(tmp_path / "live")
     adapter = _PushAdapter()
     live = _collector(live_store, adapter)
@@ -356,18 +304,6 @@ def test_replay_into_a_fresh_store_reproduces_the_same_event_ids(tmp_path: Path)
 
 
 def test_live_stamping_skips_dropped_ticks_so_replay_ids_match(tmp_path: Path) -> None:
-    # The sequence-divergence regression (ADR 0027): the live SequenceStamping boundary must
-    # advance its per-(instrument, field) ordinal ONLY for ticks that actually become stored
-    # events. A feed that interleaves "no quote" sentinels (None / NaN) and a categorical str with
-    # finite quotes used to consume a sequence per sentinel live, while the replay source — which
-    # iterates only the STORED events — never sees them; the next stored tick then got a different
-    # sequence (and event_id) on replay. With the fix the dropped ticks consume no sequence, so the
-    # two finite bids land at sequence 0 and 1 on BOTH paths.
-    #
-    # Independent oracle: the finite stored observations, in arrival order, are
-    #   bid=10.0 (seq 0), bid=12.0 (seq 1), ask=7.0 (seq 0).
-    # Every interleaved None/NaN/str tick is dropped and must NOT shift those sequences. The
-    # expected event ids are exactly the content-addressed ids of those three observations.
     from algotrading.infra.contracts import content_event_id
 
     raw_ticks = [
@@ -387,7 +323,6 @@ def test_live_stamping_skips_dropped_ticks_so_replay_ids_match(tmp_path: Path) -
         content_event_id(_KEY, "ask", 0),
     }
 
-    # Live path: drive raw (unstamped) ticks through SequenceStamping into the collector.
     live_store = ParquetStore(tmp_path / "live")
     broker = _PushAdapter()
     stamping = SequenceStamping(broker)
@@ -402,7 +337,6 @@ def test_live_stamping_skips_dropped_ticks_so_replay_ids_match(tmp_path: Path) -
     assert {e.event_id for e in captured} == expected_ids
     assert sorted(e.value for e in captured) == [7.0, 10.0, 12.0]
 
-    # Replay path: re-pump the stored events through a fresh collector; the ids must match exactly.
     replay_store = ParquetStore(tmp_path / "replay")
     replay_source = ReplaySource(captured)
     replay = RawCollector(

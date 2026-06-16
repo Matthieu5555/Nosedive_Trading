@@ -1,15 +1,8 @@
-// Button / navigation functionality: every tab in the top bar actually routes, marks itself
-// active, and mounts its page without tripping an ErrorBoundary — in a real browser.
-
 import { expect, test } from "@playwright/test";
 
 import { collectPageErrors } from "./helpers";
 import { mockBff } from "./mock-bff";
 
-// Each nav button, the page heading it should land on, and the URL path it should produce.
-// The Orders sketch tab is retired (frontend-orders-booking-reconcile, ruling (b)): the booking
-// chain lives only on Basket, so there is no Orders nav button. The legacy /orders path still
-// redirects to /basket — covered by its own test below.
 const TABS = [
   { button: "Market", heading: "Market", path: "/" },
   { button: "Basket", heading: "Basket Builder", path: "/basket" },
@@ -26,9 +19,9 @@ test("the nav buttons are present and Market is active on load", async ({ page }
   for (const tab of TABS) {
     await expect(nav.getByRole("link", { name: tab.button })).toBeVisible();
   }
-  // The retired Orders sketch has no nav button — never a dead link.
+
   await expect(nav.getByRole("link", { name: "Orders" })).toHaveCount(0);
-  // react-router's NavLink sets aria-current="page" on the active link.
+
   await expect(nav.getByRole("link", { name: "Market" })).toHaveAttribute("aria-current", "page");
 });
 

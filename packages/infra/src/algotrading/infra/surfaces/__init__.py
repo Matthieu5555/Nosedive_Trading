@@ -1,15 +1,3 @@
-"""Surface engine — solved IV points in, a fitted vol surface out (step 9).
-
-:func:`fit_slice` calibrates one maturity's smile (SVI, or a labeled nonparametric
-fallback when sparse) with a butterfly no-arb check; :func:`calendar_violations`
-checks calendar no-arb across slices; :func:`interpolate_total_variance` reads the
-surface at any maturity. :func:`surface_parameters` and :func:`surface_grid_cells`
-project into the stamped contracts; :func:`slice_plot_series` produces raw-vs-fitted
-plot data.
-
-    from algotrading.infra.surfaces import fit_slice, surface_parameters, surface_grid_cells
-"""
-
 from __future__ import annotations
 
 from .arbitrage import (

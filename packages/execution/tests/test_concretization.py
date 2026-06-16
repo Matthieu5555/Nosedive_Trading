@@ -1,20 +1,3 @@
-"""Fill concretization (ADR 0043): grid-cell ticket leg -> concrete, priced paper fill.
-
-The independent oracle in every test is hand-built: the expected ``(strike, expiry, right)``,
-the expected canonical ``contract_key`` and the expected paper mark are written out here from the
-fixture chain, never read back from the code under test. The named test surfaces from
-``tasks/execution-fill-concretization.md`` are covered:
-
-* deterministic + as-of resolution (same cell+chain → same contract; an old-date replay resolves
-  the old chain's contract, never today's — the look-ahead guard);
-* the paper mark is the as-of snapshot mid by the stated rule, with a hand-computed oracle, and
-  falls back to the analytics model price when no quote exists;
-* the seam round-trip — the emitted :class:`ConcreteFill` carries exactly the fields
-  booking-commit consumes, asserted field-by-field so a rename breaks loudly;
-* no broker / no credential — an AST-level scan mirroring ``test_order_ticket.py``;
-* an unresolvable cell is a labelled :class:`ConcretizationError`, never a silent default.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -68,7 +51,6 @@ def _analytics_row(
     underlying: str = _UND,
     provider: str = "ibkr",
 ) -> ProjectedOptionAnalytics:
-    """One WS-1F grid cell: the resolved strike + the model price are the resolver's inputs."""
     return ProjectedOptionAnalytics(
         snapshot_ts=_TS,
         provider=provider,
@@ -109,7 +91,6 @@ def _listed(
     broker_contract_id: str,
     underlying: str = _UND,
 ) -> InstrumentKey:
-    """A concrete listed option contract on the captured chain."""
     return InstrumentKey(
         underlying_symbol=underlying,
         security_type="OPT",
@@ -124,7 +105,6 @@ def _listed(
 
 
 def _snapshot(*, contract_key: str, bid: float, ask: float) -> MarketStateSnapshot:
-    """A two-sided quote for the resolved contract, the mid source for the paper mark."""
     return MarketStateSnapshot(
         snapshot_ts=_TS,
         instrument_key=contract_key,
@@ -142,8 +122,6 @@ def _snapshot(*, contract_key: str, bid: float, ask: float) -> MarketStateSnapsh
     )
 
 
-# A 3m 30Δ-call grid cell, solved to strike 5200; the chain lists that contract at the front
-# expiry 2026-09-18 and a far expiry 2027-09-17. The mid of (40, 44) is 42.0 (hand-computed).
 _CALL_STRIKE = 5200.0
 _FRONT_EXPIRY = date(2026, 9, 18)
 _FAR_EXPIRY = date(2027, 9, 17)
@@ -192,45 +170,35 @@ def _chain(*, with_snapshot: bool = True) -> ConcreteChain:
     )
 
 
-# --- Seam round-trip + resolution -------------------------------------------------------------
-
-
 def test_concretize_emits_the_seam_fill_field_by_field() -> None:
-    # Independent oracle: the expected concrete contract and key are hand-built here.
     expected_instrument = _front_call_instrument()
     expected_key = expected_instrument.canonical()
 
     fill = concretize(_ticket_leg(), as_of=_AS_OF, chain=_chain())
 
     assert isinstance(fill, ConcreteFill)
-    # The concrete identity off the captured chain (front expiry, not the far one).
     assert fill.instrument == expected_instrument
     assert fill.contract_key == expected_key
     assert fill.instrument.strike == _CALL_STRIKE
     assert fill.instrument.expiry == _FRONT_EXPIRY
     assert fill.instrument.option_right == "C"
-    # Carried straight from the ticket leg.
     assert fill.underlying == _UND
     assert fill.side is Side.BUY
     assert fill.quantity == 2.0
-    # Grid provenance kept for traceability back to the planning intention.
     assert fill.tenor_label == "3m"
     assert fill.delta_band == "30dc"
     assert fill.as_of == _AS_OF
-    # Paper mark = snapshot mid (40 + 44) / 2 = 42.0 (hand-computed), labelled as such.
     assert fill.fill_price == pytest.approx(42.0)
     assert fill.mark_source == MARK_SOURCE_SNAPSHOT_MID
 
 
 def test_concretize_is_deterministic() -> None:
-    # Same (cell, as_of, chain) resolves to the same contract + price every call.
     a = concretize(_ticket_leg(), as_of=_AS_OF, chain=_chain())
     b = concretize(_ticket_leg(), as_of=_AS_OF, chain=_chain())
     assert a == b
 
 
 def test_put_band_resolves_to_a_put_contract() -> None:
-    # The band suffix governs the right: a 30dp cell -> a P contract at its solved strike.
     put_strike = 4800.0
     put_expiry = date(2026, 9, 18)
     put = _listed(strike=put_strike, right="P", expiry=put_expiry, broker_contract_id="P-CONID")
@@ -246,15 +214,10 @@ def test_put_band_resolves_to_a_put_contract() -> None:
     fill = concretize(_ticket_leg(side=Side.SELL, delta_band="30dp"), as_of=_AS_OF, chain=chain)
     assert fill.instrument.option_right == "P"
     assert fill.instrument.strike == put_strike
-    assert fill.fill_price == pytest.approx(37.0)  # mid of (36, 38)
-
-
-# --- As-of / look-ahead guard -----------------------------------------------------------------
+    assert fill.fill_price == pytest.approx(37.0)
 
 
 def test_old_date_replay_resolves_the_old_chain_never_today() -> None:
-    # The as-of chain is the only source of contracts. An old-date booking is handed the old
-    # chain (an old listed expiry); it can never resolve to a contract the old chain didn't hold.
     old_as_of = date(2025, 6, 12)
     old_expiry = date(2025, 9, 19)
     old_contract = _listed(
@@ -271,14 +234,11 @@ def test_old_date_replay_resolves_the_old_chain_never_today() -> None:
     )
     fill = concretize(_ticket_leg(), as_of=old_as_of, chain=old_chain)
     assert fill.instrument.expiry == old_expiry
-    # Crucially NOT today's front expiry from the current chain.
     assert fill.instrument.expiry != _FRONT_EXPIRY
     assert fill.as_of == old_as_of
 
 
 def test_already_expired_listing_is_not_resolvable() -> None:
-    # A chain whose only listing for the strike already expired as-of the booking date is a
-    # labelled failure, never a backward-dated contract.
     expired = _listed(
         strike=_CALL_STRIKE, right="C", expiry=date(2026, 3, 20), broker_contract_id="EXP"
     )
@@ -296,18 +256,13 @@ def test_already_expired_listing_is_not_resolvable() -> None:
     assert exc.value.reason == "no_listed_contract"
 
 
-# --- Paper mark rule --------------------------------------------------------------------------
-
-
 def test_mark_falls_back_to_analytics_price_when_no_quote() -> None:
-    # No snapshot for the resolved contract -> the stated fallback is the analytics model price.
     fill = concretize(_ticket_leg(), as_of=_AS_OF, chain=_chain(with_snapshot=False))
-    assert fill.fill_price == pytest.approx(41.5)  # the analytics row's model price
+    assert fill.fill_price == pytest.approx(41.5)
     assert fill.mark_source == MARK_SOURCE_ANALYTICS_PRICE
 
 
 def test_no_finite_mark_is_a_labelled_failure() -> None:
-    # No snapshot and a non-positive analytics price -> labelled "no_mark", never a silent zero.
     front = _front_call_instrument()
     chain = ConcreteChain.build(
         analytics_rows=[
@@ -319,9 +274,6 @@ def test_no_finite_mark_is_a_labelled_failure() -> None:
     with pytest.raises(ConcretizationError) as exc:
         concretize(_ticket_leg(), as_of=_AS_OF, chain=chain)
     assert exc.value.reason == "no_mark"
-
-
-# --- Labelled failures for unresolvable cells -------------------------------------------------
 
 
 def test_missing_analytics_row_is_labelled() -> None:
@@ -337,7 +289,6 @@ def test_missing_analytics_row_is_labelled() -> None:
 
 
 def test_provider_ambiguous_cell_is_labelled() -> None:
-    # Two providers seed the same cell -> never silently pick one.
     chain = ConcreteChain.build(
         analytics_rows=[
             _analytics_row(
@@ -358,14 +309,13 @@ def test_provider_ambiguous_cell_is_labelled() -> None:
 
 
 def test_no_listed_contract_for_strike_is_labelled() -> None:
-    # The analytics cell solved a strike the captured chain does not list.
     chain = ConcreteChain.build(
         analytics_rows=[
             _analytics_row(
                 delta_band="30dc", target_delta=0.30, strike=5201.0, price=41.5
             )
         ],
-        listed_contracts=[_front_call_instrument()],  # only strike 5200 is listed
+        listed_contracts=[_front_call_instrument()],
         snapshots=[],
     )
     with pytest.raises(ConcretizationError) as exc:
@@ -374,7 +324,6 @@ def test_no_listed_contract_for_strike_is_labelled() -> None:
 
 
 def test_strike_ambiguous_when_two_listings_tie_on_the_front_expiry() -> None:
-    # Two distinct listed contracts at the same (strike, right, expiry) -> refuse to guess.
     tie_a = _listed(
         strike=_CALL_STRIKE, right="C", expiry=_FRONT_EXPIRY, broker_contract_id="TIE-A"
     )
@@ -396,7 +345,6 @@ def test_strike_ambiguous_when_two_listings_tie_on_the_front_expiry() -> None:
 
 
 def test_stock_leg_is_rejected() -> None:
-    # A stock leg has no grid cell to concretize; it is a labelled rejection, not a crash.
     stock = TicketLeg(
         instrument_kind="stock",
         underlying=_UND,
@@ -409,9 +357,6 @@ def test_stock_leg_is_rejected() -> None:
     assert exc.value.reason == "not_an_option_leg"
 
 
-# --- option_right_for_band agrees with the projection authority -------------------------------
-
-
 @pytest.mark.parametrize(
     ("delta_band", "target_delta"),
     [("30dc", 0.30), ("30dp", -0.30), ("02dc", 0.02), ("02dp", -0.02),
@@ -420,17 +365,12 @@ def test_stock_leg_is_rejected() -> None:
 def test_option_right_for_band_matches_projection_rule(
     delta_band: str, target_delta: float
 ) -> None:
-    # The public twin must never drift from the projection's private authority — assert equality
-    # against it directly (a test may reach into internals to pin a contract).
     from algotrading.infra.surfaces.projection import _option_right_for_band
 
     assert option_right_for_band(delta_band, target_delta) == _option_right_for_band(
         delta_band, target_delta
     )
 
-
-# --- The no-broker / no-credential safety gate, made a falsifiable AST test --------------------
-# Mirrors test_order_ticket.py: scan the module's AST so docstrings never trip it, only real code.
 
 _FORBIDDEN_NAMES = frozenset({
     "environ", "getenv", "load_dotenv", "api_key", "credential", "password", "secret",
@@ -440,7 +380,6 @@ _FORBIDDEN_IMPORT_SUBSTRINGS = ("infra_ibkr", "connectivity", "dotenv")
 
 
 def _concretization_code_names() -> tuple[set[str], set[str]]:
-    """Every identifier and imported-module path used in the concretization module's code."""
     import ast
 
     path = Path(concretization_module.__file__)

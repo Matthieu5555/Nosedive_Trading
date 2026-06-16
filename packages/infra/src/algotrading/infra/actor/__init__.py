@@ -1,17 +1,3 @@
-"""The framework-free actor — the single glue that drives the analytics/risk core
-and stamps their outputs.
-
-The actor holds no math. It transports market state into the pure functions of the
-analytics core (``snapshots``/``forwards``/``iv``/``surfaces``/``pricing``) and the
-``risk`` engine and writes their stamped outputs to storage, and because the same
-actor runs over a live event stream and over the same events replayed off disk,
-surfaces and risk recompute identically live and in replay. The compute step is a
-pure function (:func:`run_analytics`) kept separate from persistence
-(:func:`persist_outputs`) so the headline replay test can compare two runs as values.
-
-    from algotrading.infra.actor import run_analytics, run_day, persist_outputs, ActorOutputs
-"""
-
 from __future__ import annotations
 
 from .basket import DEFAULT_PROVIDER, IndexBasket

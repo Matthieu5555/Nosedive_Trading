@@ -1,21 +1,9 @@
-"""The vectorized Black-76 price must agree, cell for cell, with the scalar engine.
-
-The scalar :func:`pricing.black76.price_european` is the oracle (itself validated against a
-BSM/QuantLib oracle in ``test_pricing``/``test_scenario``); this pins the array reprice
-:func:`pricing.price_european_array` to it to a tight float tolerance across a wide grid of
-states, including the degenerate (zero-vol / zero-maturity) discounted-intrinsic branch and
-both option rights. The whole point of the array path is that it does *not* drift from the
-scalar one — so this is the test that lets the surface trust it.
-"""
-
 from __future__ import annotations
 
 import numpy as np
 import pytest
 from algotrading.infra.pricing import from_forward, price, price_european_array
 
-# A deliberately wide net of states: deep ITM/OTM strikes, short and long maturities, low and
-# high vol, two discount factors, both rights — and the two degenerate axes (T=0, sigma=0).
 _FORWARDS = (50.0, 100.0, 137.5, 250.0)
 _STRIKES = (40.0, 90.0, 100.0, 110.0, 300.0)
 _MATURITIES = (0.0, 0.01, 0.25, 1.0, 3.0)
@@ -39,8 +27,6 @@ def _scalar_price(
 
 
 def test_array_price_matches_scalar_engine_cell_for_cell() -> None:
-    # Build the full cartesian product of states as flat arrays, price it once, and compare
-    # every cell to the scalar engine evaluated on the same state.
     states = [
         (f, k, t, v, df, right)
         for f in _FORWARDS
@@ -65,8 +51,6 @@ def test_array_price_matches_scalar_engine_cell_for_cell() -> None:
 
 
 def test_array_price_broadcasts_over_a_grid() -> None:
-    # The shape the surface uses: (legs, spot, vol). A 2-leg book over a 3×3 grid prices to a
-    # (2, 3, 3) array, each cell equal to the scalar engine at that broadcast state.
     forward = np.array([100.0, 120.0])[:, None, None]
     strike = np.array([100.0, 110.0])[:, None, None]
     maturity = np.array([0.25, 0.5])[:, None, None]

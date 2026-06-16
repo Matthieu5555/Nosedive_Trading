@@ -1,11 +1,3 @@
-"""Round-trip the frozen `StorageRepository` port against a trivial in-memory fake.
-
-M0 freezes the port; M1 implements it for real (Parquet/tiered/EAV). This proves the
-contract is satisfiable and that its load-bearing semantics — version=None vs an
-explicit restatement never mixing, append-only refusing a versioned write — are
-expressible through the seam, so M1/M4 build against a proven contract.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -26,15 +18,10 @@ _TD = date(2026, 6, 5)
 
 
 class VersionedWriteNotAllowed(Exception):
-    """The fake's analogue of M1's append-only-versioning guard."""
+    pass
 
 
 class InMemoryRepository:
-    """A minimal store that honours the port's versioned-restatement semantics.
-
-    Keyed by (table, version) so live rows (version=None) and a restatement
-    (version="V") never share a slot — the separation the port promises.
-    """
 
     def __init__(self) -> None:
         self._store: dict[tuple[str, str | None], list[object]] = {}
@@ -137,7 +124,6 @@ def _forward(version_label: str) -> ForwardCurvePoint:
 
 
 def test_fake_satisfies_the_port_structurally() -> None:
-    # @runtime_checkable: a store satisfies the port by shape, not by inheritance.
     assert isinstance(InMemoryRepository(), StorageRepository)
 
 
@@ -152,10 +138,9 @@ def test_versioned_restatement_coexists_with_live() -> None:
     repo: StorageRepository = InMemoryRepository()
     live = _forward("live")
     restated = _forward("restated")
-    repo.write("forward_curve", [live])  # version=None == live
+    repo.write("forward_curve", [live])
     repo.write("forward_curve", [restated], version="reproc-2")
 
-    # version=None reads only the live row; the restatement is read by its version.
     assert repo.read("forward_curve") == [live]
     assert repo.read("forward_curve", version="reproc-2") == [restated]
     assert repo.list_versions("forward_curve", _TD, "SPX") == ["reproc-2"]

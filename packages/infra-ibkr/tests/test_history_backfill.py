@@ -1,17 +1,3 @@
-"""IBKR OHLC backfill wiring (WS 1C): credentialed-collector selection + request resolution.
-
-No live Gateway and no secrets: a fake CP REST transport answers ``/iserver/secdef/search`` (index
-+ equity conids) and ``/iserver/marketdata/history`` (canned OHLC), and the store is a real
-``ParquetStore`` over ``tmp_path`` (the seam is the actual write/read). The obligations:
-
-* a non-credentialed environment yields no collector (``None``) — the clean no-op path;
-* request resolution turns the enabled indices into per-ticker requests, resolving the index
-  underlying conid (never the registry placeholder) and, by default, the as-of constituents' equity
-  conids — each ticker once;
-* ``--no-constituents`` resolves the index underlyings only;
-* the bound collector fetches + persists a ``DailyBar`` set for every requested ticker.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -31,13 +17,10 @@ from .conftest import FakeCpTransport
 _CALC_TS = datetime(2026, 6, 7, 20, 0, tzinfo=UTC)
 _AS_OF = date(2026, 6, 1)
 
-# symbol -> conid the fake search resolves (the registry carries the conid: 0 placeholder, so the
-# resolved values below are what proves request resolution does NOT trust the placeholder).
 _CONID = {"SX5E": 12345, "ASML": 8001, "SAP": 8002}
 _KNOWN = date(2010, 1, 1)
 _VENDOR = "test-vendor"
 
-# Two constituents whose snapshot weights sum to 1.0 (the membership ingest validates the sum).
 _SX5E_MEMBERS = (
     MembershipChange("SX5E", "ASML", _KNOWN, None, _KNOWN, _VENDOR, 0.5),
     MembershipChange("SX5E", "SAP", _KNOWN, None, _KNOWN, _VENDOR, 0.5),
@@ -71,14 +54,13 @@ def _ohlc(symbol: str) -> dict[str, Any]:
 
 
 def _backfill_transport() -> FakeCpTransport:
-    """Answers secdef-search (index + equity) and marketdata-history over canned data."""
     history = {conid: _ohlc(sym) for sym, conid in _CONID.items()}
 
     def _route(path: str, params: dict[str, Any]) -> Any:
         if path == "/iserver/secdef/search":
             symbol = str(params["symbol"])
             conid = _CONID[symbol]
-            if symbol == "SX5E":  # the index: carries a sections block resolve_index matches on
+            if symbol == "SX5E":
                 return [
                     {
                         "conid": conid,
@@ -86,7 +68,7 @@ def _backfill_transport() -> FakeCpTransport:
                         "sections": [{"secType": "IND", "exchange": "EUREX"}],
                     }
                 ]
-            return [{"conid": conid, "symbol": symbol}]  # an equity constituent
+            return [{"conid": conid, "symbol": symbol}]
         if path == "/iserver/marketdata/history":
             return history.get(int(params.get("conid", 0)), {"data": []})
         raise AssertionError(f"unexpected path {path!r}")
@@ -100,18 +82,14 @@ def _seeded_store(tmp_path: Path) -> ParquetStore:
     return store
 
 
-# -- credentialed-collector selection -----------------------------------------------------
 def test_build_history_collector_is_none_without_credentials(tmp_path: Path) -> None:
-    """An empty environment binds no collector — the clean no-op (nothing to backfill)."""
     collector = build_history_collector(
         store=ParquetStore(tmp_path), calc_ts=_CALC_TS, env={}
     )
     assert collector is None
 
 
-# -- request resolution: index + constituents ---------------------------------------------
 def test_requests_resolve_index_and_constituent_conids(tmp_path: Path) -> None:
-    """Each enabled index resolves its underlying conid + its as-of constituents' equity conids."""
     store = _seeded_store(tmp_path)
     requests = history_requests_for(
         store=store,
@@ -121,20 +99,12 @@ def test_requests_resolve_index_and_constituent_conids(tmp_path: Path) -> None:
         as_of_date=_AS_OF,
     )
     by_symbol = {r.underlying: r.conid for r in requests}
-    # The index underlying plus both constituents, each once, with the RESOLVED conids (not the
-    # registry's 0 placeholder), all carrying the requested period.
     assert by_symbol == {"SX5E": 12345, "ASML": 8001, "SAP": 8002}
     assert {r.period for r in requests} == {"5y"}
-    assert len(requests) == 3  # no duplicate tickers
+    assert len(requests) == 3
 
 
 def test_pinned_constituent_conid_is_resolved_without_a_search(tmp_path: Path) -> None:
-    """A ``constituent_conids`` pin is fetched by its verified conid — never via ``/secdef/search``.
-
-    Sanofi shares ticker SAN with Banco Santander, so a bare-symbol search cannot reach it; the
-    registry pins it under label ``SAN1 -> 29612249``. The resolved requests must carry that exact
-    pinned pair, and the search must never be called for the pinned label (it has no search entry).
-    """
     store = _seeded_store(tmp_path)
     registry = parse_index_registry(
         {
@@ -153,18 +123,13 @@ def test_pinned_constituent_conid_is_resolved_without_a_search(tmp_path: Path) -
         store=store, registry=registry, transport=transport, period="5y", as_of_date=_AS_OF
     )
     by_symbol = {r.underlying: r.conid for r in requests}
-    # The pinned Sanofi conid is present alongside the searched index + constituents, each once.
     assert by_symbol == {"SX5E": 12345, "ASML": 8001, "SAP": 8002, "SAN1": 29612249}
-    # Proof the pin bypassed the search door: the fake search resolves via `_CONID[symbol]`, which
-    # has no "SAN1" key — so had SAN1 been searched, resolution would have raised KeyError. It did
-    # not, and the conid is the verified-config value, not a search result.
     assert "SAN1" not in _CONID
 
 
 def test_no_constituents_resolves_index_underlyings_only(tmp_path: Path) -> None:
-    """``include_constituents=False`` backfills the index underlyings only (no membership read)."""
     requests = history_requests_for(
-        store=ParquetStore(tmp_path),  # no membership seeded — must not be read
+        store=ParquetStore(tmp_path),
         registry=_registry(),
         transport=_backfill_transport(),
         period="5y",
@@ -174,9 +139,7 @@ def test_no_constituents_resolves_index_underlyings_only(tmp_path: Path) -> None
     assert [r.underlying for r in requests] == ["SX5E"]
 
 
-# -- end to end: the bound collector fetches + persists DailyBars --------------------------
 def test_backfill_persists_daily_bars_for_every_ticker(tmp_path: Path) -> None:
-    """A bound collector (injected fake transport) fetches and persists a DailyBar set per ticker."""
     store = _seeded_store(tmp_path)
     transport = _backfill_transport()
     collector = build_history_collector(
@@ -190,10 +153,9 @@ def test_backfill_persists_daily_bars_for_every_ticker(tmp_path: Path) -> None:
     result = collector.backfill(requests, correlation_id="ohlc-test")
 
     assert set(result.fetched) == {"SX5E", "ASML", "SAP"}
-    assert result.bar_count == 6  # 2 bars × 3 tickers
+    assert result.bar_count == 6
     persisted = store.read("daily_bar", underlying=None, provider="IBKR")
     assert {bar.underlying for bar in persisted} == {"SX5E", "ASML", "SAP"}
-    # Read-only invariant: the path touches only secdef/search + marketdata/history, never an order.
     assert all(
         p in {"/iserver/secdef/search", "/iserver/marketdata/history"} for p in transport.get_paths
     )

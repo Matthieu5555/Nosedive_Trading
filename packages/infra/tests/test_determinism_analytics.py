@@ -1,30 +1,3 @@
-"""Determinism for Workstream C: golden output, cross-process hashes, reordering.
-
-The acceptance criterion "repeated runs on the same fixtures produce byte-identical
-outputs" is backed here by real machinery, per ``tasks/TESTING.md``:
-
-* **Golden file.** The analytics pipeline (synthetic chain -> forward -> IV ->
-  surface) is run and its key outputs compared to a committed artifact,
-  ``tests/golden/analytics_pipeline.json``. Regeneration is a deliberate, reviewable
-  act, never automatic — the one shared flag (``conftest.golden_artifact``):
-
-      uv run pytest packages/infra/tests/test_determinism_analytics.py -k golden --regen-golden
-
-  which rewrites the JSON; the change then shows up in ``git diff`` for review.
-
-* **Cross-process hash stability.** The provenance ``stamp_hash`` on a C-emitted
-  contract is recomputed in a *separate* Python process and must match in-process.
-  This catches the classic bug — hashing a ``dict``/``set`` under hash randomization
-  — that passes in-process and drifts between runs. It must hold without
-  ``PYTHONHASHSEED`` being set.
-
-* **Reordering invariance.** Shuffling the input pairs must not change the forward or
-  its stamp (source records are sorted into a canonical order before hashing).
-
-* **Byte-identical repeats.** Running the whole pipeline twice in one process yields
-  equal contracts, value for value.
-"""
-
 from __future__ import annotations
 
 import json
@@ -48,9 +21,6 @@ EXPIRY = date(2026, 6, 19)
 CONFIG_HASH = {"cfg": "cfg-hash-0"}
 SOLVER = SolverConfig(version="iv-1", iv_tolerance=1e-12, max_iterations=200)
 _GOLDEN_PATH = Path(__file__).parent / "golden" / "analytics_pipeline.json"
-# The analytics modules are installed in the workspace venv, so a fresh interpreter
-# imports them directly; the subprocess only needs this tests dir on its path to reach
-# the shared `fixtures` package and this module's `compute_pipeline_summary`.
 _TESTS_DIR = str(Path(__file__).resolve().parent)
 
 
@@ -63,11 +33,6 @@ def _forward_pairs(surface: Any) -> tuple[ForwardPair, ...]:
 
 
 def compute_pipeline_summary() -> dict[str, Any]:
-    """Run the full C pipeline on the synthetic chain and summarize its outputs.
-
-    Shared by the golden test, the byte-identical-repeat test, and the cross-process
-    subprocess (which imports it), so all three exercise exactly the same path.
-    """
     surface = build_synthetic_surface()
     spot = surface.forward * surface.discount_factor
 
@@ -108,17 +73,12 @@ def compute_pipeline_summary() -> dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Golden artifact                                                             #
-# --------------------------------------------------------------------------- #
 def test_golden_pipeline_matches_committed_artifact(golden_artifact: Any) -> None:
     summary = compute_pipeline_summary()
     golden = golden_artifact(_GOLDEN_PATH, summary)
 
-    # Lineage hashes must match byte-for-byte (the determinism handle).
     assert summary["forward_stamp_hash"] == golden["forward_stamp_hash"]
     assert summary["surface_stamp_hash"] == golden["surface_stamp_hash"]
-    # Numeric outputs must match to well past any plausible cross-machine drift.
     assert summary["forward"] == pytest.approx(golden["forward"], rel=1e-12)
     assert summary["discount_factor"] == pytest.approx(golden["discount_factor"], rel=1e-12)
     assert summary["grid_total_variance_at_atm"] == pytest.approx(
@@ -130,11 +90,7 @@ def test_golden_pipeline_matches_committed_artifact(golden_artifact: Any) -> Non
         assert value == pytest.approx(golden["svi"][name], abs=1e-6)
 
 
-# --------------------------------------------------------------------------- #
-# Byte-identical repeats and reordering invariance                            #
-# --------------------------------------------------------------------------- #
 def test_repeated_runs_are_byte_identical() -> None:
-    # The strongest in-process determinism claim: run twice, compare value for value.
     assert compute_pipeline_summary() == compute_pipeline_summary()
 
 
@@ -156,13 +112,9 @@ def test_forward_is_invariant_to_input_pair_order() -> None:
         calc_ts=TS, config_hashes=CONFIG_HASH,
     )
     assert forward_a.forward_price == forward_b.forward_price
-    # Source records are canonicalized before hashing, so the stamp is order-free.
     assert forward_a.provenance.stamp_hash == forward_b.provenance.stamp_hash
 
 
-# --------------------------------------------------------------------------- #
-# Cross-process hash stability                                                #
-# --------------------------------------------------------------------------- #
 _SUBPROCESS_SCRIPT = """
 import json
 from test_determinism_analytics import compute_pipeline_summary
@@ -171,9 +123,6 @@ print(json.dumps(compute_pipeline_summary()))
 
 
 def test_pipeline_hashes_are_stable_across_processes() -> None:
-    # Recompute the pipeline in a *separate* interpreter (no inherited state, no
-    # PYTHONHASHSEED set) and require identical stamp hashes. This catches a stamp
-    # built from a salted hash()/set ordering, which would pass in-process and drift.
     env = dict(os.environ)
     env["PYTHONPATH"] = _TESTS_DIR
     env.pop("PYTHONHASHSEED", None)

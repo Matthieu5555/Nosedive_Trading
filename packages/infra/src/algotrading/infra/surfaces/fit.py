@@ -1,22 +1,3 @@
-"""Fit one maturity slice, interpolate across maturities, and emit the contracts.
-
-The orchestration of step 9. :func:`fit_slice` takes the solved :class:`IvPoint`
-records for one underlying and maturity and returns a rich :class:`SliceFit`:
-
-* with enough distinct strikes, a calibrated SVI smile (:mod:`surfaces.svi`) plus
-  its butterfly no-arbitrage check and bound-hit flags;
-* with too few, a *labeled* nonparametric fallback — linear interpolation of the
-  observed total variance — so a sparse slice still produces a usable curve and is
-  never silently presented as a calibrated model;
-* with none, a labeled ``insufficient`` slice that yields nothing.
-
-The raw points are retained on the fit (never discarded after calibration), the fit
-can be sampled for plotting raw-vs-fitted, and the usable part projects into A's
-``SurfaceParameters`` (SVI only) and ``SurfaceGrid`` (any method) contracts.
-Cross-maturity total variance (Eq 22) interpolates linearly in ``w`` between the
-bracketing slices. Pure throughout: ``calc_ts`` is injected at emission.
-"""
-
 from __future__ import annotations
 
 from bisect import bisect_left
@@ -36,29 +17,16 @@ from algotrading.infra.contracts import (
 from .arbitrage import butterfly_violations
 from .svi import SURFACE_VERSION, SviFit, SviParams, fit_svi
 
-# Method labels: every slice says how its curve was built, never implied.
 METHOD_SVI = "svi"
 METHOD_NONPARAMETRIC = "nonparametric"
 METHOD_INSUFFICIENT = "insufficient"
 
-# Padding (in log-moneyness) beyond the observed strikes for the butterfly grid, and
-# the number of grid points, so the no-arb check probes a little past the data.
 _ARB_GRID_PAD = 0.1
 _ARB_GRID_POINTS = 21
 
 
 @dataclass(frozen=True, slots=True)
 class SliceFit:
-    """One maturity slice's calibration, diagnostics, and retained raw points.
-
-    ``svi`` is set only when ``method == "svi"``. For the nonparametric fallback,
-    ``nonparametric_ks``/``nonparametric_ws`` hold the sorted observed points used
-    for interpolation. ``arb_free`` is the butterfly verdict for an SVI slice and a
-    positivity check for a nonparametric one. ``converged`` is the SVI optimizer's
-    verdict (``None`` for the non-SVI methods, which have no optimizer — unknown is
-    never dressed up as True). ``raw_points`` are the solved IvPoints, kept so the
-    fit is always auditable against its inputs.
-    """
 
     underlying: str
     maturity_years: float
@@ -77,10 +45,6 @@ class SliceFit:
     converged: bool | None = None
 
     def total_variance(self, k: float) -> float:
-        """Total variance at log-moneyness ``k`` from whichever model was fit.
-
-        Raises ``ValueError`` for an ``insufficient`` slice, which has no curve.
-        """
         if self.method == METHOD_SVI and self.svi is not None:
             return self.svi.total_variance(k)
         if self.method == METHOD_NONPARAMETRIC:
@@ -89,23 +53,7 @@ class SliceFit:
 
 
 def _interpolate_sorted(ks: tuple[float, ...], ws: tuple[float, ...], k: float) -> float:
-    """Linear interpolation of ``w`` over sorted ``ks``, flat beyond the ends.
-
-    The bracket search is :func:`bisect.bisect_left` — the same first-``ks[i] >= k`` index
-    ``numpy.searchsorted(..., side="left")`` returned before, without rebuilding two arrays
-    per scalar call (this sits under projection's delta-inversion bisection loop, thousands
-    of evaluations per grid). The interior interpolant keeps this module's exact arithmetic
-    (``ws[i-1] + weight*(ws[i]-ws[i-1])`` with ``weight = (k - ks[i-1]) / span``); both the
-    old NumPy form (float64 ops) and this pure-``float`` form execute the identical IEEE-754
-    double operations, so the outputs are bit-identical (pinned by the old-vs-new sweep in
-    ``test_surfaces.py``). ``numpy.interp`` was rejected for the same reason as before: its
-    interior formula ``fp[i] + slope*(x-xp[i])`` differs by op-ordering and diverges by up
-    to one ULP (measured); that shift would change the serialized total-variance bytes a
-    ``SurfaceGrid`` content hash is taken over, so the byte-preserving form is kept here.
-    """
-    if k != k:  # NaN query: every clamp comparison below is False for NaN, so without
-        # this guard bisect_left returns 0 and the arithmetic silently yields NaN — the
-        # replaced NumPy form raised here (IndexError); keep the failure loud.
+    if k != k:
         raise ValueError("interpolation query k must not be NaN")
     if k <= ks[0]:
         return ws[0]
@@ -120,11 +68,6 @@ def _interpolate_sorted(ks: tuple[float, ...], ws: tuple[float, ...], k: float) 
 def _distinct_sorted_points(
     points: tuple[IvPoint, ...],
 ) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Sorted, strike-deduplicated ``(k, total_variance)`` from usable IvPoints.
-
-    Keeps only finite, non-negative total variances; on a duplicate ``k`` the first
-    seen wins. Returned sorted by ``k`` so interpolation and the arb grid are ordered.
-    """
     by_k: dict[float, float] = {}
     for point in points:
         if point.total_variance >= 0.0 and point.log_moneyness not in by_k:
@@ -134,7 +77,6 @@ def _distinct_sorted_points(
 
 
 def _arb_grid(ks: tuple[float, ...]) -> tuple[float, ...]:
-    """A log-moneyness grid spanning the observed strikes, padded a little."""
     low, high = ks[0] - _ARB_GRID_PAD, ks[-1] + _ARB_GRID_PAD
     step = (high - low) / (_ARB_GRID_POINTS - 1)
     return tuple(low + step * i for i in range(_ARB_GRID_POINTS))
@@ -149,16 +91,6 @@ def fit_slice(
     day_count: str,
     config: SurfaceConfig,
 ) -> SliceFit:
-    """Fit one maturity slice, choosing SVI or a labeled nonparametric fallback.
-
-    Total and pure: an empty slice returns a labeled ``insufficient`` fit rather than
-    raising. With at least ``config.min_points_per_slice`` distinct strikes (floored at
-    SVI's five-parameter identifiability minimum) it calibrates SVI under the ``config``
-    bounds and runs the butterfly check; with fewer it falls back to interpolation. The
-    primary and fallback method labels are read from ``config.model`` /
-    ``config.fallback_model`` (defaults ``svi`` / ``nonparametric``) rather than hardwired,
-    so the method choice has a typed config home (ADR 0028).
-    """
     ks, ws = _distinct_sorted_points(points)
 
     if len(ks) >= config.min_points_per_slice:
@@ -192,13 +124,6 @@ def fit_slice(
 def interpolate_total_variance(
     slices: Sequence[SliceFit], k: float, maturity_years: float
 ) -> float:
-    """Total variance at ``(k, maturity)`` across slices, linear in ``w`` (Eq 22).
-
-    Uses only slices that carry a curve (SVI or nonparametric), sorted by maturity.
-    Outside the maturity range it holds the nearest slice flat; inside it interpolates
-    linearly in total variance between the two bracketing maturities — the standard
-    calendar-consistent interpolation. Raises ``ValueError`` if no slice has a curve.
-    """
     usable = sorted(
         (s for s in slices if s.method != METHOD_INSUFFICIENT), key=lambda s: s.maturity_years
     )
@@ -219,12 +144,6 @@ def interpolate_total_variance(
 
 @dataclass(frozen=True, slots=True)
 class SlicePlotSeries:
-    """Raw points and the fitted curve sampled on a grid, ready to plot.
-
-    The plotting utility: hand ``raw_k``/``raw_w`` and ``grid_k``/``fitted_w`` to any
-    plotting library to show the observed implied-vol points against the fitted
-    slice. A good fit has the fitted curve passing near every raw point.
-    """
 
     raw_k: tuple[float, ...]
     raw_w: tuple[float, ...]
@@ -233,10 +152,6 @@ class SlicePlotSeries:
 
 
 def slice_plot_series(fit: SliceFit, *, n_grid: int = 50) -> SlicePlotSeries:
-    """Sample a slice's raw points and fitted curve for a raw-vs-fitted plot.
-
-    Raises ``ValueError`` for an ``insufficient`` slice (nothing to show).
-    """
     if fit.method == METHOD_INSUFFICIENT or not fit.nonparametric_ks:
         raise ValueError(f"nothing to plot for an {fit.method} slice")
     raw_k = fit.nonparametric_ks
@@ -255,7 +170,6 @@ def _slice_stamp(
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
 ) -> ProvenanceStamp:
-    """Stamp a surface output, naming the IvPoints that fed the slice as sources."""
     refs = tuple(
         source_ref("iv_points", source_snapshot_ts, point.contract_key)
         for point in fit.raw_points
@@ -277,11 +191,6 @@ def surface_parameters(
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
 ) -> SurfaceParameters:
-    """Project a calibrated SVI slice into A's stamped ``SurfaceParameters``.
-
-    Raises ``ValueError`` for a non-SVI slice — a nonparametric or insufficient slice
-    has no SVI parameters to persist, and is never dressed up as a calibrated model.
-    """
     if fit.method != METHOD_SVI or fit.svi is None:
         raise ValueError(f"cannot emit SurfaceParameters for a {fit.method} slice")
     return SurfaceParameters(
@@ -308,15 +217,6 @@ def surface_parameters(
 
 
 def degeneracy_reasons(diagnostics: SurfaceFitDiagnostics) -> tuple[str, ...]:
-    """The machine-readable reasons a fitted slice is degenerate, or empty if clean.
-
-    The one policy home for "is this calibration trustworthy" (T-vol-surface-correctness:
-    flag, never silently serve as clean — and never hard-reject, so the flag clears on its
-    own once real term structure is captured). A parameter pinned against a calibration
-    bound, a non-converged optimizer, and a butterfly-arb breach each contribute a reason.
-    ``None`` diagnostics (rows persisted before these fields existed) contribute nothing:
-    unknown is not degenerate.
-    """
     reasons: list[str] = []
     for name in diagnostics.bound_hits or ():
         reasons.append(f"param_at_bound:{name}")
@@ -336,13 +236,6 @@ def surface_grid_cells(
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
 ) -> tuple[SurfaceGrid, ...]:
-    """Reconstruct a regularized total-variance grid for one slice (any method).
-
-    One :class:`~contracts.SurfaceGrid` cell per moneyness bucket, the total variance
-    read off the fitted curve (clamped at zero so the contract's non-negativity
-    holds). Raises ``ValueError`` for an ``insufficient`` slice. Every cell shares the
-    slice's provenance stamp.
-    """
     if fit.method == METHOD_INSUFFICIENT:
         raise ValueError("cannot build a grid for an insufficient slice")
     provenance = _slice_stamp(
@@ -367,14 +260,6 @@ def surface_grid_cells(
 
 @dataclass(frozen=True, slots=True)
 class SurfaceProjection:
-    """What persisting a slice produces: SVI parameters (if any) and grid cells.
-
-    ``parameters`` is set only for a calibrated SVI slice — a nonparametric or
-    insufficient slice has no SVI model to persist. ``grid_cells`` carries the
-    regularized total-variance grid for any fitted curve (SVI or nonparametric) and is
-    empty for an insufficient slice. The pairing exists so a caller never has to know
-    which method emits which contract.
-    """
 
     parameters: SurfaceParameters | None
     grid_cells: tuple[SurfaceGrid, ...]
@@ -389,16 +274,6 @@ def project_surface_fit(
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
 ) -> SurfaceProjection:
-    """Project a fitted slice into the stamped contracts it is allowed to emit.
-
-    The single home for the rule "SVI emits parameters and a grid, a nonparametric
-    fallback emits only a grid, an insufficient slice emits nothing" — the method
-    semantics this module already documents, so a caller (the actor) just persists what
-    comes back rather than re-encoding which fit yields which contract. Reuses
-    :func:`surface_parameters` (SVI only) and :func:`surface_grid_cells` (any curve);
-    an insufficient slice short-circuits to an empty projection rather than asking either
-    to raise.
-    """
     if fit.method == METHOD_INSUFFICIENT:
         return SurfaceProjection(parameters=None, grid_cells=())
     parameters = (

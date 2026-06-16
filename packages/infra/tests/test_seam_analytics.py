@@ -1,16 +1,3 @@
-"""C -> A seam: every contract C emits round-trips through A's store, malformed rejected.
-
-The architecture's bet is that A's typed contracts are the only objects crossing a
-workstream line, so C (the consumer) owns the test proving its six emitted contracts
-survive A's write/read path and that A's write-ahead validation refuses a malformed
-one — checked now, by C, not weeks later in E's integration (per ``tasks/TESTING.md``).
-
-Every contract is produced by C's *real* code, not hand-built, so this doubles as an
-end-to-end check of the analytics pipeline: synthetic chain -> snapshot, forward,
-IV, surface, and a price, each stamped and projected to its contract. Each gets a
-happy round-trip (write -> read -> equal) and a malformed instance that A rejects.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -44,7 +31,7 @@ from fixtures.synthetic import build_synthetic_surface
 
 TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 EXPIRY = date(2026, 6, 19)
-SURFACE = build_synthetic_surface()  # F=100, DF=0.99, T=0.25
+SURFACE = build_synthetic_surface()
 SOLVER = SolverConfig(version="iv-1", iv_tolerance=1e-12, max_iterations=200)
 
 
@@ -54,7 +41,6 @@ def _qc() -> QcThresholdConfig:
     )
 
 
-# -- C's six contracts, each produced by C's real code ----------------------
 def make_snapshot() -> MarketStateSnapshot:
     events = quote_events(UNDERLYING, bid=190.4, ask=190.6, last=190.5, ts=TS)
     context = SnapshotContext(snapshot_ts=TS, qc=_qc(), calc_ts=TS, config_hashes={"cfg": "cfg-hash-0"})
@@ -115,7 +101,6 @@ def make_pricing_result() -> PricingResult:
                           source_snapshot_ts=TS, provenance=a_stamp)
 
 
-# (table, factory, malformed-field, broken-value) for each of C's six contracts.
 _CASES = [
     ("market_state_snapshots", make_snapshot, "reference_spot", 0.0),
     ("forward_curve", make_forward_point, "forward_price", -1.0),
@@ -131,7 +116,6 @@ def _one(factory: Callable[[], Any]) -> Any:
     return produced[0] if isinstance(produced, list) else produced
 
 
-# -- happy round-trips: every emitted contract survives write -> read -> equal
 @pytest.mark.parametrize("table, factory", [(t, f) for t, f, _, _ in _CASES])
 def test_contract_round_trips_through_a_storage(
     table: str, factory: Callable[[], Any], tmp_path: Path
@@ -141,11 +125,9 @@ def test_contract_round_trips_through_a_storage(
     store.write(table, [record])
     read_back = store.read(table)
     assert read_back == [record]
-    # The provenance stamp survived intact (the determinism handle round-trips).
     assert read_back[0].provenance.stamp_hash == record.provenance.stamp_hash
 
 
-# -- A's write-ahead validation refuses one malformed instance per contract
 @pytest.mark.parametrize(
     "table, factory, field, bad_value", _CASES,
     ids=[t for t, _, _, _ in _CASES],
@@ -161,7 +143,6 @@ def test_malformed_contract_is_rejected_by_a_validation(
 
 
 def test_a_nan_greek_is_rejected(tmp_path: Path) -> None:
-    # A NaN is not a number to coerce; A must reject it at the write door.
     store = ParquetStore(tmp_path)
     malformed = dataclasses.replace(make_pricing_result(), delta=math.nan)
     with pytest.raises(ContractValidationError) as info:
@@ -170,7 +151,6 @@ def test_a_nan_greek_is_rejected(tmp_path: Path) -> None:
 
 
 def test_full_iv_chain_round_trips_as_a_batch(tmp_path: Path) -> None:
-    # All five solved IV points (a realistic batch) write and read back equal.
     store = ParquetStore(tmp_path)
     points = make_iv_points()
     store.write("iv_points", points)

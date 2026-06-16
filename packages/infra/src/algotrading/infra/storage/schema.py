@@ -1,13 +1,3 @@
-"""Derive the Parquet (Arrow) schema for a table from its contract.
-
-There is exactly one schema per table and both the live and the replay write
-paths use it, which is what makes "live and replay land in identical schemas" a
-fact rather than a wish. Numbers are real numeric Arrow types, never strings;
-timestamps are UTC-stamped; nested objects are JSON strings. The schema is
-derived from the contract's type hints so it can never silently disagree with the
-dataclass.
-"""
-
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -41,7 +31,6 @@ def _arrow_type_for(annotation: object) -> pa.DataType:
 
 
 def arrow_schema(contract: type) -> pa.Schema:
-    """Return the Arrow schema for a contract, in declared field order."""
     fields = [
         pa.field(name, _arrow_type_for(annotation))
         for name, annotation in resolved_field_types(contract).items()

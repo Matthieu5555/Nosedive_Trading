@@ -1,17 +1,3 @@
-"""Normalize IBKR Client Portal market data into our immutable ``RawMarketEvent``.
-
-ADR 0024: the Client Portal REST/WebSocket path is a custom IBKR adapter (the Saxo/Deribit
-pattern) feeding the same raw layer as the Nautilus-TWS path. Both the REST snapshot
-(``/iserver/marketdata/snapshot``) and the WS market-data frame (``smd+CONID``) carry the same
-**numeric field-tag codes**, so one normalizer serves both. The wire shape is owned by
-:class:`~.cp_rest_wire.SnapshotRow` (tag aliases + the verbatim value parse); this module maps
-its fields onto the shared names in :mod:`.market_fields` and builds events through the shared
-:func:`raw_market_event`, so the rows are identical to the Nautilus-TWS path for the same
-observation — ADR 0024's equivalence bar (proven in ``test_cp_rest_equivalence.py``).
-
-Pure and SDK-free → fully exercised in CI.
-"""
-
 from collections.abc import Mapping
 from datetime import datetime
 
@@ -29,13 +15,8 @@ from .market_fields import (
     raw_market_event,
 )
 
-# The market-data field tags this normalizer understands (what to request on snapshot/subscribe).
 REQUEST_FIELD_TAGS: tuple[str, ...] = SNAPSHOT_FIELD_TAGS
 
-# SnapshotRow field → our canonical field name. The wire-tag ↔ field mapping itself lives on the
-# model (the tag aliases); these names MUST map onto the same ones the Nautilus path uses or the
-# equivalence test fails. Tuple (not dict) to fix a deterministic output order: bid, ask, sizes,
-# last, last size, volume.
 _FIELDS: tuple[tuple[str, str], ...] = (
     ("bid", BID),
     ("ask", ASK),
@@ -57,14 +38,6 @@ def snapshot_to_events(
     exchange_ts: datetime,
     receipt_ts: datetime,
 ) -> tuple[RawMarketEvent, ...]:
-    """One CP market-data row (snapshot or WS frame) → its fields as ``RawMarketEvent`` rows.
-
-    Only recognized, present, parseable fields become events; absent or sentinel values are
-    skipped (never emitted as a fake observation). ``sequence`` is the per-session ordinal that
-    makes a re-delivered row idempotent. ``exchange_ts`` is the row's update time
-    (CP ``_updated`` ms); ``receipt_ts`` is when we received it. Accepts either the raw mapping
-    or an already-validated :class:`SnapshotRow` (callers that pre-parse avoid double work).
-    """
     parsed = row if isinstance(row, SnapshotRow) else SnapshotRow.model_validate(row)
     events: list[RawMarketEvent] = []
     for attribute, field_name in _FIELDS:

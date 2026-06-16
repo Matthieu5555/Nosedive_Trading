@@ -1,9 +1,3 @@
-// The whole-basket price-history preload, owned as one module: a session-scoped promise cache
-// plus the hook that reads it. The scan costs ~1 min on the live store and the server does NOT
-// stop it on navigation away — so re-firing it on every return to the Market page stacked
-// concurrent scans until the disk saturated. Caching the promise means a remount while the first
-// preload is still in flight reuses it; a failed preload is evicted so the next mount retries.
-
 import { useEffect, useMemo, useState } from "react";
 
 import type { PriceHistoryBatchResponse } from "../../api";

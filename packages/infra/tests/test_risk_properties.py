@@ -1,15 +1,3 @@
-"""Property-based tests for the risk aggregation invariants (Hypothesis).
-
-Per ``tasks/TESTING.md``, these must hold over a *range* of portfolios, not three
-hand-picked points:
-
-* the aggregate is invariant under input-position reordering, and
-* the sum of the line-level sensitivities equals the aggregate.
-
-Portfolios are generated with distinct contract keys over a sane market range; each
-line is priced by the real engine, so the properties are checked end to end.
-"""
-
 from __future__ import annotations
 
 import random
@@ -64,8 +52,6 @@ def test_aggregate_is_invariant_under_reordering(data: list, perm_seed: random.R
     perm_seed.shuffle(shuffled)
     base = aggregate_lines(data, portfolio_id="pf", dimension="underlying")[0]
     other = aggregate_lines(shuffled, portfolio_id="pf", dimension="underlying")[0]
-    # Lines are summed in a canonical (contract-key) order, so the result is a pure
-    # function of the input set: byte-identical, not merely close.
     assert other.net_delta == base.net_delta
     assert other.net_gamma == base.net_gamma
     assert other.net_vega == base.net_vega
@@ -75,10 +61,8 @@ def test_aggregate_is_invariant_under_reordering(data: list, perm_seed: random.R
 @given(data=portfolios())
 def test_sum_of_lines_equals_the_aggregate(data: list) -> None:
     groups = aggregate_lines(data, portfolio_id="pf", dimension="underlying")
-    assert len(groups) == 1  # all share underlying AAPL
+    assert len(groups) == 1
     net = groups[0]
-    # The aggregate sums in canonical key order and the right-hand side in input
-    # order, so they agree to float tolerance rather than bit-for-bit.
     assert net.net_delta == pytest.approx(
         sum(line.position_delta for line in data), rel=1e-9, abs=1e-9
     )

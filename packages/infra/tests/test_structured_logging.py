@@ -1,14 +1,3 @@
-"""configure_logging unifies every logging stream onto one pinned JSON schema (audit M8).
-
-The schema is the load-bearing contract operational tooling parses — derived here from the
-documented ``core.log`` contract, not from the code under test: one JSON object per line with
-``ts`` (ISO-8601 UTC), ``level`` (UPPERCASE), ``logger``, ``message``, caller key-values as
-top-level keys, and ``exc_info`` carrying the rendered traceback. Streams covered:
-structlog-native (the orchestration/EOD path), ``core.log.get_logger`` (created before AND
-after configuration), and plain stdlib loggers (the third-party shape). State is restored
-after each test — logging and structlog are process-global.
-"""
-
 from __future__ import annotations
 
 import io
@@ -23,13 +12,11 @@ import structlog
 from algotrading.core.log import HANDLER_MARKER, get_logger
 from algotrading.infra.observability import configure_logging
 
-# The pinned schema keys (the documented core.log contract — see packages/core/README.md).
 _SCHEMA_KEYS = {"ts", "level", "logger", "message"}
 
 
 @pytest.fixture(autouse=True)
 def _restore_global_logging_state() -> Iterator[None]:
-    """logging + structlog are process-global; leave them as found."""
     root = logging.getLogger()
     saved_handlers = list(root.handlers)
     saved_level = root.level
@@ -40,7 +27,6 @@ def _restore_global_logging_state() -> Iterator[None]:
 
 
 def _unique(name: str) -> str:
-    """A fresh logger name per test — named stdlib loggers persist across tests."""
     return f"{name}.{uuid.uuid4().hex[:8]}"
 
 
@@ -57,12 +43,11 @@ def test_structlog_native_emits_the_pinned_json_schema() -> None:
 
     (record,) = _lines(buffer)
     assert set(record) >= _SCHEMA_KEYS
-    assert record["level"] == "INFO"  # uppercase — the case the JSON stream always carried
+    assert record["level"] == "INFO"
     assert record["logger"] == name
     assert record["message"] == "eod.stage_done"
-    assert record["stage"] == "reconstruct"  # kwargs land as top-level keys
+    assert record["stage"] == "reconstruct"
     assert record["count"] == 3
-    # ts parses as an aware UTC ISO-8601 timestamp.
     ts = datetime.fromisoformat(str(record["ts"]))
     assert ts.tzinfo is not None and ts.astimezone(UTC).tzinfo is UTC
 
@@ -78,26 +63,26 @@ def test_stdlib_third_party_logger_joins_the_same_stream_and_schema() -> None:
     assert set(record) >= _SCHEMA_KEYS
     assert record["level"] == "INFO"
     assert record["logger"] == name
-    assert record["message"] == "request sent GET"  # %-args interpolated
-    assert record["elapsed_ms"] == 12  # stdlib extra= lifted into the payload
+    assert record["message"] == "request sent GET"
+    assert record["elapsed_ms"] == 12
 
 
 def test_core_log_logger_created_before_configure_is_swept_into_the_root_stream(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     name = _unique("early.module")
-    early = get_logger(name)  # standalone: own marked handler, propagate=False
+    early = get_logger(name)
 
     buffer = io.StringIO()
     configure_logging(stream=buffer)
 
     early.info("early message", extra={"k": "v"})
 
-    (record,) = _lines(buffer)  # exactly one emission — never doubled
+    (record,) = _lines(buffer)
     assert record["logger"] == name
     assert record["message"] == "early message"
     assert record["k"] == "v"
-    assert capsys.readouterr().err == ""  # the old per-logger stderr handler is gone
+    assert capsys.readouterr().err == ""
     assert not any(getattr(h, HANDLER_MARKER, False) for h in early.handlers)
     assert early.propagate is True
 
@@ -110,7 +95,7 @@ def test_core_log_logger_created_after_configure_defers_to_the_root() -> None:
     late = get_logger(name)
     late.warning("late message", extra={"n": 1})
 
-    assert late.handlers == []  # nothing attached — the configured root owns rendering
+    assert late.handlers == []
     (record,) = _lines(buffer)
     assert record["level"] == "WARNING"
     assert record["logger"] == name
@@ -143,7 +128,7 @@ def test_reconfiguration_is_idempotent_one_marked_root_handler_one_emission() ->
     first = io.StringIO()
     configure_logging(stream=first)
     buffer = io.StringIO()
-    configure_logging(stream=buffer)  # again — must replace, not stack
+    configure_logging(stream=buffer)
 
     root = logging.getLogger()
     marked = [h for h in root.handlers if getattr(h, HANDLER_MARKER, False)]
@@ -152,7 +137,7 @@ def test_reconfiguration_is_idempotent_one_marked_root_handler_one_emission() ->
     name = _unique("once.module")
     structlog.get_logger(name).info("only once")
     assert len(_lines(buffer)) == 1
-    assert first.getvalue() == ""  # the replaced handler received nothing
+    assert first.getvalue() == ""
 
 
 def test_root_level_gates_third_party_noise() -> None:

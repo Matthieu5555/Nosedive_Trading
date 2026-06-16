@@ -1,18 +1,3 @@
-"""Shared fixtures for the frontend BFF test suite.
-
-The seeded-store machinery lives here, in one home: the hand-chosen oracle constants,
-the contract-record builders, and the client fixtures over stores pre-seeded with real
-contract rows (written through ``ParquetStore.write`` — exactly the table contracts the
-actor pipeline emits). Expected values are derived independently: the SVI/Greek/OHLC
-numbers are hand-chosen inputs written into the rows, and the per-router test files
-assert the routers surface *those* values unchanged — never numbers copied from BFF
-output.
-
-The suite runs under ``--import-mode=importlib``, where test modules cannot import
-siblings; the per-router files therefore reach the constants and builders through the
-``seed`` fixture, which exposes this module's namespace.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -38,12 +23,6 @@ from algotrading.infra.orchestration.run_state import (
 from algotrading.infra.storage import ParquetStore
 from fastapi.testclient import TestClient
 
-# --------------------------------------------------------------------------------------
-# Hand-chosen oracle values written into the seeded rows. The assertions in the per-router
-# files check the routers echo these exact numbers back — the independent oracle is "what
-# we wrote in".
-# --------------------------------------------------------------------------------------
-
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 TRADE_DATE = date(2026, 5, 29)
 EXPIRY = date(2026, 8, 28)
@@ -60,33 +39,20 @@ NET_DELTA = 123.45
 NET_VEGA = 89.0
 SCENARIO_PNL = -4567.89
 
-# Hand-chosen dollar Greeks written into a pricing_results row; the metrics endpoint must
-# echo these back beside their raw per-unit values and a non-empty unit string.
 PR_DOLLAR_DELTA = 55.0
 PR_DOLLAR_GAMMA = 8.0
 PR_DOLLAR_VEGA = 0.10
 PR_DOLLAR_THETA = -0.0000274
 PR_DOLLAR_RHO = 0.0003
 
-# A second pricing_results row under its own underlying ("GMMA") with round numbers, used to
-# pin the dollar_gamma value-vs-label seam by hand. The engine stores dollar_gamma in the
-# one_pct convention (ADR 0036: Γ·S²/100 per 1% move), so the stored and served value is:
-#   Γ·S²·mult·qty / 100 = 0.04 · 200² · 100 · 1 / 100 = 1600.0
-# The BFF passes this through unchanged; the per-$1 number (160000.0) is kept only as a
-# guard to catch a serializer that passes the un-divided value through.
 GAMMA_UNDERLYING = "GMMA"
 GMMA_RAW_GAMMA = 0.04
 GMMA_SPOT = 200.0
 GMMA_MULT = 100.0
 GMMA_QTY = 1.0
-# Per-$1 (one_dollar) number — kept as a guard in the adversarial seam test; NOT stored in the row.
 GMMA_DOLLAR_GAMMA_ONE_DOLLAR = GMMA_RAW_GAMMA * GMMA_SPOT * GMMA_SPOT * GMMA_MULT * GMMA_QTY
-# Per-1% (one_pct) stored on the row and served by the BFF: 160000.0 / 100 = 1600.0.
 GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED = 1600.0
 
-# Hand-chosen daily OHLC bars for the index members. The price-history endpoint must echo
-# these exact values back; the constituent price-first ordering keys off the latest close.
-# AAA's latest close (192.0) > BBB's (45.5), so AAA must sort first.
 INDEX = "TESTIDX"
 MEMBER_AAA = "AAA"
 MEMBER_BBB = "BBB"
@@ -98,7 +64,6 @@ BBB_BARS = [
     (date(2026, 5, 28), 44.0, 46.0, 43.5, 45.0, 500_000.0),
     (date(2026, 5, 29), 45.0, 46.2, 44.8, 45.5, 600_000.0),
 ]
-# AAA's bar on 2026-05-29: the field-name conformance + read-back oracle.
 AAA_29_OPEN = 190.0
 AAA_29_HIGH = 193.5
 AAA_29_LOW = 189.5
@@ -106,9 +71,6 @@ AAA_29_CLOSE = 192.0
 AAA_29_VOLUME = 1_200_000.0
 BBB_29_CLOSE = 45.5
 
-# Hand-chosen projected-analytics cell values for AAA, one maturity (3M), two band points
-# (a 30Δ put and a 30Δ call). The analytics endpoint must echo these back with the stored
-# unit strings; the smile is ordered by delta (put first).
 AN_FORWARD = 195.0
 AN_PUT_IV = 0.2700
 AN_PUT_LOGM = -0.1500
@@ -124,12 +86,10 @@ AN_DOLLAR_VEGA_UNIT = "$ per 1 vol point"
 AN_DOLLAR_THETA_UNIT = "$ per calendar day"
 AN_DOLLAR_RHO_UNIT = "$ per 1% rate"
 AN_DOLLAR_RT_VEGA_UNIT = "$ per 1 vol point"
-# Per-cell dollar Greeks shared by both band points (the basket sum oracle restates these).
 AN_DOLLAR_GAMMA = 7.6
 AN_DOLLAR_VEGA = 0.31
 AN_DOLLAR_THETA = -0.000041
 AN_DOLLAR_RHO = 0.0005
-# RT-Vega (running-time / annualised vega, ADR 0050) per strike, raw + cash.
 AN_RT_VEGA = 0.62
 AN_DOLLAR_RT_VEGA = 0.0062
 AN_PRICE = 4.2
@@ -153,8 +113,6 @@ CALL_100 = InstrumentKey(
     strike=100.0,
     option_right="C",
 )
-# A GMMA-underlying option whose pricing row carries the round-number dollar_gamma above,
-# so /api/risk/metrics?underlying=GMMA isolates exactly that row for the hand-computed seam test.
 GMMA_CALL = InstrumentKey(
     underlying_symbol=GAMMA_UNDERLYING,
     security_type="OPT",
@@ -166,11 +124,6 @@ GMMA_CALL = InstrumentKey(
     strike=200.0,
     option_right="C",
 )
-
-
-# --------------------------------------------------------------------------------------
-# Record builders + store seeding (shared across the per-router files via ``seed``).
-# --------------------------------------------------------------------------------------
 
 
 def prov(source: str) -> ProvenanceStamp:
@@ -289,7 +242,6 @@ def analytics_cell(
 def analytics_cell_on(
     snapshot_ts: datetime, *, delta_band: str, dollar_delta: float
 ) -> tables.ProjectedOptionAnalytics:
-    """An AAA 3M analytics cell on a chosen snapshot date (for the no-look-ahead tests)."""
     return tables.ProjectedOptionAnalytics(
         snapshot_ts=snapshot_ts, provider="IBKR", underlying=MEMBER_AAA, tenor_label="3m",
         maturity_years=0.25, delta_band=delta_band, target_delta=0.30, log_moneyness=0.0,
@@ -327,11 +279,8 @@ def surface_parameters_row(
 
 def seed_store(root: Path) -> None:
     store = ParquetStore(root)
-    # Daily OHLC bars for the two index members (price-history + price-first ordering oracle).
     store.write("daily_bar", [daily_bar_row(MEMBER_AAA, row) for row in AAA_BARS])
     store.write("daily_bar", [daily_bar_row(MEMBER_BBB, row) for row in BBB_BARS])
-    # Bitemporal membership: AAA in the basket on TRADE_DATE; CCC was removed before it and a
-    # FUT member is added after it — both must be absent from the as-of basket (look-ahead gate).
     store.write(
         "index_constituents",
         [
@@ -341,7 +290,6 @@ def seed_store(root: Path) -> None:
             constituent_row("FUT", 0.0, date(2026, 6, 1), None, date(2026, 1, 1)),
         ],
     )
-    # Projected-analytics cells for AAA, one maturity, a 30Δ put + a 30Δ call.
     store.write(
         "projected_option_analytics",
         [
@@ -363,7 +311,6 @@ def seed_store(root: Path) -> None:
             ),
         ],
     )
-    # A clean fitted SVI slice for AAA on TRADE_DATE so the analytics surface_slice is populated.
     store.write(
         "surface_parameters",
         [
@@ -379,8 +326,6 @@ def seed_store(root: Path) -> None:
 
 
 def _seed_legacy_store(store: ParquetStore) -> None:
-    # A raw snapshot for the underlying/date so build_dashboard sees data flowing and can
-    # match the surface partition to a raw underlying (surfaces_building -> ok).
     store.write(
         "market_state_snapshots",
         [snapshot_row(UNDERLYING_KEY, 100.0), snapshot_row(CALL_100, 3.99)],
@@ -390,8 +335,6 @@ def _seed_legacy_store(store: ParquetStore) -> None:
         [
             surface_parameters_row(
                 UNDERLYING,
-                # A degenerate calibration in the live SX5E/SPX shape: rho railed to its
-                # bound, optimizer not converged, butterfly breached — the BFF must flag it.
                 SurfaceFitDiagnostics(
                     rmse=0.0009, n_points=11, arb_free=False,
                     bound_hits=("rho_lower",), converged=False,
@@ -446,8 +389,8 @@ def _seed_legacy_store(store: ParquetStore) -> None:
                 vega=0.20,
                 theta=-0.02,
                 rho=0.05,
-                dollar_delta=GMMA_RAW_GAMMA * 0.0,  # unused by the seam test; kept finite
-                dollar_gamma=GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED,  # per-1% (one_pct), as the engine stores
+                dollar_delta=GMMA_RAW_GAMMA * 0.0,
+                dollar_gamma=GMMA_DOLLAR_GAMMA_ONE_PCT_EXPECTED,
                 dollar_vega=0.002,
                 dollar_theta=-0.00005,
                 dollar_rho=0.0005,
@@ -476,10 +419,6 @@ def _seed_legacy_store(store: ParquetStore) -> None:
     )
 
 
-# --- WS 2B: a 3×3 cartesian (spot × vol) stress surface persisted as scenario_results ---
-# The independent oracle is "what we wrote in": the portfolio total per (spot, vol) cell,
-# summed across contracts. The centre (0,0) is two contracts that net to 0, so the reshape
-# must sum contracts per cell — not pick one.
 SURFACE_PORTFOLIO = "pf-surface"
 SURFACE_SPOT_AXIS = [-0.5, 0.0, 0.5]
 SURFACE_VOL_AXIS = [-0.5, 0.0, 0.5]
@@ -489,7 +428,6 @@ SURFACE_TOTALS = {
     (0.0, -0.5): -100.0, (0.0, 0.0): 0.0, (0.0, 0.5): 150.0,
     (0.5, -0.5): 3000.0, (0.5, 0.0): 4000.0, (0.5, 0.5): 5000.0,
 }
-# The centre cell is two contracts (+250, -250) → the reshape sums them to SURFACE_TOTALS[0,0].
 SURFACE_CENTRE_LEGS = (250.0, -250.0)
 
 
@@ -532,8 +470,6 @@ def seed_surface_store(root: Path) -> None:
                         CALL_100.canonical(),
                     )
                 )
-    # A families cell coexists in the same partition; 2C reads it via `cells`, and the surface
-    # reshape (surf_-prefixed only) must ignore it.
     rows.append(
         tables.ScenarioResult(
             valuation_ts=AS_OF,
@@ -552,14 +488,12 @@ def seed_surface_store(root: Path) -> None:
     store.write("scenario_results", rows)
 
 
-# -- recorded-dates: the 1G run-state ledger (two complete runs + one partial) ----------
 COMPLETE_DATE_1 = date(2026, 5, 28)
 COMPLETE_DATE_2 = date(2026, 5, 29)
 PARTIAL_DATE = date(2026, 5, 30)
 
 
 def seed_ledger(root: Path) -> None:
-    """Two gap-free completed EOD runs + one partial/failed run in the run-state ledger."""
     for trade_date in (COMPLETE_DATE_1, COMPLETE_DATE_2):
         for stage in EOD_STAGES:
             record_stage(
@@ -572,7 +506,6 @@ def seed_ledger(root: Path) -> None:
                     recorded_ts=AS_OF,
                 ),
             )
-    # A partial/failed day: only the first two stages, the last recorded failed. Not complete.
     record_stage(
         root,
         StageRun(
@@ -595,45 +528,30 @@ def seed_ledger(root: Path) -> None:
     )
 
 
-# --------------------------------------------------------------------------------------
-# Fixtures.
-# --------------------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="session")
 def seed() -> ModuleType:
-    """This module's namespace: the oracle constants + record builders above.
-
-    The suite runs under ``--import-mode=importlib`` (test modules cannot import
-    siblings), so the shared seed vocabulary travels as a fixture instead of an import.
-    """
     return sys.modules[__name__]
 
 
 @pytest.fixture
 def ctx(tmp_path: Path) -> AppContext:
-    """An AppContext wired to an empty tmp store and a tmp configs dir."""
     store_root = tmp_path / "data"
     configs_dir = tmp_path / "configs"
     return AppContext(
         store_root=store_root,
         configs_dir=configs_dir,
         store=ParquetStore(store_root),
-        # An index default (not a single-name) — the empty tmp configs carry no registry to
-        # resolve it from, so set it explicitly for the routers' no-index fallback.
         default_underlying="SX5E",
     )
 
 
 @pytest.fixture
 def infra_client(ctx: AppContext) -> Iterator[TestClient]:
-    """TestClient over the infra-wired BFF (empty store)."""
     with TestClient(create_app(ctx)) as client:
         yield client
 
 
 def seeded_context(root: Path) -> AppContext:
-    """Seed ``root`` with the full readback fixture set and wire a context over it."""
     seed_store(root)
     return AppContext(
         store_root=root,
@@ -645,14 +563,12 @@ def seeded_context(root: Path) -> AppContext:
 
 @pytest.fixture
 def seeded_client(tmp_path: Path) -> Iterator[TestClient]:
-    """A TestClient over the BFF wired to a store pre-seeded with real contract rows."""
     with TestClient(create_app(seeded_context(tmp_path / "data"))) as client:
         yield client
 
 
 @pytest.fixture
 def surface_client(tmp_path: Path) -> Iterator[TestClient]:
-    """A TestClient over a store seeded with a 3×3 surface (+ one families cell)."""
     store_root = tmp_path / "data"
     seed_surface_store(store_root)
     app_ctx = AppContext(
@@ -667,7 +583,6 @@ def surface_client(tmp_path: Path) -> Iterator[TestClient]:
 
 @pytest.fixture
 def ledger_client(tmp_path: Path) -> Iterator[TestClient]:
-    """A TestClient over a seeded store whose run-state ledger has 2 complete + 1 partial run."""
     store_root = tmp_path / "data"
     app_ctx = seeded_context(store_root)
     seed_ledger(store_root)

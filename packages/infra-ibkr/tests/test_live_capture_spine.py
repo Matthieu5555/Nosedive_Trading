@@ -1,25 +1,3 @@
-"""End-to-end: env-credentialed CP REST capture → the EOD spine persists a real grid (WS 1C).
-
-This is the seam the whole 1C effort closes: a real fire, through the PRODUCTION stage wiring
-(``default_stages_builder``), with the live ``collect_live`` basket source bound from the
-environment's IBKR CP OAuth credentials, captures an index's close basket over CP REST and
-persists a NON-EMPTY ``ProjectedOptionAnalytics`` grid to a TEMP store. Only the HTTP/network
-layer is faked:
-
-* the OAuth LST exchange runs for real (pycryptodome RSA → DH → LST) against a fake IBKR OAuth
-  endpoint, exactly as the C2 production-transport test does — so ``live_basket_source`` is
-  exercised through the genuine auth path, not a stubbed transport, for the auth assertion;
-* the market-data/secdef gateway is a fake CP REST transport returning a known chain + known
-  close marks — no live Gateway, no real secrets.
-
-The two remaining obligations:
-
-* a NON-credentialed environment makes ``live_basket_source`` return ``None`` and the fire falls
-  back to the runner's empty no-capture source — a clean exit-0 day with nothing persisted;
-* the persisted grid's provider/underlying/snapshot are the close-capture values, derived
-  independently of the code under test.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -55,15 +33,13 @@ from Crypto.PublicKey import RSA
 from Crypto.Util.number import long_to_bytes
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
-# The fired index + its session close (NYSE 16:00 EDT on the trade date) and the clock day.
 TRADE_DATE = date(2026, 3, 12)
 SPX_CLOSE = datetime(2026, 3, 12, 20, 0, tzinfo=UTC)
-SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)  # next NYSE open (09:30 ET = 13:30 UTC)
+SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)
 CLOCK_NOW = datetime(2026, 3, 12, 22, 0, tzinfo=UTC)
 PROVIDER = "IBKR"
 INDEX_CONID = 416904
 
-# A broad multi-maturity chain so the captured basket fits a real surface and the grid is non-empty.
 _SPOT = 100.0
 _MONTHS = {"APR26": date(2026, 4, 11), "JUN26": date(2026, 6, 10), "SEP26": date(2026, 9, 8)}
 _STRIKES = (70.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 130.0)
@@ -92,7 +68,6 @@ def _registry() -> IndexRegistry:
         {
             "SPX": {
                 "name": "S&P 500", "calendar": "XNYS", "currency": "USD",
-                # conid 0 placeholder — the live path resolves the real conid from the symbol.
                 "ibkr": {"conid": 0, "secType": "IND", "exchange": "CBOE"},
                 "enabled": True,
             }
@@ -111,7 +86,6 @@ def _mark(strike: float, right: str, bump: float) -> float:
 
 
 class _FakeMarketGateway:
-    """Fake CP REST market/secdef gateway (a broad known chain + known close marks)."""
 
     def __init__(self) -> None:
         self._close_ms = int(SPX_CLOSE.timestamp() * 1000)
@@ -169,7 +143,6 @@ class _FakeMarketGateway:
         raise AssertionError(f"no mark for conid {conid}")
 
 
-# -- the real OAuth endpoint (RSA → DH → LST runs for real; only the socket is faked) ----------
 _DH_PRIME_HEX = (
     "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
     "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
@@ -206,7 +179,6 @@ def _deterministic_keys() -> dict[str, str]:
 
 
 class _FakeOauthEndpoint:
-    """Plays IBKR's server side of the DH exchange (so the client LST validates)."""
 
     def __init__(self) -> None:
         p = int(_DH_PRIME_HEX, 16)
@@ -259,9 +231,6 @@ def _deps(tmp_path: Path, source: Any) -> RunnerDeps:
     clock = ManualClock(start=CLOCK_NOW)
     import functools
 
-    # A live source is threaded in; ``None`` leaves the runner on its own empty no-capture
-    # default (default_stages_builder's _empty_basket_source) — exactly the fallback the shim
-    # picks for a non-credentialed environment.
     stages_builder = (
         default_stages_builder
         if source is None
@@ -281,14 +250,6 @@ def _deps(tmp_path: Path, source: Any) -> RunnerDeps:
 
 
 def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
-    """Auth-from-env → conid resolved from symbol → collect_live captures → grid persisted.
-
-    The credential loader, the LST exchange, the conid resolution, the chain plan/capture, and the
-    basket assembly all run for real; only the HTTP layer is faked. The fire goes through the
-    production ``default_stages_builder`` and a non-empty grid lands in the TEMP store.
-    """
-    # The auth path runs for real against the fake OAuth endpoint (asserts live_basket_source
-    # truly takes the credentialed branch); the market gateway is then the bound transport.
     consumer = LstConsumer(
         consumer_key=_CONSUMER_KEY, access_token="ACCESSTOKEN",
         access_token_secret=_deterministic_keys()["access_token_secret_b64"],
@@ -296,7 +257,6 @@ def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
         encryption_key_pem=_deterministic_keys()["encryption_pem"],
         dh=DiffieHellmanParams.from_hex(_DH_PRIME_HEX),
     )
-    # Prove the env is recognized as credentialed and the loader builds the same consumer.
     from algotrading.infra_ibkr.connectivity.cp_rest_credentials import (
         credentials_present,
         load_lst_consumer,
@@ -307,12 +267,6 @@ def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
     loaded = load_lst_consumer(env)
     assert loaded is not None and loaded.consumer_key == consumer.consumer_key
 
-    # Bind the live source over the fake MARKET gateway (an already-authenticated transport): the
-    # capture/plan/snapshot/basket code runs end to end; the LST socket path is bypassed via the
-    # injected transport, with the auth path itself covered by the C2 production-transport test.
-    # ``now`` fixed to the trade date: this fire happens on its own session day, so the live
-    # snapshot is valid (the no-look-ahead guard admits it). Without pinning ``now`` the source
-    # would compare the fixed past TRADE_DATE against the wall clock and skip the capture.
     source = live_basket_source(
         env=env, transport=_FakeMarketGateway(), config=_config(),
         selection=ChainSelection(max_expiries=3, min_strikes_per_side=10, option_exchange="CBOE"),
@@ -331,17 +285,10 @@ def test_credentialed_capture_persists_a_real_grid(tmp_path: Path) -> None:
     assert grid, "the credentialed live fire must persist a non-empty grid"
     assert {row.provider for row in grid} == {PROVIDER}
     assert {row.underlying for row in grid} == {"SPX"}
-    assert {row.snapshot_ts for row in grid} == {SPX_CLOSE}  # the index's own close, the as-of
+    assert {row.snapshot_ts for row in grid} == {SPX_CLOSE}
 
 
 def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> None:
-    """A trade_date before 'today' returns None — the live snapshot must not back-date stale quotes.
-
-    Same credentialed source, same fake gateway, same fired index — only ``now`` differs. When
-    ``now`` is the day AFTER the trade date (a catch-up/backfill fire), the source declines (no
-    look-ahead); when ``now`` IS the trade date, the very same source captures a real basket. So
-    the difference is the date guard, not a broken transport.
-    """
     from datetime import timedelta
 
     fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
@@ -353,12 +300,10 @@ def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> Non
             selection=selection, now=lambda: today,
         )
 
-    # 'today' is the day after the trade date → a past-dated fire → skipped, no basket.
     past_fire = _source(TRADE_DATE + timedelta(days=1))
     assert past_fire is not None
     assert past_fire(fired, TRADE_DATE) is None
 
-    # 'today' IS the trade date → the same source captures a real, populated basket.
     same_day = _source(TRADE_DATE)
     assert same_day is not None
     basket = same_day(fired, TRADE_DATE)
@@ -366,15 +311,12 @@ def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> Non
 
 
 def test_non_credentialed_environment_falls_back_to_empty_no_capture(tmp_path: Path) -> None:
-    """With no credentials, live_basket_source is None and the fire is a clean no-capture day."""
     source = live_basket_source(env={})
-    assert source is None  # the production selection chose the empty path
+    assert source is None
 
-    # The runner's default (no basket source) then persists nothing — a clean exit-0 day.
     deps = _deps(tmp_path, None)
     result = _run(deps)
     assert result is not None
-    # Every stage still ran cleanly; the grid is simply empty (no capture).
     assert set(result.ran) == {
         "universe_refresh", "collection", "analytics", "reconciliation", "qc",
     }

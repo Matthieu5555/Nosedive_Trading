@@ -1,20 +1,3 @@
-"""Reference, limiting-case, convention, and adapter tests for the pricing engine.
-
-Independent oracles (never the code under test):
-
-* ``fixtures.synthetic.black_call``/``black_put`` — a second, closed-form Black-76
-  implementation (it uses ``math.erf`` and lives in the fixture library, not in
-  ``pricing``). Used directly for the price and, via central finite difference, for
-  the Greeks.
-* Hull, *Options, Futures, and Other Derivatives*, example 15.6 — a textbook
-  reference value for a European call/put.
-* The closed-form European engine vs the QuantLib American lattice — two different
-  code paths that must agree in the no-early-exercise limit (a non-dividend
-  American call equals its European twin).
-
-Float comparisons use explicit tolerances sized to each oracle's precision.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -43,14 +26,11 @@ from algotrading.infra.pricing import (
 from algotrading.infra.pricing.state import from_forward, from_spot
 from fixtures.synthetic import black_call, black_put
 
-# The canonical reference point, cross-checked across three Black-76 engines in
-# onboarding (fixture == vollib == ql.blackFormula == 3.947884 to 6 dp).
 REF_F, REF_K, REF_T, REF_VOL, REF_DF = 100.0, 100.0, 0.25, 0.20, 0.99
-REF_RATE = -math.log(REF_DF) / REF_T  # continuously compounded r implied by DF
+REF_RATE = -math.log(REF_DF) / REF_T
 
 
 def ref_state(option_right: str, exercise_style: str = "european") -> PricingState:
-    """The reference state for a call or put (spot == forward, carry == 0)."""
     return from_forward(
         forward=REF_F,
         strike=REF_K,
@@ -62,28 +42,21 @@ def ref_state(option_right: str, exercise_style: str = "european") -> PricingSta
     )
 
 
-# --------------------------------------------------------------------------- #
-# Reference values                                                            #
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_european_price_matches_independent_black76(right: str) -> None:
-    # Oracle: the fixture's own Black-76 closed form (different code).
     oracle = (black_call if right == "C" else black_put)(REF_F, REF_K, REF_T, REF_VOL, REF_DF)
     got = price_european(ref_state(right)).price
     assert got == pytest.approx(oracle, rel=1e-10)
-    # At the money with these inputs the call and put are equal (F == K), ~3.9479.
     assert got == pytest.approx(3.947884, abs=1e-5)
 
 
 def test_european_matches_hull_textbook_example() -> None:
-    # Hull example 15.6: S=42, K=40, r=0.10, sigma=0.20, T=0.5 (non-dividend, b=r).
-    # Published values: call = 4.76, put = 0.81.
     spot, strike, rate, vol, mat = 42.0, 40.0, 0.10, 0.20, 0.5
     df = math.exp(-rate * mat)
     call = price_european(
         from_spot(
             spot=spot, strike=strike, maturity_years=mat, volatility=vol,
-            discount_factor=df, option_right="C", carry=rate,  # b = r, no dividend
+            discount_factor=df, option_right="C", carry=rate,
         )
     ).price
     put = price_european(
@@ -94,7 +67,6 @@ def test_european_matches_hull_textbook_example() -> None:
     ).price
     assert call == pytest.approx(4.76, abs=0.01)
     assert put == pytest.approx(0.81, abs=0.01)
-    # Put-call parity as a second, internal cross-check: C - P == DF*(F - K).
     forward = spot * math.exp(rate * mat)
     assert call - put == pytest.approx(df * (forward - strike), rel=1e-10)
 
@@ -102,18 +74,11 @@ def test_european_matches_hull_textbook_example() -> None:
 @pytest.mark.parametrize("right", ["C", "P"])
 @pytest.mark.parametrize(
     ("rate", "div_yield"),
-    [(0.05, 0.0), (0.05, 0.03)],  # b == r (no dividend) and b == r - q (dividend yield)
+    [(0.05, 0.0), (0.05, 0.03)],
 )
 def test_black76_and_black_scholes_agree_under_the_documented_carry(
     right: str, rate: float, div_yield: float
 ) -> None:
-    # The documented carry convention (pricing.state): b == r for a non-dividend
-    # equity, b == 0 for a future (Black-76), b == r - q under a continuous dividend
-    # yield q. A European price is a function of (forward, strike, T, sigma, DF) alone,
-    # so pricing the SAME option two ways must agree: Black-Scholes from a spot with
-    # carry b, and Black-76 from the forward F = spot * exp(b * T) with carry 0. Oracle:
-    # the fixture's closed-form Black-76 on that forward (different code). Discounting
-    # is always at r, never the carry.
     spot, strike, vol, mat = 100.0, 95.0, 0.20, 0.5
     carry = rate - div_yield
     forward = spot * math.exp(carry * mat)
@@ -127,7 +92,7 @@ def test_black76_and_black_scholes_agree_under_the_documented_carry(
     black76 = price_european(
         from_forward(
             forward=forward, strike=strike, maturity_years=mat, volatility=vol,
-            discount_factor=df, option_right=right,  # spot -> forward, carry -> 0
+            discount_factor=df, option_right=right,
         )
     ).price
     oracle = (black_call if right == "C" else black_put)(forward, strike, mat, vol, df)
@@ -136,12 +101,8 @@ def test_black76_and_black_scholes_agree_under_the_documented_carry(
     assert black_scholes == pytest.approx(black76, rel=1e-12)
 
 
-# --------------------------------------------------------------------------- #
-# Limiting cases                                                              #
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_zero_vol_gives_discounted_intrinsic(right: str) -> None:
-    # sigma -> 0: the option is worth its discounted intrinsic, with no convexity.
     state = from_forward(
         forward=110.0, strike=100.0, maturity_years=REF_T, volatility=0.0,
         discount_factor=REF_DF, option_right=right,
@@ -155,7 +116,6 @@ def test_zero_vol_gives_discounted_intrinsic(right: str) -> None:
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_zero_maturity_gives_intrinsic(right: str) -> None:
-    # T -> 0 (with DF == 1, as economics require): price collapses to intrinsic.
     state = from_forward(
         forward=107.0, strike=100.0, maturity_years=0.0, volatility=REF_VOL,
         discount_factor=1.0, option_right=right,
@@ -165,7 +125,6 @@ def test_zero_maturity_gives_intrinsic(right: str) -> None:
 
 
 def test_deep_itm_call_approaches_discounted_forward_minus_strike() -> None:
-    # K -> 0: a call is almost the discounted forward; the put is almost worthless.
     tiny_strike = 1e-8
     call = price_european(
         from_forward(forward=REF_F, strike=tiny_strike, maturity_years=REF_T,
@@ -180,23 +139,15 @@ def test_deep_itm_call_approaches_discounted_forward_minus_strike() -> None:
 
 
 def test_very_high_vol_call_saturates_at_discounted_forward() -> None:
-    # sigma -> infinity: N(d1) -> 1, N(d2) -> 0, so a call -> DF * F. At sigma=20
-    # the residual is ~3e-5 (well inside 1e-3) yet still strictly below the asymptote.
     call = price_european(
         from_forward(forward=REF_F, strike=REF_K, maturity_years=REF_T,
                      volatility=20.0, discount_factor=REF_DF, option_right="C")
     ).price
     assert call == pytest.approx(REF_DF * REF_F, rel=1e-3)
-    assert call < REF_DF * REF_F  # strictly below the asymptote
+    assert call < REF_DF * REF_F
 
 
-# --------------------------------------------------------------------------- #
-# Convention guards: the bugs these would catch are explicit                  #
-# --------------------------------------------------------------------------- #
 def test_volatility_is_decimal_not_percent() -> None:
-    # 0.20 means 20%. Code that treated the input as a percent (dividing by 100,
-    # pricing sigma=0.002) would return ~0 for this ATM option; code that scaled up
-    # (sigma=20.0) would saturate near DF*F. Pinning the exact value catches both.
     assert price_european(ref_state("C")).price == pytest.approx(3.947884, abs=1e-5)
     saturated = price_european(
         from_forward(forward=REF_F, strike=REF_K, maturity_years=REF_T,
@@ -206,12 +157,10 @@ def test_volatility_is_decimal_not_percent() -> None:
         from_forward(forward=REF_F, strike=REF_K, maturity_years=REF_T,
                      volatility=0.002, discount_factor=REF_DF, option_right="C")
     ).price
-    assert near_intrinsic < 0.1 < 3.947884 < saturated  # the three regimes are distinct
+    assert near_intrinsic < 0.1 < 3.947884 < saturated
 
 
 def test_maturity_is_years_not_days() -> None:
-    # 0.25 means a quarter-year. Code that read it as days (0.25/365 years) would
-    # return near-intrinsic (~0 ATM); the true value is ~3.95 and rises with T.
     quarter = price_european(ref_state("C")).price
     one_day_if_misread = price_european(
         from_forward(forward=REF_F, strike=REF_K, maturity_years=0.25 / 365.0,
@@ -224,9 +173,6 @@ def test_maturity_is_years_not_days() -> None:
     assert one_day_if_misread < 0.5 < quarter < one_year
 
 
-# --------------------------------------------------------------------------- #
-# Greeks vs finite difference of the independent (fixture) price               #
-# --------------------------------------------------------------------------- #
 def _fd_forward_first(fn: Callable[[float], float], x: float, h: float) -> float:
     return (fn(x + h) - fn(x - h)) / (2.0 * h)
 
@@ -239,7 +185,6 @@ def _fixture_price(
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_delta_matches_fd_of_independent_price(right: str) -> None:
-    # At carry == 0 (spot == forward) spot delta equals forward delta = d(price)/dF.
     fd = _fd_forward_first(
         lambda f: _fixture_price(right, f=f, t=REF_T, vol=REF_VOL, df=REF_DF), REF_F, 1e-4
     )
@@ -260,25 +205,21 @@ def test_vega_matches_fd_in_vol(right: str) -> None:
     fd = _fd_forward_first(
         lambda v: _fixture_price(right, f=REF_F, t=REF_T, vol=v, df=REF_DF), REF_VOL, 1e-5
     )
-    # vega is per 1.00 of vol; the fixture FD is in the same units.
     assert price_european(ref_state(right)).vega == pytest.approx(fd, rel=1e-4)
 
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_theta_matches_spot_fixed_fd(right: str) -> None:
-    # Spot-fixed theta at carry == 0: spot (== forward) is held fixed as T varies,
-    # while the discount factor tracks T at the implied rate. theta = -d(price)/dT.
     def px(t: float) -> float:
         return _fixture_price(right, f=REF_F, t=t, vol=REF_VOL, df=math.exp(-REF_RATE * t))
 
     fd = -_fd_forward_first(px, REF_T, 1e-4)
     assert price_european(ref_state(right)).theta == pytest.approx(fd, abs=1e-3)
-    assert price_european(ref_state(right)).theta < 0.0  # long option decays
+    assert price_european(ref_state(right)).theta < 0.0
 
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_rho_matches_fd_in_rate_forward_fixed(right: str) -> None:
-    # Forward-fixed rho: only the discount factor responds to r, so rho = -T*price.
     def px(rate: float) -> float:
         return _fixture_price(right, f=REF_F, t=REF_T, vol=REF_VOL, df=math.exp(-rate * REF_T))
 
@@ -286,19 +227,11 @@ def test_rho_matches_fd_in_rate_forward_fixed(right: str) -> None:
     assert price_european(ref_state(right)).rho == pytest.approx(fd, abs=1e-4)
 
 
-# --------------------------------------------------------------------------- #
-# Second-order Greeks: vanna / volga / charm (TARGET §7.2)                     #
-# --------------------------------------------------------------------------- #
-# Oracle: a central difference of THIS engine's own first-order Greeks — a different
-# code path (re-pricing perturbed states) from the closed forms under test, so a sign
-# or unit error in the analytic formula cannot hide. Vanna == ddelta/dsigma,
-# Volga == dvega/dsigma, Charm == ddelta/dt == -ddelta/dT (theta's calendar clock).
 _SECOND_ORDER_POINTS = [
-    # (spot, vol, T, rate, carry) — ATM, ITM, OTM, short/long dated, with and without carry.
-    (100.0, 0.20, 0.50, 0.03, 0.00),   # ATM future (b == 0)
-    (110.0, 0.25, 0.75, 0.05, 0.05),   # ITM call / OTM put, b == r (no dividend)
-    (90.0, 0.15, 1.50, 0.04, 0.01),    # OTM call / ITM put, b == r - q (dividend)
-    (100.0, 0.30, 0.10, 0.02, 0.00),   # short-dated, high vol
+    (100.0, 0.20, 0.50, 0.03, 0.00),
+    (110.0, 0.25, 0.75, 0.05, 0.05),
+    (90.0, 0.15, 1.50, 0.04, 0.01),
+    (100.0, 0.30, 0.10, 0.02, 0.00),
 ]
 
 
@@ -342,8 +275,6 @@ def test_volga_matches_fd_of_vega_in_vol(
 def test_charm_matches_fd_of_delta_in_calendar_time(
     right: str, spot: float, vol: float, t: float, rate: float, carry: float
 ) -> None:
-    # charm == ddelta/dt == -ddelta/dT, with the discount factor tracking the implied
-    # rate as T varies (the same convention the theta cross-check uses).
     h = 1e-5
     up = price_european(_spot_state(spot, vol, t + h, right, rate, carry)).delta
     down = price_european(_spot_state(spot, vol, t - h, right, rate, carry)).delta
@@ -354,20 +285,15 @@ def test_charm_matches_fd_of_delta_in_calendar_time(
 
 
 def test_vanna_and_volga_are_call_put_identical_but_charm_is_not() -> None:
-    # Vanna and Volga are right-independent (they differentiate N'(d1), shared by C/P);
-    # charm carries the (b - r)·N term, which differs between a call and a put.
     call = price_european(ref_state("C"))
     put = price_european(ref_state("P"))
     assert call.vanna == pytest.approx(put.vanna, rel=1e-12)
     assert call.volga == pytest.approx(put.volga, rel=1e-12)
-    # At the reference point carry == 0 and rate > 0, so (b - r) != 0 and the charms differ.
     assert call.charm != pytest.approx(put.charm, rel=1e-6)
 
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_degenerate_state_has_zero_second_order_greeks(right: str) -> None:
-    # No time value, no convexity: every second-order sensitivity is exactly zero, the
-    # same total-function behaviour as gamma/vega in the degenerate regime.
     zero_vol = from_spot(
         spot=100.0, strike=95.0, maturity_years=0.5, volatility=0.0,
         discount_factor=0.99, option_right=right, carry=0.0,
@@ -376,25 +302,14 @@ def test_degenerate_state_has_zero_second_order_greeks(right: str) -> None:
     assert (g.vanna, g.volga, g.charm) == (0.0, 0.0, 0.0)
 
 
-# --------------------------------------------------------------------------- #
-# RT-Vega: running-time / annualised vega = vega / sqrt(T)  (ADR 0049)         #
-# --------------------------------------------------------------------------- #
-# Two independent oracles, neither the rt_vega code under test:
-#   (a) a hand-built S · N'(d1) · e^{(b-r)T} — the maturity-independent core of vega,
-#       computed here from d1 and a local standard-normal pdf, not read off the engine;
-#   (b) the engine's own vega divided by sqrt(T) — a different field, so a sqrt(T)
-#       drop/duplication or a unit slip cannot hide.
-# RT-Vega must equal both.
 _SQRT_2PI = math.sqrt(2.0 * math.pi)
 
 
 def _norm_pdf(x: float) -> float:
-    # Local standard-normal pdf, independent of the engine's internal helper.
     return math.exp(-0.5 * x * x) / _SQRT_2PI
 
 
 def _rt_vega_oracle(spot: float, vol: float, t: float, rate: float, carry: float) -> float:
-    # S · N'(d1) · e^{(b-r)T}, with the forward F = S·e^{bT} (the engine's own forward law).
     forward = spot * math.exp(carry * t)
     d1 = (math.log(forward / 100.0) + 0.5 * vol * vol * t) / (vol * math.sqrt(t))
     return spot * _norm_pdf(d1) * math.exp((carry - rate) * t)
@@ -405,8 +320,6 @@ def _rt_vega_oracle(spot: float, vol: float, t: float, rate: float, carry: float
 def test_rt_vega_equals_hand_built_running_time_core(
     right: str, spot: float, vol: float, t: float, rate: float, carry: float
 ) -> None:
-    # Oracle (a): the hand-built S·N'(d1)·e^{(b-r)T}. Call == put (it differentiates the
-    # shared N'(d1)), so the right does not change the expected value.
     expected = _rt_vega_oracle(spot, vol, t, rate, carry)
     got = price_european(_spot_state(spot, vol, t, right, rate, carry)).rt_vega
     assert got == pytest.approx(expected, rel=1e-12, abs=1e-12)
@@ -417,28 +330,19 @@ def test_rt_vega_equals_hand_built_running_time_core(
 def test_rt_vega_equals_vega_over_sqrt_t(
     right: str, spot: float, vol: float, t: float, rate: float, carry: float
 ) -> None:
-    # Oracle (b): vega / sqrt(T), with vega taken from the engine's own (independently
-    # FD-verified elsewhere) vega field — the convention pin (ADR 0049).
     g = price_european(_spot_state(spot, vol, t, right, rate, carry))
     assert g.rt_vega == pytest.approx(g.vega / math.sqrt(t), rel=1e-12, abs=1e-12)
 
 
 def test_rt_vega_is_maturity_comparable_where_raw_vega_is_not() -> None:
-    # The whole point: at fixed spot/vol/carry, raw vega grows ~sqrt(T) across tenors, while
-    # RT-Vega strips that. Two ATM-forward strikes 4x apart in T have vegas ~2x apart but
-    # RT-Vegas within a few percent (only the small N'(d1) drift remains).
     short = price_european(_spot_state(100.0, 0.20, 0.25, "C", 0.0, 0.0))
     long = price_european(_spot_state(100.0, 0.20, 1.00, "C", 0.0, 0.0))
-    # Raw vega roughly doubles (sqrt(4) == 2).
     assert long.vega / short.vega == pytest.approx(2.0, rel=0.05)
-    # RT-Vega stays close: the ratio is far nearer 1 than the raw 2x.
     assert long.rt_vega / short.rt_vega == pytest.approx(1.0, abs=0.05)
 
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_rt_vega_is_zero_in_the_degenerate_t_to_zero_regime(right: str) -> None:
-    # Boundary: T -> 0 (and sigma -> 0) must not divide by zero. RT-Vega is defined 0.0
-    # there (vega is 0, no vol sensitivity at expiry) — a guard, not a 0/0 (ADR 0049).
     zero_t = from_spot(
         spot=100.0, strike=95.0, maturity_years=0.0, volatility=0.20,
         discount_factor=1.0, option_right=right, carry=0.0,
@@ -451,13 +355,7 @@ def test_rt_vega_is_zero_in_the_degenerate_t_to_zero_regime(right: str) -> None:
     assert price_european(zero_vol).rt_vega == 0.0
 
 
-# --------------------------------------------------------------------------- #
-# American engine                                                             #
-# --------------------------------------------------------------------------- #
 def test_american_call_no_dividend_equals_european() -> None:
-    # A non-dividend American call (carry == rate, so q == 0) is never exercised
-    # early, so it must equal its European twin. European is the closed-form engine,
-    # American is the QuantLib lattice — two different code paths agreeing.
     spot, strike, rate, vol, mat = 100.0, 95.0, 0.05, 0.25, 0.5
     df = math.exp(-rate * mat)
     euro = price_european(
@@ -468,12 +366,10 @@ def test_american_call_no_dividend_equals_european() -> None:
         from_spot(spot=spot, strike=strike, maturity_years=mat, volatility=vol,
                   discount_factor=df, option_right="C", carry=rate, exercise_style="american")
     ).price
-    assert amer == pytest.approx(euro, abs=0.02)  # lattice discretization tolerance
+    assert amer == pytest.approx(euro, abs=0.02)
 
 
 def test_american_put_carries_early_exercise_premium() -> None:
-    # A deep-in-the-money American put on a non-dividend underlying CAN be worth
-    # exercising early, so it is worth at least its European twin (premium >= 0).
     spot, strike, rate, vol, mat = 80.0, 100.0, 0.08, 0.25, 1.0
     df = math.exp(-rate * mat)
     euro = price_european(
@@ -485,7 +381,7 @@ def test_american_put_carries_early_exercise_premium() -> None:
                   discount_factor=df, option_right="P", carry=rate, exercise_style="american")
     ).price
     assert amer >= euro - 1e-6
-    assert amer > euro  # there is a real early-exercise premium for this fixture
+    assert amer > euro
 
 
 def test_price_dispatches_on_exercise_style() -> None:
@@ -495,7 +391,6 @@ def test_price_dispatches_on_exercise_style() -> None:
 
 
 def test_price_passes_explicit_steps_through_to_the_lattice() -> None:
-    # When steps is given, dispatch must use exactly that count (not the default).
     amer_state = ref_state("C", exercise_style="american")
     assert price(amer_state, steps=99).price == pytest.approx(
         price_american(amer_state, steps=99).price, abs=1e-12
@@ -505,17 +400,14 @@ def test_price_passes_explicit_steps_through_to_the_lattice() -> None:
 @pytest.mark.parametrize(
     "spot, strike, rate, vol, mat, right",
     [
-        (100.0, 110.0, 0.05, 0.30, 0.5, "P"),  # ITM American put with a real premium
+        (100.0, 110.0, 0.05, 0.30, 0.5, "P"),
         (90.0, 100.0, 0.06, 0.25, 1.0, "P"),
-        (100.0, 95.0, 0.05, 0.20, 0.5, "C"),   # non-dividend call: no early exercise
+        (100.0, 95.0, 0.05, 0.20, 0.5, "C"),
     ],
 )
 def test_bjerksund_stensland_matches_the_lattice(
     spot: float, strike: float, rate: float, vol: float, mat: float, right: str
 ) -> None:
-    # The closed-form approximation is cross-checked against the QuantLib lattice
-    # (a different engine — the independent oracle). They agree to ~1% for American
-    # options; the no-early-exercise call agrees far more tightly.
     df = math.exp(-rate * mat)
     state = from_spot(spot=spot, strike=strike, maturity_years=mat, volatility=vol,
                       discount_factor=df, option_right=right, carry=rate,
@@ -526,8 +418,6 @@ def test_bjerksund_stensland_matches_the_lattice(
 
 @pytest.mark.parametrize("right", ["C", "P"])
 def test_degenerate_states_collapse_to_discounted_intrinsic(right: str) -> None:
-    # Zero vol on the lattice and the fast path both give the discounted intrinsic,
-    # the same total-function behavior as the European engine.
     state = from_forward(forward=110.0, strike=100.0, maturity_years=REF_T, volatility=0.0,
                          discount_factor=REF_DF, option_right=right, exercise_style="american")
     expected = REF_DF * (max(110.0 - 100.0, 0.0) if right == "C" else max(100.0 - 110.0, 0.0))
@@ -535,9 +425,6 @@ def test_degenerate_states_collapse_to_discounted_intrinsic(right: str) -> None:
     assert bjerksund_stensland_price(state) == pytest.approx(expected, abs=1e-12)
 
 
-# --------------------------------------------------------------------------- #
-# Contract adapter                                                            #
-# --------------------------------------------------------------------------- #
 def _option_key() -> InstrumentKey:
     return InstrumentKey(
         underlying_symbol="AAPL", security_type="OPT", exchange="SMART", currency="USD",
@@ -565,26 +452,14 @@ def test_pricing_result_is_a_valid_stamped_contract() -> None:
         provenance=a_stamp,
     )
     assert isinstance(result, PricingResult)
-    validate(result)  # raises if any field rule is violated
+    validate(result)
     assert table_for_contract(PricingResult) == "pricing_results"
-    # Cash Greeks use the documented (pinned-default) conventions, derived here
-    # INDEPENDENTLY from the blueprint data dictionary (documentation/blueprint/
-    # 09-data-dictionary.md) and ADR 0036 — not copied from the engine:
-    #   Delta$  = Δ·S                  ($ per $1 of underlying)
-    #   Gamma$  = Γ·S²/100             ($ per 1% move; default gamma_normalisation="one_pct")
-    #   Vega$   = vega·0.01            ($ per 1 vol point)
-    #   Theta$  = theta/365            ($ per calendar day; default theta_day_count=365)
-    #   Rho$    = rho·0.01             ($ per 1% rate)
-    # The /100 (per-1% gamma) is the load-bearing convention the old per-$1 emission
-    # (Γ·S²) got wrong; pinning it here cements the right one.
     spot = state.spot
     assert result.dollar_delta == pytest.approx(greeks.delta * spot)
     assert result.dollar_gamma == pytest.approx(greeks.gamma * spot * spot / 100.0)
     assert result.dollar_vega == pytest.approx(greeks.vega * 0.01)
     assert result.dollar_theta == pytest.approx(greeks.theta / 365.0)
     assert result.dollar_rho == pytest.approx(greeks.rho * 0.01)
-    # Per-1% gamma is exactly the per-$1 figure divided by 100 (not equal to it): a
-    # guard that the engine is no longer emitting the old Γ·S² convention.
     assert result.dollar_gamma == pytest.approx(greeks.gamma * spot * spot / 100.0)
     assert result.dollar_gamma != pytest.approx(greeks.gamma * spot * spot)
     assert result.price == pytest.approx(greeks.price)
@@ -592,11 +467,6 @@ def test_pricing_result_is_a_valid_stamped_contract() -> None:
 
 
 def test_pricing_result_dollar_greeks_agree_with_the_canonical_home() -> None:
-    # Cross-path agreement: the ``pricing_result`` adapter and the surface-projection
-    # path both monetize through the ONE canonical home ``pricing.dollar_greeks`` under
-    # the pinned-default MonetizationConfig. The same option must therefore produce the
-    # same dollar numbers on both paths — the 100x split this fix closes. We assert the
-    # adapter's output equals a direct call to that home (what the projection consumes).
     state = ref_state("C")
     greeks = price_european(state)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -614,8 +484,6 @@ def test_pricing_result_dollar_greeks_agree_with_the_canonical_home() -> None:
         source_snapshot_ts=snap_ts,
         provenance=a_stamp,
     )
-    # The pinned-default config is the one the projection path's monetization defaults to
-    # (gamma per 1% move, theta ÷365): the cross-path contract under ADR 0036.
     canonical = dollar_greeks(
         delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
         rho=greeks.rho, spot=state.spot, multiplier=1.0, quantity=1.0,
@@ -629,9 +497,6 @@ def test_pricing_result_dollar_greeks_agree_with_the_canonical_home() -> None:
 
 
 def test_pricing_result_carries_second_order_greeks_raw_and_cash() -> None:
-    # The PricingResult adapter carries vanna/volga/charm raw (straight from the engine)
-    # and monetized through the SAME canonical home as the first-order dollar Greeks, so
-    # the second-order cash layer cannot drift from the surface-projection path either.
     state = ref_state("C")
     greeks = price_european(state)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
@@ -661,15 +526,10 @@ def test_pricing_result_carries_second_order_greeks_raw_and_cash() -> None:
     assert result.dollar_vanna == pytest.approx(canonical.dollar_vanna, rel=1e-15)
     assert result.dollar_volga == pytest.approx(canonical.dollar_volga, rel=1e-15)
     assert result.dollar_charm == pytest.approx(canonical.dollar_charm, rel=1e-15)
-    # RT-Vega (ADR 0049) rides the same dual representation: raw straight from the engine,
-    # cash through the same canonical monetization home.
     assert result.rt_vega == greeks.rt_vega
     assert result.dollar_rt_vega == pytest.approx(canonical.dollar_rt_vega, rel=1e-15)
 
 
-# --------------------------------------------------------------------------- #
-# Frozen-interface pin: a change here breaks D's suite loudly (by design)      #
-# --------------------------------------------------------------------------- #
 def test_pricing_state_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PricingState))
     assert names == (
@@ -682,35 +542,24 @@ def test_price_greeks_shape_is_frozen() -> None:
     names = tuple(f.name for f in dataclasses.fields(PriceGreeks))
     assert names == (
         "price", "delta", "gamma", "vega", "theta", "rho",
-        # Second-order set (TARGET §7.2), appended with 0.0 defaults so the legacy
-        # six-field construction still type-checks.
         "vanna", "volga", "charm",
-        # RT-Vega (running-time / annualised vega = vega/sqrt(T), ADR 0049), appended last
-        # with a 0.0 default for the same reason.
         "rt_vega",
     )
 
 
 def test_public_surface_is_frozen() -> None:
-    # The exact set of names D and the IV solver import from ``pricing``. Adding or
-    # dropping a public symbol is a deliberate interface change; a break here is the
-    # early warning that D's own pin (on D's branch) would otherwise be first to hit.
     assert set(pricing.__all__) == {
         "EXERCISE_STYLES", "PRICER_VERSION", "PriceGreeks", "PricingError",
         "PricingState", "bjerksund_stensland_price", "from_forward", "from_spot",
         "price", "price_american", "price_european", "price_european_array",
         "pricing_result",
-        # The $-Greek convention layer (P0.2 / OQ-1, ADR 0036).
         "UNIT_STRINGS", "DollarGreeks", "dollar_greeks", "gamma_unit_string",
         "theta_unit_string",
-        # The second-order set's forked unit string (TARGET §7.2).
         "charm_unit_string",
     }
 
 
 def test_entrypoint_signatures_are_frozen() -> None:
-    # Callers pass these by keyword, so a renamed or removed parameter is a silent
-    # break; pin the parameter *names* (order among keyword-only args is irrelevant).
     assert set(inspect.signature(price).parameters) == {"state", "steps"}
     assert set(inspect.signature(from_spot).parameters) == {
         "spot", "strike", "maturity_years", "volatility", "discount_factor",
@@ -726,9 +575,6 @@ def test_entrypoint_signatures_are_frozen() -> None:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Negative paths: malformed inputs are refused, with a labeled reason          #
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
     "kwargs, bad_field",
     [
@@ -747,10 +593,8 @@ def test_entrypoint_signatures_are_frozen() -> None:
         (dict(forward=100.0, strike=100.0, maturity_years=0.25, volatility=0.2,
               discount_factor=0.99, option_right="C", exercise_style="bermudan",
               spot=100.0, carry=0.0), "exercise_style"),
-        # Inconsistent forward: spot*exp(carry*T) != forward.
         (dict(forward=200.0, strike=100.0, maturity_years=0.25, volatility=0.2,
               discount_factor=0.99, option_right="C", spot=100.0, carry=0.0), "forward"),
-        # A non-finite carry is refused before the forward-consistency check.
         (dict(forward=100.0, strike=100.0, maturity_years=0.25, volatility=0.2,
               discount_factor=0.99, option_right="C", spot=100.0, carry=math.inf), "carry"),
     ],
@@ -762,7 +606,6 @@ def test_malformed_state_is_refused(kwargs: dict, bad_field: str) -> None:
 
 
 def test_from_forward_with_spot_derives_carry() -> None:
-    # With a real spot and positive maturity, carry is ln(F/spot)/T and spot is kept.
     state = from_forward(forward=105.0, strike=100.0, maturity_years=0.5, volatility=0.2,
                          discount_factor=0.98, option_right="C", spot=100.0)
     assert state.spot == 100.0
@@ -770,7 +613,6 @@ def test_from_forward_with_spot_derives_carry() -> None:
 
 
 def test_from_forward_zero_maturity_takes_zero_carry() -> None:
-    # At zero maturity forward and spot coincide and carry is undefined -> taken as 0.
     state = from_forward(forward=100.0, strike=100.0, maturity_years=0.0, volatility=0.2,
                          discount_factor=1.0, option_right="C", spot=100.0)
     assert state.carry == 0.0

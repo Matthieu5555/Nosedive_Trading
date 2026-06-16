@@ -4,8 +4,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { ErrorBoundary } from "./ErrorBoundary";
 
-// A child that throws while the module-level flag is set, so a test can flip the flag and drive
-// the boundary's reset path back to a healthy render.
 let shouldThrow = true;
 function Boom() {
   if (shouldThrow) throw new Error("plotly choked on a NaN cell");
@@ -14,7 +12,7 @@ function Boom() {
 
 beforeEach(() => {
   shouldThrow = true;
-  // React logs the caught error to console.error; silence it so the suite output stays clean.
+
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -50,7 +48,7 @@ test("Retry clears the error so a recovered child renders again", async () => {
     </ErrorBoundary>,
   );
   expect(screen.getByRole("alert")).toBeInTheDocument();
-  // The transient has cleared by the time the operator retries.
+
   shouldThrow = false;
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(screen.getByText("healthy panel")).toBeInTheDocument();

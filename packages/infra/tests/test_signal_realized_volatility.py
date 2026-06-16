@@ -1,10 +1,3 @@
-"""Realized volatility from closes, and the RV−IV spread convention.
-
-The expected realized vol is computed from an independent reference — Python's
-``statistics.stdev`` over the log returns (a different implementation than the solver's NumPy
-``std(ddof=1)``) — times the annualization factor, never copied from the code under test.
-"""
-
 from __future__ import annotations
 
 import math
@@ -39,7 +32,6 @@ def test_annualization_scales_with_sqrt_periods() -> None:
 
 
 def test_constant_growth_has_zero_dispersion() -> None:
-    # Identical log returns -> zero sample standard deviation -> zero realized vol.
     assert realized_volatility([100.0, 110.0, 121.0]) == pytest.approx(0.0)
 
 

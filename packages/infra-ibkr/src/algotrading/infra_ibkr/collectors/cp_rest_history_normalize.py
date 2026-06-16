@@ -1,30 +1,3 @@
-"""Normalize an IBKR Client Portal ``marketdata/history`` payload into ``DailyBar`` rows.
-
-ADR 0031: the historical backfill fetches daily OHLC over ``GET
-/iserver/marketdata/history`` (``bar=1d``) and lands each bar in the immutable
-``DailyBar`` table (ADR 0019/0034 §4, provider-partitioned). This is the history twin of
-:mod:`.cp_rest_normalize` (which maps live snapshot rows to ``RawMarketEvent``): one pure,
-SDK-free function from a captured payload to typed contracts, fully exercised in CI.
-
-The Client Portal history payload shape (per the CP Web API docs):
-
-    {"symbol": "AAPL", "data": [
-        {"t": 1716940800000, "o": 99.0, "h": 101.5, "l": 98.5, "c": 100.25, "v": 1234567},
-        ...
-    ]}
-
-Each ``data`` row is one bar: ``t`` is the bar's start time in epoch **milliseconds** (UTC),
-``o/h/l/c`` the OHLC prices, ``v`` the volume — the typed shape is
-:class:`~.cp_rest_wire.HistoryBarRow`. The ``t`` → ``trade_date`` mapping is the load-bearing,
-look-ahead-sensitive step: a bar is stamped with **its own** trade date, never a later one, so a
-backfill never writes a future-dated value onto a past bar.
-
-A row that cannot be turned into an honest bar (missing field, non-numeric, non-finite,
-``high < low``, open/close outside ``[low, high]``) is rejected with a labeled error rather than
-coerced — the same write-ahead discipline storage enforces, applied at the normalize door so a
-bad fetch fails before it reaches disk.
-"""
-
 from __future__ import annotations
 
 import math
@@ -37,22 +10,14 @@ from pydantic import ValidationError
 
 from .cp_rest_wire import HistoryBarRow
 
-# The bar's timestamp field code (``t``, epoch-ms UTC) — read ahead of full validation because
-# the per-bar provenance stamp is keyed on the trade date.
 _TIME_MS = "t"
 
 
 class HistoryNormalizeError(Exception):
-    """A history payload/row could not be turned into an honest ``DailyBar`` — labeled."""
+    pass
 
 
 def trade_date_of_bar(epoch_ms: object) -> date:
-    """Map a CP history bar's epoch-millisecond timestamp to its UTC trade date.
-
-    The bar's ``t`` is its session timestamp in UTC milliseconds; the trade date is that
-    instant's UTC calendar date. This is the no-look-ahead anchor: the date comes from the
-    bar's *own* timestamp, so a bar is never stamped with a date from after its session.
-    """
     if isinstance(epoch_ms, bool) or not isinstance(epoch_ms, (int, float)):
         raise HistoryNormalizeError(f"history bar timestamp must be numeric, got {epoch_ms!r}")
     if not math.isfinite(float(epoch_ms)):
@@ -61,12 +26,6 @@ def trade_date_of_bar(epoch_ms: object) -> date:
 
 
 def _bar_rejection(exc: ValidationError, row: Mapping[str, object]) -> HistoryNormalizeError:
-    """A pydantic rejection of one bar row → the labeled error naming the offending field.
-
-    Reports the first validation error by its wire field code (the alias — ``o/h/l/c/v/t``),
-    preserving the "missing field" / "must be numeric" / "is not finite" wording callers and
-    tests rely on.
-    """
     error = exc.errors()[0]
     location = error.get("loc", ())
     field = str(location[0]) if location else "<row>"
@@ -88,8 +47,6 @@ def _row_to_bar(
         bar = HistoryBarRow.model_validate(row)
     except ValidationError as exc:
         raise _bar_rejection(exc, row) from exc
-    # Reject inconsistent OHLC at the normalize door (mirrors storage's write-ahead check),
-    # so a corrupt fetch fails here with the offending field named rather than at the write.
     if bar.high < bar.low:
         raise HistoryNormalizeError(f"history bar high {bar.high!r} < low {bar.low!r}: {row!r}")
     for name, value in (("open", bar.open_price), ("close", bar.close)):
@@ -124,18 +81,6 @@ def history_to_daily_bars(
     source: str,
     provenance_for: object,
 ) -> tuple[DailyBar, ...]:
-    """Normalize a CP ``marketdata/history`` payload into a tuple of ``DailyBar`` rows.
-
-    ``payload`` is the decoded JSON body; its ``data`` list holds one row per daily bar.
-    Each row is mapped to a :class:`DailyBar` keyed by ``(provider, underlying, trade_date)``
-    (the bar's own timestamp gives the trade date — no look-ahead). ``provenance_for`` is a
-    callable ``(trade_date) -> ProvenanceStamp`` so each bar carries a stamp naming its own
-    source/lineage and a per-day ``calc_ts``.
-
-    An empty window (no ``data`` rows) yields an empty tuple — a window with no history is a
-    valid answer, not an error. A malformed row raises :class:`HistoryNormalizeError`. Output
-    order follows the payload's row order (CP returns bars chronologically).
-    """
     data = payload.get("data")
     if data is None:
         return ()

@@ -1,10 +1,3 @@
-"""Client Portal option-chain discovery (ADR 0024) — search → strikes → info, against a fake.
-
-No live Gateway: a fake transport routed by path returns canned responses. The IBKR-specific risks
-are pinned: the ``name`` field is **omitted** on ``/secdef/search`` (sending it suppresses strikes),
-and the wire shapes parse correctly.
-"""
-
 from __future__ import annotations
 
 from datetime import date
@@ -29,7 +22,7 @@ def test_underlying_conid_omits_name_field() -> None:
     assert discovery.underlying_conid("SPY") == 265598
     (path, params) = transport.get_calls[0]
     assert path == "/iserver/secdef/search"
-    assert "name" not in params  # the documented gotcha: name suppresses /strikes
+    assert "name" not in params
     assert params["symbol"] == "SPY"
 
 
@@ -79,17 +72,12 @@ def test_contracts_walks_info_for_one_strike() -> None:
     )
     assert len(contracts) == 1
     assert contracts[0].broker_contract_id == "987654"
-    # The info call carried the conid + (month, strike, right) — never a name field.
     (path, params) = transport.get_calls[0]
     assert path == "/iserver/secdef/info"
     assert params["conid"] == 265598 and params["right"] == "C"
 
 
 def test_underlying_conid_prefers_the_stock_row_over_a_futures_root() -> None:
-    # The live gotcha behind the 43 failed backfill names: /secdef/search?symbol=BA returns
-    # "BARLEY FUTURES ASX" FIRST and Boeing NYSE second — top-level secType is null on the
-    # wire; the truth is in sections[].secType. The first symbol-matching row carrying an
-    # STK section must win, never blind first-match.
     transport = FakeCpTransport(
         get_routes={
             "/iserver/secdef/search": [
@@ -114,8 +102,6 @@ def test_underlying_conid_prefers_the_stock_row_over_a_futures_root() -> None:
 
 
 def test_underlying_conid_falls_back_to_first_match_when_no_stock_row() -> None:
-    # A response with no STK section anywhere (older fixtures carry a top-level secType and
-    # no sections) keeps the previous first-match behavior rather than failing.
     transport = FakeCpTransport(
         get_routes={"/iserver/secdef/search": [{"conid": 265598, "symbol": "SPY", "secType": "STK"}]}
     )
@@ -123,8 +109,6 @@ def test_underlying_conid_falls_back_to_first_match_when_no_stock_row() -> None:
 
 
 def test_underlying_conid_prefers_the_currency_consistent_venue() -> None:
-    # Live: 'SAF' lists SARATOGA (VALUE, a dead aggregated listing) before SAFRAN (SBF).
-    # An EUR-currency discovery (an SX5E constituent sweep) must pick the EUR-venue row.
     transport = FakeCpTransport(
         get_routes={
             "/iserver/secdef/search": [
@@ -139,8 +123,6 @@ def test_underlying_conid_prefers_the_currency_consistent_venue() -> None:
 
 
 def test_underlying_conid_currency_venue_beats_a_foreign_homonym() -> None:
-    # Live: 'ITX' lists ITX GROUP (VALUE) then ITACONIX (LSE) then INDITEX (BM). A naive
-    # "first non-VALUE stock" picks the wrong LSE company; the EUR-venue rule picks Inditex.
     transport = FakeCpTransport(
         get_routes={
             "/iserver/secdef/search": [
@@ -157,8 +139,6 @@ def test_underlying_conid_currency_venue_beats_a_foreign_homonym() -> None:
 
 
 def test_underlying_conid_avoids_a_dead_value_listing_without_currency_match() -> None:
-    # No venue matches the discovery currency: the dead VALUE listing still loses to a
-    # real venue (the USD sweep shape — primary listings are never on VALUE).
     transport = FakeCpTransport(
         get_routes={
             "/iserver/secdef/search": [

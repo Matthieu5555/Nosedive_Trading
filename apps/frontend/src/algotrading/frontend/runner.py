@@ -1,27 +1,3 @@
-"""Pipeline runner: launch a surface build as a tracked, async-safe job.
-
-The job infrastructure (``JobState``, ``JobStatus``, :class:`PipelineRunner`) is fully
-wired: ``PipelineRunner.new_job`` registers a job, ``launch_pipeline`` runs it off the
-request thread, and ``GET /api/jobs/{id}`` polls its lifecycle. The runner is
-app-lifetime state: ``create_app`` hangs one instance on ``app.state.runner`` and shuts
-its worker pool down when the app's lifespan ends, so jobs are never shared across app
-instances (and tests no longer clear a module-global store between tests).
-
-The SAMPLE provider builds a real surface by **replaying a committed day** through the
-exact actor pipeline (C6's unified collection seam). It reads the store's most recent
-committed day for the underlying read-only via :func:`collectors.replay_day`, re-emits
-those events through the production :class:`collectors.ReplaySource` push adapter into a
-**throwaway temp store**, and drives :func:`orchestration.build_surface` over it. The temp
-store isolates the run: ``build_surface`` re-captures and re-derives without ever writing
-to the canonical ``data/`` store (which it only ever reads). The fitted surface is reduced
-to a small job summary the web app polls. ``persist=False`` — a SAMPLE run reports the
-surface it computed; it does not restate the committed analytics.
-
-Replay-into-the-same-store is *not* used here on purpose: the committed sample day predates
-C6's content-addressed ``event_id`` scheme, so re-capturing it into ``data/`` would append
-duplicates rather than no-op. The temp store sidesteps that entirely.
-"""
-
 from __future__ import annotations
 
 import uuid
@@ -46,10 +22,8 @@ from .store_reads import latest_partition_date
 
 _LOGGER = structlog.get_logger("frontend.runner")
 
-# The market-data type a replayed SAMPLE session records on its status (3 = delayed/last).
 _SAMPLE_MARKET_DATA_TYPE = 3
 
-# CPU-bound builds run in a small thread pool off the request thread.
 _MAX_WORKERS = 2
 
 
@@ -62,7 +36,6 @@ class JobState(StrEnum):
 
 @dataclass
 class JobStatus:
-    """A run job's lifecycle, polled by the web app."""
 
     job_id: str
     provider: str
@@ -87,13 +60,6 @@ class JobStatus:
 
 
 class PipelineRunner:
-    """App-lifetime job registry + worker pool (one per app, shut down via lifespan).
-
-    Owns the in-memory job store (a restart drops history, acceptable for a BFF) and
-    the thread pool the builds run on. One instance per application — never a module
-    global — so two apps in one process (tests, embedded smoke runs) cannot see each
-    other's jobs.
-    """
 
     def __init__(self) -> None:
         self.jobs: dict[str, JobStatus] = {}
@@ -102,7 +68,6 @@ class PipelineRunner:
         )
 
     def new_job(self, provider: str, underlying: str) -> JobStatus:
-        """Register a queued job and return it."""
         job = JobStatus(
             job_id=uuid.uuid4().hex[:8], provider=provider, underlying=underlying
         )
@@ -110,23 +75,15 @@ class PipelineRunner:
         return job
 
     def launch_pipeline(self, ctx: AppContext, job: JobStatus) -> None:
-        """Schedule the job on the runner thread pool. Non-blocking.
-
-        Raises ``RuntimeError`` after :meth:`shutdown` (the executor refuses new work),
-        which can only happen once the app's lifespan has already ended.
-        """
         self._executor.submit(self._run_job, ctx, job.job_id)
 
     def run_now(self, ctx: AppContext, job: JobStatus) -> None:
-        """Run the job synchronously in the current thread (tests use this for determinism)."""
         self._run_job(ctx, job.job_id)
 
     def shutdown(self) -> None:
-        """Stop accepting work and release the worker threads (lifespan exit)."""
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def _run_job(self, ctx: AppContext, job_id: str) -> None:
-        """Synchronous job body executed in a worker thread."""
         job = self.jobs[job_id]
         job.state = JobState.RUNNING
         job.started_at = datetime.now(tz=UTC)
@@ -148,10 +105,6 @@ class PipelineRunner:
 
 
 def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
-    """The most recent committed trade date with raw events for ``underlying``.
-
-    Raises if the store holds no committed day for it — a SAMPLE run has nothing to replay.
-    """
     day = latest_partition_date(
         ctx.store.list_partitions("raw_market_events"), underlying
     )
@@ -164,13 +117,6 @@ def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
 
 
 def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
-    """Replay the latest committed day for the underlying into a surface, in a temp store.
-
-    Reads the canonical store read-only (the day's events + instrument masters), replays the
-    events through the production :class:`ReplaySource` into an isolated temp store, drives
-    :func:`build_surface` over the exact actor pipeline, and reduces the fitted surface to a
-    job summary. ``data/`` is never written — only read.
-    """
     underlying = job.underlying
     trade_date = _resolve_sample_day(ctx, underlying)
     events = replay_day(ctx.store, trade_date, underlying=underlying)
@@ -179,13 +125,11 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
     )
     config = load_platform_config(ctx.configs_dir)
     cfg_hashes = config_hashes(config)
-    # Value as-of the last quote in the day — no look-ahead, and reproducible from the events.
     as_of = max(event.canonical_ts for event in events)
     replay_source = ReplaySource(events)
 
     with TemporaryDirectory(prefix="sample-surface-") as tmp:
         temp_store = ParquetStore(Path(tmp))
-        # Seed the masters so the temp store is self-sufficient for the analytics read-back.
         temp_store.write("instrument_master", masters)
         result = build_surface(
             request=SurfaceJobRequest(

@@ -1,25 +1,3 @@
-"""Headline determinism gate: driving the analytics through Nautilus is byte-identical.
-
-ADR 0023 makes Nautilus the runtime spine. The load-bearing guarantee is that *hosting*
-``run_analytics`` inside a Nautilus ``Actor`` and replaying the event stream through
-Nautilus's engine changes nothing about the result — same events in, same
-:class:`ActorOutputs` out, stamps included. This is the same single-code-path property
-the flat build proved for live-stream-vs-disk-replay, now proven for
-direct-call-vs-Nautilus-engine.
-
-We assert it three ways, weakest-to-strongest:
-1. the RawMarketEvent ↔ Nautilus custom-data bridge round-trips losslessly (the bridge is
-   the only new translation, so its exactness is the foundation everything else rests on);
-2. the in-memory ``ActorOutputs`` from the Nautilus host compares equal to a direct
-   ``run_analytics`` call — structural ``==`` over frozen dataclasses, every derived
-   contract and provenance stamp;
-3. the *persisted* Parquet partitions written by each path are byte-for-byte identical.
-
-``as_of``/``calc_ts`` are injected (nothing reads a clock), so the only difference between
-the two runs is who drives the events — Nautilus's simulated clock vs a plain call. It must
-not change the result.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -51,17 +29,12 @@ from algotrading.infra.storage.partitioning import table_dir
 from fixtures.events import quote_events
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG, ChainFixture, get_fixture
 
-# Injected times shared by both runs: the only knobs that move a stamp, so holding them
-# fixed isolates the event driver (Nautilus engine vs direct call) as the single variable.
 AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
 CONFIG_HASH = {"cfg": "cfg-hash-nautilus"}
 
-# The named liquid chains span three distinct underlyings; combining them is how a
-# multi-underlying day — and therefore a multi-partition derived layout — is exercised.
 _MULTI_CHAINS = ("liquid_aapl", "liquid_msft", "liquid_spy")
 
-# Derived tables a populated day writes; the byte-identity check walks each.
 _DERIVED_TABLES = (
     "market_state_snapshots",
     "forward_curve",
@@ -101,7 +74,6 @@ def _master(instrument: InstrumentKey) -> InstrumentMaster:
 def _chain_inputs(
     chain: ChainFixture,
 ) -> tuple[list[RawMarketEvent], list[InstrumentKey], list[InstrumentMaster]]:
-    """A named chain fixture as the (events, instruments, masters) the actor consumes."""
     spot = chain.underlying_spot
     events = list(
         quote_events(
@@ -181,7 +153,6 @@ def _request(
 
 
 def _partition_bytes(root: Path, tables: tuple[str, ...]) -> dict[str, bytes]:
-    """Every persisted Parquet file under each table, keyed by path relative to the store."""
     payloads: dict[str, bytes] = {}
     for table in tables:
         directory = table_dir(root, table)
@@ -193,19 +164,13 @@ def _partition_bytes(root: Path, tables: tuple[str, ...]) -> dict[str, bytes]:
 
 
 def test_bridge_round_trips_every_event_losslessly() -> None:
-    """RawMarketEvent → Nautilus custom data → RawMarketEvent is the identity.
-
-    The bridge is the only new translation Nautilus introduces; if it ever became lossy the
-    determinism guarantee would be a lie, so this is asserted on its own before the equality.
-    """
     events, _instruments, _masters = _multi_chain_inputs(_MULTI_CHAINS)
-    assert events  # guard: the fixtures actually produced a stream
+    assert events
     for event in events:
         assert from_custom_data(to_custom_data(event).data) == event
 
 
 def test_nautilus_host_matches_direct_run_analytics() -> None:
-    """The Nautilus-hosted run equals a direct ``run_analytics`` — outputs and stamps."""
     events, instruments, masters = _multi_chain_inputs(_MULTI_CHAINS)
     positions = _positions(get_fixture(_MULTI_CHAINS[0]))
 
@@ -221,13 +186,11 @@ def test_nautilus_host_matches_direct_run_analytics() -> None:
     )
     hosted = run_session_via_nautilus(events, _request(instruments, masters, positions))
 
-    # The run is meaningful (the day produced derived outputs), and the two paths agree.
     assert not hosted.is_empty()
     assert hosted == direct
 
 
 def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> None:
-    """Persisting via the Nautilus host writes the same Parquet bytes as the direct path."""
     events, instruments, masters = _multi_chain_inputs(_MULTI_CHAINS)
     positions = _positions(get_fixture(_MULTI_CHAINS[0]))
 
@@ -256,7 +219,7 @@ def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> Non
 
     direct_bytes = _partition_bytes(direct_root, _DERIVED_TABLES)
     hosted_bytes = _partition_bytes(hosted_root, _DERIVED_TABLES)
-    assert direct_bytes  # something was written
+    assert direct_bytes
     assert set(hosted_bytes) == set(direct_bytes)
     for relative_path, payload in direct_bytes.items():
         assert hosted_bytes[relative_path] == payload, (
@@ -265,7 +228,6 @@ def test_persisted_partitions_are_byte_for_byte_identical(tmp_path: Path) -> Non
 
 
 def test_empty_event_stream_yields_empty_outputs() -> None:
-    """A session with no events runs cleanly through the engine and returns empty outputs."""
     outputs = run_session_via_nautilus([], _request([], [], []))
     assert outputs == ActorOutputs()
 

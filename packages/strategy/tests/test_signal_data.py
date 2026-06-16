@@ -1,11 +1,3 @@
-"""The store-backed SignalSnapshot reader — and S1 going live off the persisted signal layer.
-
-Writes ``strategy_signals`` rows to a temp store, reads them back into a ``SignalSnapshot`` via
-:func:`signal_snapshot_from_store`, and checks the snapshot the strategy sees. Also pins the
-cross-layer seam (the infra ``signal_kind`` strings must equal the strategy ``SignalKind``
-values) and drives the real :class:`DispersionStrategy` off a store-sourced snapshot.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -54,7 +46,7 @@ def _seed(store: ParquetStore) -> None:
         "strategy_signals",
         [
             _signal(SIGNAL_KIND_IMPLIED_CORRELATION, INDEX, "3m", 0.62),
-            _signal(SIGNAL_KIND_IMPLIED_CORRELATION, INDEX, "6m", 0.71),  # off reference tenor
+            _signal(SIGNAL_KIND_IMPLIED_CORRELATION, INDEX, "6m", 0.71),
             _signal(SIGNAL_KIND_IV_RANK, "AAA", "3m", 0.5),
             _signal(SIGNAL_KIND_IV_RANK, "BBB", "3m", 0.8),
             _signal(SIGNAL_KIND_IV_VS_REALIZED, "AAA", "3m", 0.03),
@@ -71,7 +63,7 @@ def test_reference_tenor_correlation_is_surfaced_for_the_index(tmp_path: Path) -
     )
     reading = snapshot.latest(SignalKind.IMPLIED_CORRELATION, subject=INDEX)
     assert reading is not None
-    assert reading.value == 0.62  # the 3m reading, not the 6m one
+    assert reading.value == 0.62
 
 
 def test_off_reference_tenor_readings_are_not_surfaced(tmp_path: Path) -> None:
@@ -80,8 +72,6 @@ def test_off_reference_tenor_readings_are_not_surfaced(tmp_path: Path) -> None:
     snapshot = signal_snapshot_from_store(
         store, D0, index=INDEX, provider=PROVIDER, reference_tenor="3m"
     )
-    # Exactly one correlation reading reaches the snapshot (the 6m one is filtered out), so
-    # ``latest`` is unambiguous.
     assert len(snapshot.all_of(SignalKind.IMPLIED_CORRELATION)) == 1
 
 
@@ -117,8 +107,6 @@ def test_empty_day_yields_an_empty_snapshot(tmp_path: Path) -> None:
 
 
 def test_signal_kind_strings_pin_the_cross_layer_seam() -> None:
-    # Infra is blind to alpha: it mirrors the SignalKind values as plain strings. This pins them
-    # so the seam cannot silently drift.
     assert SignalKind.IMPLIED_CORRELATION.value == SIGNAL_KIND_IMPLIED_CORRELATION
     assert SignalKind.IV_RANK.value == SIGNAL_KIND_IV_RANK
     assert SignalKind.IV_VS_REALIZED.value == SIGNAL_KIND_IV_VS_REALIZED
@@ -126,8 +114,6 @@ def test_signal_kind_strings_pin_the_cross_layer_seam() -> None:
 
 
 def test_s1_enters_off_a_store_sourced_snapshot(tmp_path: Path) -> None:
-    # End-to-end: the persisted ρ̄ (0.62) drives the real strategy's entry over the 0.55 bar —
-    # the seam S1 was built dormant against, now closed.
     store = ParquetStore(tmp_path)
     _seed(store)
     snapshot = signal_snapshot_from_store(

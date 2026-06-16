@@ -12,15 +12,15 @@ import {
 describe("isSaneIv", () => {
   test("accepts a finite IV inside the sane band", () => {
     expect(isSaneIv(0.16)).toBe(true);
-    expect(isSaneIv(IV_SANE_MAX)).toBe(true); // the cap itself is in-band (≤)
+    expect(isSaneIv(IV_SANE_MAX)).toBe(true);
   });
   test("rejects non-finite, non-positive, and absurd railed IVs", () => {
     expect(isSaneIv(Number.NaN)).toBe(false);
     expect(isSaneIv(Number.POSITIVE_INFINITY)).toBe(false);
-    expect(isSaneIv(0)).toBe(false); // not > 0
+    expect(isSaneIv(0)).toBe(false);
     expect(isSaneIv(-0.1)).toBe(false);
-    expect(isSaneIv(1.08)).toBe(false); // 108% railed
-    expect(isSaneIv(1.4)).toBe(false); // 140% railed
+    expect(isSaneIv(1.08)).toBe(false);
+    expect(isSaneIv(1.4)).toBe(false);
     expect(isSaneIv(null)).toBe(false);
     expect(isSaneIv(undefined)).toBe(false);
   });
@@ -38,15 +38,12 @@ describe("isFiniteNumber", () => {
 });
 
 describe("cleanSmile (degenerate slice)", () => {
-  // The live 2026-06-15 SX5E 10d shape, in miniature: two good points, an absurd railed IV
-  // (108%), a NaN, a duplicate log-moneyness (the duplicated 0.0 delta), and a good point.
   const ks = [-0.03, -0.18, -0.25, 0.0, 0.0, 0.03];
   const ivs = [0.19, 1.08, Number.NaN, 0.152, 0.152, 0.143];
 
   test("drops absurd, non-finite, and duplicate-k points; keeps the good ones", () => {
     const r = cleanSmile(ks, ivs);
-    // Kept: -0.03 (0.19), 0.0 (0.152, first), 0.03 (0.143). Dropped: -0.18 (absurd),
-    // -0.25 (NaN), the second 0.0 (duplicate).
+
     expect(r.logMoneyness).toEqual([-0.03, 0.0, 0.03]);
     expect(r.impliedVols).toEqual([0.19, 0.152, 0.143]);
     expect(r.nDroppedAbsurd).toBe(1);
@@ -70,27 +67,25 @@ describe("cleanSmile (degenerate slice)", () => {
 });
 
 describe("cleanDenseSurface (railed slice cannot blow the surface)", () => {
-  // A 2-maturity surface: the first (short) slice rails to 1.4 in the deep-OTM put wing; the
-  // second is clean. Column k=-0.1 is duplicated (must collapse).
   const logMoneyness = [-0.2, -0.1, -0.1, 0.0, 0.1];
   const maturityYears = [0.03, 1.0];
   const impliedVol = [
-    [1.4, 0.55, 0.55, 0.15, 0.11], // railed deep-OTM put (1.4 > cap), rest in-band
+    [1.4, 0.55, 0.55, 0.15, 0.11],
     [0.24, 0.22, 0.22, 0.21, 0.2],
   ];
 
   test("clamps out-of-band cells to null holes, collapses duplicate columns, counts flags", () => {
     const r = cleanDenseSurface(logMoneyness, maturityYears, impliedVol);
-    // Duplicate -0.1 column collapsed → 4 columns.
+
     expect(r.logMoneyness).toEqual([-0.2, -0.1, 0.0, 0.1]);
-    // The 1.4 cell on the short slice is a null hole; everything else survives in-band.
+
     expect(r.impliedVol).toEqual([
       [null, 0.55, 0.15, 0.11],
       [0.24, 0.22, 0.21, 0.2],
     ]);
     expect(r.nFlaggedCells).toBe(1);
-    expect(r.nFlaggedSlices).toBe(1); // only the short slice carried an out-of-band cell
-    // The maximum surviving IV is within the sane band — the colour/height scale cannot be blown.
+    expect(r.nFlaggedSlices).toBe(1);
+
     const survivors = r.impliedVol.flat().filter((v): v is number => v !== null);
     expect(Math.max(...survivors)).toBeLessThanOrEqual(IV_SANE_MAX);
   });

@@ -1,18 +1,3 @@
-"""IBKR historical-fetch configuration — typed, validated, no-hardcode (ADR 0031 / C7).
-
-The unattended backfill needs hosts/URLs, timeouts, the 5-concurrent cap, the established-
-session wait, and the maintenance-window retry/backoff. None of those are economic (they do
-not change *what* is computed), so they are not a hashed bundle — but they are still config,
-not ``.py`` literals (the C7 discipline the 1C spec carries forward). The canonical defaults
-live in the versioned ``configs/ibkr_history.yaml`` beside the package; this module validates
-them into a frozen :class:`IbkrHistoryConfig` through pydantic (the REP6 config seam — strict
-types, no lossy coercion), re-raising any rejection as a labeled :class:`IbkrHistoryConfigError`.
-
-Secrets never pass through here: the OAuth consumer key/secret and the Live Session Token are
-read from ``.env`` by the caller and handed to the signer; this object carries only the
-non-secret connectivity knobs.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -29,22 +14,14 @@ from pydantic import (
     ValidationError,
 )
 
-# configs/ibkr_history.yaml sits beside src/: src/algotrading/infra_ibkr/config.py
-# parents[3] == packages/infra-ibkr
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "configs" / "ibkr_history.yaml"
 
 
 class IbkrHistoryConfigError(Exception):
-    """A field in the IBKR history config is missing or malformed — labeled, never silent."""
+    pass
 
 
 def _raise_history_config_error(exc: ValidationError) -> NoReturn:
-    """Map a pydantic rejection onto the labeled :class:`IbkrHistoryConfigError`.
-
-    Takes the first reported error and names the offending field (dotted for a nested one,
-    e.g. ``retry.factor``), preserving the "missing required field" wording and carrying
-    pydantic's reason for everything else — a bad config names exactly what was wrong.
-    """
     error = exc.errors()[0]
     location = error.get("loc", ())
     field = ".".join(str(part) for part in location) if location else "<root>"
@@ -61,17 +38,12 @@ def _require_non_blank(value: str) -> str:
     return value
 
 
-# A required string that is not empty/whitespace (URLs, bar size, period).
 _NonBlankStr = Annotated[str, AfterValidator(_require_non_blank)]
 
-# Frozen (immutable, hashable), unknown YAML keys ignored (the file carries e.g. `version`),
-# and strict scalar typing — no lossy coercion (`"5"`/`5.5` → int and bool → number rejected;
-# an int is still a valid float, as YAML writes `15` for `15.0`).
 _HISTORY_MODEL_CONFIG = ConfigDict(frozen=True, extra="ignore", strict=True)
 
 
 class EstablishedWaitConfig(BaseModel):
-    """How long to wait for the brokerage session to report ``established: true``."""
 
     model_config = _HISTORY_MODEL_CONFIG
 
@@ -80,13 +52,6 @@ class EstablishedWaitConfig(BaseModel):
 
 
 class RetryConfig(BaseModel):
-    """Exponential-with-cap retry around IBKR maintenance windows (ADR 0031 §5).
-
-    This model only validates the YAML fields and carries ``max_attempts`` for the loop;
-    the delay formula itself (``min(cap, base * factor**attempt)``, 0-based, no jitter) is
-    owned by infra's one backoff engine, :class:`BackoffSchedule` — the audit (M20) found it
-    cloned here verbatim, so now it is delegated, never re-stated.
-    """
 
     model_config = _HISTORY_MODEL_CONFIG
 
@@ -96,7 +61,6 @@ class RetryConfig(BaseModel):
     cap_seconds: float
 
     def delay_for(self, attempt: int) -> float:
-        """Backoff delay before retry ``attempt`` (0-based), per infra's ``BackoffSchedule``."""
         schedule = BackoffSchedule(
             base_seconds=self.base_seconds, factor=self.factor, cap_seconds=self.cap_seconds
         )
@@ -104,7 +68,6 @@ class RetryConfig(BaseModel):
 
 
 class IbkrHistoryConfig(BaseModel):
-    """Resolved, validated IBKR historical-fetch connectivity config."""
 
     model_config = _HISTORY_MODEL_CONFIG
 
@@ -120,8 +83,6 @@ class IbkrHistoryConfig(BaseModel):
 
     @classmethod
     def from_config(cls, loaded: LoadedConfig) -> IbkrHistoryConfig:
-        # LoadedConfig freezes its sections as mapping proxies; strict validation wants real
-        # dicts for the nested models, so thaw one level (the file is flat-plus-two-blocks).
         data: dict[str, object] = {
             key: dict(value) if isinstance(value, Mapping) else value
             for key, value in loaded.data.items()
@@ -134,7 +95,6 @@ class IbkrHistoryConfig(BaseModel):
 
 
 def load_ibkr_history_config(path: str | Path | None = None) -> IbkrHistoryConfig:
-    """Load and validate the IBKR history config from ``configs/ibkr_history.yaml``."""
     return IbkrHistoryConfig.from_config(
         load_yaml_config(Path(path) if path else _DEFAULT_CONFIG_PATH)
     )

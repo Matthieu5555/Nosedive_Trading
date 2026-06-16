@@ -1,11 +1,3 @@
-"""The Nautilus-tick → RawMarketEvent seam (ADR 0023/0025).
-
-Pure, base-Nautilus-types only — fully exercised in CI without the ``ibkr`` extra or a
-Gateway. Expected event ids are derived independently from the documented
-``content_event_id`` formula (SHA-256 of ``instrument_key \x1f field \x1f sequence``),
-not read back from the code under test.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -22,7 +14,6 @@ from nautilus_trader.model.identifiers import InstrumentId, TradeId
 from nautilus_trader.model.objects import Price, Quantity
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
-# A microsecond-precision exchange/receipt instant; nanos are an exact multiple of 1000.
 _EXCHANGE = datetime(2026, 6, 4, 18, 29, 20, 115330, tzinfo=UTC)
 _RECEIPT = datetime(2026, 6, 4, 18, 29, 20, 115587, tzinfo=UTC)
 _IK = "OPT:SPY:OPT:20260626:C:758:100:SMART:USD"
@@ -35,7 +26,6 @@ def _nanos(moment: datetime) -> int:
 
 
 def _expected_event_id(field_name: str, sequence: int) -> str:
-    # Independent oracle: the documented content_event_id formula (broker.py docstring).
     payload = "\x1f".join((_IK, field_name, str(sequence)))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -64,7 +54,6 @@ def test_quote_tick_maps_to_four_field_events() -> None:
     by_field = {event.field_name: event for event in events}
     assert set(by_field) == {"bid", "ask", "bid_size", "ask_size"}
 
-    # Values carried through verbatim (hand-supplied above).
     assert by_field["bid"].value == 9.27
     assert by_field["ask"].value == 9.31
     assert by_field["bid_size"].value == 10.0
@@ -74,11 +63,10 @@ def test_quote_tick_maps_to_four_field_events() -> None:
         assert event.instrument_key == _IK
         assert event.underlying == _UNDERLYING
         assert event.session_id == _SESSION
-        assert event.exchange_ts == _EXCHANGE  # from ts_event
-        assert event.receipt_ts == _RECEIPT  # from ts_init
+        assert event.exchange_ts == _EXCHANGE
+        assert event.receipt_ts == _RECEIPT
         assert event.canonical_ts == _EXCHANGE
         assert event.trade_date == _EXCHANGE.date()
-        # Content-addressed id matches the independent oracle.
         assert event.event_id == _expected_event_id(event.field_name, 42)
 
 
@@ -90,9 +78,7 @@ def test_quote_tick_event_ids_are_idempotent_per_sequence() -> None:
     same = quote_tick_to_events(tick, sequence=42, **kwargs)
     later = quote_tick_to_events(tick, sequence=43, **kwargs)
 
-    # Re-delivery at the same sequence reproduces the same ids (idempotent write key).
     assert [e.event_id for e in again] == [e.event_id for e in same]
-    # A genuinely new update (next sequence) gets distinct ids.
     assert set(e.event_id for e in again).isdisjoint(e.event_id for e in later)
 
 
@@ -126,7 +112,6 @@ def test_quote_ticks_run_assigns_monotonic_sequence() -> None:
     events = quote_ticks_to_events(
         ticks, instrument_key=_IK, underlying=_UNDERLYING, session_id=_SESSION, first_sequence=100
     )
-    assert len(events) == 8  # two ticks × four fields
-    # First tick at sequence 100, second at 101 → ids differ across the two ticks.
+    assert len(events) == 8
     bid_ids = [e.event_id for e in events if e.field_name == "bid"]
     assert bid_ids == [_expected_event_id("bid", 100), _expected_event_id("bid", 101)]

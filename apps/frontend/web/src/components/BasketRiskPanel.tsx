@@ -1,11 +1,3 @@
-// The live basket-risk panel (WS 2A): the book-additive dollar Greeks, the per-leg contribution
-// breakdown, and any labelled gaps.
-//
-// Every number is the sum of the per-position dollar Greeks WS-1F produced — the per-leg table is
-// the visible proof of that. Each dollar value carries its unit string verbatim (never re-derived).
-// A gap (an unpriced cell, an ambiguous provider, a missing spot, an unavailable theta/rho) is
-// rendered inline so the panel is never silently wrong or blank.
-
 import type { BasketLegResult, BasketMetric, BasketRiskResponse } from "../api";
 import { sci, sciUnit, withCurrency } from "../lib/format";
 import { Plot } from "./Plot";

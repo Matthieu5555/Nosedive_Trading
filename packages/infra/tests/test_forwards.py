@@ -1,19 +1,3 @@
-"""Tests for the forward & carry engine (step 6).
-
-Independent oracles, never the code under test:
-
-* ``fixtures.synthetic.build_synthetic_surface`` — generates call/put prices from a
-  *known* forward (100.0) and discount factor (0.99) via Black-76, so put-call parity
-  holds exactly. The engine must recover those known values. The generator is a
-  different code path (it prices forward; the engine inverts), so this is a real
-  oracle, not a round-trip against the engine.
-* By-hand put-call parity ``F = K + (C - P) / DF`` (Eq 2), computed in the test.
-* By-hand weighted least squares on a tiny hand-built line.
-* By-hand implied carry/dividend ``r = -ln(DF)/T``, ``b = ln(F/spot)/T`` (Eq 5).
-
-Float comparisons use explicit tolerances sized to each oracle.
-"""
-
 from __future__ import annotations
 
 import math
@@ -38,21 +22,14 @@ from algotrading.infra.utils.robust import (
 from fixtures.library import FORWARD_CONFIG
 from fixtures.synthetic import SyntheticSurface, build_synthetic_surface
 
-# A fixed spot for the synthetic chain: the fixture sets underlying_spot = F * DF.
-_SYNTH_SPOT = 100.0 * 0.99  # 99.0
+_SYNTH_SPOT = 100.0 * 0.99
 
 
 def _estimate_fwd(*args: object, **kwargs: object) -> object:
-    """Call estimate_forward with the canonical test ForwardConfig injected.
-
-    The confidence heuristics are economic config now (C7); these tests exercise the
-    estimator, not config plumbing, so they share one fixed config.
-    """
     return estimate_forward(*args, config=FORWARD_CONFIG, **kwargs)  # type: ignore[arg-type]
 
 
 def _pair(strike: float, call_mid: float, put_mid: float, liquidity: float = 1.0) -> ForwardPair:
-    """A ForwardPair with auto-derived lineage keys, to keep the tests readable."""
     return ForwardPair(
         strike=strike, call_mid=call_mid, put_mid=put_mid, liquidity=liquidity,
         call_key=f"C@{strike:g}", put_key=f"P@{strike:g}",
@@ -62,25 +39,18 @@ def _pair(strike: float, call_mid: float, put_mid: float, liquidity: float = 1.0
 def _synthetic_pairs(
     surface: SyntheticSurface, *, liquidity: float = 1.0
 ) -> tuple[ForwardPair, ...]:
-    """Build engine input pairs from the known-answer surface (the oracle)."""
     return tuple(
         _pair(point.strike, point.call_price, point.put_price, liquidity)
         for point in surface.points
     )
 
 
-# --------------------------------------------------------------------------- #
-# Parity, regression, and robust-stat kernels (unit level)                    #
-# --------------------------------------------------------------------------- #
 def test_parity_forward_from_pair_matches_by_hand() -> None:
-    # Eq 2: F = K + (C - P) / DF. By hand: 100 + (6.0 - 4.0)/0.95 = 102.1052631...
     got = parity_forward_from_pair(call_mid=6.0, put_mid=4.0, strike=100.0, discount_factor=0.95)
     assert got == pytest.approx(100.0 + 2.0 / 0.95, rel=1e-12)
 
 
 def test_regression_recovers_hand_built_line() -> None:
-    # Build y = DF*(F - K) for a chosen DF=0.90, F=110 at three strikes; the line's
-    # slope is -DF and intercept is DF*F, so the fit must return DF=0.90, F=110.
     df_true, f_true = 0.90, 110.0
     strikes = (100.0, 110.0, 120.0)
     spreads = tuple(df_true * (f_true - k) for k in strikes)
@@ -91,8 +61,6 @@ def test_regression_recovers_hand_built_line() -> None:
 
 
 def test_regression_refuses_unphysical_discount_factor() -> None:
-    # A line with positive slope implies DF < 0 (C - P rising in K), which is
-    # impossible under parity; the fit must refuse rather than emit a junk forward.
     with pytest.raises(DegenerateParityFit):
         regress_forward_and_discount_factor((100.0, 110.0), (1.0, 2.0), (1.0, 1.0))
 
@@ -103,54 +71,38 @@ def test_regression_needs_two_distinct_strikes() -> None:
 
 
 def test_regression_refuses_nonpositive_forward() -> None:
-    # A valid DF in (0,1] but a negative implied forward: C - P stays negative across
-    # strikes, so DF*F < 0. K=100 -> -60, K=110 -> -65 gives slope -0.5 (DF=0.5),
-    # intercept -10, F = -20. Refused rather than emitting a negative forward.
     with pytest.raises(DegenerateParityFit):
         regress_forward_and_discount_factor((100.0, 110.0), (-60.0, -65.0), (1.0, 1.0))
 
 
 def test_theil_sen_needs_a_distinct_strike_pair() -> None:
-    # theil_sen_line is now a generic robust primitive (algotrading.infra.utils.robust);
-    # with no distinct x it cannot form a slope and raises ValueError.
     with pytest.raises(ValueError, match="no distinct-x pair"):
         theil_sen_line((100.0, 100.0, 100.0), (1.0, 2.0, 3.0))
 
 
 def test_median_absolute_deviation_by_hand() -> None:
-    # values (1,2,4,8): median 3; abs devs (2,1,1,5); MAD = median(1,1,2,5) = 1.5.
     assert median_absolute_deviation((1.0, 2.0, 4.0, 8.0)) == pytest.approx(1.5)
     assert median_absolute_deviation(()) == 0.0
 
 
 def test_theil_sen_is_robust_to_a_wing_outlier() -> None:
-    # Four points on slope -1 through intercept 100, plus a gross wing outlier. The
-    # OLS slope would be dragged toward the outlier; the Theil-Sen median slope is not.
     strikes = (80.0, 90.0, 100.0, 110.0, 120.0)
-    spreads = tuple(100.0 - k for k in strikes[:-1]) + (999.0,)  # last strike corrupted
+    spreads = tuple(100.0 - k for k in strikes[:-1]) + (999.0,)
     slope, intercept = theil_sen_line(strikes, spreads)
     assert slope == pytest.approx(-1.0, abs=1e-9)
     assert intercept == pytest.approx(100.0, abs=1e-9)
 
 
 def test_outlier_flags_floor_prevents_false_positives_on_clean_data() -> None:
-    # One real outlier among otherwise-collinear (residual ~ 0) points. Without a
-    # scale floor the MAD collapses to float noise and flags clean points; with the
-    # floor only the genuine outlier (residual 0.5 on a ~100 price scale) is flagged.
     residuals = (0.5, 0.0, 0.0, 0.0, 0.0)
     flags = outlier_flags(residuals, scale_floor=1e-4 * 99.0)
     assert flags == (True, False, False, False, False)
-    # Too few points to estimate spread -> never flags.
     assert outlier_flags((5.0, 0.0)) == (False, False)
-    # All-equal residuals with no floor: the scale is zero, so nothing is flagged.
     assert outlier_flags((0.0, 0.0, 0.0)) == (False, False, False)
 
 
-# --------------------------------------------------------------------------- #
-# Synthetic recovery — the known-answer oracle                                #
-# --------------------------------------------------------------------------- #
 def test_recovers_known_forward_and_discount_factor() -> None:
-    surface = build_synthetic_surface()  # F=100, DF=0.99, T=0.25
+    surface = build_synthetic_surface()
     estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
     assert estimate.is_usable
@@ -165,8 +117,6 @@ def test_recovers_known_forward_and_discount_factor() -> None:
 
 
 def test_recovers_implied_carry_and_dividend() -> None:
-    # Eq 5. The fixture sets spot = F * DF, i.e. carry == rate, so q == 0 by hand:
-    #   r = -ln(0.99)/0.25 ; b = ln(100/99)/0.25 ; q = r - b == 0.
     surface = build_synthetic_surface()
     estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=_SYNTH_SPOT)
@@ -176,23 +126,18 @@ def test_recovers_implied_carry_and_dividend() -> None:
 
 
 def test_explicit_config_rate_overrides_the_carry_split() -> None:
-    # T-explicit-rate-parameter (Eq 5): an explicit config rate becomes the split's *input*
-    # r, so q = r - b uses the operator's rate and the parity-DF-implied rate is overridden.
-    # b = ln(F/spot)/T is unchanged (observed from F and spot); only r (hence q) moves.
     surface = build_synthetic_surface()
     explicit = FORWARD_CONFIG.model_copy(update={"rate": 0.05})
     estimate = estimate_forward(
         "AAPL", surface.maturity_years, _synthetic_pairs(surface), config=explicit, spot=_SYNTH_SPOT
     )
     carry = math.log(100.0 / 99.0) / 0.25
-    assert estimate.implied_rate == pytest.approx(0.05, rel=1e-12)  # the explicit input, not -ln(DF)/T
+    assert estimate.implied_rate == pytest.approx(0.05, rel=1e-12)
     assert estimate.implied_carry == pytest.approx(carry, rel=1e-9)
     assert estimate.implied_dividend == pytest.approx(0.05 - carry, rel=1e-9)
 
 
 def test_default_none_rate_keeps_the_parity_implied_rate() -> None:
-    # rate=None (the default; the fixture does not set it) is byte-identical to before the
-    # explicit-rate knob existed: r falls back to the parity-DF-implied -ln(DF)/T.
     assert FORWARD_CONFIG.rate is None
     surface = build_synthetic_surface()
     estimate = estimate_forward(
@@ -202,16 +147,11 @@ def test_default_none_rate_keeps_the_parity_implied_rate() -> None:
     assert estimate.implied_rate == pytest.approx(-math.log(0.99) / 0.25, rel=1e-9)
 
 
-# --------------------------------------------------------------------------- #
-# MAD outlier rejection (Eq 24)                                               #
-# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize("bad_strike", [80.0, 90.0, 100.0, 110.0, 120.0])
 @pytest.mark.parametrize("bump", [2.0, -3.0])
 def test_single_outlier_is_rejected_and_forward_is_unchanged(
     bad_strike: float, bump: float
 ) -> None:
-    # Inject one corrupted call mid; assert exactly that strike is rejected and the
-    # recovered forward is unchanged within tolerance (the oracle's F = 100).
     surface = build_synthetic_surface()
     pairs = tuple(
         ForwardPair(
@@ -239,17 +179,7 @@ def test_clean_chain_rejects_nothing() -> None:
     assert all(not point.rejected for point in estimate.points)
 
 
-# --------------------------------------------------------------------------- #
-# core-pricing-config-completeness: forward-engine candidate cap + outlier     #
-# policy now typed config (max_candidate_count / outlier_method / z-cut)       #
-# --------------------------------------------------------------------------- #
 def _clean_chain_with_low_liquidity_wing() -> tuple[ForwardPair, ...]:
-    """15 strikes on a clean parity line (DF=0.95, F=100); strikes 102-104 are illiquid.
-
-    The line is the oracle (spread = DF*(F-K)); put_mid is pinned at 20 so call_mid =
-    20 + spread stays positive across 90..104. The three highest strikes carry low
-    liquidity, so a cap that keeps the most-liquid pairs drops exactly those three.
-    """
     df, f = 0.95, 100.0
     return tuple(
         _pair(k, call_mid=20.0 + df * (f - k), put_mid=20.0,
@@ -259,8 +189,6 @@ def _clean_chain_with_low_liquidity_wing() -> tuple[ForwardPair, ...]:
 
 
 def test_max_candidate_count_keeps_the_most_liquid_pairs() -> None:
-    # A binding cap keeps the 12 most-liquid pairs and drops the 3 illiquid wing strikes;
-    # the clean line still recovers F=100 from the survivors.
     pairs = _clean_chain_with_low_liquidity_wing()
     capped = FORWARD_CONFIG.model_copy(update={"max_candidate_count": 12})
     estimate = estimate_forward("IDX", 0.5, pairs, config=capped, spot=95.0)
@@ -271,7 +199,6 @@ def test_max_candidate_count_keeps_the_most_liquid_pairs() -> None:
 
 
 def test_no_candidate_cap_uses_every_valid_pair() -> None:
-    # The shipped default (None) caps nothing — every valid pair feeds the regression.
     pairs = _clean_chain_with_low_liquidity_wing()
     estimate = estimate_forward("IDX", 0.5, pairs, config=FORWARD_CONFIG, spot=95.0)
     assert estimate.candidate_count == 15
@@ -285,7 +212,6 @@ def test_candidate_cap_above_the_pair_count_is_a_no_op() -> None:
 
 
 def _single_outlier_chain(bump: float) -> tuple[ForwardPair, ...]:
-    """The clean synthetic chain with one gross call-mid corruption at K=100."""
     surface = build_synthetic_surface()
     return tuple(
         ForwardPair(
@@ -301,7 +227,6 @@ def _single_outlier_chain(bump: float) -> tuple[ForwardPair, ...]:
 
 
 def test_outlier_method_none_disables_rejection() -> None:
-    # The same corruption the MAD screen rejects is kept when the screen is turned off.
     pairs = _single_outlier_chain(bump=3.0)
     maturity = build_synthetic_surface().maturity_years
     mad = estimate_forward("AAPL", maturity, pairs, config=FORWARD_CONFIG, spot=_SYNTH_SPOT)
@@ -313,8 +238,6 @@ def test_outlier_method_none_disables_rejection() -> None:
 
 
 def test_max_robust_zscore_loosening_keeps_the_outlier() -> None:
-    # A very high z-cut makes the MAD screen flag nothing, even on the corrupted chain the
-    # default 3.5 cut rejects — the threshold is the typed-config knob driving the screen.
     pairs = _single_outlier_chain(bump=3.0)
     maturity = build_synthetic_surface().maturity_years
     loose = FORWARD_CONFIG.model_copy(update={"max_robust_zscore": 1000.0})
@@ -322,15 +245,9 @@ def test_max_robust_zscore_loosening_keeps_the_outlier() -> None:
     assert estimate.rejected_count == 0
 
 
-# --------------------------------------------------------------------------- #
-# Stability: small change in the eligible strike set -> small forward change   #
-# --------------------------------------------------------------------------- #
 def test_forward_is_stable_across_strike_subset_changes() -> None:
-    # Documented stability bound: under a 0.2%-of-mid tilt of the quotes, the forward
-    # recovered from any near-the-money strike subset stays within 0.1% of the forward
-    # recovered from the full chain. The bound is a teeth-bearing assertion, not prose.
     surface = build_synthetic_surface()
-    tilt = {80.0: -1.0, 90.0: -0.5, 100.0: 0.0, 110.0: 0.5, 120.0: 1.0}  # a deterministic tilt
+    tilt = {80.0: -1.0, 90.0: -0.5, 100.0: 0.0, 110.0: 0.5, 120.0: 1.0}
 
     def pairs_for(strikes: tuple[float, ...]) -> tuple[ForwardPair, ...]:
         return tuple(
@@ -355,19 +272,14 @@ def test_forward_is_stable_across_strike_subset_changes() -> None:
         assert abs(sub.forward - full.forward) / full.forward < 1e-3
 
 
-# --------------------------------------------------------------------------- #
-# Zero-liquidity weighting (Eq 4)                                             #
-# --------------------------------------------------------------------------- #
 def test_zero_liquidity_strike_does_not_move_the_forward() -> None:
-    # A corrupted strike given zero liquidity must drop out of the fit entirely: the
-    # forward equals what the other strikes give, and the point records weight 0.
     surface = build_synthetic_surface()
     pairs = tuple(
         ForwardPair(
             strike=p.strike,
-            call_mid=p.call_price + (50.0 if p.strike == 100.0 else 0.0),  # gross corruption
+            call_mid=p.call_price + (50.0 if p.strike == 100.0 else 0.0),
             put_mid=p.put_price,
-            liquidity=0.0 if p.strike == 100.0 else 1.0,  # but zero weight
+            liquidity=0.0 if p.strike == 100.0 else 1.0,
             call_key=f"C@{p.strike:g}",
             put_key=f"P@{p.strike:g}",
         )
@@ -379,9 +291,6 @@ def test_zero_liquidity_strike_does_not_move_the_forward() -> None:
     assert zero_point.weight == 0.0
 
 
-# --------------------------------------------------------------------------- #
-# Degenerate and negative paths — labeled, never a crash                      #
-# --------------------------------------------------------------------------- #
 def test_no_pairs_returns_low_confidence_reason() -> None:
     estimate = _estimate_fwd("AAPL", 0.25, (), spot=100.0)
     assert not estimate.is_usable
@@ -391,7 +300,6 @@ def test_no_pairs_returns_low_confidence_reason() -> None:
 
 
 def test_single_pair_without_discount_factor_is_unidentified() -> None:
-    # One pair is one equation in two unknowns (F and DF) -> not identifiable.
     pair = _pair(100.0, 6.0, 4.0)
     estimate = _estimate_fwd("AAPL", 0.25, (pair,), spot=100.0)
     assert not estimate.is_usable
@@ -399,8 +307,6 @@ def test_single_pair_without_discount_factor_is_unidentified() -> None:
 
 
 def test_single_pair_with_fallback_discount_factor_is_low_confidence() -> None:
-    # Given a DF, one pair yields a forward via parity, but it is structurally
-    # low-confidence and labeled as a fallback.
     pair = _pair(100.0, 6.0, 4.0)
     estimate = _estimate_fwd("AAPL", 0.25, (pair,), spot=100.0, fallback_discount_factor=0.95)
     assert estimate.is_usable
@@ -413,8 +319,6 @@ def test_single_pair_with_fallback_discount_factor_is_low_confidence() -> None:
 
 
 def test_degenerate_fit_is_labeled_not_raised() -> None:
-    # Two strikes that imply an impossible (non-positive) discount factor: C - P rises
-    # with K, so the slope is positive and DF would be negative. Labeled, not a crash.
     pairs = (_pair(100.0, 1.0, 5.0), _pair(110.0, 5.0, 1.0))
     estimate = _estimate_fwd("AAPL", 0.25, pairs, spot=100.0)
     assert not estimate.is_usable
@@ -430,7 +334,6 @@ def test_non_finite_and_negative_mids_are_dropped() -> None:
         _pair(150.0, -1.0, 1.0),
     )
     estimate = _estimate_fwd("AAPL", surface.maturity_years, good + junk, spot=_SYNTH_SPOT)
-    # The three junk pairs are filtered out; only the five valid strikes are candidates.
     assert estimate.candidate_count == 5
     assert estimate.forward == pytest.approx(100.0, rel=1e-9)
 
@@ -447,12 +350,7 @@ def test_confidence_orders_clean_above_single_pair() -> None:
     assert clean.confidence > single.confidence
 
 
-# --------------------------------------------------------------------------- #
-# Quality tiers and carry availability                                        #
-# --------------------------------------------------------------------------- #
 def test_two_clean_strikes_are_fair_not_good() -> None:
-    # Two distinct strikes identify F and DF exactly, but "good" requires >=3 used
-    # pairs, so a clean two-strike fit is labeled "fair".
     surface = build_synthetic_surface()
     points = {point.strike: point for point in surface.points}
     pairs = tuple(_pair(k, points[k].call_price, points[k].put_price) for k in (90.0, 110.0))
@@ -463,10 +361,6 @@ def test_two_clean_strikes_are_fair_not_good() -> None:
 
 
 def test_high_residual_fit_is_labeled_poor() -> None:
-    # A symmetric "bow" on the quotes (even in K - F) leaves the slope and DF intact
-    # but inflates the fit residual past ~1%, so the maturity is flagged "poor" with
-    # low confidence -- the forward is still emitted, but labeled (the spec's
-    # "diagnostics explain any maturity flagged poor quality").
     surface = build_synthetic_surface()
     points = {point.strike: point for point in surface.points}
     bow = {80.0: 6.0, 90.0: 1.5, 100.0: 0.0, 110.0: 1.5, 120.0: 6.0}
@@ -476,13 +370,12 @@ def test_high_residual_fit_is_labeled_poor() -> None:
     )
     estimate = _estimate_fwd("AAPL", surface.maturity_years, pairs, spot=_SYNTH_SPOT)
     assert estimate.is_usable
-    assert estimate.rejected_count == 0  # symmetric scatter, not a lone outlier
+    assert estimate.rejected_count == 0
     assert estimate.quality_label == "poor"
     assert estimate.confidence < 0.3
 
 
 def test_carry_is_unavailable_without_a_spot() -> None:
-    # Forward and DF come from parity alone, but carry/dividend need a spot (Eq 5).
     surface = build_synthetic_surface()
     estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
                                 spot=None)
@@ -493,8 +386,6 @@ def test_carry_is_unavailable_without_a_spot() -> None:
 
 
 def test_single_pair_fallback_refuses_nonpositive_forward() -> None:
-    # A pair whose C - P is very negative gives a negative parity forward at the
-    # supplied DF, so no usable forward is emitted (labeled, not a crash).
     estimate = _estimate_fwd(
         "AAPL", 0.25, (_pair(10.0, 0.0, 100.0),), spot=50.0, fallback_discount_factor=0.5
     )
@@ -502,9 +393,6 @@ def test_single_pair_fallback_refuses_nonpositive_forward() -> None:
     assert estimate.reason_code == "single_pair_no_discount_factor"
 
 
-# --------------------------------------------------------------------------- #
-# Contract adapter — a usable estimate projects to a valid stamped contract    #
-# --------------------------------------------------------------------------- #
 def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
     surface = build_synthetic_surface()
     estimate = _estimate_fwd("AAPL", surface.maturity_years, _synthetic_pairs(surface),
@@ -520,18 +408,13 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
         config_hashes={"cfg": "cfg-hash-0"},
     )
     assert isinstance(point, ForwardCurvePoint)
-    validate(point)  # raises if any contract field rule is violated
+    validate(point)
     assert table_for_contract(ForwardCurvePoint) == "forward_curve"
     assert point.forward_price == pytest.approx(100.0, rel=1e-9)
     assert point.diagnostics.method == "parity_regression"
     assert point.diagnostics.candidate_count == 5
     assert point.diagnostics.quality_label == "good"
-    # Lineage names both legs of every used strike (5 strikes -> 10 source records).
     assert len(point.provenance.source_records) == 10
-    # Golden-hash pin (M31): captured from the committed pre-`snapshot_stamp` code
-    # (audit-fixes-batch1, 2026-06-12) over this fixed synthetic fixture. Freezes the
-    # emitted stamp bytes so swapping the hand-rolled refs-then-stamp block for the
-    # core helper is provably hash-neutral. If this moves, revert — never regenerate.
     assert point.provenance.stamp_hash == (
         "15d18389881d129812d0500be89a58a774747ede196dee576ea8b58f69000088"
     )

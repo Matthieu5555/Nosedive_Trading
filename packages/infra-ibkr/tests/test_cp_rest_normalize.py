@@ -1,9 +1,3 @@
-"""The Client Portal market-data → RawMarketEvent seam (ADR 0024).
-
-Pure and SDK-free → fully exercised in CI. Expected event ids are derived independently from the
-documented ``content_event_id`` formula (SHA-256 of ``instrument_key \x1f field \x1f sequence``).
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -39,7 +33,6 @@ def _events(row: dict[str, object], sequence: int = 7):
 
 
 def test_field_tags_map_to_named_events() -> None:
-    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size, 7762=volume (CP codes).
     row = {
         "84": "9.27", "86": "9.31", "88": "10", "85": "12",
         "31": "9.29", "7059": "100", "7762": "500",
@@ -52,7 +45,6 @@ def test_field_tags_map_to_named_events() -> None:
     assert by_field["ask_size"].value == 12.0
     assert by_field["last"].value == 9.29
     assert by_field["last_size"].value == 100.0
-    # volume: derived independently from the CP tag 7762 spec → 500.0 contracts traded today
     assert by_field["volume"].value == 500.0
     for event in by_field.values():
         assert event.instrument_key == _IK
@@ -66,14 +58,12 @@ def test_field_tags_map_to_named_events() -> None:
 
 
 def test_absent_and_sentinel_fields_are_dropped() -> None:
-    # Only bid present; ask is the -1 no-value sentinel; others absent → one event.
     row = {"84": "9.27", "86": "-1"}
     events = _events(row)
     assert [e.field_name for e in events] == ["bid"]
 
 
 def test_status_flag_prefix_is_stripped() -> None:
-    # CP prefixes the last with 'C' when it is the prior close; the flag must be stripped.
     row = {"31": "C9.29"}
     events = _events(row)
     assert len(events) == 1
@@ -82,7 +72,7 @@ def test_status_flag_prefix_is_stripped() -> None:
 
 
 def test_unknown_tags_are_ignored() -> None:
-    row = {"84": "9.27", "55": "SPY", "6509": "RB"}  # 55=symbol, 6509=market-data availability
+    row = {"84": "9.27", "55": "SPY", "6509": "RB"}
     assert [e.field_name for e in _events(row)] == ["bid"]
 
 
@@ -96,5 +86,4 @@ def test_idempotent_event_ids_per_sequence() -> None:
 
 
 def test_request_field_tags_are_the_mapped_ones() -> None:
-    # 84=bid, 86=ask, 88=bid_size, 85=ask_size, 31=last, 7059=last_size, 7762=volume (CP codes).
     assert set(REQUEST_FIELD_TAGS) == {"31", "84", "86", "85", "88", "7059", "7762"}

@@ -1,12 +1,3 @@
-"""Prove the layering guard *bites* — don't just trust the import-linter config.
-
-TESTING.md and the M0 spec are explicit: assert that a planted upward import makes
-`lint-imports` fail. A green config that never sees a violation is not evidence the
-guard works. This plants an `infra -> strategy` import (illegal: infra is blind to
-alpha and strategy sits above it), runs the real linter, asserts it reports a broken
-contract, and always removes the probe.
-"""
-
 from __future__ import annotations
 
 import subprocess

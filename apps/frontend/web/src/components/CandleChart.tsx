@@ -1,15 +1,3 @@
-// The daily OHLC candlestick, on TradingView's lightweight-charts.
-//
-// Plotly stays the charting dependency for the 3D IV surface, the smile, and the risk
-// heatmaps — lightweight-charts draws compact 2D financial charts only. Candlesticks use
-// it because its native pan/zoom/crosshair is markedly smoother than a Plotly candlestick.
-//
-// A read-out box tracks the crosshair: it shows the hovered bar's date, open / high (max) /
-// low (min) / close and volume, falling back to the latest bar when the cursor is off the chart.
-//
-// lightweight-charts draws to a <canvas> jsdom does not implement, so component tests stub this
-// module (see src/test/candleMock.tsx), mirroring how the Plotly wrapper is stubbed.
-
 import {
   type CandlestickData,
   CandlestickSeries,
@@ -24,17 +12,13 @@ import { baseLightweightOptions, CHART_COLORS } from "./chartTheme";
 
 export interface CandleChartProps {
   bars: DailyBar[];
-  // A required, human-readable label that answers "what am I looking at?" for the panel.
+
   label: string;
 }
 
-// Up/down candle colours read positive/negative off the shared dark-panel theme tokens.
 const UP = CHART_COLORS.positive;
 const DOWN = CHART_COLORS.negative;
 
-// OHLC prices are analytics quantities: scientific notation (the shared "$" unit is shown once
-// at the end of the OHLC block). Volume is a traded-share count (a cardinality), not an analytics
-// quantity, so it keeps its plain grouped rendering.
 const price2 = (n: number): string => sci(n);
 const volFmt = (n: number): string => Math.round(n).toLocaleString();
 
@@ -46,9 +30,6 @@ export function CandleChart({ bars, label }: CandleChartProps) {
     const container = containerRef.current;
     if (container === null) return;
 
-    // autoSize (inside baseLightweightOptions) wires lightweight-charts' own ResizeObserver, so
-    // the chart tracks the panel width without a manual resize handler (matching the Plotly
-    // wrapper's responsiveness).
     const chart: IChartApi = createChart(container, {
       ...baseLightweightOptions(),
       timeScale: { borderColor: CHART_COLORS.axis },
@@ -63,13 +44,11 @@ export function CandleChart({ bars, label }: CandleChartProps) {
       wickDownColor: DOWN,
     });
 
-    // lightweight-charts requires strictly ascending time, so sort by trade_date (a plain ISO
-    // string) defensively before mapping — an out-of-order or duplicate point throws on setData.
     const sorted = [...bars].sort((a, b) =>
       a.trade_date < b.trade_date ? -1 : a.trade_date > b.trade_date ? 1 : 0,
     );
     const data: CandlestickData[] = sorted.map((bar) => ({
-      time: bar.trade_date, // ISO yyyy-mm-dd is a valid business-day time
+      time: bar.trade_date,
       open: bar.open,
       high: bar.high,
       low: bar.low,
@@ -78,7 +57,6 @@ export function CandleChart({ bars, label }: CandleChartProps) {
     series.setData(data);
     chart.timeScale().fitContent();
 
-    // Volume is not part of the candlestick series, so look it up by date for the read-out.
     const volumeByDate = new Map(sorted.map((bar) => [bar.trade_date, bar.volume]));
 
     const renderLegend = (

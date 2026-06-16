@@ -1,10 +1,3 @@
-"""Tests for `surfaces.reporting` — the surface summary the CLI/API renders.
-
-The summary's one derived number is the at-the-money volatility; it is asserted against a
-value hand-computed from the SVI formula, never read back from the code under test. The
-ordering and diagnostic pass-through are pinned too.
-"""
-
 from __future__ import annotations
 
 import math
@@ -46,16 +39,12 @@ def _params(
 
 
 def test_atm_volatility_matches_the_hand_computed_svi_value() -> None:
-    # w(0) = a + b*(rho*(0-m) + sqrt((0-m)^2 + sigma^2)). With m=0: w(0) = a + b*sigma.
-    # a=0.04, b=0.10, sigma=0.20 -> w(0) = 0.04 + 0.10*0.20 = 0.06.
-    # atm_vol = sqrt(w(0)/T) = sqrt(0.06/0.25) = sqrt(0.24) = 0.4898979485566356.
     params = _params(maturity_years=0.25, a=0.04, b=0.10, rho=-0.5, m=0.0, sigma=0.20,
                      expiry=date(2026, 6, 19))
     assert atm_volatility(params) == pytest.approx(math.sqrt(0.24), rel=1e-12)
 
 
 def test_atm_volatility_is_zero_for_a_nonpositive_maturity() -> None:
-    # An expired/same-day slice has no annualization; the summary must not divide by zero.
     params = _params(maturity_years=0.0, a=0.04, b=0.10, rho=-0.5, m=0.0, sigma=0.20,
                      expiry=date(2026, 5, 29))
     assert atm_volatility(params) == 0.0
@@ -69,15 +58,12 @@ def test_summarize_orders_by_maturity_and_passes_diagnostics_through() -> None:
 
     summaries = summarize_surface_parameters([far, near])
 
-    # Sorted shortest maturity first.
     assert [s.maturity_years for s in summaries] == [0.10, 0.50]
     near_summary, far_summary = summaries
-    # Diagnostics copied verbatim from each slice.
     assert (near_summary.n_points, near_summary.rmse, near_summary.arb_free) == (6, 1e-4, True)
     assert (far_summary.n_points, far_summary.rmse, far_summary.arb_free) == (9, 2e-4, False)
     assert near_summary.expiry_date == date(2026, 6, 19)
     assert near_summary.method == "svi"
-    # near: w(0) = 0.03 + 0.10*0.20 = 0.05; atm_vol = sqrt(0.05/0.10) = sqrt(0.5).
     assert near_summary.atm_vol == pytest.approx(math.sqrt(0.5), rel=1e-12)
 
 

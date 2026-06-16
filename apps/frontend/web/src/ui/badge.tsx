@@ -1,4 +1,3 @@
-// shadcn/ui Badge — themed onto the operator-console dark palette. `ui` layer.
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 

@@ -1,14 +1,3 @@
-"""Provider registry: the data providers the run endpoint can drive, with capabilities.
-
-Today the platform ships one fully offline, verifiable provider (``SAMPLE``, backed by
-the committed ``synthetic_known_answer`` chain fixture and driven through the exact
-actor pipeline) plus the declared-but-unavailable live provider ``IBKR``. IBKR becomes
-``ready`` when its Client-Portal gateway is authenticated. (Saxo/Deribit were removed in
-T-index-only-refactor — the app is index-options-only and IBKR is the sole live broker.)
-
-``capabilities()`` drives the UI provider selector; ``is_runnable`` gates the run endpoint.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,13 +7,12 @@ SAMPLE_PROVIDER = "SAMPLE"
 
 @dataclass(frozen=True, slots=True)
 class ProviderCapability:
-    """What a provider offers — the operator-facing selector row."""
 
     provider: str
     asset_class: str
     auth_required: bool
     data_latency: str
-    status: str  # "ready" | "unavailable"
+    status: str
     note: str
 
     def to_dict(self) -> dict[str, object]:
@@ -62,16 +50,13 @@ _BY_NAME = {cap.provider: cap for cap in _CAPABILITIES}
 
 
 def all_capabilities() -> list[ProviderCapability]:
-    """Capabilities of every known provider, sorted by name."""
     return [_BY_NAME[name] for name in sorted(_BY_NAME)]
 
 
 def capability_for(provider: str) -> ProviderCapability | None:
-    """The capability for ``provider`` (case-insensitive), or None if unknown."""
     return _BY_NAME.get(provider.upper())
 
 
 def is_runnable(provider: str) -> bool:
-    """True iff the run endpoint can actually drive a pipeline for ``provider``."""
     cap = capability_for(provider)
     return cap is not None and cap.status == "ready"

@@ -1,10 +1,3 @@
-"""Shared foundation (level 0): cross-cutting, domain-agnostic primitives.
-
-Config loading + hashing, structured logging, the run manifest, and the provenance
-stamp — usable by every layer (infra, strategy, execution, frontend) without pulling
-any domain dependency. This layer depends on nothing above it.
-"""
-
 from __future__ import annotations
 
 from .config import (

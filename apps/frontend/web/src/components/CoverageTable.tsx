@@ -1,21 +1,9 @@
-// Capture-coverage panel (T-capture-coverage-panel): the captured option chain as a plain quality
-// table. The surface view smooths over gaps; this shows them. Two sections, both from data already
-// on disk (no recompute): per-expiry capture counts, and per-tenor QC coverage across the WHOLE
-// pinned grid — so an empty tenor (1m…3y) shows as a labeled zero-row, never silently omitted.
-//
-// Types are declared locally (not in ../api) so this panel is a self-contained drop-in.
-// `CoverageTable` is presentational (takes data, unit-tested); `CoveragePanel` is the self-fetching
-// wrapper a page drops in with one line.
-
 import { useFetch } from "../hooks/useFetch";
 import { sci, UNITS } from "../lib/format";
 import { AsyncBlock } from "./AsyncBlock";
 
 export type QcStatus = "pass" | "fail" | "unknown";
 
-// The closed set of per-constituent capture verdicts the widened S1 lane records (one per
-// attempted name): the chain landed, the name lists none, the account is not entitled, or the
-// underlying conid would not resolve. Mirrors `CONSTITUENT_OUTCOMES` in the contracts plane.
 export type ConstituentOutcomeLabel = "captured" | "no_options" | "unentitled" | "unresolved";
 
 export interface ConstituentOutcome {
@@ -50,8 +38,7 @@ export interface CoverageData {
   n_expiries: number;
   expiries: CoverageExpiry[];
   tenors: CoverageTenor[];
-  // Per-constituent capture outcomes for an index underlying (empty for a single name or an
-  // index-only capture day). Ordered heaviest-first by the lane's recorded weight rank.
+
   constituents: ConstituentOutcome[];
   qc_status: QcStatus;
   delta_band_status: QcStatus;
@@ -59,8 +46,6 @@ export interface CoverageData {
 
 const STATUS_GLYPH: Record<QcStatus, string> = { pass: "✓", fail: "✗", unknown: "—" };
 
-// A captured name is healthy; everything else is a gap an operator should see. `unknown` keeps a
-// neutral glyph for any future label the front does not yet model.
 const OUTCOME_STATUS: Record<ConstituentOutcomeLabel, QcStatus> = {
   captured: "pass",
   no_options: "fail",

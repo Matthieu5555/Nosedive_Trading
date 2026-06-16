@@ -1,12 +1,3 @@
-"""Tests for the shared WebSocketListener — real local WS server, no external network.
-
-The listener's canonical home is ``algotrading.infra.collectors.ws_listener`` (hoisted from
-its former byte-identical twins in the Saxo and Deribit leaves, which now re-export it).
-The server side uses ``websockets.sync.server`` (thread-based), so each scenario exercises a
-genuine handshake, frame delivery, connection drop and reconnect against the listener's owned
-thread. All waits are condition-polled with a deadline — no arbitrary sleeps.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -33,7 +24,6 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = _DEADLINE_S) -> 
 
 @contextmanager
 def _ws_server(handler: Callable[[ServerConnection], None]) -> Iterator[str]:
-    """Run a local sync WebSocket server on an ephemeral port; yield its ws:// URL."""
     with serve(handler, "127.0.0.1", 0) as server:
         host, port = server.socket.getsockname()[:2]
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -45,7 +35,6 @@ def _ws_server(handler: Callable[[ServerConnection], None]) -> Iterator[str]:
 
 
 def _hold_open(connection: ServerConnection) -> None:
-    """Block the handler until the peer closes (returning closes the connection)."""
     with contextlib.suppress(websockets.exceptions.ConnectionClosed):
         connection.recv()
 
@@ -55,7 +44,7 @@ def test_frames_flow_and_on_connect_runs_first() -> None:
     frames: list[bytes | str] = []
 
     def handler(connection: ServerConnection) -> None:
-        received_subscribes.append(connection.recv())  # the on_connect subscribe message
+        received_subscribes.append(connection.recv())
         connection.send("frame-a")
         connection.send("frame-b")
         _hold_open(connection)
@@ -79,7 +68,6 @@ def test_frames_flow_and_on_connect_runs_first() -> None:
 
 
 def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
-    """A dropped connection must reconnect (old Saxo loop died on the first recv error)."""
     connections = 0
     frames: list[bytes | str] = []
     faults: list[str] = []
@@ -90,10 +78,10 @@ def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
         with lock:
             connections += 1
             n = connections
-        connection.recv()  # subscribe message, expected on EVERY connection
+        connection.recv()
         connection.send(f"frame-{n}")
         if n == 1:
-            return  # close the first connection -> client must reconnect
+            return
         _hold_open(connection)
 
     async def on_connect(ws: websockets.ClientConnection) -> None:
@@ -111,8 +99,8 @@ def test_reconnects_after_connection_drop_and_resends_subscribe() -> None:
         listener.stop()
 
     assert frames[:2] == ["frame-1", "frame-2"]
-    assert connections >= 2  # the subscribe was resent on the second connection (recv succeeded)
-    assert any("closed" in fault for fault in faults)  # the drop was surfaced, not swallowed
+    assert connections >= 2
+    assert any("closed" in fault for fault in faults)
 
 
 def test_bad_frame_does_not_end_the_session() -> None:
@@ -139,7 +127,6 @@ def test_bad_frame_does_not_end_the_session() -> None:
 
 
 def test_fatal_factory_error_is_reported_and_recovered() -> None:
-    """A fatal error (factory raises) surfaces as a fault, then a fresh factory call retries."""
     attempts = 0
     frames: list[bytes | str] = []
     faults: list[str] = []
@@ -173,7 +160,7 @@ def test_fatal_factory_error_is_reported_and_recovered() -> None:
 
 def test_stop_joins_thread_promptly() -> None:
     def handler(connection: ServerConnection) -> None:
-        _hold_open(connection)  # never sends — the listener idles in its recv poll
+        _hold_open(connection)
 
     with _ws_server(handler) as url:
         listener = WebSocketListener(
@@ -197,6 +184,6 @@ def test_start_is_idempotent_while_running() -> None:
         )
         listener.start()
         thread_first = listener._thread
-        listener.start()  # no-op: same thread keeps running
+        listener.start()
         assert listener._thread is thread_first
         listener.stop()

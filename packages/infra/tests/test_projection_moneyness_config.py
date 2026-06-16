@@ -1,13 +1,3 @@
-"""core-projection-moneyness-grid (ADR 0028) — the persisted surface grid is sampled on the
-log-moneyness grid that lives in ``SurfaceConfig.moneyness_buckets``, not on a ``.py`` literal.
-
-These pin the *wiring*: the projection chain reads the configured grid (resolved at the single
-choke point ``run_analytics_with_qc``), an explicit per-run grid still overrides it, and the
-shipped default reproduces the canonical five buckets. The oracle is independent — the configured
-bucket tuple itself — because ``surfaces.surface_grid_cells`` emits exactly one persisted cell per
-bucket, so the distinct ``moneyness_bucket`` values of the output must equal the grid that drove it.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -30,9 +20,7 @@ AS_OF = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 CALC_TS = datetime(2026, 5, 29, 16, 0, tzinfo=UTC)
 CONFIG_HASH = {"cfg": "cfg-hash-moneyness"}
 
-# The canonical shipped grid (configs/pricing.yaml) — the byte-identical default.
 DEFAULT_GRID = (-0.2, -0.1, 0.0, 0.1, 0.2)
-# A different, still-valid (strictly increasing + symmetric about 0) grid for the override oracle.
 CUSTOM_GRID = (-0.15, 0.0, 0.15)
 
 
@@ -83,7 +71,6 @@ def _inputs(chain: ChainFixture):  # type: ignore[no-untyped-def]
 
 
 def _grid_buckets(surface_override: SurfaceConfig, **run_kwargs) -> set[float]:  # type: ignore[no-untyped-def]
-    """Run the actor over the known-answer chain and return the distinct persisted grid buckets."""
     chain = get_fixture("synthetic_known_answer")
     events, instruments, masters = _inputs(chain)
     outputs = run_analytics(
@@ -96,19 +83,14 @@ def _grid_buckets(surface_override: SurfaceConfig, **run_kwargs) -> set[float]: 
 
 
 def test_persisted_surface_grid_uses_the_configured_moneyness_grid() -> None:
-    # A config carrying a custom grid drives the persisted cells: the distinct buckets are exactly it.
     surface = SURFACE_CONFIG.model_copy(update={"moneyness_buckets": CUSTOM_GRID})
     assert _grid_buckets(surface) == set(CUSTOM_GRID)
 
 
 def test_shipped_default_reproduces_the_canonical_five_buckets() -> None:
-    # The default SurfaceConfig (no override) reproduces the canonical grid byte-for-byte — and the
-    # two configs disagree, which is what proves config (not a literal) is what shaped the output.
     assert _grid_buckets(SURFACE_CONFIG) == set(DEFAULT_GRID)
     assert set(DEFAULT_GRID) != set(CUSTOM_GRID)
 
 
 def test_explicit_per_run_grid_overrides_the_configured_grid() -> None:
-    # An explicit moneyness_buckets= on the run (a test/notebook caller) wins over config: even with
-    # the default 5-bucket config, the persisted grid collapses to the one explicit ATM bucket.
     assert _grid_buckets(SURFACE_CONFIG, moneyness_buckets=(0.0,)) == {0.0}

@@ -1,12 +1,3 @@
-// One network-layer BFF mock for every e2e test, mirroring src/test/server.ts (the msw server
-// the component tests use) — same endpoints, same fixtures, same "happy path by default"
-// contract. Intercepting here means the tests exercise the app's real fetch/render path in a
-// real browser without a running BFF and without ever reading the canonical data store.
-//
-// A single handler on **/api/** routes by pathname so glob precedence never bites; anything not
-// listed falls through to an empty 200 JSON object (a page panel renders "no data", never a
-// crash) and is recorded so a test can assert nothing unexpected was requested.
-
 import type { Page, Route } from "@playwright/test";
 
 import type { CoverageData } from "../src/components/CoverageTable";
@@ -24,8 +15,6 @@ import {
   SCENARIOS_EMPTY,
 } from "../src/test/fixtures";
 
-// Capture-coverage payload: CoverageTable declares its shape locally (not in ../api), so the
-// fixture is defined here against that type rather than reused from src/test/fixtures.
 const COVERAGE_AAA: CoverageData = {
   underlying: "AAA",
   trade_date: "2026-06-01",
@@ -45,8 +34,7 @@ const COVERAGE_AAA: CoverageData = {
     { tenor: "1m", measured: null, floor: 0.8, status: "unknown" },
     { tenor: "3m", measured: 0.95, floor: 0.8, status: "pass" },
   ],
-  // Per-constituent outcome ledger (ibkr-constituent-lane-activation), heaviest-first. Exercises
-  // the per-name capture-outcome panel in the browser: one captured, one labelled gap.
+
   constituents: [
     { symbol: "BBB", rank: 1, weight: 0.0812, outcome: "captured", n_options: 22, detail: "" },
     {
@@ -62,9 +50,6 @@ const COVERAGE_AAA: CoverageData = {
   delta_band_status: "pass",
 };
 
-// The order-ticket preview the Basket booking home posts to (POST /api/ticket/preview). It comes
-// back gated (transmit:false), so the "Sign & send" affordance must stay disabled — the e2e
-// asserts that. Two option legs, long->BUY mapped, magnitude quantities.
 const TICKET_AAA = {
   source_basket_id: "basket-SPX-latest",
   trade_date: "",
@@ -96,8 +81,6 @@ const TICKET_AAA = {
   gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },
 };
 
-// Pathname → default response body. Query strings are ignored (the page sends ?index=, etc.);
-// method is not branched because no two live endpoints share a pathname across GET/POST.
 const ROUTES: Record<string, unknown> = {
   "/healthz": HEALTH_HEALTHY,
   "/api/health": HEALTH_HEALTHY,
@@ -116,11 +99,9 @@ const ROUTES: Record<string, unknown> = {
 };
 
 export interface BffMock {
-  /** Pathnames that were requested but had no fixture (should stay empty in a healthy test). */
   readonly unmatched: string[];
 }
 
-/** Install the BFF mock on a page. Call before navigating. Returns a handle to inspect later. */
 export async function mockBff(page: Page): Promise<BffMock> {
   const unmatched: string[] = [];
 

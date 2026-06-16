@@ -1,10 +1,5 @@
-// The Market-page header bits: the QC verdict chip and the as-of date picker. Small, presentational,
-// and shared by the page shell — pulled out of the page so the shell reads as composition.
-
 import type { QcVerdict, RecordedDatesResponse } from "../../api";
 
-// A QC verdict chip (pass / fail / unknown) — so a degraded snapshot is shown, not hidden
-// (cahier des charges §3.1). The colour comes from a CSS class, never a hardcoded hex.
 export function QcBadge({ qc }: { qc: QcVerdict }) {
   const text = qc === "pass" ? "QC pass" : qc === "fail" ? "QC fail" : "QC n/a";
   return (

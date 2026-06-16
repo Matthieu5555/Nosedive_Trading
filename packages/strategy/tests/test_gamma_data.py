@@ -1,14 +1,3 @@
-"""S3's store-backed data adapter — the as-of I/O path (``StoreBackedGammaData``).
-
-This drives the adapter against a **temporary** ParquetStore (never the canonical ``data/``
-store): per-name IV-rank signal rows and a handful of grid cells are written here, then the
-adapter resolves the cheapest name, the call's dollar-delta, and the name's spot off them. Every
-expected value is computed by hand from the rows written in the test — the cheapest name is the
-minimum-IV-rank subject, the call delta is the leg contribution, the share unit is the grid
-forward (carry==0 ⇒ spot) — never read back from the code under test. The pure strategy rules
-are covered in ``test_s3_gamma.py``.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -38,13 +27,12 @@ def _stamp() -> object:
 
 
 def _signal(*, kind: str, subject: str, value: float, tenor: str = TENOR) -> StrategySignal:
-    """One persisted signal reading filed under the index book context, about ``subject``."""
     return StrategySignal(
         snapshot_ts=_TS,
         provider=PROVIDER,
-        underlying=INDEX,  # book context: the index whose strategy reads this
+        underlying=INDEX,
         signal_kind=kind,
-        subject=subject,  # the name the reading is about
+        subject=subject,
         tenor_label=tenor,
         value=value,
         source_snapshot_ts=_TS,
@@ -55,7 +43,6 @@ def _signal(*, kind: str, subject: str, value: float, tenor: str = TENOR) -> Str
 def _grid_row(
     *, underlying: str, delta_band: str, surface_side: str, dollar_delta: float, forward: float
 ) -> ProjectedOptionAnalytics:
-    """One grid cell on the 3m tenor with a chosen ``dollar_delta`` and ``forward`` (=spot)."""
     return ProjectedOptionAnalytics(
         snapshot_ts=_TS,
         provider=PROVIDER,
@@ -94,15 +81,12 @@ def _grid_row(
 
 
 def _seeded_store(tmp_path: Path) -> ParquetStore:
-    """A temp store: per-name IV rank (SAP cheapest) + the cheap name's ATM-call grid cell."""
     store = ParquetStore(tmp_path)
     store.write(
         "strategy_signals",
         [
-            # SAP (0.18) is cheaper than ASML (0.62) → cheapest_name must pick SAP.
             _signal(kind="iv_rank", subject="ASML", value=0.62),
             _signal(kind="iv_rank", subject="SAP", value=0.18),
-            # A different kind and a different tenor that must be filtered out of the IV-rank pick.
             _signal(kind="implied_correlation", subject=INDEX, value=0.05),
             _signal(kind="iv_rank", subject="SAP", value=0.99, tenor="1m"),
         ],
@@ -110,7 +94,6 @@ def _seeded_store(tmp_path: Path) -> ParquetStore:
     store.write(
         "projected_option_analytics",
         [
-            # SAP's ATM call (the cheap name's long-gamma engine): dollar_delta 30, forward 100.
             _grid_row(
                 underlying="SAP", delta_band="atm", surface_side="call",
                 dollar_delta=30.0, forward=100.0,
@@ -133,13 +116,11 @@ def _data(tmp_path: Path) -> StoreBackedGammaData:
 
 
 def test_cheapest_name_picks_the_minimum_iv_rank_subject(tmp_path: Path) -> None:
-    # SAP 0.18 < ASML 0.62 at the 3m reference tenor → SAP. The 1m row and the non-iv_rank
-    # row are filtered out (else the 1m SAP=0.99 or the correlation row could mislead the pick).
     assert _data(tmp_path).cheapest_name(AS_OF) == "SAP"
 
 
 def test_cheapest_name_is_none_without_iv_rank_rows(tmp_path: Path) -> None:
-    store = ParquetStore(tmp_path)  # empty — no signals banked
+    store = ParquetStore(tmp_path)
     data = StoreBackedGammaData(store, _config(), reference_tenor=TENOR, provider=PROVIDER)
     assert data.cheapest_name(AS_OF) is None
 
@@ -149,17 +130,15 @@ def test_net_dollar_delta_sums_the_call_legs_grid_contribution(tmp_path: Path) -
         _seeded_store(tmp_path), _config(), reference_tenor=TENOR, provider=PROVIDER
     )
     call_leg = strat._call_leg("SAP")
-    # Hand-derived: the call leg's dollar_delta = quantity (2.0) × row.dollar_delta (30.0) = 60.0.
     assert _data(tmp_path).net_dollar_delta((call_leg,), AS_OF) == pytest.approx(60.0)
 
 
 def test_share_unit_dollar_delta_is_the_grid_forward(tmp_path: Path) -> None:
-    # One long share's dollar delta = spot; carry==0 ⇒ forward==spot ⇒ the ATM-call forward 100.
     assert _data(tmp_path).share_unit_dollar_delta("SAP", AS_OF) == pytest.approx(100.0)
 
 
 def test_share_unit_dollar_delta_is_none_without_the_call_cell(tmp_path: Path) -> None:
-    assert _data(tmp_path).share_unit_dollar_delta("ASML", AS_OF) is None  # no ASML grid cell
+    assert _data(tmp_path).share_unit_dollar_delta("ASML", AS_OF) is None
 
 
 def test_construct_sizes_the_stock_hedge_off_the_real_grid_and_signals(tmp_path: Path) -> None:
@@ -168,8 +147,7 @@ def test_construct_sizes_the_stock_hedge_off_the_real_grid_and_signals(tmp_path:
     )
     basket = strat.construct(AS_OF, basket_id="s3-live")
     assert basket.strategy_id == "S3-gamma"
-    assert basket.underlying == "SAP"  # the cheapest name, resolved from the signal layer
-    # call leg (long 2.0) + stock hedge: shares = -call_delta/spot = -60/100 = -0.6 (short stock).
+    assert basket.underlying == "SAP"
     assert len(basket.legs) == 2
     call_leg, stock_leg = basket.legs
     assert call_leg.instrument_kind == "option" and call_leg.surface_side == "call"

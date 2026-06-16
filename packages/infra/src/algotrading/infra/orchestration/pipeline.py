@@ -1,29 +1,3 @@
-"""The canonical end-of-day run sequence (Part IV.F): ordered, idempotent, restartable.
-
-This is the one entrypoint an operator runs at end of day. It runs the five stages in
-order — universe refresh, collection, incremental analytics, EOD reconciliation, QC —
-and records each clean completion in the run-state ledger. Two properties matter:
-
-* **Overwrite-by-re-run (ADR 0032 refined).** Every fire — first attempt, restart after
-  a mid-run kill, or re-fire of an already-clean day — runs *all five* stages. The
-  underlying writes are replace-/append-idempotent (the actor replaces derived
-  partitions; the collector and master writes dedupe on the content-addressed key), so
-  a re-run converges to the same store state instead of duplicating or corrupting
-  outputs. The ledger records what ran for observability and the dashboard's backlog
-  view; it is never a gate, and no stage is skipped.
-* **A resolvable trace.** One ``correlation_id`` is bound for the whole run and flows
-  into every stage (and into the actor's own log lines), so the collector session and
-  the analytics it fed share an id and the trace resolves end to end.
-
-The stages are injected as callables so the pipeline is testable without a broker or a
-scheduler: the default wiring calls the job functions in :mod:`orchestration.jobs` and
-:mod:`orchestration.qc_job`, but a test passes stages that raise to simulate a mid-run
-kill and asserts the restart converges to the same store state. The **collection**
-stage is the seam C1 has not yet closed (see :mod:`orchestration.jobs`); a caller
-supplies whatever produces a :class:`CollectionResult` today (a fixture replay in
-tests; the live-collection job once the broker→raw-event bridge lands).
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -60,13 +34,6 @@ _LOGGER = structlog.get_logger("orchestration")
 
 @dataclass(frozen=True, slots=True)
 class EodResult:
-    """What one end-of-day run produced, stage by stage.
-
-    ``ran`` names the stages this attempt executed, in order — under overwrite-by-re-run
-    (ADR 0032 refined) that is every stage up to the first failure, never a skipped
-    subset. ``escalation`` is the QC escalation level if QC ran. This is the handle a
-    test asserts restart-convergence on.
-    """
 
     trade_date: date
     correlation_id: str
@@ -81,12 +48,6 @@ class EodResult:
 
 @dataclass(frozen=True, slots=True)
 class EodStages:
-    """The five stage callables, injected so the pipeline runs without a broker.
-
-    Each callable takes nothing and returns its job result; the default wiring (built
-    by the caller, e.g. a runbook script) closes over the store, config, clock, and the
-    bound ``correlation_id``. A test passes a stage that raises to simulate a kill.
-    """
 
     universe_refresh: Callable[[], UniverseRefreshResult]
     collection: Callable[[], CollectionResult]
@@ -103,19 +64,6 @@ def run_end_of_day(
     clock: Clock,
     stages: EodStages,
 ) -> EodResult:
-    """Run (or re-run) the canonical end-of-day sequence for one trade date.
-
-    Runs all five stages in order — overwrite-by-re-run (ADR 0032 refined): stages
-    already recorded clean in the run-state ledger are re-run, not skipped, and their
-    idempotent writes converge the store to the same state. Each clean completion is
-    recorded in the ledger (observability and the dashboard backlog, never a gate).
-    Every stage is logged with the shared ``correlation_id``. A stage callable that
-    raises propagates — the run stops there, its completion is *not* recorded (so it
-    shows as backlog), and the store is left consistent because the underlying writes
-    are atomic and idempotent. ``clock`` supplies the injected timestamps the ledger
-    records; nothing here reads a wall clock. Returns the per-stage results and which
-    stages ran.
-    """
     root = store_root(store)
     already_done = completed_stages(root, trade_date)
     log = _LOGGER.bind(
@@ -147,14 +95,6 @@ def run_end_of_day(
         ran.append(stage_name)
         log.info("orchestration.eod.stage.done", stage=stage_name, outcome=outcome)
 
-    # Overwrite-by-re-run (ADR 0032 refined): a re-fire RE-RUNS every stage rather than skipping
-    # the ones the ledger already recorded. Every stage write is idempotent — derived tables are
-    # replace-by-(trade_date, underlying), the raw layer is append-dedup on the content-addressed
-    # event_id — so re-running a given fired index set converges to the same store state, while a
-    # *different* calendar's fire (e.g. @XNYS after @XEUR the same day) now captures its own index
-    # instead of being skipped by the other calendar's ledger rows. It also self-heals an intraday
-    # dry-run that touched the slot: the real close overwrites it (no manual purge). The ledger
-    # stays for observability (the ``already_done`` log above), never a gate.
     log.info("orchestration.eod.stage.start", stage=STAGE_UNIVERSE_REFRESH)
     universe = stages.universe_refresh()
     _commit(STAGE_UNIVERSE_REFRESH, OUTCOME_OK)

@@ -7,8 +7,6 @@ import type { BasketLegInput, OrderTicketResponse } from "../api";
 import { jsonGet, jsonPost, server } from "../test/server";
 import { TicketPanel } from "./TicketPanel";
 
-// The legs the panel is handed (already composed in the Basket view above it): a long option leg
-// and a short stock hedge — the ticket maps long->BUY / short->SELL with a positive quantity.
 const LEGS: BasketLegInput[] = [
   {
     instrument_kind: "option",
@@ -21,8 +19,6 @@ const LEGS: BasketLegInput[] = [
   { instrument_kind: "stock", side: "short", quantity: -2, underlying: "AAA" },
 ];
 
-// What the BFF returns for that basket — the component renders this, the mapping itself is pinned
-// in the Python unit tests, so this fixture is the BFF's authority, not a re-derivation.
 const TICKET: OrderTicketResponse = {
   source_basket_id: "basket-AAA-latest",
   trade_date: "2026-05-29",
@@ -67,12 +63,12 @@ test("builds a ticket and renders the mapped legs (long->BUY, short->SELL, magni
   await userEvent.click(screen.getByRole("button", { name: "Build ticket" }));
 
   const legsTable = await screen.findByRole("table", { name: "order ticket legs" });
-  const rows = within(legsTable).getAllByRole("row").slice(1); // drop the header row
+  const rows = within(legsTable).getAllByRole("row").slice(1);
   expect(rows).toHaveLength(2);
-  // The option leg: BUY, quantity 1, its grid cell shown.
+
   expect(within(rows[0]).getByText("BUY")).toBeInTheDocument();
   expect(within(rows[0]).getByText("AAA 3m/30dc")).toBeInTheDocument();
-  // The stock hedge: SELL, positive magnitude 2.
+
   expect(within(rows[1]).getByText("SELL")).toBeInTheDocument();
   expect(within(rows[1]).getByText("AAA (stock)")).toBeInTheDocument();
 });
@@ -109,16 +105,12 @@ test("the build button is disabled when there are no legs to build from", () => 
 });
 
 test("broker/TIF selectors are populated from the options endpoint, not a hardcoded list", async () => {
-  // An extra TIF served by the endpoint must appear in the selector — proof the list is
-  // server-driven (from the TargetBroker/TimeInForce enums), not a literal in the component.
   server.use(
     jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc", "ioc"] }),
   );
   renderPanel();
   expect(await screen.findByRole("option", { name: "IOC" })).toBeInTheDocument();
 });
-
-// --- the password-gated booking affordance (§7 #1) --------------------------------------
 
 async function previewThenReveal() {
   server.use(jsonPost("/api/ticket/preview", TICKET));
@@ -130,7 +122,7 @@ async function previewThenReveal() {
 test("the Book button is disabled until a password is entered (the write barrier)", async () => {
   await previewThenReveal();
   const book = screen.getByRole("button", { name: "Book (paper)" });
-  // No password yet — the gate cannot be invoked.
+
   expect(book).toBeDisabled();
   await userEvent.type(screen.getByLabelText("booking password"), "secret-pw");
   expect(book).toBeEnabled();

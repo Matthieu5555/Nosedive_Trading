@@ -1,11 +1,3 @@
-"""The shared, immutable fixture library.
-
-Named option chains (the rogues' gallery) live in :mod:`fixtures.library`; the
-known-answer generators in :mod:`fixtures.synthetic`; one valid baseline record
-per table in :mod:`fixtures.records`. Other workstreams import these by name so
-edge-case tests bind to one curated home, never to ad-hoc inline literals.
-"""
-
 from __future__ import annotations
 
 from .library import (

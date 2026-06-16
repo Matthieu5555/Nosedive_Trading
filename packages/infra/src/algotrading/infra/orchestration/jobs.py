@@ -1,27 +1,3 @@
-"""The operable jobs — each a function of injected dependencies and a correlation id.
-
-A job here is one unit of operable work: universe refresh, live collection, incremental
-analytics, and end-of-day reconciliation. Every job takes its dependencies (the store,
-the config, a clock, the metric bundle) as parameters rather than constructing them, so a
-test drives a job with fakes and an injected clock and nothing reaches a real broker or a
-wall clock. Every job emits a structured log line bound to a ``correlation_id``, and
-that same id is threaded from the collector session through the analytics run, so a
-single trace resolves a session to the jobs it fed — the actor already binds the id
-onto its own log lines, and these jobs propagate it.
-
-Each job returns a small frozen result describing what it did (counts, status, the
-correlation id) so the pipeline can record it and the dashboard can read it. A job
-does not schedule itself: it is a plain function the pipeline (or a scheduler, or a
-test) calls directly.
-
-Live collection rides the one unified collection seam (ADR 0027): :func:`collect_live`
-drives a broker adapter through the single :class:`collectors.RawCollector`, which writes
-content-addressed ``RawMarketEvent`` rows — the *same* collector and event shape the
-replay path uses, so live capture is exactly-once and live==replay holds. The adapter is
-injected and the feed is driven by an injected callable, so a test runs the job over a
-fake feed (or a replay source) with no broker and no second code path.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -57,7 +33,6 @@ _LOGGER = structlog.get_logger("orchestration")
 
 @dataclass(frozen=True, slots=True)
 class UniverseRefreshResult:
-    """What a universe-refresh job produced: the masters materialized for the day."""
 
     correlation_id: str
     trade_date: date
@@ -67,10 +42,6 @@ class UniverseRefreshResult:
 
 @dataclass(frozen=True, slots=True)
 class CollectionResult:
-    """What a collection job captured, as the collector's own daily summary.
-
-    The result type of :func:`collect_live` and of the EOD pipeline's collection stage.
-    """
 
     correlation_id: str
     session_id: str
@@ -79,7 +50,6 @@ class CollectionResult:
 
 @dataclass(frozen=True, slots=True)
 class AnalyticsResult:
-    """What an incremental-analytics (run_day) job derived for one as-of instant."""
 
     correlation_id: str
     trade_date: date
@@ -89,7 +59,6 @@ class AnalyticsResult:
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationResult:
-    """The Greek breaches an end-of-day reconciliation surfaced against the broker."""
 
     correlation_id: str
     trade_date: date
@@ -97,7 +66,6 @@ class ReconciliationResult:
 
     @property
     def is_clean(self) -> bool:
-        """True when every reconciled line agreed with the broker within tolerance."""
         return not self.breaches
 
 
@@ -110,17 +78,6 @@ def refresh_universe(
     correlation_id: str,
     persist: bool = True,
 ) -> UniverseRefreshResult:
-    """Materialize the day's instrument masters and persist them to the raw layer.
-
-    The universe plane owns the resolution of a broker chain into masters; this job
-    orchestrates persisting the resolved masters for the trade date and emitting the
-    structured trace. The masters are passed in already resolved (dependency
-    injection — the resolver, like the broker, is a caller-supplied input), written
-    through A's append-only ``instrument_master`` table, which is idempotent on the
-    instrument key, so a re-run of the refresh re-asserts the same masters rather than
-    duplicating them. Returns the masters so the analytics job downstream uses the
-    exact set this refresh published.
-    """
     log = _LOGGER.bind(
         correlation_id=correlation_id,
         job="universe_refresh",
@@ -138,9 +95,6 @@ def refresh_universe(
     )
 
 
-# A driver pumps a wired collector's feed to completion: it subscribes the adapter, drives
-# the stream (a live async WS loop; a fake feed; or a replay source's pump), and surfaces any
-# reconnect to the collector. It is injected so the job is broker-agnostic and testable.
 FeedDriver = Callable[[RawCollector], None]
 
 
@@ -156,18 +110,6 @@ def collect_live(
     correlation_id: str,
     metrics: OrchestrationMetrics | None = None,
 ) -> CollectionResult:
-    """Capture one collection session through the one unified collector and record its metric.
-
-    Wraps the injected push ``adapter`` with :class:`collectors.SequenceStamping` (so every
-    tick gets the stable per-(instrument, field) ordinal the content-addressed id needs),
-    builds the single :class:`collectors.RawCollector` over the store, subscribes, and hands
-    the collector to the injected ``drive`` callable that pumps the feed to completion. The
-    ``session_id`` is the correlation handle: it is stable across restarts (so a restart
-    resumes the same session, not a fresh one, and the collector reloads its already-written
-    ids) and it is the id the downstream analytics run carries, which links a session to the
-    jobs it fed. Bumps the ``events_collected_total`` counter by the observations captured,
-    labeled by underlying. Returns the collector's daily summary.
-    """
     log = _LOGGER.bind(
         correlation_id=correlation_id,
         job="collection",
@@ -206,12 +148,6 @@ def _record_collection_metrics(
     trade_date: date,
     metrics: OrchestrationMetrics,
 ) -> None:
-    """Increment the per-underlying event counter from a session's persisted events.
-
-    Reads the day's observations back off the raw layer and counts them per underlying, so the
-    ``events_collected_total`` counter is labeled by underlying rather than lumped into one
-    opaque total. Gap meta-events are not observations and are not counted.
-    """
     per_underlying: dict[str, int] = {}
     for event in replay_day(store, trade_date):
         if event.session_id == summary.session_id and is_observation(event.field_name):
@@ -236,21 +172,6 @@ def run_incremental_analytics(
     metrics: OrchestrationMetrics | None = None,
     persist: bool = True,
 ) -> AnalyticsResult:
-    """Replay the day's raw events through the actor and record the analytics metrics.
-
-    This is the orchestration wrapper around ``actor.run_day``'s compute: it replays
-    the stored raw events for the date, runs ``actor.run_analytics`` over them (one
-    code path with live), times the run against the injected ``clock`` and observes it
-    on the ``scenario_run_seconds`` histogram, derives the stale-quote ratio and the
-    forward/solver failure counts from the same events, and persists. The
-    ``correlation_id`` is the collector session's id, so the actor's
-    ``actor.run_day.*`` log lines and this job's lines share it — the end-to-end
-    trace. Returns the :class:`actor.ActorOutputs` plus the measured run time.
-
-    ``clock`` is any object with a ``now() -> datetime`` (the injected
-    :class:`connectivity.Clock`); the run is timed against it so nothing here reads a
-    wall clock.
-    """
     log = _LOGGER.bind(
         correlation_id=correlation_id,
         job="analytics",
@@ -308,17 +229,6 @@ def _record_analytics_metrics(
     calc_ts: datetime,
     metrics: OrchestrationMetrics,
 ) -> None:
-    """Derive the stale-quote and solver-failure metrics for a run.
-
-    Rebuilds the snapshot batch the actor built (the same pure ``build_snapshots`` over
-    the same observed events) to read the usable/total split per underlying for the
-    stale-quote gauge. A solver failure is a usable option quote that produced no IV
-    point — the actor drops an unconverged solve. Both are counted per underlying using
-    each instrument's master (the key→instrument map the job was already handed) rather
-    than parsing the canonical key, so the counters move on exactly the events the spec
-    names. The forward-failure counter is fed separately, where the per-maturity failure
-    is actually observed (see :func:`record_forward_failure`).
-    """
     instrument_by_key = {master.instrument_key: master.instrument for master in masters}
     observations = tuple(event for event in events if is_observation(event.field_name))
     instruments = list(instrument_by_key.values())
@@ -335,7 +245,6 @@ def _record_analytics_metrics(
 
 
 def _record_stale_ratio(batch: SnapshotBatch, metrics: OrchestrationMetrics) -> None:
-    """Set the stale-quote gauge per underlying from the snapshot batch's verdicts."""
     total: dict[str, int] = {}
     usable: dict[str, int] = {}
     for assessed in batch.assessed:
@@ -354,13 +263,6 @@ def _record_solver_failures(
     instrument_by_key: dict[str, InstrumentKey],
     metrics: OrchestrationMetrics,
 ) -> None:
-    """Bump the solver-failure counter per underlying: usable option quotes with no IV.
-
-    A usable option snapshot that did not yield an IV point is a solver non-convergence.
-    Counting the gap between usable option quotes and emitted IV points per underlying
-    gives the solver-failure count without re-running the solver here. Underlyings come
-    from the instrument master, not from parsing the canonical key.
-    """
     iv_underlyings: dict[str, int] = {}
     for point in outputs.iv_points:
         instrument = instrument_by_key.get(point.contract_key)
@@ -385,13 +287,6 @@ def _record_solver_failures(
 def record_forward_failure(
     metrics: OrchestrationMetrics, underlying: str, *, count: int = 1
 ) -> None:
-    """Bump the forward-failure counter for an underlying by ``count``.
-
-    Exposed as a named entry point because a forward failure is detected where the
-    forward is built (a maturity with no usable call/put pair), which the actor
-    swallows internally; the reconstruction/replay layer that does see the per-maturity
-    failure calls this to register it. Kept here so the one counter has one mutator.
-    """
     metrics.forward_failures.labels(underlying=underlying).inc(count)
 
 
@@ -402,15 +297,6 @@ def reconcile_end_of_day(
     trade_date: date,
     correlation_id: str,
 ) -> ReconciliationResult:
-    """Reconcile computed risk lines against broker Greeks and surface the breaches.
-
-    The end-of-day risk-vs-broker check: for each line that has a matching broker row
-    (joined on contract key), run D's :func:`risk.reconcile` and collect every Greek
-    that disagreed beyond tolerance. A line with no broker row is skipped (the broker
-    did not return it — not a disagreement). The result is clean when nothing breached;
-    the breaches name the exact contract and Greek, so an operator sees which position
-    to investigate. Pure over its inputs — no store, no clock.
-    """
     log = _LOGGER.bind(
         correlation_id=correlation_id,
         job="reconciliation",

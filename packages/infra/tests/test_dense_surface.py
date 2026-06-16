@@ -1,12 +1,3 @@
-"""Tests for ``reconstruct_dense_surface`` (the blueprint's reconstructed surface grid).
-
-Oracle, never the code under test: the raw-SVI total variance
-``w(k) = a + b(rho*(k-m) + sqrt((k-m)^2 + sigma^2))`` (Eq 20) computed by hand here, and the
-calendar-consistent cross-maturity rule ``w`` is linear *in variance* between bracketing slices
-(Eq 22). Two slices with known parameters let us pin both the per-slice sampling and the
-mid-maturity interpolation; a flagged slice pins the degeneracy passthrough.
-"""
-
 from __future__ import annotations
 
 import math
@@ -19,7 +10,6 @@ from fixtures.records import EXPIRY, SNAPSHOT_TS, make_stamp
 
 
 def _svi_w(k: float, a: float, b: float, rho: float, m: float, sigma: float) -> float:
-    """Raw-SVI total variance (Eq 20) — the independent oracle."""
     x = k - m
     return a + b * (rho * x + math.sqrt(x * x + sigma * sigma))
 
@@ -54,9 +44,8 @@ def _slice(
     )
 
 
-# Two clean slices with known parameters (ATM vertex w(0) = a + b*sigma at m = 0).
-_P1 = dict(a=0.04, b=0.10, rho=-0.30, m=0.0, sigma=0.20)  # T = 0.25
-_P2 = dict(a=0.06, b=0.12, rho=-0.30, m=0.0, sigma=0.20)  # T = 1.00
+_P1 = dict(a=0.04, b=0.10, rho=-0.30, m=0.0, sigma=0.20)
+_P2 = dict(a=0.06, b=0.12, rho=-0.30, m=0.0, sigma=0.20)
 
 
 def test_grid_shape_and_axes() -> None:
@@ -65,13 +54,12 @@ def test_grid_shape_and_axes() -> None:
     )
     assert surface is not None
     assert surface.log_moneyness == pytest.approx([-0.25, -0.125, 0.0, 0.125, 0.25])
-    assert surface.maturity_years == pytest.approx([0.25, 0.625, 1.0])  # linspace(T_lo, T_hi)
+    assert surface.maturity_years == pytest.approx([0.25, 0.625, 1.0])
     assert len(surface.implied_vol) == 3 and all(len(row) == 5 for row in surface.implied_vol)
     assert surface.model_version == "svi-test"
 
 
 def test_endpoint_rows_are_each_slice_sampled() -> None:
-    # At a fitted maturity the row is exactly that slice's curve: IV(k) = sqrt(w(k)/T).
     surface = reconstruct_dense_surface(
         [_slice(0.25, **_P1), _slice(1.0, **_P2)], n_moneyness=5, n_maturities=3
     )
@@ -82,8 +70,6 @@ def test_endpoint_rows_are_each_slice_sampled() -> None:
 
 
 def test_mid_maturity_interpolates_linearly_in_variance() -> None:
-    # Eq 22: the 0.625y row (midway between 0.25 and 1.0) is the variance midpoint, NOT the IV
-    # midpoint — w_mid = (w1 + w2)/2, then IV = sqrt(w_mid / T).
     surface = reconstruct_dense_surface(
         [_slice(0.25, **_P1), _slice(1.0, **_P2)], n_moneyness=5, n_maturities=3
     )
@@ -94,8 +80,6 @@ def test_mid_maturity_interpolates_linearly_in_variance() -> None:
 
 
 def test_degenerate_maturities_are_flagged_not_hidden() -> None:
-    # An arb-breaching slice is reported in degenerate_maturity_years (blueprint: flag, never
-    # silently serve as clean); the clean slice is not.
     surface = reconstruct_dense_surface(
         [_slice(0.25, **_P1), _slice(1.0, **_P2, arb_free=False)], n_moneyness=5, n_maturities=3
     )
@@ -104,14 +88,11 @@ def test_degenerate_maturities_are_flagged_not_hidden() -> None:
 
 
 def test_fewer_than_two_slices_is_not_a_surface() -> None:
-    # A single slice is a smile, not a surface — the caller falls back to its sparse view.
     assert reconstruct_dense_surface([_slice(0.25, **_P1)]) is None
     assert reconstruct_dense_surface([]) is None
 
 
 def test_non_positive_maturity_slices_are_dropped() -> None:
-    # An expired/same-day slice (T <= 0) cannot be annualized and is excluded; with only one
-    # positive-maturity slice left, there is no surface.
     assert (
         reconstruct_dense_surface([_slice(0.0, **_P1), _slice(0.25, **_P2)]) is None
     )

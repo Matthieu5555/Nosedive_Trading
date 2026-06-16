@@ -1,14 +1,3 @@
-"""The unified triage layer: both quality planes collapse into one shape and one rule.
-
-Uses real ``QcResult`` rows from the actual checks (so the specificity that must survive
-the merge is the specificity the checks really emit) and a real validation outcome, then
-pins the three-source discriminant (``qc`` / ``validation`` / ``anomaly``), the cross-
-plane worst-first ordering, the offender-naming headline, the single escalation policy,
-and the determinism a stored table depends on.
-
-Persistence of the unified record through the storage port lives in ``test_seam_triage.py``.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -53,7 +42,6 @@ BASELINE = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21
 
 
 def _surface_fail() -> QcResult:
-    # A surface-fit fail carries severity "warning" and names the failing maturity.
     fit = SliceFit(
         underlying="AAPL",
         maturity_years=1.0,
@@ -74,7 +62,6 @@ def _surface_fail() -> QcResult:
 
 
 def _calendar_fail() -> QcResult:
-    # A calendar-sanity fail carries severity "critical".
     violation = CalendarViolation(
         k=0.0, maturity_short=0.25, maturity_long=0.5, w_short=0.05, w_long=0.04
     )
@@ -84,8 +71,6 @@ def _calendar_fail() -> QcResult:
 
 
 def _anomaly_fail() -> ValidationOutcome:
-    # value 40 against the hand-scaled baseline -> robust z 5.5 -> FAIL. A metric-anomaly
-    # flag, so its triage source is "anomaly".
     return run_validation(
         run_id=RUN_ID,
         underlying="AAPL",
@@ -97,8 +82,6 @@ def _anomaly_fail() -> ValidationOutcome:
 
 
 def _validation_fail() -> ValidationOutcome:
-    # A non-anomaly validation check (a structural/cross-field flag): its reason_code is
-    # NOT metric_anomaly, so its triage source is "validation", not "anomaly".
     check = ValidationCheck(
         check="schema_consistency",
         status=ValidationStatus.FAIL,
@@ -118,7 +101,6 @@ def _validation_fail() -> ValidationOutcome:
 
 
 def test_triage_from_qc_drops_passes_and_names_the_offender() -> None:
-    # A passing surface fit alongside a failing one: only the failure becomes a row.
     good = SliceFit(
         underlying="AAPL",
         maturity_years=0.5,
@@ -142,21 +124,12 @@ def test_triage_from_qc_drops_passes_and_names_the_offender() -> None:
     row = records[0]
     assert row.source == "qc"
     assert row.status == STATUS_FAIL
-    # The merge must not lose the named offender: the failing maturity is in the row.
     assert "failing_maturity" in row.target_key
     assert "surface_fit_error" in row.detail
-    # The underlying is recovered for partitioning, from the "AAPL@1" target key.
     assert row.underlying == "AAPL"
 
 
 def test_triage_rows_for_a_shared_offender_have_distinct_keys_per_underlying() -> None:
-    # Regression: two underlyings whose calendar_sanity fails at the SAME offending maturity.
-    # The triage target_key names that shared maturity (``failing_maturity_short`` outranks
-    # ``underlying`` in the offender-naming order), so keying triage rows only on
-    # (run, source, name, target_key) collapsed both names into ONE duplicate-key write — the
-    # "appears more than once in one write" failure seen live once the capture widened to the
-    # full term structure across the whole basket. The underlying must scope the key so both
-    # distinct operator rows survive, while target_key still names the shared offender.
     shared = CalendarViolation(
         k=0.0,
         maturity_short=0.049315068493150684,
@@ -174,16 +147,13 @@ def test_triage_rows_for_a_shared_offender_have_distinct_keys_per_underlying() -
 
     records = triage_from_qc(report)
     assert len(records) == 2
-    # Both rows name the SAME offending maturity (the specificity rule is preserved) ...
     assert all("0.049315" in record.target_key for record in records)
     assert {record.underlying for record in records} == {"AAA", "BBB"}
-    # ... yet their primary keys are DISTINCT, so a single write cannot collide.
     keys = [primary_key_of("triage_records", record) for record in records]
     assert len(set(keys)) == 2, f"triage rows collide on a shared offender: {keys}"
 
 
 def test_anomaly_flag_lands_under_source_anomaly() -> None:
-    # The rolling-baseline plane: a metric_anomaly flag is discriminated as "anomaly".
     records = triage_from_validation(_anomaly_fail())
     assert len(records) == 1
     assert records[0].source == "anomaly"
@@ -192,7 +162,6 @@ def test_anomaly_flag_lands_under_source_anomaly() -> None:
 
 
 def test_non_anomaly_validation_flag_lands_under_source_validation() -> None:
-    # A validation check whose reason is not metric_anomaly is the "validation" source.
     records = triage_from_validation(_validation_fail())
     assert len(records) == 1
     assert records[0].source == "validation"
@@ -200,16 +169,11 @@ def test_non_anomaly_validation_flag_lands_under_source_validation() -> None:
 
 
 def test_build_triage_carries_all_three_sources_with_one_shape() -> None:
-    # The headline collapse: qc + validation + anomaly all land in one list of one shape,
-    # each with the correct source discriminant. (C2 test surface.)
     qc_report = build_report([_calendar_fail()], run_id=RUN_ID, run_ts=RUN_TS)
     records = build_triage(qc_report=qc_report, validation=_anomaly_fail())
-    # The anomaly outcome only carries an anomaly row; add the validation-source one too.
     records = (*records, *triage_from_validation(_validation_fail()))
     sources = {r.source for r in records}
     assert sources == {"qc", "validation", "anomaly"}
-    # One persisted shape: every row is the same TriageRecord, exposing one identical
-    # column set — no second shape for a reporting layer to reconcile.
     expected_cols = (
         "detail",
         "name",
@@ -230,14 +194,12 @@ def test_build_triage_carries_all_three_sources_with_one_shape() -> None:
 def test_build_triage_combines_planes_worst_first() -> None:
     qc_report = build_report([_surface_fail(), _calendar_fail()], run_id=RUN_ID, run_ts=RUN_TS)
     records = build_triage(qc_report=qc_report, validation=_anomaly_fail())
-    # Three failures across two planes, all in one list.
     assert len(records) == 3
     assert {r.source for r in records} == {"qc", "anomaly"}
-    # Critical-severity fails sort ahead of the warning-severity one.
     rank = {"critical": 0, "warning": 1, "info": 2}
     severities = [r.severity for r in records]
     assert severities == sorted(severities, key=lambda s: rank[s])
-    assert records[-1].severity == "warning"  # the surface fail lands last
+    assert records[-1].severity == "warning"
 
 
 def test_build_triage_is_deterministic() -> None:
@@ -253,7 +215,6 @@ def test_escalation_pages_on_critical_fail() -> None:
 
 
 def test_escalation_pages_on_anomaly_fail() -> None:
-    # An anomaly FAIL is page-worthy even with no QC failure at all.
     records = build_triage(validation=_anomaly_fail())
     assert escalation_level(records) == ESCALATION_PAGE
 

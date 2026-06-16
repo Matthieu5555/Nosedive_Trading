@@ -1,11 +1,3 @@
-"""Typed CP REST account wire models — alias mapping, coercion, and parse-level row skips.
-
-Mirrors ``test_cp_rest_wire.py``: the wire layer's job is the field-alias mapping (``avgCost`` →
-``avg_cost``, ``cashbalance`` → ``cash_balance``, ``trade_time_r`` → ``trade_time_ms``) and the
-body-shape guards (a non-list / non-mapping body degrades to empty). Row-level rejection of a
-malformed row is the collector's job (it propagates the ``ValidationError``), pinned here too.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -26,7 +18,7 @@ def test_position_row_maps_broker_aliases_onto_house_names() -> None:
          "currency": "USD", "contractDesc": "X"}
     )
     assert row.conid == 42
-    assert row.position == -3.0  # signed, untouched
+    assert row.position == -3.0
     assert row.avg_cost == 9.2
     assert row.market_price == 9.31
     assert row.market_value == -27.9
@@ -34,7 +26,6 @@ def test_position_row_maps_broker_aliases_onto_house_names() -> None:
 
 
 def test_position_row_accepts_a_string_numeric_but_rejects_a_non_numeric() -> None:
-    # pydantic coerces a numeric string the broker may send; a non-numeric is a rejected row.
     ok = PositionRow.model_validate(
         {"conid": 1, "position": "2", "avgCost": "9.2", "mktPrice": "9.3", "mktValue": "18.6"}
     )
@@ -60,7 +51,7 @@ def test_trade_row_maps_venue_time_alias_and_keeps_side_raw() -> None:
          "trade_time_r": 1_780_068_599_000, "trade_time": "t"}
     )
     assert row.execution_id == "e1"
-    assert row.side == "B"  # raw — the collector normalizes to BUY/SELL
+    assert row.side == "B"
     assert row.trade_time_ms == 1_780_068_599_000
 
 

@@ -1,12 +1,3 @@
-"""The daily collector summary: counts, missing intervals, reconnects, coverage.
-
-A pure function over the events a session persisted plus a little session metadata, so
-it is checkable against a hand-derived expected summary independent of the collector
-that produced the events. Observations and gap meta-events are told apart by the
-reserved field prefix; coverage is measured against the instruments that were actually
-subscribed.
-"""
-
 from __future__ import annotations
 
 from collections import defaultdict
@@ -23,12 +14,6 @@ from .notices import ENTITLEMENT, PACING, FeedNotice
 
 @dataclass(frozen=True, slots=True)
 class CollectorSummary:
-    """What one collection session captured, in numbers.
-
-    ``event_count`` counts real observations (not gap meta-events); ``gap_count`` is
-    the recorded missing intervals; ``coverage_ratio`` is the fraction of subscribed
-    instruments that produced at least one observation.
-    """
 
     session_id: str
     trade_date: date
@@ -43,7 +28,6 @@ class CollectorSummary:
 
     @property
     def coverage_ratio(self) -> float:
-        """Fraction of subscribed instruments that produced at least one observation."""
         if self.subscribed_count == 0:
             return 0.0
         return self.covered_count / self.subscribed_count
@@ -58,7 +42,6 @@ def summarize_session(
     reconnect_count: int,
     notices: Sequence[FeedNotice] = (),
 ) -> CollectorSummary:
-    """Summarize a session's persisted events into a :class:`CollectorSummary`."""
     per_field: dict[str, int] = defaultdict(int)
     covered: set[str] = set()
     gap_count = 0

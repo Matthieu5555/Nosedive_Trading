@@ -1,11 +1,3 @@
-"""Two-gates separation: this package cannot transmit an order or read a credential.
-
-The single most important property of the paper booking chain is that it *cannot send*. The
-password-gated booking commit (which mints fills) and the live broker send (3B) are separate,
-later gates — neither lives here. This test is that promise made falsifiable: if a transmit or
-credential symbol ever becomes importable from ``algotrading.execution``, it fails.
-"""
-
 from __future__ import annotations
 
 import importlib
@@ -17,7 +9,6 @@ import algotrading.execution as execution
 from algotrading.core.provenance import source_ref, stamp
 from algotrading.execution import Fill, FillError
 
-# Substrings that would betray a send path or a credential read sneaking into the layer.
 _FORBIDDEN = (
     "transmit",
     "place_order",
@@ -45,7 +36,6 @@ def test_the_package_exports_no_transmit_or_credential_symbol() -> None:
 
 
 def test_no_submodule_exposes_a_transmit_or_credential_symbol() -> None:
-    # Walk every submodule so a send path cannot hide one import deep.
     for info in pkgutil.walk_packages(execution.__path__, prefix="algotrading.execution."):
         module = importlib.import_module(info.name)
         offenders = {
@@ -57,7 +47,6 @@ def test_no_submodule_exposes_a_transmit_or_credential_symbol() -> None:
 
 
 def test_fills_are_paper_only_at_the_type_level() -> None:
-    # The mode pin is the structural guarantee: a non-paper fill is unconstructable.
     ts = datetime(2026, 6, 12, 15, 30, tzinfo=UTC)
     good_stamp = stamp(
         calc_ts=ts,

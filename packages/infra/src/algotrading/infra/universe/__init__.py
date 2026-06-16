@@ -1,18 +1,3 @@
-"""The instrument universe: resolve broker chains, materialize masters, serve lookups.
-
-Import the resolution pipeline (:func:`resolve_chain`, :func:`build_instrument_masters`,
-:func:`materialize_universe`), the read-side :class:`UniverseService` with its four
-accessors, the one chain-selection policy (:func:`plan_chain` / :func:`select_capture_keys`
-over a single :class:`ChainSelection`), and the resolution/lookup errors from here.
-
-This package carries two instrument models that coexist by design (ADR 0023). The
-relocated chain-selection policy + masters above are the analytics-facing universe. The
-vendored M5 instrument model (``contracts.py`` / ``discovery.py`` — :class:`Underlying`,
-:class:`OptionContract`, :func:`instrument_key`, :func:`normalize_option_params`, …,
-re-exported below) is what the **kept** Saxo/Deribit broker leaves import — ADR 0023 keeps
-Vincent's adapters as survivors, so this is a permanent export, not a transitional one.
-"""
-
 from __future__ import annotations
 
 from .calendar_resolver import CalendarResolver
@@ -34,8 +19,6 @@ from .chain_planning import (
     select_strikes_delta_band,
     tenor_target_dates,
 )
-
-# --- re-exports of the vendored M5 instrument model (kept per ADR 0023; Saxo/Deribit ride it) ---
 from .contracts import (  # noqa: E402
     InstrumentKeyError,
     OptionContract,

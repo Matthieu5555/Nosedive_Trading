@@ -1,21 +1,3 @@
-"""American option pricing via a QuantLib binomial lattice (Leisen-Reimer).
-
-QuantLib does the genuine heavy lifting here — the lattice and the early-exercise
-logic — and this module is the typed glue that maps :class:`pricing.state.PricingState`
-onto it and back, holding the same conventions as the European engine. The
-Leisen-Reimer tree (defined for an odd step count) converges far faster and more
-smoothly than Cox-Ross-Rubinstein for vanilla options, so the no-early-exercise
-limit recovers the European price tightly. Price, delta, gamma, and theta come
-straight from the tree; vega and rho are central finite differences (the binomial
-engine does not expose them). The Bjerksund-Stensland closed-form approximation is
-offered as an optional fast price path (:func:`bjerksund_stensland_price`),
-cross-checked against the lattice in tests.
-
-The valuation date is a fixed constant, never the wall clock: the price depends
-only on the year fraction to expiry, which is reconstructed from
-``maturity_years`` under Actual/365, so two runs of the same state are identical.
-"""
-
 from __future__ import annotations
 
 import math
@@ -25,28 +7,22 @@ import QuantLib as ql
 from .black76 import _discounted_intrinsic
 from .state import PriceGreeks, PricingState
 
-# A fixed anchor date. Only the span to expiry matters; the absolute date does not.
 _VALUATION_DATE = ql.Date(15, 1, 2025)
 _DAY_COUNT = ql.Actual365Fixed()
 _CALENDAR = ql.NullCalendar()
 
-# Odd, as the Leisen-Reimer tree requires. 513 clears a node-placement resonance
-# seen near the strike at a few hundred steps (a ~1-cent error at 257) and prices
-# vanilla American options to ~1e-6 of the European twin in the no-exercise limit.
 _DEFAULT_STEPS = 513
-_VEGA_BUMP = 1e-3  # in vol units; vega is reported per 1.00 of vol
-_RHO_BUMP = 1e-4   # in rate units; rho holds the dividend yield fixed
+_VEGA_BUMP = 1e-3
+_RHO_BUMP = 1e-4
 
 
 def _expiry_for(maturity_years: float) -> ql.Date:
-    """The expiry date whose Actual/365 fraction reproduces ``maturity_years``."""
     return _VALUATION_DATE + max(1, int(round(maturity_years * 365.0)))
 
 
 def _build(
     state: PricingState, rate: float, dividend_yield: float, *, fast: bool, steps: int
 ) -> tuple[ql.VanillaOption, ql.SimpleQuote, ql.SimpleQuote, ql.SimpleQuote]:
-    """Assemble the QuantLib option and its live spot/vol/rate quotes."""
     ql.Settings.instance().evaluationDate = _VALUATION_DATE
     spot_quote = ql.SimpleQuote(state.spot)
     vol_quote = ql.SimpleQuote(state.volatility)
@@ -76,7 +52,6 @@ def _build(
 
 
 def _central_difference(option: ql.VanillaOption, quote: ql.SimpleQuote, bump: float) -> float:
-    """Central difference of the option NPV in one quote, restoring the base value."""
     base = quote.value()
     quote.setValue(base + bump)
     up = option.NPV()
@@ -87,19 +62,11 @@ def _central_difference(option: ql.VanillaOption, quote: ql.SimpleQuote, bump: f
 
 
 def price_american(state: PricingState, *, steps: int = _DEFAULT_STEPS) -> PriceGreeks:
-    """Price one American option and its Greeks on a Leisen-Reimer lattice.
-
-    ``steps`` is the number of binomial time steps (forced odd, as Leisen-Reimer
-    requires); more steps trade run time for a finer early-exercise boundary.
-    Degenerate states (no time or no vol) collapse to the discounted intrinsic, the
-    same total-function behavior as the European engine, since there is no
-    early-exercise value without time or vol.
-    """
     if state.maturity_years <= 0.0 or state.volatility <= 0.0:
         return _discounted_intrinsic(state)
 
     rate = -math.log(state.discount_factor) / state.maturity_years
-    dividend_yield = rate - state.carry  # b == r - q  =>  q == r - b
+    dividend_yield = rate - state.carry
     option, _spot_quote, vol_quote, rate_quote = _build(
         state, rate, dividend_yield, fast=False, steps=steps
     )
@@ -111,15 +78,8 @@ def price_american(state: PricingState, *, steps: int = _DEFAULT_STEPS) -> Price
         delta=option.delta(),
         gamma=option.gamma(),
         vega=vega,
-        # QuantLib theta is dV/dt per year (time decay), matching our convention.
         theta=option.theta(),
         rho=rho,
-        # Second-order cross/convexity Greeks (vanna/volga/charm) and RT-Vega (the
-        # running-time vega vega/sqrt(T), ADR 0050) are a closed-form Black-76 European
-        # feature; the lattice does not expose them and this lane does not finite-difference
-        # them off the tree. Left explicitly 0.0 — a documented gap, not a silent zero — so
-        # an American line never reports a spurious value. (Carry to the American path is
-        # out of this lane's scope.)
         vanna=0.0,
         volga=0.0,
         charm=0.0,
@@ -128,12 +88,6 @@ def price_american(state: PricingState, *, steps: int = _DEFAULT_STEPS) -> Price
 
 
 def bjerksund_stensland_price(state: PricingState) -> float:
-    """Fast Bjerksund-Stensland closed-form approximation of the American price.
-
-    The optional fast path: an analytic approximation that avoids building a
-    lattice. Returns the price only; callers wanting Greeks use the lattice engine.
-    Cross-checked against the lattice in the test suite.
-    """
     if state.maturity_years <= 0.0 or state.volatility <= 0.0:
         return _discounted_intrinsic(state).price
     rate = -math.log(state.discount_factor) / state.maturity_years

@@ -1,43 +1,3 @@
-"""The provenance stamp every derived record carries.
-
-A stamp answers "where did this number come from?" in one object: which source
-records fed it, when they happened, when it was computed, which code version and
-which config produced it. It is the mechanism behind two platform promises —
-determinism (the same inputs always give the same stamp) and lineage (a derived
-row points back at its raw inputs).
-
-A source is named by a :class:`SourceRecordRef`: its table plus its *full* primary
-key, not a bare id. Raw events are identified by ``(session_id, event_id)``, so a
-stamp that stored only ``event_id`` would conflate two sessions that happen to
-share an event id. Carrying the whole key lets lineage resolve to exactly one row,
-and lets a stamp point at any table — a snapshot, a forward point — not just raw
-events.
-
-Three design choices make the determinism real rather than hoped-for:
-
-* The source-record list and source-timestamp list are sorted into a canonical
-  order when the stamp is built. So feeding the same sources in a different order
-  yields a byte-identical stamp. Order of arrival is an accident of plumbing, not
-  part of the result, so it must not change the result.
-
-* A reference's key components are stored as canonical strings (timestamps as UTC
-  ISO, everything else via ``str``). That keeps a reference JSON-serializable for
-  storage and keeps the content hash independent of how a key element happened to
-  be typed in memory.
-
-* The content hash is SHA-256 of canonical JSON, not Python's salted ``hash()``,
-  so it is identical across processes and machines (see ``config`` for the same
-  reasoning).
-
-A stamp built through :func:`stamp` is valid by construction. A stamp that was
-hand-built or mutated is not, so :func:`validate_stamp` is the gate that proves a
-stamp is trustworthy — most importantly, that its stored hash still matches its
-contents.
-
-:func:`code_version` is the companion helper that reads the version of the
-installed distribution a producer should stamp onto its outputs.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -54,15 +14,10 @@ _FALLBACK_VERSION = "0.0.0+unknown"
 
 
 class ProvenanceError(Exception):
-    """A stamp was asked to be built from invalid inputs (e.g. naive datetimes)."""
+    pass
 
 
 class ProvenanceValidationError(ProvenanceError):
-    """An existing stamp failed validation: ill-formed, or its hash does not match.
-
-    Carries the offending field, the value that triggered it, and a plain-language
-    reason, so a rejection says exactly what was wrong with the stamp.
-    """
 
     def __init__(self, field: str, value: object, reason: str) -> None:
         self.field = field
@@ -73,13 +28,6 @@ class ProvenanceValidationError(ProvenanceError):
 
 @dataclass(frozen=True, slots=True)
 class SourceRecordRef:
-    """A typed pointer to one source record: its table and full primary key.
-
-    ``primary_key`` is the source table's complete key tuple, in the registry's
-    key order, with each component reduced to its canonical string form (see
-    :func:`canonical_primary_key`). Storing the whole key — not one field of it —
-    is what lets lineage resolve to exactly the right row.
-    """
 
     table: str
     primary_key: tuple[str, ...]
@@ -87,34 +35,6 @@ class SourceRecordRef:
 
 @dataclass(frozen=True, slots=True)
 class ProvenanceStamp:
-    """Immutable record of how a derived value was produced.
-
-    Attributes:
-        calc_ts: when the computation ran (timezone-aware).
-        code_version: version string of the code that produced the value.
-        config_hashes: per-bundle config hashes — a mapping ``{bundle: hash}`` (the
-            blueprint manifest form, e.g. ``{"universe": …, "qc": …, "pricing": …,
-            "scenarios": …}``), not a single folded composite. Carrying the dict says
-            *which* bundle changed, and lets a record be reproduced from its exact
-            settings (ADR 0028).
-        source_records: typed references to the source records used, in canonical
-            order.
-        source_timestamps: timestamps of those sources, in canonical order.
-        stamp_hash: content hash of all of the above; the determinism handle.
-        as_of: the effective date the config was resolved *as of* — i.e. *which dated
-            config* the record was computed under (ADR 0028 / TARGET §0). ``None`` means
-            "current" (the config in force now, no as-of replay), so a record produced on
-            the live path is byte-identical to before this field existed: ``None`` is
-            **omitted** from the hash payload, never folded in as ``null``. A non-``None``
-            value (a replay of a past day) folds into ``stamp_hash``, so a record knows it
-            was computed under a *dated* config, closing the lineage gap the per-bundle
-            hash alone leaves open.
-
-    ``config_hashes`` is excluded from the dataclass ``__hash__`` (a ``Mapping`` is
-    unhashable) but kept in equality; the ``stamp_hash`` is the value handle, and it
-    *does* fold the config hashes in, so two stamps that differ only in config still
-    compare unequal.
-    """
 
     calc_ts: datetime
     code_version: str
@@ -126,24 +46,12 @@ class ProvenanceStamp:
 
 
 def _as_utc_iso(value: datetime) -> str:
-    """Render a timezone-aware datetime as a UTC ISO string for hashing.
-
-    Raises ``ProvenanceError`` on a naive datetime: a stamp with an ambiguous
-    time is worse than no stamp, so we refuse to build one.
-    """
     if value.tzinfo is None:
         raise ProvenanceError(f"naive datetime not allowed in a stamp: {value!r}")
     return value.astimezone(UTC).isoformat()
 
 
 def _canonical_component(value: object) -> str:
-    """Reduce one primary-key element to its canonical string form.
-
-    Timestamps become UTC ISO strings (and naive ones are refused, as everywhere
-    in a stamp); dates become ISO dates; everything else is stringified. The point
-    is that the same logical key always yields the same components, whether it was
-    just built in memory or read back out of storage.
-    """
     if isinstance(value, datetime):
         return _as_utc_iso(value)
     if isinstance(value, date):
@@ -152,32 +60,18 @@ def _canonical_component(value: object) -> str:
 
 
 def canonical_primary_key(values: tuple[object, ...]) -> tuple[str, ...]:
-    """Canonicalize a primary-key tuple to its string components.
-
-    Used both when a producer builds a :class:`SourceRecordRef` and when storage
-    resolves lineage, so the two agree on what a key "is" regardless of how its
-    elements are typed in memory.
-    """
     return tuple(_canonical_component(value) for value in values)
 
 
 def source_ref(table: str, *key_values: object) -> SourceRecordRef:
-    """Build a source reference from a table name and the source record's full key.
-
-    Pass the key fields in the table's registry key order, e.g.
-    ``source_ref("raw_market_events", session_id, event_id)``. Values are
-    canonicalized to strings so the reference round-trips through storage.
-    """
     return SourceRecordRef(table=table, primary_key=canonical_primary_key(key_values))
 
 
 def _ref_payload(ref: SourceRecordRef) -> dict[str, object]:
-    """The JSON-shaped, hash-stable form of one source reference."""
     return {"table": ref.table, "primary_key": list(ref.primary_key)}
 
 
 def _ref_sort_key(ref: SourceRecordRef) -> str:
-    """A total, deterministic ordering key for references (their canonical JSON)."""
     return canonical_dumps(_ref_payload(ref))
 
 
@@ -185,7 +79,6 @@ def _sorted_sources(
     source_records: tuple[SourceRecordRef, ...],
     source_timestamps: tuple[datetime, ...],
 ) -> tuple[tuple[SourceRecordRef, ...], tuple[datetime, ...]]:
-    """Put both source lists in canonical order, so input order cannot leak in."""
     return (
         tuple(sorted(source_records, key=_ref_sort_key)),
         tuple(sorted(source_timestamps)),
@@ -201,18 +94,6 @@ def _canonical_stamp_hash(
     source_timestamps: tuple[datetime, ...],
     as_of: date | None = None,
 ) -> str:
-    """SHA-256 of the canonical JSON of a stamp's contents.
-
-    The source lists are expected already in canonical order (see
-    :func:`_sorted_sources`); this function only renders and hashes them. The
-    per-bundle ``config_hashes`` are folded in as a sorted mapping (``sort_keys``
-    canonicalizes the nested dict), so the stamp hash moves when any bundle moves.
-
-    ``as_of`` is folded in **only when not ``None``**: a current-config record omits the
-    key entirely, so its hash is byte-identical to one produced before the field existed
-    (the zero-churn contract). A dated replay carries ``"as_of": <ISO date>`` and so gets
-    a distinct hash — a record under a *dated* config can never collide with the live one.
-    """
     payload = {
         "calc_ts": _as_utc_iso(calc_ts),
         "code_version": code_version,
@@ -234,19 +115,6 @@ def stamp(
     source_timestamps: tuple[datetime, ...],
     as_of: date | None = None,
 ) -> ProvenanceStamp:
-    """Build a provenance stamp with a canonical, order-independent content hash.
-
-    ``config_hashes`` is the per-bundle ``{bundle: hash}`` mapping that shaped the
-    record (blueprint manifest form). ``as_of`` is the effective date the config was
-    resolved as of — ``None`` (the default) on the live path, a past date on a replay;
-    it records *which dated config* the record ran under and folds into ``stamp_hash``
-    only when set (see :func:`_canonical_stamp_hash`), so a current-config stamp is
-    byte-identical to one built before the field existed. The source references and
-    source timestamps are sorted into canonical order before anything is stored or
-    hashed, so the resulting stamp does not depend on the order the caller passed them
-    in. The stored mapping is copied into a plain ``dict`` so the stamp does not alias a
-    caller's mutable map.
-    """
     sorted_records, sorted_ts = _sorted_sources(source_records, source_timestamps)
     frozen_hashes = dict(config_hashes)
     stamp_hash = _canonical_stamp_hash(
@@ -277,16 +145,6 @@ def snapshot_stamp(
     source_records: tuple[SourceRecordRef, ...],
     as_of: date | None = None,
 ) -> ProvenanceStamp:
-    """Build a stamp for a record derived from **one snapshot**: every source shares one ts.
-
-    The common emission shape across the analytics chain (IV points, surface slices,
-    the projection grid, forward curve points): a derived record names many source rows,
-    all observed at the same snapshot timestamp. This helper pairs that single timestamp
-    with every reference and delegates to :func:`stamp`, so the result — including
-    ``stamp_hash`` — is byte-identical to hand-building the repeated timestamp tuple
-    (``stamp`` sorts its inputs either way; golden-pinned at the call sites). ``as_of``
-    threads through unchanged (``None`` on the live path; a past date on a replay).
-    """
     return stamp(
         calc_ts=calc_ts,
         code_version=code_version,
@@ -298,14 +156,6 @@ def snapshot_stamp(
 
 
 def validate_stamp(candidate: ProvenanceStamp) -> None:
-    """Reject a provenance stamp that is ill-formed or whose hash does not match.
-
-    A stamp built by :func:`stamp` always passes; this gate exists for stamps that
-    were hand-constructed, mutated, or read back from an untrusted source. The
-    load-bearing check is the last one: the stored ``stamp_hash`` must equal a
-    fresh recomputation from the stamp's own contents, so a tampered field cannot
-    pass unnoticed. Raises :class:`ProvenanceValidationError` on the first failure.
-    """
     if not isinstance(candidate, ProvenanceStamp):
         raise ProvenanceValidationError("stamp", candidate, "must be a ProvenanceStamp")
     if candidate.calc_ts.tzinfo is None:
@@ -355,12 +205,6 @@ def validate_stamp(candidate: ProvenanceStamp) -> None:
 
 
 def code_version(distribution: str) -> str:
-    """Return the installed version of ``distribution``, or a labelled fallback if absent.
-
-    Each caller passes its own distribution name (e.g. ``"algotrading-infra"``), so a
-    stored result records the exact code that produced it. A bare checkout where the
-    distribution is not installed yields a labelled fallback rather than failing silently.
-    """
     try:
         return metadata.version(distribution)
     except metadata.PackageNotFoundError:
@@ -372,18 +216,6 @@ _UNKNOWN_CODE_IDENTITY = "unknown"
 
 
 def code_identity() -> str:
-    """Return the VCS code identity: the commit SHA, suffixed ``-dirty`` if the tree is dirty.
-
-    ``code_version`` (the installed distribution version) is necessary but not sufficient
-    for reproducibility — a dirty tree or a same-version edit defeats it (ADR 0028). This
-    records the *exact* code: ``<sha>`` for a clean checkout, ``<sha>-dirty`` when there are
-    uncommitted changes. A non-repo or missing ``git`` yields ``"unknown"`` — a labelled
-    failure to record, not a silent pass.
-
-    It reads git via a subprocess, so it is the *run-time* code identity stamped onto a
-    run's manifest at the orchestration entrypoint — never inside :func:`stamp`, whose
-    output must stay byte-identical on replay regardless of the working tree.
-    """
     import subprocess
 
     try:

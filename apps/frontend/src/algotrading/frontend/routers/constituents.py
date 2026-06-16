@@ -1,14 +1,3 @@
-"""Constituent-list router: the index basket as it stood on a date (WS 1A).
-
-Resolves ``members(index, as_of)`` — the no-look-ahead point-in-time gate — and returns the
-historical basket ordered **price-first** (by the latest daily-bar close on or before
-``as_of``; names without a bar sort last). The ``as_of`` is passed straight through to the
-resolver; it is never defaulted to "today" and then applied to a past date (that would be
-look-ahead). The store opens read-only. A malformed ``as_of`` yields a labeled 400; an unknown
-index or a date before the index's first record yields an empty ``constituents`` list, never a
-500.
-"""
-
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -24,12 +13,6 @@ router = APIRouter(prefix="/api/constituents", tags=["constituents"])
 
 
 def _latest_close_by_underlying(bars: list[DailyBar], as_of: date) -> dict[str, float]:
-    """The most recent daily-bar close at or before ``as_of`` per underlying.
-
-    Bounding by ``as_of`` is the look-ahead gate on the *ordering* join: a future close must
-    never leak into a past as-of view. Names with no bar in the window are absent from the map
-    and sort last in the price-first order.
-    """
     latest: dict[str, tuple[date, float]] = {}
     for bar in bars:
         if bar.trade_date > as_of:
@@ -43,12 +26,6 @@ def _latest_close_by_underlying(bars: list[DailyBar], as_of: date) -> dict[str, 
 def _interval_for(
     rows: list[IndexConstituent], constituent: str, as_of: date
 ) -> IndexConstituent | None:
-    """The membership row whose half-open interval contains ``as_of`` for one name.
-
-    This is the same interval the resolver selected; reading it back lets the payload carry the
-    effective dates without changing the resolver's return shape. Among rows that contain the
-    date, the most recently-known one wins (the latest restatement), matching the resolver.
-    """
     candidates = [
         row
         for row in rows
@@ -65,13 +42,6 @@ def _interval_for(
 def get_constituents(
     ctx: CtxDep, as_of: AsOfDep, index: str | None = None
 ) -> JSONResponse:
-    """Return the point-in-time constituent basket for an index, price-first.
-
-    ``index`` defaults to the context default underlying only as a label fallback; ``as_of``
-    must be supplied for a historical view (it is passed verbatim to the resolver, never
-    defaulted to today for a past date). When ``as_of`` is omitted the basket is resolved as of
-    today's reconstruction date for a *current* view only.
-    """
     resolved_index = index or ctx.default_underlying
     as_of_date = as_of if as_of is not None else date.today()
 
@@ -109,8 +79,6 @@ def get_constituents(
             }
         )
 
-    # Price-first: highest latest-close first; names without a bar (None) sort last; ties broken
-    # by symbol so the order is deterministic.
     rows.sort(
         key=lambda r: (
             r["latest_close"] is None,

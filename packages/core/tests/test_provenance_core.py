@@ -1,10 +1,3 @@
-"""Provenance stamp: build/validate, order-independence, and the bake-off survival.
-
-The stamp is the determinism + lineage mechanism every derived record carries. These
-tests pin the three behaviours M1/M2/M3/M4 rely on: a stamp built by ``stamp`` always
-validates, source order never changes the hash, and a tampered stamp is rejected.
-"""
-
 from __future__ import annotations
 
 import os
@@ -46,20 +39,18 @@ def _two_source_stamp(order: str):
 
 
 def test_stamp_built_by_stamp_always_validates() -> None:
-    # The bake-off survival case: a stamp produced by the merged `stamp` validates.
     s = _two_source_stamp("forward")
-    validate_stamp(s)  # raises on failure; reaching here is the assertion
+    validate_stamp(s)
 
 
 def test_stamp_hash_is_independent_of_source_order() -> None:
-    # Order of arrival is plumbing, not result: the two stamps must be byte-identical.
     assert _two_source_stamp("forward").stamp_hash == _two_source_stamp("reversed").stamp_hash
 
 
 def test_naive_calc_ts_is_refused() -> None:
     with pytest.raises(ProvenanceError):
         stamp(
-            calc_ts=datetime(2026, 6, 5, 14, 30),  # naive
+            calc_ts=datetime(2026, 6, 5, 14, 30),
             code_version="v",
             config_hashes={"cfg": "c"},
             source_records=(source_ref("raw_market_events", "s", "e"),),
@@ -80,7 +71,6 @@ def test_tampered_field_breaks_validation() -> None:
     import dataclasses
 
     s = _two_source_stamp("forward")
-    # Same stored hash, mutated config — the recomputed hash no longer matches.
     tampered = dataclasses.replace(s, config_hashes={"cfg": "cfg-OTHER"})
     with pytest.raises(ProvenanceValidationError):
         validate_stamp(tampered)
@@ -91,14 +81,10 @@ def test_code_version_unknown_distribution_falls_back() -> None:
 
 
 def test_code_version_reads_installed_distribution() -> None:
-    # algotrading-core is installed editable in the gate env; its version is real.
     assert code_version("algotrading-core") == "0.1.0"
 
 
 def test_code_identity_returns_a_non_empty_label() -> None:
-    # The gate runs inside the git repo, so this is the commit SHA (optionally
-    # ``-dirty``); off a checkout without git it is the labelled ``"unknown"`` fallback,
-    # never empty. Either way it is a stable, non-empty record of the code that ran.
     from algotrading.core import code_identity
 
     identity = code_identity()
@@ -107,7 +93,6 @@ def test_code_identity_returns_a_non_empty_label() -> None:
 
 
 def test_stamp_hash_is_stable_across_processes() -> None:
-    # Cross-process stability (TESTING.md): the hash must not depend on PYTHONHASHSEED.
     expected = _two_source_stamp("forward").stamp_hash
     code = (
         "from datetime import UTC, datetime;"
@@ -131,11 +116,6 @@ def test_stamp_hash_is_stable_across_processes() -> None:
 
 
 def test_stamp_hash_matches_the_pinned_golden_digest() -> None:
-    # Golden-hash pin (M25): this exact digest was captured from the committed
-    # pre-`core.hashing` code (audit-fixes-batch1, 2026-06-12) over these fixed inputs.
-    # It freezes the canonical-JSON + SHA-256 bytes of the stamp hash, so routing the
-    # encoding through `core.hashing` is provably hash-neutral. If this moves, every
-    # persisted ProvenanceStamp would stop validating — revert, never regenerate.
     calc = datetime(2026, 6, 1, 16, 30, tzinfo=UTC)
     src = datetime(2026, 6, 1, 16, 0, tzinfo=UTC)
     refs = (
@@ -154,11 +134,7 @@ def test_stamp_hash_matches_the_pinned_golden_digest() -> None:
     )
 
 
-# -- as-of / effective-dated lineage (core-config-effective-dating, ADR 0028) ---------
-
-
 def _stamp_with(as_of):
-    """A one-source stamp identical in every input but ``as_of`` — the controlled variable."""
     return stamp(
         calc_ts=_CALC,
         code_version="algotrading-infra-0.1.0",
@@ -170,20 +146,15 @@ def _stamp_with(as_of):
 
 
 def test_as_of_is_recorded_on_the_stamp_and_validates() -> None:
-    # A replay stamps which dated config it ran under: the as_of is carried on the stamp
-    # and a stamp built with one validates (it is part of the canonical hash by construction).
     from datetime import date
 
     replayed = date(2026, 6, 10)
     s = _stamp_with(replayed)
     assert s.as_of == replayed
-    validate_stamp(s)  # raises on failure; reaching here is the assertion
+    validate_stamp(s)
 
 
 def test_as_of_folds_into_the_stamp_hash_only_when_set() -> None:
-    # Lineage discipline: a dated record can never collide with the live one — adding an
-    # as_of moves the hash. And "current" (None) is byte-identical to before the field
-    # existed: a None as_of omits the key, so its hash equals the no-arg default's.
     from datetime import date
 
     current = _stamp_with(None)
@@ -191,9 +162,8 @@ def test_as_of_folds_into_the_stamp_hash_only_when_set() -> None:
     other_day = _stamp_with(date(2026, 6, 11))
 
     assert current.as_of is None
-    assert dated.stamp_hash != current.stamp_hash  # the as_of key changes the canonical bytes
-    assert dated.stamp_hash != other_day.stamp_hash  # different days never collide
-    # None is the zero-churn path: explicit None == the no-arg default, byte for byte.
+    assert dated.stamp_hash != current.stamp_hash
+    assert dated.stamp_hash != other_day.stamp_hash
     default = stamp(
         calc_ts=_CALC,
         code_version="algotrading-infra-0.1.0",
@@ -205,22 +175,16 @@ def test_as_of_folds_into_the_stamp_hash_only_when_set() -> None:
 
 
 def test_tampered_as_of_breaks_validation() -> None:
-    # A stamp whose as_of is mutated without recomputing its hash is rejected — the dated
-    # config a record claims is part of its determinism handle, not free-floating metadata.
     import dataclasses
     from datetime import date
 
     s = _stamp_with(date(2026, 6, 10))
-    tampered = dataclasses.replace(s, as_of=date(2026, 6, 11))  # same stored hash, new date
+    tampered = dataclasses.replace(s, as_of=date(2026, 6, 11))
     with pytest.raises(ProvenanceValidationError):
         validate_stamp(tampered)
 
 
 def test_snapshot_stamp_equals_stamp_with_the_timestamp_repeated_per_source() -> None:
-    # snapshot_stamp is sugar for the one-snapshot emission shape (M31): every source
-    # shares one observation timestamp. The independent expectation is stamp() itself,
-    # called with the repeated-timestamp tuple written out by hand — the two must be
-    # equal field for field, including the byte-pinned stamp_hash.
     from algotrading.core import snapshot_stamp
 
     src = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)
@@ -248,8 +212,6 @@ def test_snapshot_stamp_equals_stamp_with_the_timestamp_repeated_per_source() ->
 
 
 def test_snapshot_stamp_with_no_sources_carries_no_timestamps() -> None:
-    # Degenerate emission (a record derived from zero source rows): the timestamp
-    # tuple must be empty, mirroring what every hand-rolled call site produced.
     from algotrading.core import snapshot_stamp
 
     src = datetime(2026, 6, 5, 9, 0, tzinfo=UTC)

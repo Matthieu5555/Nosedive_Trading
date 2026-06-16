@@ -1,19 +1,3 @@
-"""The local CP Gateway capture path (ADR 0024) — no OAuth enrolment, browser-login cookie.
-
-The counterpart of ``test_live_capture_spine`` for the cookie-session path the operator opts into
-with ``IBKR_CP_GATEWAY`` when the Self-Service OAuth portal is unavailable. Four obligations:
-
-* :func:`gateway_basket_source` returns ``None`` unless the opt-in flag is set (so the runner falls
-  through to the OAuth path / the empty default) — the selection, not a broken transport;
-* with the flag set and an already-established Gateway transport injected, the very same
-  ``collect_live`` capture binds and returns a populated basket;
-* :func:`build_gateway_session` opens + establishes the brokerage session over a fake Gateway
-  (``ssodh/init`` -> established) with no socket. (The never-establishes raise is covered at the
-  session level by ``test_cp_rest_session_established``, with an injected no-op sleep.)
-
-Only the HTTP layer is faked: no live Gateway, no secrets, no network.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -35,7 +19,7 @@ from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
 TRADE_DATE = date(2026, 3, 12)
 SPX_CLOSE = datetime(2026, 3, 12, 20, 0, tzinfo=UTC)
-SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)  # next NYSE open (09:30 ET = 13:30 UTC)
+SPX_NEXT_OPEN = datetime(2026, 3, 13, 13, 30, tzinfo=UTC)
 INDEX_CONID = 416904
 _SPOT = 100.0
 _MONTH = "JUN26"
@@ -81,7 +65,6 @@ def _mark(strike: float, right: str) -> float:
 
 
 class _FakeMarketGateway:
-    """A fake CP REST market/secdef gateway: one known month, a small known chain + close marks."""
 
     def __init__(self) -> None:
         self._close_ms = int(SPX_CLOSE.timestamp() * 1000)
@@ -136,7 +119,6 @@ class _FakeMarketGateway:
 
 
 class _FakeGateway:
-    """A logged-in, establishable local CP Gateway: auth/session endpoints + a market gateway."""
 
     def __init__(self, *, established: bool = True) -> None:
         self._established = established
@@ -165,17 +147,10 @@ _SELECTION = ChainSelection(max_expiries=1, min_strikes_per_side=5, option_excha
 
 
 def test_gateway_not_requested_returns_none() -> None:
-    """Without the opt-in flag the local-Gateway source is not selected (the runner falls through)."""
     assert gateway_basket_source(env={}) is None
 
 
 def test_gateway_requested_binds_and_captures() -> None:
-    """Flag set + an established Gateway transport injected → the same collect_live capture binds.
-
-    The injected transport bypasses the establish handshake (covered separately); this pins the
-    flag gate + the delegation to ``live_basket_source`` + a real, populated basket. ``now`` is the
-    trade date so the same-day live snapshot is admitted (no look-ahead).
-    """
     source = gateway_basket_source(
         env={"IBKR_CP_GATEWAY": "1"},
         transport=_FakeGateway(),
@@ -188,15 +163,11 @@ def test_gateway_requested_binds_and_captures() -> None:
     fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
     basket = source(fired, TRADE_DATE)
     assert basket is not None and basket.events, "the requested same-day Gateway fire must capture"
-    # The conid was resolved from the symbol (registry carries the 0 placeholder), and the index
-    # leg plus at least one option were captured at the index's own close.
     assert len(basket.instruments) >= 2
-    # Every captured event is stamped at the index's own close (the as-of) — no post-close print.
     assert {event.exchange_ts for event in basket.events} == {SPX_CLOSE}
 
 
 def test_build_gateway_session_establishes_over_fake_gateway() -> None:
-    """ssodh/init -> established against a logged-in fake Gateway, no socket."""
     transport = _FakeGateway(established=True)
     built = build_gateway_session(
         env={"IBKR_CP_GATEWAY": "1"}, transport=transport

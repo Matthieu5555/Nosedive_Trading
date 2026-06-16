@@ -1,10 +1,3 @@
-"""ADR 0024 §4 acceptance bar: the REST path and the TWS path produce identical raw events.
-
-Swapping IBKR ingestion (Client Portal REST snapshot ↔ Nautilus TWS QuoteTick) must not move a
-single downstream byte. We feed the *same* observation — same instrument, values, sequence, and
-timestamps — through both normalizers and assert the resulting ``RawMarketEvent`` tuples are equal.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -31,7 +24,6 @@ def _nanos(moment: datetime) -> int:
 def test_rest_snapshot_equals_tws_quote_tick() -> None:
     bid, ask, bid_size, ask_size = "9.27", "9.31", 10, 12
 
-    # TWS path: a Nautilus QuoteTick carrying the same quote.
     tick = QuoteTick(
         instrument_id=InstrumentId.from_str("SPY.SMART"),
         bid_price=Price.from_str(bid),
@@ -45,8 +37,6 @@ def test_rest_snapshot_equals_tws_quote_tick() -> None:
         tick, instrument_key=_IK, underlying=_UNDERLYING, session_id=_SESSION, sequence=_SEQUENCE
     )
 
-    # REST path: the same quote as a Client Portal snapshot row (84=bid, 86=ask, 88=bid_size,
-    # 85=ask_size), with the same exchange/receipt timestamps injected.
     rest_events = snapshot_to_events(
         {"84": bid, "86": ask, "88": str(bid_size), "85": str(ask_size)},
         instrument_key=_IK,
@@ -57,6 +47,4 @@ def test_rest_snapshot_equals_tws_quote_tick() -> None:
         receipt_ts=_RECEIPT,
     )
 
-    # The acceptance bar: byte-for-byte equal RawMarketEvents (frozen-dataclass equality), in the
-    # same order — the two transports are interchangeable below the seam.
     assert rest_events == tws_events

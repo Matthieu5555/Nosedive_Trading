@@ -1,23 +1,3 @@
-"""Build a volatility surface for one underlying — the reusable use case.
-
-The whole "give me a surface for this symbol" workflow, behind one function of injected
-dependencies: capture a window of quotes into the immutable raw layer through the one unified
-collector, run the *exact* actor pipeline production runs (``snapshots → forwards → IV → SVI
-surface``), assess the feed's entitlement/health, and reduce the fitted surface to summary
-rows. It composes the existing :func:`collect_live` and :func:`run_incremental_analytics`
-jobs rather than reimplementing them, so a live run, a scheduled job, a replay, or an API
-endpoint all reach a surface through this one path instead of copying the script.
-
-It owns no math and no broker specifics: the surface math lives in :mod:`surfaces`, the broker
-adapter and the chain it covers are injected, and the feed is driven by an injected callable
-(a live async loop, a fake feed, or a replay source). Entitlement diagnostics are read from an
-optional :class:`MarketDataDiagnostics` source — a live adapter supplies them; a fake or
-replay does not, and the status then simply reports the subscribed/producing counts. Nothing
-here reads a clock for the compute: ``as_of`` and ``calc_ts`` are carried on the request (or
-stamped from the clock *after* collection, so the snapshot never values as-of a time before
-the quotes it read), keeping the analytics reproducible.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -48,12 +28,6 @@ _LOGGER = structlog.get_logger("orchestration")
 
 @runtime_checkable
 class MarketDataDiagnostics(Protocol):
-    """A source that can report its market-data entitlement state after a run.
-
-    A live adapter satisfies this; the broker-agnostic fakes do not, which is why
-    :func:`build_surface` takes it as an optional, separate input rather than reading it off
-    the adapter it drives.
-    """
 
     @property
     def requested_market_data_type(self) -> int: ...
@@ -66,14 +40,6 @@ class MarketDataDiagnostics(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SurfaceJobRequest:
-    """What surface to build, and the as-of it is valued at.
-
-    ``market_data_type`` is the feed type the live session requested (recorded on the
-    status). ``as_of`` is the valuation/snapshot instant and ``calc_ts`` the computation
-    stamp. Leave them ``None`` for a live run — the job stamps them from the clock *after*
-    collection, so the snapshot never values as-of a time before the quotes it read (no
-    look-ahead). Pass them explicitly to reproduce a specific instant (tests, replay).
-    """
 
     symbol: str
     trade_date: date
@@ -85,7 +51,6 @@ class SurfaceJobRequest:
 
 @dataclass(frozen=True, slots=True)
 class SurfaceJobResult:
-    """What a surface build produced: outputs, collection, feed status, and the summary."""
 
     correlation_id: str
     request: SurfaceJobRequest
@@ -96,7 +61,6 @@ class SurfaceJobResult:
 
     @property
     def fitted_maturities(self) -> int:
-        """How many maturities produced a calibrated SVI smile."""
         return len(self.slices)
 
 
@@ -113,18 +77,6 @@ def build_surface(
     correlation_id: str,
     diagnostics: MarketDataDiagnostics | None = None,
 ) -> SurfaceJobResult:
-    """Capture quotes, run the actor, and summarize the fitted surface — one composed use case.
-
-    Subscribes every resolved contract, drives :func:`collect_live` over the injected adapter
-    (the one unified collector), builds a :class:`~connectivity.MarketDataStatus` from the feed
-    diagnostics and the collection counts, runs :func:`run_incremental_analytics` (positions
-    empty — a surface needs no book) over the freshly-collected raw events, and reduces the
-    persisted SVI parameters to summary rows. Every step shares ``correlation_id`` so one trace
-    links the session to the surface it produced. The ``masters`` are the already-resolved
-    instruments to subscribe and value (dependency injection — the resolver, like the broker,
-    is a caller-supplied input). Returns the outputs, the collection summary, the feed status,
-    and the per-maturity summaries.
-    """
     log = _LOGGER.bind(
         correlation_id=correlation_id,
         job="surface",
@@ -152,9 +104,6 @@ def build_surface(
 
     status = _assess_feed(request, summary, diagnostics, clock)
 
-    # Value as-of a time no earlier than the quotes just collected: an injected instant when
-    # given (reproducible), else the clock now that collection has finished, so the snapshot
-    # never reads a quote from after its own as-of.
     as_of = request.as_of if request.as_of is not None else clock.now()
     calc_ts = request.calc_ts if request.calc_ts is not None else as_of
     analytics = run_incremental_analytics(
@@ -196,13 +145,6 @@ def _assess_feed(
     diagnostics: MarketDataDiagnostics | None,
     clock: Clock,
 ) -> MarketDataStatus:
-    """Build the feed status from the session diagnostics and the collection counts.
-
-    When a session reports diagnostics (a live adapter), its raw error notices are classified
-    with the injected clock and its observed market-data type is read off; a fake/replay
-    reports none, so the status carries ``UNKNOWN`` types and no notices but still records
-    whether anything subscribed actually produced.
-    """
     notices: tuple[FeedNotice, ...]
     if diagnostics is None:
         requested, effective = request.market_data_type, UNKNOWN

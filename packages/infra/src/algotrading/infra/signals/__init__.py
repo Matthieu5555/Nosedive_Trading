@@ -1,19 +1,3 @@
-"""The signal layer — daily, as-of, contract-typed strategy-entry signals (TARGET §4 R3 / §3).
-
-Pure signal math plus the as-of orchestration that persists it. The §3 strategy book triggers
-on these readings; this package derives them and writes them as
-:class:`~algotrading.infra.contracts.StrategySignal` rows. It is blind to alpha (pure infra):
-strategies *read* the persisted signals, they are not imported here.
-
-* :func:`implied_correlation` — average implied correlation ρ̄ from the basket identity (S1).
-* :func:`term_structure_slope` — the front-vs-back ATM-vol slope (S5).
-* :func:`realized_volatility` / :func:`realized_minus_implied` — the RV−IV spread legs (S2/S3).
-* :func:`iv_rank` / :func:`iv_percentile` — where a name's IV sits in its banked range (S3).
-* :func:`persist_signal_set` — read as-of, compute every answerable signal, persist the set.
-* :func:`signal_config_for` — build one index's ``SignalConfig`` from the typed universe
-  ``signals`` block (the EOD batch's single config→DTO seam).
-"""
-
 from __future__ import annotations
 
 from .correlation import ImpliedCorrelationError, implied_correlation

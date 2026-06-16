@@ -1,10 +1,3 @@
-"""Folding fills into the booked position set.
-
-The book is the running result of fills: partial fills accumulate exactly, a net-zero
-contract is a closed position (absent from the live book but never erased from the ledger),
-and the result is the ``PositionSet`` shape risk already reads, sourced as ``"booked"``.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -26,7 +19,6 @@ def test_partial_fills_on_one_contract_accumulate_exactly(
     make_fill: Callable[..., Fill],
     fill_ts: datetime,
 ) -> None:
-    # Three partial fills of the same contract make one position of the summed quantity.
     fills = [
         make_fill(fill_id="p1", contract_key="SX5E|OPT|C|4400", signed_qty=Decimal("2")),
         make_fill(fill_id="p2", contract_key="SX5E|OPT|C|4400", signed_qty=Decimal("3")),
@@ -54,7 +46,6 @@ def test_a_contract_that_nets_to_zero_is_a_closed_position(
     make_fill: Callable[..., Fill],
     fill_ts: datetime,
 ) -> None:
-    # Fully closing a position drops it from the live book — but both fills stay in the ledger.
     fills = [
         make_fill(fill_id="open", contract_key="SX5E|OPT|P|4200", signed_qty=Decimal("4")),
         make_fill(fill_id="close", contract_key="SX5E|OPT|P|4200", signed_qty=Decimal("-4")),
@@ -91,7 +82,6 @@ def test_conflicting_broker_ids_for_one_contract_is_a_labelled_error(
     make_fill: Callable[..., Fill],
     fill_ts: datetime,
 ) -> None:
-    # No silent reconciliation: two different broker ids for one contract is a labelled failure.
     fills = [
         make_fill(fill_id="1", signed_qty=Decimal("1"), broker_contract_id="conid-9"),
         make_fill(fill_id="2", signed_qty=Decimal("1"), broker_contract_id="conid-OTHER"),

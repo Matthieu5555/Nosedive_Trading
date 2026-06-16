@@ -1,8 +1,3 @@
-// The master-detail constituents row: the point-in-time constituent list on the LEFT, the
-// selected ticker's full price history on the RIGHT, plus a coverage summary for the
-// whole-basket history preload. Self-fetches the basket and (via the batch hook) every
-// constituent's history; the index analytics and index history are separate panels.
-
 import { useEffect, useMemo } from "react";
 
 import type {

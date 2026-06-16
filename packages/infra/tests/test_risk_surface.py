@@ -1,14 +1,3 @@
-"""The additive risk surface merged in from Vincent's build (blueprint-mandated).
-
-Covers the modules our original suite did not exercise: the basket variance identity
-(Eq. 23), the positions book model, config-driven ``RiskParams``, the versioned
-``RiskSnapshot``, the config-driven aggregation dispatch, the broker reconciliation
-report, and the scenario report attribution. Numeric oracles are derived by hand here
-(basket variance) or reuse the independently-verified per-line risk oracle; structural
-invariants (sums reconcile, counts complete, provenance fields present) are asserted
-directly.
-"""
-
 from __future__ import annotations
 
 import math
@@ -48,7 +37,6 @@ TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 
 
 def _stamp(keys: tuple[str, ...]) -> ProvenanceStamp:
-    """A stamp whose sources are the priced contracts — one ref per key."""
     return make_stamp(tuple(source_ref("market_state_snapshots", TS, k) for k in keys))
 
 
@@ -59,10 +47,6 @@ def _pf_lines() -> list:
     ]
 
 
-# --- Basket variance (Eq. 23), hand-derived oracle ---------------------------
-# w=[0.6,0.4], s=[0.2,0.3], rho=0.5. ws=[0.12,0.12]. own=2*0.12^2=0.0288;
-# cross=(0.24)^2-0.0288=0.0288; var=0.0288+0.5*0.0288=0.0432; vol=sqrt(0.0432);
-# fully-correlated vol = 0.24; div_ratio = vol/0.24.
 def test_basket_variance_matches_hand_derived_oracle() -> None:
     result = basket_variance([0.6, 0.4], [0.2, 0.3], avg_correlation=0.5)
     assert result.variance == pytest.approx(0.0432, abs=1e-12)
@@ -71,8 +55,6 @@ def test_basket_variance_matches_hand_derived_oracle() -> None:
 
 
 def test_basket_full_matrix_equals_average_correlation_form() -> None:
-    # A constant off-diagonal correlation matrix must give the same variance as the
-    # single-average-correlation shortcut — two independent code paths, one answer.
     avg = basket_variance([0.6, 0.4], [0.2, 0.3], avg_correlation=0.5)
     full = basket_variance(
         [0.6, 0.4], [0.2, 0.3], correlations=[[1.0, 0.5], [0.5, 1.0]]
@@ -81,7 +63,6 @@ def test_basket_full_matrix_equals_average_correlation_form() -> None:
 
 
 def test_basket_zero_correlation_diversifies_by_inverse_sqrt_n() -> None:
-    # Equal weights/vols, zero correlation: vol/fully-correlated = 1/sqrt(2).
     result = basket_variance([0.5, 0.5], [0.2, 0.2], avg_correlation=0.0)
     assert result.diversification_ratio == pytest.approx(1.0 / math.sqrt(2.0), rel=1e-12)
 
@@ -89,8 +70,8 @@ def test_basket_zero_correlation_diversifies_by_inverse_sqrt_n() -> None:
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {},  # neither correlation input
-        {"avg_correlation": 0.5, "correlations": [[1.0, 0.5], [0.5, 1.0]]},  # both
+        {},
+        {"avg_correlation": 0.5, "correlations": [[1.0, 0.5], [0.5, 1.0]]},
     ],
 )
 def test_basket_requires_exactly_one_correlation_input(kwargs: dict) -> None:
@@ -105,9 +86,8 @@ def test_basket_rejects_mismatched_shapes_and_nonsquare_matrix() -> None:
         basket_variance([0.6, 0.4], [0.2, 0.3], correlations=[[1.0, 0.5]])
 
 
-# --- Positions book model ----------------------------------------------------
 def test_position_validates_key_and_quantity() -> None:
-    Position("AAPL|OPT|C|100", Decimal("10"))  # valid
+    Position("AAPL|OPT|C|100", Decimal("10"))
     with pytest.raises(ValueError):
         Position("  ", Decimal("10"))
     with pytest.raises(ValueError):
@@ -127,7 +107,6 @@ def test_position_set_and_hypothetical_book() -> None:
     assert book.positions[0].tags == {"desk": "vol"}
 
 
-# --- Config-driven RiskParams ------------------------------------------------
 def test_risk_params_defaults_and_from_mapping() -> None:
     defaults = RiskParams.defaults()
     assert defaults.grouping_keys == ("underlying", "maturity", "instrument")
@@ -137,7 +116,6 @@ def test_risk_params_defaults_and_from_mapping() -> None:
     )
     assert params.grouping_keys == ("underlying", "desk")
     assert params.reconciliation_tolerance.delta == 0.005
-    # An unspecified tolerance falls back to the default.
     assert params.reconciliation_tolerance.vega == defaults.reconciliation_tolerance.vega
     assert params.config_version == "risk-cfg-2"
 
@@ -149,7 +127,6 @@ def test_risk_params_rejects_empty_and_unknown_keys() -> None:
         RiskParams.from_mapping({"grouping_keys": ["sector"]})
 
 
-# --- Config-driven aggregation dispatch + projection -------------------------
 def test_aggregate_by_key_dispatches_and_validates() -> None:
     lines = _pf_lines()
     by_instrument = aggregate_by_key(lines, portfolio_id="pf-risk", key="instrument")
@@ -157,7 +134,6 @@ def test_aggregate_by_key_dispatches_and_validates() -> None:
     desk_of = {line.contract_key: "vol" for line in lines}
     by_desk = aggregate_by_key(lines, portfolio_id="pf-risk", key="desk", desk_of=desk_of)
     assert [g.group_key for g in by_desk] == ["desk:vol"]
-    # desk without a mapping is an error, not a silent empty group.
     with pytest.raises(AggregationError):
         aggregate_by_key(lines, portfolio_id="pf-risk", key="desk")
     with pytest.raises(AggregationError):
@@ -179,7 +155,6 @@ def test_risk_aggregate_projects_into_frozen_contract() -> None:
     assert agg.net_delta == net.net_delta
 
 
-# --- Versioned risk snapshot -------------------------------------------------
 def _book() -> PositionSet:
     return hypothetical_positions(
         [
@@ -198,16 +173,14 @@ def test_build_risk_snapshot_aggregates_and_stamps() -> None:
         analytics_version="ana-1", portfolio_id="pf-risk",
     )
     assert len(snap.lines) == 3
-    # One GroupedRisk per configured key; all three lines share underlying AAPL.
     assert {g.key for g in snap.aggregations} == {"underlying", "maturity", "instrument"}
     under = snap.grouped("underlying")
     assert len(under) == 1
     assert under[0].net_delta == pytest.approx(sum(line.position_delta for line in snap.lines))
-    # Provenance the blueprint requires: analytics version + position source + timestamp.
     assert snap.analytics_version == "ana-1"
     assert snap.position_source == "book-1"
     assert snap.position_source_ts == TS
-    assert snap.reconciliation is None  # no broker greeks supplied
+    assert snap.reconciliation is None
 
 
 def test_build_risk_snapshot_reconciles_when_broker_greeks_supplied() -> None:
@@ -218,7 +191,6 @@ def test_build_risk_snapshot_reconciles_when_broker_greeks_supplied() -> None:
         broker_greeks={"AAPL|OPT|C|100": BrokerGreeks(contract_key="AAPL|OPT|C|100", delta=0.0)},
     )
     assert snap.reconciliation is not None
-    # A broker delta of 0 vs the real ~0.51 is a breach; the report surfaces it.
     assert not snap.reconciliation.ok
     assert snap.reconciliation.compared == 1
 
@@ -246,14 +218,11 @@ def test_build_risk_snapshot_desk_grouping_uses_mapping() -> None:
         desk_of={"AAPL|OPT|C|100": "vol", "AAPL|OPT|P|100": "vol"},
     )
     groups = snap.grouped("desk")
-    # The unmapped C105 falls into desk:unassigned rather than being dropped.
     assert {g.group_key for g in groups} == {"desk:vol", "desk:unassigned"}
 
 
-# --- Reconciliation report over a book ---------------------------------------
 def test_reconcile_report_counts_and_surfaces_breaches() -> None:
     lines = _pf_lines()
-    # Broker agrees on C100 delta, disagrees on P100 delta (0 vs ~-0.48).
     c100 = next(line for line in lines if line.contract_key == "AAPL|OPT|C|100")
     broker = {
         "AAPL|OPT|C|100": BrokerGreeks(contract_key="AAPL|OPT|C|100", delta=c100.greeks.delta),
@@ -271,22 +240,17 @@ def test_reconcile_report_clean_book_is_ok() -> None:
     assert report.compared == 0
 
 
-# --- Scenario report attribution ---------------------------------------------
 def test_build_scenario_report_attribution_and_worst_case() -> None:
     config = ScenarioConfig(version="scn-1", spot_shocks=(-0.05, 0.05), vol_shocks=(0.05,))
     grid = scenario_grid(config)
     lines = _pf_lines()
     version = effective_scenario_version(config)
     report = build_scenario_report(lines, grid, scenario_version=version)
-    # Totals cover every scenario id, once each.
     assert len(report.totals) == len(grid)
-    # The worst case is consistent with a direct worst_case over the same cells.
     cells = scenario_line_pnls(lines, grid)
     assert report.worst_case.scenario.scenario_id != ""
-    # By-underlying attribution of the worst case sums to the worst-case total.
     by_under_total = sum(a.total_pnl for a in report.worst_case_by_underlying)
     assert by_under_total == pytest.approx(report.worst_case.total_pnl, rel=1e-9)
-    # Per-family worst cases: one entry per distinct family in the grid.
     families = {s.family for s in grid}
     assert {fa.family for fa in report.by_family} == families
     assert report.scenario_version == version

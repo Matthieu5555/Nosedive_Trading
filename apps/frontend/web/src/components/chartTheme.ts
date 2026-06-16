@@ -1,41 +1,19 @@
-// The dark-panel chart theme, in one place. The hex values mirror the CSS custom properties
-// in src/index.css (the design-token source of truth); charts cannot read CSS variables at
-// canvas/WebGL draw time, so this module is the single TS home for them — never copy the hex
-// into a chart component again (a test pins this file against index.css).
-//
-// Two consumers:
-//   - Plotly panels go through `themedPlotLayout`, which attaches the theme as a native
-//     `layout.template`. Plotly templates merge per-attribute by design, so a caller-supplied
-//     axis (e.g. an axis title) never clobbers the themed gridcolor/tickcolor — the exact bug
-//     the old hand-rolled spread-merge had.
-//   - TradingView Lightweight Charts panels spread `baseLightweightOptions()` into their
-//     create-chart options and override only what is panel-specific.
-
 import { ColorType, CrosshairMode } from "lightweight-charts";
 import type { Layout, Template } from "plotly.js";
 
 export const CHART_COLORS = {
-  grid: "#2b302c", // --border
-  axis: "#454d45", // --border-strong
-  text: "#f2f5ef", // --text
-  muted: "#8f978f", // --muted
-  positive: "#a8e6ba", // --positive
-  negative: "#ef9c92", // --negative
+  grid: "#2b302c",
+  axis: "#454d45",
+  text: "#f2f5ef",
+  muted: "#8f978f",
+  positive: "#a8e6ba",
+  negative: "#ef9c92",
   transparent: "rgba(0,0,0,0)",
 } as const;
 
 export const CHART_FONT_FAMILY = '"Basis Grotesque", Inter, sans-serif';
 export const CHART_FONT_SIZE = 11;
 
-// The IV-surface colourscale. Lightweight-charts has no 3D path, so the surface stays on Plotly.
-// We deliberately do NOT reuse the pastel dark-theme UI tokens here: as UI accents they are
-// desaturated, which on a 3D surface compresses the luminance range and leaves high vs low vol
-// hard to tell apart. This is Plasma — a perceptually-uniform colormap (monotone luminance, so
-// the eye reads height as magnitude), colorblind-safe, whose blue→yellow run matches the quant
-// convention of cold = low IV / hot = high IV and stays visible on the dark panel (its low end is
-// blue, not near-black like Inferno/Magma). The caller pins cmin/cmax so a given colour always
-// means the same IV across trade dates. Chosen against real SX5E data in
-// notebooks/vol_surface_mock.ipynb (palette comparison).
 export const VOL_COLORSCALE = "Plasma" as const;
 
 const PLOT_AXIS_THEME = {
@@ -52,8 +30,6 @@ const PLOT_SCENE_AXIS_THEME = {
   showbackground: false,
 };
 
-// The whole theme as a Plotly template: per-attribute defaults that any caller layout merges
-// over without losing the rest of the themed attribute group.
 export const PLOTLY_TEMPLATE: Template = {
   layout: {
     paper_bgcolor: CHART_COLORS.transparent,
@@ -74,14 +50,10 @@ export const PLOTLY_TEMPLATE: Template = {
   },
 };
 
-// A caller layout themed via the template — the caller's own attributes always win, the theme
-// fills every attribute the caller does not set.
 export function themedPlotLayout(layout?: Partial<Layout>): Partial<Layout> {
   return { autosize: true, ...layout, template: PLOTLY_TEMPLATE };
 }
 
-// The shared create-chart options for every TradingView Lightweight Charts panel; callers
-// spread this and add panel-specific options (time scale, localization, yield-curve axis).
 export function baseLightweightOptions() {
   return {
     autoSize: true,

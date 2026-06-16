@@ -1,19 +1,3 @@
-"""Per-side vol surfaces (ADR 0048 / TARGET §4 R2).
-
-The grid carries three fitted surfaces per cell — ``put``, ``call``, ``combined`` — at the
-**same** combined-solved strike. These tests prove:
-
-* the ``combined`` rows are byte-identical to the legacy single-surface grid (no per-side input
-  changes nothing), so every existing consumer is unaffected;
-* the ``put``/``call`` rows price the same strike off their own wing's IV, preserving the skew
-  the combined surface mutualises away;
-* the put−call IV spread derivation and its blowout QC behave as specified.
-
-Oracles are independent: the per-side IV ordering is *chosen* in the fixture (put wing richer
-than call wing), and the same-strike / spread relations follow from option-grid theory, not from
-re-running the code under test.
-"""
-
 from __future__ import annotations
 
 import math
@@ -49,17 +33,10 @@ TS = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
 EXPIRY = date(2027, 5, 29)
 SPOT = 100.0
 CONFIG_HASHES = {"universe": "u-hash", "pricing": "p-hash"}
-# Maturities that span the pinned tenor grid (10d…3y) so most pinned tenors land inside the
-# fitted span and produce cells.
 _MATURITIES = (0.05, 0.25, 1.0, 3.0)
 
 
 def _slice_at(sigma: float, maturity: float) -> SliceFit:
-    """Fit one slice of a gentle smile at vol level ``sigma`` (the real surface engine).
-
-    A mild ``k**2`` curvature keeps SVI well-identified and the delta→strike solve monotone; the
-    *level* is ``sigma``, which is what the test controls to separate the put and call wings.
-    """
     ks = (-0.30, -0.20, -0.10, 0.0, 0.10, 0.20, 0.30)
     points = []
     for k in ks:
@@ -92,7 +69,7 @@ def _surface(sigma: float) -> tuple[SliceFit, ...]:
 def _market() -> SnapshotMarketState:
     return SnapshotMarketState(
         underlying="AAPL", provider="IBKR", spot=SPOT,
-        discount_factors={tenor_years(t): 1.0 for t in PINNED_TENORS},  # rate 0 → DF 1
+        discount_factors={tenor_years(t): 1.0 for t in PINNED_TENORS},
         default_discount_factor=1.0,
     )
 
@@ -116,12 +93,7 @@ def _cell_key(c: ProjectedOptionAnalytics) -> tuple[str, str]:
     return (c.tenor_label, c.delta_band)
 
 
-# --------------------------------------------------------------------------- #
-# Contract                                                                     #
-# --------------------------------------------------------------------------- #
 def test_surface_side_defaults_to_combined() -> None:
-    # An untagged row reads back as the legacy single surface — the additive default that keeps
-    # every pre-per-side fixture valid (ADR 0048).
     row = _project(_surface(0.20)).cells[0]
     assert row.surface_side == SURFACE_SIDE_COMBINED
 
@@ -135,19 +107,13 @@ def test_bad_surface_side_is_rejected() -> None:
         )
 
 
-# --------------------------------------------------------------------------- #
-# project_grid: combined is unchanged; put/call are additive                   #
-# --------------------------------------------------------------------------- #
 def test_no_per_side_input_emits_only_combined() -> None:
-    # Backward compatibility: with no put/call slices the grid is the legacy combined-only grid.
     result = _project(_surface(0.20))
     assert result.cells
     assert {c.surface_side for c in result.cells} == {SURFACE_SIDE_COMBINED}
 
 
 def test_combined_rows_are_byte_identical_with_or_without_wings() -> None:
-    # Adding the put/call wings must not perturb the combined rows by a single field — that is
-    # what keeps every combined-only consumer (basket risk, booking, QC, the CDC view) unchanged.
     combined = _surface(0.21)
     base = {_cell_key(c): c for c in _project(combined).cells}
     with_wings = {
@@ -165,8 +131,6 @@ def test_each_cell_emits_three_sides_at_the_same_strike() -> None:
     by_cell: dict[tuple[str, str], dict[str, ProjectedOptionAnalytics]] = {}
     for c in result.cells:
         by_cell.setdefault(_cell_key(c), {})[c.surface_side] = c
-    # At least one fully-populated cell exists; every side priced the SAME strike (solved once
-    # off the combined surface) — option-grid theory: a spread is read at one strike, not two.
     full = [sides for sides in by_cell.values() if set(sides) == {"put", "call", "combined"}]
     assert full
     for sides in full:
@@ -177,9 +141,6 @@ def test_each_cell_emits_three_sides_at_the_same_strike() -> None:
 
 
 def test_put_wing_iv_exceeds_call_wing_iv_at_every_cell() -> None:
-    # The skew the combined surface mutualises away survives per side: a richer put wing reads a
-    # higher IV than the call wing at the same strike, with combined between. The ordering is the
-    # fixture's choice (put 0.27 > combined 0.21 > call 0.16), not a re-run of the fitter.
     result = _project(_surface(0.21), put=_surface(0.27), call=_surface(0.16))
     by_cell: dict[tuple[str, str], dict[str, ProjectedOptionAnalytics]] = {}
     for c in result.cells:
@@ -193,9 +154,6 @@ def test_put_wing_iv_exceeds_call_wing_iv_at_every_cell() -> None:
     assert checked > 0
 
 
-# --------------------------------------------------------------------------- #
-# put_call_iv_spread derivation                                               #
-# --------------------------------------------------------------------------- #
 def test_put_call_spread_is_put_minus_call_per_cell() -> None:
     result = _project(_surface(0.21), put=_surface(0.27), call=_surface(0.16))
     by_cell: dict[tuple[str, str], dict[str, ProjectedOptionAnalytics]] = {}
@@ -205,10 +163,9 @@ def test_put_call_spread_is_put_minus_call_per_cell() -> None:
     spreads = put_call_iv_spread(result.cells)
     spread_by_cell = {(s.tenor_label, s.delta_band): s for s in spreads}
 
-    # One spread point per cell that has BOTH a put and a call row; none for one-sided cells.
     expected_cells = {k for k, v in by_cell.items() if {"put", "call"} <= set(v)}
     assert set(spread_by_cell) == expected_cells
-    assert expected_cells  # the fixture produces fully two-sided cells
+    assert expected_cells
 
     for key, point in spread_by_cell.items():
         put_cell, call_cell = by_cell[key]["put"], by_cell[key]["call"]
@@ -216,23 +173,18 @@ def test_put_call_spread_is_put_minus_call_per_cell() -> None:
         assert point.call_iv == pytest.approx(call_cell.implied_vol)
         assert point.iv_spread == pytest.approx(put_cell.implied_vol - call_cell.implied_vol)
         assert point.strike == pytest.approx(put_cell.strike)
-        assert point.iv_spread > 0.0  # put wing richer, by construction
+        assert point.iv_spread > 0.0
 
 
 def test_spread_skips_one_sided_cells() -> None:
-    # A cell with only a combined row (no wings) yields no spread point — nothing to difference.
     spreads = put_call_iv_spread(_project(_surface(0.20)).cells)
     assert spreads == ()
 
 
-# --------------------------------------------------------------------------- #
-# put−call IV spread QC                                                        #
-# --------------------------------------------------------------------------- #
 def test_spread_qc_passes_within_bound() -> None:
     spreads = put_call_iv_spread(
         _project(_surface(0.21), put=_surface(0.27), call=_surface(0.16)).cells
     )
-    # Bound generously above the fixture's ~0.11 spread → no breach.
     result = check_put_call_iv_spread(
         spreads, "AAPL", max_abs_spread=0.50,
         threshold_version="qc-test", run_id="run-1", run_ts=TS,
@@ -245,7 +197,6 @@ def test_spread_qc_fails_on_blowout() -> None:
     spreads = put_call_iv_spread(
         _project(_surface(0.21), put=_surface(0.40), call=_surface(0.12)).cells
     )
-    # A tight bound below the fixture's ~0.28 spread → every two-sided cell breaches.
     result = check_put_call_iv_spread(
         spreads, "AAPL", max_abs_spread=0.05,
         threshold_version="qc-test", run_id="run-1", run_ts=TS,
@@ -255,12 +206,7 @@ def test_spread_qc_fails_on_blowout() -> None:
     assert result.measured_value > 0.0
 
 
-# --------------------------------------------------------------------------- #
-# Consumers default to combined                                               #
-# --------------------------------------------------------------------------- #
 def test_basket_risk_ignores_per_side_rows() -> None:
-    # The book sum is the combined surface (ADR 0048). Feeding the additive put/call rows must
-    # not change a basket's dollar delta — the consumer reads only combined.
     result = _project(_surface(0.21), put=_surface(0.27), call=_surface(0.16))
     cell = next(c for c in result.cells if c.surface_side == SURFACE_SIDE_COMBINED)
     leg = BasketLeg(

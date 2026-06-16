@@ -1,12 +1,3 @@
-// Order-ticket panel (WS 3A): build and preview an order ticket from the composed basket.
-//
-// Preview/build ONLY — paper/read-only. There is no code path from this panel to a broker: the
-// "Sign & send" affordance is permanently disabled and labelled "3B — gated", and the previewed
-// ticket carries the BFF's explicit `gated.transmit=false`. The operator picks the target broker,
-// the time-in-force and a price spec (market, or limit with a price); the legs (side/quantity)
-// come from the basket already composed above — the ticket maps long/short to BUY/SELL and shows
-// a positive magnitude quantity. Sending is WS 3B, behind an explicit owner gate.
-
 import { useEffect, useState } from "react";
 
 import type {

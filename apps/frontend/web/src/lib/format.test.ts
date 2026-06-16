@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { currencySymbol, sci, sciUnit, UNITS, withCurrency } from "./format";
 
-// Expected strings are derived by hand from the rule (six significant figures, scientific
-// notation, trailing zeros stripped, Unicode-superscript exponent), never copied from the
-// implementation. The owner's worked example is the anchor: 0.58 → 5.8 × 10⁻¹, etc.
 describe("sci", () => {
   it("renders the owner's worked example at 6 sig figs with trailing zeros stripped", () => {
     expect(sci(0.58)).toBe("5.8 × 10⁻¹");
@@ -69,8 +66,8 @@ describe("currencySymbol", () => {
     expect(currencySymbol("EUR")).toBe("€");
     expect(currencySymbol("USD")).toBe("$");
     expect(currencySymbol("GBP")).toBe("£");
-    expect(currencySymbol("SEK")).toBe("SEK"); // unknown → the code itself
-    expect(currencySymbol(null)).toBe("$"); // missing → USD default
+    expect(currencySymbol("SEK")).toBe("SEK");
+    expect(currencySymbol(null)).toBe("$");
     expect(currencySymbol(undefined)).toBe("$");
   });
 });
@@ -87,7 +84,7 @@ describe("withCurrency", () => {
     expect(withCurrency(UNITS.delta, "$")).toBe("$/$");
     expect(withCurrency(UNITS.delta, null)).toBe("$/$");
     expect(withCurrency(UNITS.delta, undefined)).toBe("$/$");
-    expect(withCurrency(UNITS.vol, "€")).toBe("Vol"); // no $ to replace
+    expect(withCurrency(UNITS.vol, "€")).toBe("Vol");
   });
 
   it("passes null/undefined units through unchanged", () => {

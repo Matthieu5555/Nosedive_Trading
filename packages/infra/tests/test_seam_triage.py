@@ -1,18 +1,3 @@
-"""Seam test: the unified triage record round-trips through the storage port.
-
-The architecture's bet is that the typed contracts are the only objects crossing a
-boundary; that bet is only real if the *consumer* tests it (tasks/TESTING.md, "Seam
-tests"). The QC/validation plane's one persisted output is ``contracts.TriageRecord``
-in the ``triage_records`` table. This proves that:
-
-* a ``qc`` row, a ``validation`` row, and an ``anomaly`` row — the three sources — all
-  write and read back equal through ``ParquetStore`` with the same column shape;
-* a malformed instance is rejected by write-ahead validation with an explicit error,
-  never silently coerced (the negative half of a real contract test).
-
-The plane adds no table — ``triage_records`` already exists in the frozen registry.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -52,7 +37,6 @@ BASELINE = [10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21
 
 
 def _qc_records() -> tuple[TriageRecord, ...]:
-    # source="qc": a critical calendar-sanity failure.
     violation = CalendarViolation(
         k=0.0, maturity_short=0.25, maturity_long=0.5, w_short=0.05, w_long=0.04
     )
@@ -65,7 +49,6 @@ def _qc_records() -> tuple[TriageRecord, ...]:
 
 
 def _anomaly_records() -> tuple[TriageRecord, ...]:
-    # source="anomaly": a rolling-baseline metric spike.
     outcome = run_validation(
         run_id=RUN_ID,
         underlying="MSFT",
@@ -78,7 +61,6 @@ def _anomaly_records() -> tuple[TriageRecord, ...]:
 
 
 def _validation_records() -> tuple[TriageRecord, ...]:
-    # source="validation": a non-anomaly structural validation flag.
     check = ValidationCheck(
         check="schema_consistency",
         status=ValidationStatus.FAIL,
@@ -99,15 +81,13 @@ def _validation_records() -> tuple[TriageRecord, ...]:
 
 def test_three_sources_round_trip_through_storage(tmp_path: Path) -> None:
     records = (*_qc_records(), *_validation_records(), *_anomaly_records())
-    assert {r.source for r in records} == {"qc", "validation", "anomaly"}  # all three present
+    assert {r.source for r in records} == {"qc", "validation", "anomaly"}
 
     store = ParquetStore(tmp_path)
     store.write("triage_records", records)
     back = store.read("triage_records")
 
     assert len(back) == len(records)
-    # Identity is the unified key (run_id, source, name, target_key); the rows round-trip
-    # intact, so each source's records are recoverable from the one table.
     assert {(r.source, r.name, r.target_key) for r in back} == {
         (r.source, r.name, r.target_key) for r in records
     }
@@ -115,7 +95,6 @@ def test_three_sources_round_trip_through_storage(tmp_path: Path) -> None:
 
 
 def test_single_record_round_trips_equal(tmp_path: Path) -> None:
-    # The strongest round-trip: the read-back record compares equal to the written one.
     (record,) = _validation_records()
     store = ParquetStore(tmp_path)
     store.write("triage_records", [record])
@@ -123,11 +102,9 @@ def test_single_record_round_trips_equal(tmp_path: Path) -> None:
 
 
 def test_storage_rejects_a_malformed_triage_record(tmp_path: Path) -> None:
-    # The seam rule: a malformed instance is rejected by write-ahead validation, not
-    # silently coerced. A naive (non-tz) run_ts is the malformed case here.
     bad = TriageRecord(
         run_id=RUN_ID,
-        run_ts=datetime(2026, 6, 2, 23, 30),  # naive — no tzinfo
+        run_ts=datetime(2026, 6, 2, 23, 30),
         underlying="AAPL",
         source="validation",
         name="n_iv_points",
@@ -144,7 +121,6 @@ def test_storage_rejects_a_malformed_triage_record(tmp_path: Path) -> None:
 
 
 def test_missing_primary_key_field_is_rejected(tmp_path: Path) -> None:
-    # source is part of the triage_records primary key; a None there is a malformed row.
     bad = TriageRecord(
         run_id=RUN_ID,
         run_ts=RUN_TS,
@@ -164,8 +140,6 @@ def test_missing_primary_key_field_is_rejected(tmp_path: Path) -> None:
 
 
 def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
-    # source="qc": a grid coverage-floor breach (WS 1H). "SPX" is missing its "3m" tenor
-    # entirely, so the per-tenor coverage-floor check fails and names the tenor.
 
     from algotrading.core.config import GridQcConfig
     from algotrading.infra.qc import check_tenor_coverage_floor
@@ -186,7 +160,7 @@ def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
             self.delta = delta
 
     points = [_GP("SPX", "10d", d) for d in (-0.3, 0.3)]
-    points += [_GP("SPX", "1m", d) for d in (-0.3, 0.3)]  # no "3m" at all
+    points += [_GP("SPX", "1m", d) for d in (-0.3, 0.3)]
     result = check_tenor_coverage_floor(
         points, "SPX", ("10d", "1m", "3m"),
         thresholds=thresholds, run_id=RUN_ID, run_ts=RUN_TS,
@@ -196,15 +170,12 @@ def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
 
 
 def test_grid_breach_lands_in_triage_records(tmp_path: Path) -> None:
-    # A grid coverage breach routes through triage_from_qc (no new path) into the one
-    # triage_records table with source="qc" (ADR 0010), and round-trips through storage.
     records = _grid_breach_qc_report()
     assert len(records) == 1
     (record,) = records
     assert record.source == "qc"
     assert record.name == "tenor_coverage_floor"
     assert record.underlying == "SPX"
-    # The headline names the breaching tenor, not a generic banner.
     assert "3m" in record.detail
 
     store = ParquetStore(tmp_path)
@@ -213,12 +184,10 @@ def test_grid_breach_lands_in_triage_records(tmp_path: Path) -> None:
 
 
 def test_grid_breach_malformed_triage_record_rejected(tmp_path: Path) -> None:
-    # The seam negative half: a malformed grid-breach triage row (naive run_ts) is rejected
-    # by write-ahead validation, never silently coerced.
     (good,) = _grid_breach_qc_report()
     bad = TriageRecord(
         run_id=good.run_id,
-        run_ts=datetime(2026, 6, 2, 23, 30),  # naive — no tzinfo
+        run_ts=datetime(2026, 6, 2, 23, 30),
         underlying=good.underlying,
         source=good.source,
         name=good.name,
@@ -235,13 +204,10 @@ def test_grid_breach_malformed_triage_record_rejected(tmp_path: Path) -> None:
 
 
 def test_triage_date_partitioning_groups_by_underlying(tmp_path: Path) -> None:
-    # The unified records carry their own underlying, so a mixed-underlying write lands
-    # in the right partitions and reads back the same set per the round-trip above.
     records = (*_qc_records(), *_validation_records(), *_anomaly_records())
     store = ParquetStore(tmp_path)
     store.write("triage_records", records)
     parts = store.list_partitions("triage_records")
     underlyings = {u for _, u in parts}
-    # AAPL (qc), NVDA (validation), MSFT (anomaly) each get a partition.
     assert {"AAPL", "MSFT", "NVDA"} <= underlyings
     assert all(isinstance(d, date) for d, _ in parts)

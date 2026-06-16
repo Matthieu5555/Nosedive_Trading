@@ -1,25 +1,3 @@
-"""Host the pure analytics inside Nautilus's engine — Nautilus is the runtime spine.
-
-ADR 0023 makes ``nautilus_trader`` the runtime. This module hosts our
-framework-independent :func:`run_analytics` (see :mod:`.driver`) inside a Nautilus
-``Actor`` and replays a :class:`RawMarketEvent` stream through Nautilus's backtest
-engine on its *simulated* clock. The volatility math is unchanged — only *who drives
-the events* changes. Live and replay run through the one engine, which is how the
-single-code-path mandate (no historical-only fork) is realized by Nautilus rather than
-by a hand-rolled loop.
-
-Our immutable :class:`RawMarketEvent` + :class:`ParquetStore` stays the system of record
-(ADR 0019); Nautilus events are bridged to/from ``RawMarketEvent`` here and never the
-other way round. The determinism gate (``tests/test_nautilus_replay_byte_identical.py``)
-proves this host returns the same :class:`ActorOutputs` — stamps included — as calling
-:func:`run_analytics` directly, so ``as_of``/``calc_ts`` injection and the no-clock,
-no-RNG discipline carry through the engine unchanged.
-"""
-# NOTE: no ``from __future__ import annotations`` here on purpose — Nautilus's
-# ``@customdataclass`` builds an Arrow schema by introspecting real annotation *types*
-# on ``RawMarketEventData``, which stringized annotations would break. Python 3.13
-# evaluates the PEP 604 unions below at runtime fine without it.
-
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -48,38 +26,22 @@ from .driver import (
 )
 from .outputs import ActorOutputs
 
-# The data client every raw observation is routed under. There is no broker venue in
-# this path — the events are pre-captured RawMarketEvents — so a plain client id is the
-# seam Nautilus's DataEngine routes custom data on.
 ANALYTICS_CLIENT = ClientId("ANALYTICS")
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def _to_unix_nanos(moment: datetime) -> int:
-    """Exact UTC-datetime → unix nanoseconds (lossless for microsecond inputs).
-
-    Integer microsecond arithmetic, then ``*1000``: a ``RawMarketEvent`` timestamp is
-    microsecond-precision, so this round-trips byte-for-byte with :func:`_from_unix_nanos`.
-    """
     microseconds = (moment - _EPOCH) // timedelta(microseconds=1)
     return microseconds * 1000
 
 
 def _from_unix_nanos(nanos: int) -> datetime:
-    """Unix nanoseconds → UTC datetime, the exact inverse of :func:`_to_unix_nanos`."""
     return _EPOCH + timedelta(microseconds=nanos // 1000)
 
 
 @customdataclass
 class RawMarketEventData(Data):
-    """A :class:`RawMarketEvent` carried as a Nautilus custom data point.
-
-    Scalar carriers only (Nautilus serializes custom data via an Arrow schema built from
-    these annotations). ``ts_event``/``ts_init`` (supplied by the ``customdataclass``
-    machinery) both carry the event's ``canonical_ts`` in nanoseconds — the time Nautilus
-    orders and replays on — so the engine's simulated clock advances on our canonical time.
-    """
 
     session_id: str = ""
     event_id: str = ""
@@ -93,7 +55,6 @@ class RawMarketEventData(Data):
 
 
 def to_custom_data(event: RawMarketEvent) -> CustomData:
-    """Bridge one immutable ``RawMarketEvent`` into a Nautilus custom data point."""
     point = RawMarketEventData(
         ts_event=_to_unix_nanos(event.canonical_ts),
         ts_init=_to_unix_nanos(event.canonical_ts),
@@ -111,12 +72,6 @@ def to_custom_data(event: RawMarketEvent) -> CustomData:
 
 
 def from_custom_data(point: RawMarketEventData) -> RawMarketEvent:
-    """Inverse of :func:`to_custom_data` — reconstruct the immutable ``RawMarketEvent``.
-
-    Lossless by construction: the string/float fields are carried verbatim and every
-    timestamp round-trips exactly (microsecond precision), so an event bridged out and
-    back in is equal to the original. The determinism test asserts this directly.
-    """
     return RawMarketEvent(
         session_id=point.session_id,
         event_id=point.event_id,
@@ -133,11 +88,6 @@ def from_custom_data(point: RawMarketEventData) -> RawMarketEvent:
 
 @dataclass(frozen=True)
 class RunRequest:
-    """Everything the analytics step needs that is *not* the event stream.
-
-    These are injected (never read from a clock or the environment) so the run is a pure
-    function of the events plus this request — the property the determinism gate relies on.
-    """
 
     positions: Sequence[Position]
     instruments: Sequence[InstrumentKey]
@@ -149,19 +99,11 @@ class RunRequest:
     store: ParquetStore | None = None
     persist: bool = False
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style
-    # None → the projection grid resolves from `config.surface.moneyness_buckets` (ADR 0028).
     moneyness_buckets: tuple[float, ...] | None = None
     session_open: bool = True
 
 
 class AnalyticsActor(Actor):
-    """A thin Nautilus ``Actor`` that drives :func:`run_analytics` and stamps its outputs.
-
-    Holds no math: it accumulates the replayed :class:`RawMarketEvent` stream and, when the
-    engine stops, computes the derived outputs over the *injected* ``as_of``/``calc_ts``
-    and (optionally) persists them. The resulting :class:`ActorOutputs` is read off
-    :attr:`outputs` after the engine run.
-    """
 
     def __init__(self, config: ActorConfig, *, request: RunRequest) -> None:
         super().__init__(config)
@@ -199,13 +141,6 @@ def run_session_via_nautilus(
     events: Sequence[RawMarketEvent],
     request: RunRequest,
 ) -> ActorOutputs:
-    """Replay ``events`` through Nautilus's engine into the actor and return the outputs.
-
-    This is the production seam and the determinism harness: Nautilus orders the events on
-    its simulated clock by ``canonical_ts`` and feeds them to :class:`AnalyticsActor`, which
-    runs the unchanged pure analytics. The returned :class:`ActorOutputs` is byte-identical
-    to calling :func:`run_analytics` on the same events directly.
-    """
     engine = BacktestEngine(
         config=BacktestEngineConfig(
             trader_id="ANALYTICS-001",

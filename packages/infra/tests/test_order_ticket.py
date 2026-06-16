@@ -1,23 +1,3 @@
-"""WS 3A — the pure basket->ticket builder and the no-transmission safety invariant.
-
-The builder is a pure mapping (no I/O, no clock, no network): a 2A basket in, a validated
-:class:`OrderTicket` out. These tests pin:
-
-* **one-to-one mapping** against a hand-built basket — every ticket leg's side, quantity,
-  price spec and grid identity equal values **derived by hand here**, never read back from
-  the builder;
-* **labelled failures** for every malformed construction (empty basket, duplicate leg, a
-  limit with no/!finite/!positive price, an unknown broker/TIF, a price-spec conflict) —
-  each a :class:`TicketError` carrying the offending value, never a bare exception;
-* **the side mapping** ``long -> BUY`` / ``short -> SELL`` with a positive (magnitude)
-  quantity — the basket's signed quantity is the source, never re-applied;
-* **the safety gate, made falsifiable** — the orders module reads no credential/env token and
-  imports no broker-submission symbol; 3A cannot transmit by construction.
-
-Independent oracle: the expected ticket below is written out by hand from the basket inputs;
-the builder's output is compared to it, not used to define it.
-"""
-
 from __future__ import annotations
 
 import math
@@ -37,7 +17,6 @@ from algotrading.infra.orders import (
 )
 from algotrading.infra.orders import ticket as ticket_module
 
-# A hand-built basket: a long option leg (3m ATM) and a short stock hedge on the same index.
 TRADE_DATE = date(2026, 6, 12)
 BASKET = Basket(
     basket_id="B-1",
@@ -65,7 +44,6 @@ BASKET = Basket(
 def test_build_ticket_maps_basket_legs_one_to_one() -> None:
     ticket = build_ticket(BASKET)
 
-    # Envelope: provenance + scope come straight from the basket; paper by construction.
     assert ticket.source_basket_id == "B-1"
     assert ticket.trade_date == TRADE_DATE
     assert ticket.underlying == "SX5E"
@@ -74,7 +52,6 @@ def test_build_ticket_maps_basket_legs_one_to_one() -> None:
     assert ticket.mode == "paper"
     assert len(ticket.legs) == 2
 
-    # Leg 1 (hand-derived): long option -> BUY, magnitude 2, default Market, grid identity kept.
     option_leg = ticket.legs[0]
     assert option_leg.instrument_kind == "option"
     assert option_leg.underlying == "SX5E"
@@ -83,7 +60,6 @@ def test_build_ticket_maps_basket_legs_one_to_one() -> None:
     assert isinstance(option_leg.price_spec, Market)
     assert (option_leg.tenor_label, option_leg.delta_band) == ("3m", "ATM")
 
-    # Leg 2 (hand-derived): short stock -> SELL, magnitude 5 (abs of -5), no tenor/band.
     stock_leg = ticket.legs[1]
     assert stock_leg.instrument_kind == "stock"
     assert stock_leg.side is Side.SELL
@@ -124,14 +100,12 @@ def test_build_ticket_rejects_duplicate_leg() -> None:
 
 @pytest.mark.parametrize("bad_price", [0.0, -1.0, math.inf, math.nan])
 def test_limit_rejects_non_positive_or_non_finite_price(bad_price: float) -> None:
-    # "a limit with no price" is unrepresentable (price is required); these are the rest.
     with pytest.raises(TicketError) as exc:
         Limit(bad_price)
     assert exc.value.field == "price"
 
 
 def test_market_carries_no_price() -> None:
-    # The closed set: a Market has no price attribute to set (invalid-by-construction guarantee).
     assert not hasattr(Market(), "price")
 
 
@@ -155,21 +129,15 @@ def test_build_ticket_rejects_price_spec_conflict() -> None:
 
 def test_build_ticket_rejects_price_spec_by_leg_length_mismatch() -> None:
     with pytest.raises(TicketError) as exc:
-        build_ticket(BASKET, price_spec_by_leg=[Market()])  # basket has 2 legs
+        build_ticket(BASKET, price_spec_by_leg=[Market()])
     assert exc.value.field == "price_spec_by_leg"
 
 
 def test_target_broker_resolves_to_existing_adapter() -> None:
-    # IBKR is the sole live broker (ADR 0042). It resolves; the ticket names it, nothing connects.
     assert TargetBroker.IBKR.value == "ibkr"
     assert build_ticket(BASKET, broker=TargetBroker.IBKR).target_broker is TargetBroker.IBKR
 
 
-# --- The safety gate, made a falsifiable test ------------------------------------------------
-
-# Identifiers (not prose) that would betray a transmission path or a credential read. We scan the
-# AST, so the module's *docstrings* ("reads no credential", "no transmission") never trip it — only
-# real code does: an imported broker module, a getenv call, a submit/place/transmit symbol.
 _FORBIDDEN_NAMES = frozenset({
     "environ", "getenv", "load_dotenv", "api_key", "credential", "password", "secret",
     "transmit", "place_order", "submit_order", "send_order", "BrokerTransport",
@@ -178,7 +146,6 @@ _FORBIDDEN_IMPORT_SUBSTRINGS = ("infra_ibkr", "connectivity", "dotenv")
 
 
 def _orders_code_names() -> tuple[set[str], set[str]]:
-    """Every identifier and every imported-module path used in the orders package's code."""
     import ast
 
     pkg_dir = Path(ticket_module.__file__).parent
@@ -201,7 +168,6 @@ def _orders_code_names() -> tuple[set[str], set[str]]:
 
 def test_ticket_path_never_transmits_and_reads_no_credentials() -> None:
     names, imports = _orders_code_names()
-    # No broker/submission/credential symbol in the code, and no env/`os` import.
     assert not (names & _FORBIDDEN_NAMES), f"forbidden symbol(s): {names & _FORBIDDEN_NAMES}"
     assert "os" not in imports, "the orders module must not import os (no env reads)"
     leaked = [m for m in imports for s in _FORBIDDEN_IMPORT_SUBSTRINGS if s in m]

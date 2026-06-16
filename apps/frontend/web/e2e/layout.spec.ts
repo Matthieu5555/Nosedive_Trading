@@ -1,22 +1,8 @@
-// "No collision" — the check jsdom cannot do. Across a desktop, a laptop and a narrow/mobile
-// viewport, and on every route, assert:
-//   • the top-bar regions (brand, nav, session pill) don't overlap each other;
-//   • the individual nav buttons don't overlap each other (the classic flexbox-wrap collision);
-//   • the top bar doesn't overlap the page content;
-//   • nothing pushes the page into a horizontal scroll (a control shoved off-screen);
-//   • every nav button stays fully inside the viewport and clickable.
-
 import { expect, type Page, test } from "@playwright/test";
 
 import { ROUTES } from "../src/routes";
 import { expectNoCollisions, expectNoHorizontalOverflow, expectWithinViewport } from "./helpers";
 import { mockBff } from "./mock-bff";
-
-// The route list is the SINGLE SOURCE OF TRUTH shared with App.tsx (src/routes.ts): every
-// user-facing route is collision-checked here automatically, so a new page added there is covered
-// the moment it ships — no second list to keep in sync. Orders is absent because it is retired
-// (frontend-orders-booking-reconcile, ruling (b)): the booking surface is the ticket panel on
-// Basket, so the Basket route covers the booking home's collision/overflow check.
 
 const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },

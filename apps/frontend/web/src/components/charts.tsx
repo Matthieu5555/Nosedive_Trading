@@ -1,11 +1,3 @@
-// The Tab-1 chart panels. The daily candlestick, the Greek term-structure line charts, and the
-// smile use TradingView Lightweight Charts; only the 3D IV surface stays on the Plotly wrapper
-// (lightweight-charts has no 3D/mesh path).
-//
-// Each panel is self-labelling (answers "what am I looking at?") and reads a typed BFF response.
-// The 3D IV surface is a Plotly `surface` over (log-moneyness, maturity, implied_vol); the smile
-// is a 2D line chart of vol vs log-moneyness, split into a put wing (k ≤ 0) and call wing (k ≥ 0).
-
 import type { Data } from "plotly.js";
 
 import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
@@ -22,11 +14,6 @@ import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { LightweightLineChart, type LightweightLineSeries } from "./LightweightLineChart";
 import { Plot } from "./Plot";
 
-// The z-axis is pinned to [0, SURFACE_Z_MAX] (anchored at 0), not auto-ranged, so the surface
-// reads at a stable height — and, via cmin/cmax, a stable colour — across trade dates instead of
-// re-zooming on every capture. The cap is the shared sane IV band (IV_SANE_MAX): a railed slice's
-// absurd IVs are excluded from the geometry (cleanDenseSurface), and pinning the height/colour to
-// the same band means even a residual outlier cannot re-stretch the scale.
 const SURFACE_Z_MAX = IV_SANE_MAX;
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
@@ -207,7 +194,11 @@ export function VolHeatmap({ surface }: { surface?: SurfaceDense | null }) {
       </figure>
     );
   }
-  const cleaned = cleanDenseSurface(surface.log_moneyness, surface.maturity_years, surface.implied_vol);
+  const cleaned = cleanDenseSurface(
+    surface.log_moneyness,
+    surface.maturity_years,
+    surface.implied_vol,
+  );
   const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
   const trace = {
     type: "heatmap",
@@ -254,7 +245,11 @@ interface AtmPoint {
 // carries more maturities than the sparse band points. Out-of-band/non-finite ATM cells are
 // excluded (cleanDenseSurface) and counted as flagged.
 function atmTermFromDense(surface: SurfaceDense): { points: AtmPoint[]; nFlagged: number } {
-  const cleaned = cleanDenseSurface(surface.log_moneyness, surface.maturity_years, surface.implied_vol);
+  const cleaned = cleanDenseSurface(
+    surface.log_moneyness,
+    surface.maturity_years,
+    surface.implied_vol,
+  );
   if (cleaned.logMoneyness.length === 0) return { points: [], nFlagged: cleaned.nFlaggedSlices };
   let atmCol = 0;
   cleaned.logMoneyness.forEach((k, j) => {
@@ -264,7 +259,11 @@ function atmTermFromDense(surface: SurfaceDense): { points: AtmPoint[]; nFlagged
   cleaned.maturityYears.forEach((years, i) => {
     const iv = cleaned.impliedVol[i]?.[atmCol];
     if (isSaneIv(iv)) {
-      points.push({ months: Math.max(1, Math.round(years * 12)), iv, label: maturityYearsLabel(years) });
+      points.push({
+        months: Math.max(1, Math.round(years * 12)),
+        iv,
+        label: maturityYearsLabel(years),
+      });
     }
   });
   return { points, nFlagged: cleaned.nFlaggedSlices };
@@ -272,7 +271,10 @@ function atmTermFromDense(surface: SurfaceDense): { points: AtmPoint[]; nFlagged
 
 // Fallback ATM term structure when no dense surface was fitted: each maturity's own smile, its
 // point nearest log-moneyness 0. A maturity whose smile cleans to nothing is counted as flagged.
-function atmTermFromSmiles(maturities: AnalyticsMaturity[]): { points: AtmPoint[]; nFlagged: number } {
+function atmTermFromSmiles(maturities: AnalyticsMaturity[]): {
+  points: AtmPoint[];
+  nFlagged: number;
+} {
   let nFlagged = 0;
   const points: AtmPoint[] = [];
   for (const maturity of maturities) {
@@ -307,9 +309,7 @@ export function AtmTermStructure({
 }) {
   const hasDense =
     surface != null && surface.maturity_years.length > 0 && surface.log_moneyness.length > 0;
-  const { points, nFlagged } = hasDense
-    ? atmTermFromDense(surface)
-    : atmTermFromSmiles(maturities);
+  const { points, nFlagged } = hasDense ? atmTermFromDense(surface) : atmTermFromSmiles(maturities);
   const note = flaggedNote(nFlagged, "slice");
   const label = note ? `${ATM_TERM_LABEL} — ⚠ ${note}` : ATM_TERM_LABEL;
   if (points.length === 0) {

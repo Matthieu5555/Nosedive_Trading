@@ -1,14 +1,3 @@
-"""Normalize a discovered option chain into canonical contracts — pure, no broker SDK.
-
-Given the raw option-parameter sets a chain-discovery API returns for one underlying (exchange,
-trading class, multiplier, the set of expirations and strikes), expand them into canonical
-:class:`OptionContract`s: both rights at every listed (expiry, strike) inside the monitored
-maturity window. Data-quality failures (non-numeric or non-positive multiplier, unparseable
-expiry, invalid strike) are raised as :class:`UniverseError` naming the instrument — never
-silently dropped. ``OptionParams`` is a plain broker-agnostic record, so this module stays free
-of any broker SDK type, like the rest of the package.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -22,7 +11,6 @@ from .errors import UniverseError
 
 @dataclass(frozen=True)
 class OptionParams:
-    """One raw option-parameter set from chain discovery (one exchange / trading class)."""
 
     exchange: str
     trading_class: str
@@ -48,12 +36,6 @@ def normalize_option_params(
     as_of: date,
     maturity_window: tuple[int, int],
 ) -> tuple[OptionContract, ...]:
-    """Expand raw chain parameters into canonical option contracts within the maturity window.
-
-    Both rights are emitted at every (expiry, strike) the chain lists. Expiries outside
-    ``[min_days, max_days]`` from ``as_of`` are skipped. Identical contracts across overlapping
-    parameter sets collapse later in ``build_universe`` (the canonical key is the identity).
-    """
     min_days, max_days = maturity_window
     contracts: list[OptionContract] = []
     for chain in params:

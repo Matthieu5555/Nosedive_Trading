@@ -1,23 +1,3 @@
-"""Widen the EOD close capture to an index's top-N constituents' option chains (T-§7.4, S1).
-
-The seam this pins: given an authenticated CP REST transport (a fake gateway here — NO network,
-NO secrets) and a fired index whose banked membership has known weights,
-``collect_index_and_constituents_basket`` captures the index AND its point-in-time top-N
-constituents' option chains, on the same grid / close instant, merged into one
-:class:`IndexBasket` keyed by ``underlying`` — exactly the shape ``run_analytics`` consumes.
-
-Every expectation is derived independently of the capture code: the fake gateway lists a known
-chain for the index and each constituent (a fixed strikes × rights set, each with a known conid),
-the membership store carries hand-set weights, and the test hand-derives which underlyings the
-capture *must* return (the top-N by weight) and asserts the merged basket matches — never reading
-back what the code emitted.
-
-The membership top-N selector is now the shared :func:`algotrading.infra.universe.top_n_by_weight`
-resolver (the stand-in stub was swapped for it on merge). Its ranking + incomplete-weight rejection
-live in the membership tests; here we pin the lane's *use* of it: activation (all N attempted),
-the fail-loud-on-empty guard, and the per-name outcome ledger.
-"""
-
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
@@ -50,11 +30,6 @@ from algotrading.infra_ibkr.collectors.cp_rest_constituent_capture import (
 from algotrading.infra_ibkr.live_capture import live_basket_source
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
-# ---------------------------------------------------------------------------------------------
-# The fired index, its close, and a small known chain (mirrors the index-lane fixtures).
-# ---------------------------------------------------------------------------------------------
-# SX5E with a pinned constituent (SAN1, the Sanofi-disambiguation pin the registry carries) and an
-# IBKR search override (SX5E lists as ESTX50 on IBKR) — both real-world wrinkles this lane handles.
 SX5E = IndexEntry(
     "SX5E",
     "EURO STOXX 50",
@@ -63,26 +38,19 @@ SX5E = IndexEntry(
     IbkrRef(0, "IND", "EUREX", symbol="ESTX50", constituent_conids=(("SAN1", 29612249),)),
     True,
 )
-CLOSE = datetime(2026, 3, 12, 16, 30, tzinfo=UTC)  # EUREX close, UTC
+CLOSE = datetime(2026, 3, 12, 16, 30, tzinfo=UTC)
 NEXT_OPEN = datetime(2026, 3, 13, 7, 0, tzinfo=UTC)
 TRADE_DATE = date(2026, 3, 12)
 KNOWN = date(2026, 1, 1)
 VENDOR = "Test"
 
-INDEX_CONID = 320227571  # ESTX50
+INDEX_CONID = 320227571
 _MONTHS = {"JUN26": date(2026, 6, 19)}
 _STRIKES = (95.0, 100.0, 105.0)
 _SPOT = 100.0
 
-# Equity conids the STK secdef search resolves the unpinned constituents to. SAN1 is pinned, so it
-# is fetched by its conid and never searched (the gateway asserts that below).
 _EQUITY_CONID = {"ASML": 600001, "TTE": 600002, "SIE": 600003}
-# The membership basket, with hand-set weights. Five names; SAN1 (pinned) deliberately the 4th by
-# weight so a top-3 EXCLUDES it (proves the pin does not sneak in a non-top-N name) and a top-4
-# INCLUDES it (proves the pin path captures). Weights sum to 1.0 (a complete snapshot).
 _WEIGHTS = {"ASML": 0.40, "TTE": 0.25, "SIE": 0.20, "SAN1": 0.10, "ENEL": 0.05}
-# ENEL is a member by weight but the gateway lists NO options for it — proves a name with no chain
-# is a clean per-name skip, not an abort.
 _NO_OPTION_NAMES = {"ENEL"}
 _ENEL_CONID = 600004
 
@@ -113,7 +81,6 @@ def _selection() -> ChainSelection:
 
 
 def _option_conid(underlying_conid: int, expiry: date, strike: float, right: str) -> int:
-    """A deterministic, collision-free option conid keyed on its underlying — the gateway's id."""
     base = underlying_conid * 1_000_000 + int(expiry.strftime("%y%m%d")) * 100
     return base + int(strike) * 2 + (0 if right == "C" else 1)
 
@@ -124,14 +91,6 @@ def _close_mark(strike: float, right: str) -> float:
 
 
 class _FakeGateway:
-    """A fake CP REST gateway listing a chain for the index and each option-bearing constituent.
-
-    Routes by path + params. The index resolves via an ``IND`` secdef search; each unpinned
-    constituent's conid via a ``STK`` secdef search; pinned SAN1's conid never comes from a ticker
-    search (asserted) — its option months come from a symbol search filtered by its pin. Every
-    underlying lists the same strikes × rights at a distinct, underlying-scoped conid, so the
-    capture's per-underlying isolation is observable in the basket.
-    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -169,18 +128,12 @@ class _FakeGateway:
                 }
             ]
         if sec_type == "STK":
-            # STK search resolves an UNPINNED constituent's conid. SAN1 is pinned: its conid never
-            # comes from a ticker search, so a STK search for it is a bug in the capture path.
             assert symbol != "SAN1", "pinned SAN1 conid must come from the pin, never a ticker search"
             self.stk_searches.append(symbol)
             conid = {**_EQUITY_CONID, "ENEL": _ENEL_CONID}.get(symbol)
             if conid is None:
                 return []
             return [{"conid": conid, "symbol": symbol, "sections": [{"secType": "STK"}]}]
-        # A symbol-keyed search with no secType is the option-month lookup for an already-resolved
-        # underlying: the gateway REQUIRES ``symbol`` (a conid-only call returns "symbol required"),
-        # so the caller searches by ticker and disambiguates by the pinned/resolved conid. SAN1
-        # reaches its months HERE (by symbol, filtered on its pinned conid), not via a STK search.
         return self._option_months_search(symbol)
 
     def _option_months_search(self, symbol: str) -> Any:
@@ -217,7 +170,7 @@ class _FakeGateway:
         rows: list[dict[str, Any]] = []
         for conid_text in str(params["conids"]).split(","):
             conid = int(conid_text)
-            if conid in self._conid_to_underlying:  # an underlying spot row
+            if conid in self._conid_to_underlying:
                 rows.append({"conid": conid, "31": str(_SPOT), "_updated": self._close_ms})
                 continue
             mark = self._mark_for_option_conid(conid)
@@ -244,7 +197,6 @@ class _FakeGateway:
 
 @pytest.fixture
 def store(tmp_path: Any) -> ParquetStore:
-    """A temp Parquet store with the SX5E membership banked (NEVER the canonical data/)."""
     store = ParquetStore(tmp_path)
     ingest_membership_changes(
         store,
@@ -269,16 +221,11 @@ def _capture(store: ParquetStore, top_n: int) -> IndexBasket | None:
     )
 
 
-# ---------------------------------------------------------------------------------------------
-# The widened capture.
-# ---------------------------------------------------------------------------------------------
 def test_capture_widens_to_the_top_n_constituents_by_weight(store: ParquetStore) -> None:
     basket = _capture(store, top_n=3)
     assert basket is not None
-    # The index plus the top-3 constituents are the underlyings — never the 4th/5th by weight.
     underlyings = {k.underlying_symbol for k in basket.instruments}
     assert underlyings == {"SX5E", "ASML", "TTE", "SIE"}
-    # Each underlying carries its OWN option chain (the full listed ladder here), keyed on it.
     for name in ("ASML", "TTE", "SIE"):
         opt = {
             (k.expiry, k.strike, k.option_right)
@@ -302,35 +249,30 @@ def test_index_underlying_uses_the_resolved_conid_not_the_registry_placeholder(
     index_leg = next(
         k for k in basket.instruments if k.underlying_symbol == "SX5E" and not k.is_option()
     )
-    # Resolved at fire time from the ESTX50 search — never the registry's conid: 0 placeholder.
     assert index_leg.broker_contract_id == str(INDEX_CONID)
 
 
 def test_pinned_constituent_is_fetched_by_conid_and_only_inside_its_top_n(
     store: ParquetStore,
 ) -> None:
-    # top-3 EXCLUDES SAN1 (it is the 4th by weight) — the pin must not sneak a non-top-N chain in.
     top3 = _capture(store, top_n=3)
     assert top3 is not None
     assert "SAN1" not in {k.underlying_symbol for k in top3.instruments}
-    # top-4 INCLUDES SAN1 — captured via its pinned conid (the gateway asserts it was never searched).
     top4 = _capture(store, top_n=4)
     assert top4 is not None
     san1_legs = [k for k in top4.instruments if k.underlying_symbol == "SAN1"]
-    assert san1_legs  # SAN1 was captured
+    assert san1_legs
     san1_underlying = next(k for k in san1_legs if not k.is_option())
-    assert san1_underlying.broker_contract_id == "29612249"  # the pinned conid
+    assert san1_underlying.broker_contract_id == "29612249"
 
 
 def test_a_constituent_with_no_listed_options_is_a_clean_per_name_skip(
     store: ParquetStore,
 ) -> None:
-    # top-5 reaches ENEL (the 5th by weight), which the gateway lists NO options for. The fire must
-    # NOT abort: the basket holds every option-bearing name and simply omits ENEL.
     basket = _capture(store, top_n=5)
     assert basket is not None
     underlyings = {k.underlying_symbol for k in basket.instruments}
-    assert "ENEL" not in underlyings  # no chain → no legs, but no abort
+    assert "ENEL" not in underlyings
     assert underlyings == {"SX5E", "ASML", "TTE", "SIE", "SAN1"}
 
 
@@ -339,10 +281,8 @@ def test_constituent_events_carry_the_same_session_close_as_the_index(
 ) -> None:
     basket = _capture(store, top_n=3)
     assert basket is not None
-    # Every event — index AND constituent — is stamped at the index's own session close.
     assert {e.canonical_ts for e in basket.events} == {CLOSE}
     assert {e.trade_date for e in basket.events} == {TRADE_DATE}
-    # A constituent option's 'last' equals its independent close-mark oracle (per-underlying conid).
     by_key_field = {(e.instrument_key, e.field_name): e.value for e in basket.events}
     asml_105c = next(
         k for k in basket.instruments
@@ -362,13 +302,6 @@ def test_masters_accompany_every_instrument_as_of_the_close(store: ParquetStore)
 def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
     store: ParquetStore,
 ) -> None:
-    """The production seam: a store-wired ``live_basket_source`` captures index + constituents.
-
-    With ``store`` given (the production shim passes the runner's store) the bound source must use
-    the widened capture; without it (the prior behaviour) it captures the index only. ``transport``
-    is injected (the fake gateway) so the credential/socket path is bypassed; ``now`` is pinned to
-    the trade date so the no-look-ahead guard admits this same-day fire.
-    """
     fired = FiredIndex(entry=SX5E, as_of=CLOSE, next_open=NEXT_OPEN)
 
     widened = live_basket_source(
@@ -383,7 +316,6 @@ def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
     assert basket is not None
     assert {k.underlying_symbol for k in basket.instruments} == {"SX5E", "ASML", "TTE", "SIE"}
 
-    # No store → the index-only lane (the prior behaviour), proving the store is what widens scope.
     index_only = live_basket_source(
         transport=_FakeGateway(),
         config=_config(3),
@@ -399,10 +331,6 @@ def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
 def test_no_banked_membership_is_a_loud_failure_not_a_silent_index_only_capture(
     tmp_path: Any,
 ) -> None:
-    # The 2026-06-15 canary's exact gap: scope is index+constituents but the store has NO banked
-    # 1A membership weights. The OLD behaviour captured the index leg only and exited cleanly
-    # (silent) — the bug. It must now RAISE a CRITICAL ConstituentLaneError naming the missing
-    # input, so the runner exits non-zero and OnFailure= alerts fire.
     empty = ParquetStore(tmp_path)
     with pytest.raises(ConstituentLaneError, match="no banked 1A membership weights"):
         collect_index_and_constituents_basket(
@@ -417,14 +345,12 @@ def test_no_banked_membership_is_a_loud_failure_not_a_silent_index_only_capture(
 
 
 def test_a_missing_weight_basket_is_a_loud_membership_ranking_failure(tmp_path: Any) -> None:
-    # Membership present but unrankable (a labeled-unavailable weight): the shared resolver raises
-    # MembershipRankingError (loud), never a quietly-truncated top-N. (b) of the fail-loud cases.
     partial = ParquetStore(tmp_path)
     ingest_membership_changes(
         partial,
         [
             MembershipChange("SX5E", "ASML", KNOWN, None, KNOWN, VENDOR, 0.40),
-            MembershipChange("SX5E", "TTE", KNOWN, None, KNOWN, VENDOR, None),  # unknown weight
+            MembershipChange("SX5E", "TTE", KNOWN, None, KNOWN, VENDOR, None),
         ],
     )
     with pytest.raises(MembershipRankingError, match="cannot rank a basket"):
@@ -442,10 +368,6 @@ def test_a_missing_weight_basket_is_a_loud_membership_ranking_failure(tmp_path: 
 def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_each(
     store: ParquetStore,
 ) -> None:
-    # Activation + ledger: a top-5 over the 5-name basket must ATTEMPT every name and persist
-    # exactly one labelled outcome row per attempted name. Independently derived from the fixture:
-    #   ASML/TTE/SIE -> captured (chains listed), SAN1 -> captured (pinned chain),
-    #   ENEL -> no_options (the gateway lists none). No unresolved/unentitled here.
     collect_index_and_constituents_basket(
         _FakeGateway(),
         store=store,
@@ -457,7 +379,7 @@ def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_e
     )
     rows = store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
     by_name = {row.underlying: row for row in rows}
-    assert set(by_name) == {"ASML", "TTE", "SIE", "SAN1", "ENEL"}  # all 5 attempted
+    assert set(by_name) == {"ASML", "TTE", "SIE", "SAN1", "ENEL"}
     assert {name: row.outcome for name, row in by_name.items()} == {
         "ASML": "captured",
         "TTE": "captured",
@@ -465,15 +387,11 @@ def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_e
         "SAN1": "captured",
         "ENEL": "no_options",
     }
-    # The captured names carry the full listed ladder (3 strikes × 2 rights × 1 month = 6 legs);
-    # the no_options name carries zero, and only a captured outcome carries a non-zero count.
     assert by_name["ASML"].n_options == len(_STRIKES) * 2 * len(_MONTHS)
     assert by_name["ENEL"].n_options == 0
-    # Rank is the 1-based weight order: ASML(.40)=1, TTE(.25)=2, SIE(.20)=3, SAN1(.10)=4, ENEL(.05)=5.
     assert {name: row.outcome for name, row in by_name.items()} and by_name["ASML"].rank == 1
     assert by_name["ENEL"].rank == 5
     assert by_name["SAN1"].rank == 4
-    # Each name's ledger row lands under its own ``underlying=<SYMBOL>`` partition (Done criteria).
     partitions = {
         p.parent.name
         for p in store.root.rglob("constituent_capture_outcomes/**/*.parquet")
@@ -482,8 +400,6 @@ def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_e
 
 
 def test_an_unresolved_constituent_is_recorded_not_silently_dropped(tmp_path: Any) -> None:
-    # A name the gateway does not list (no STK conid, not pinned) must land an `unresolved` ledger
-    # row — never a silent drop. GHOST is the heaviest so it is unambiguously inside the top-N.
     store = ParquetStore(tmp_path)
     ingest_membership_changes(
         store,
@@ -503,7 +419,6 @@ def test_an_unresolved_constituent_is_recorded_not_silently_dropped(tmp_path: An
         selection=_selection(),
     )
     assert basket is not None
-    # ASML still captured (one bad name never aborts the fire); GHOST omitted from the basket.
     assert {k.underlying_symbol for k in basket.instruments} == {"SX5E", "ASML"}
     by_name = {
         row.underlying: row

@@ -1,7 +1,3 @@
-// The per-maturity Greeks transpose: Greeks as columns (raw + currency pair), deltas as rows,
-// one maturity in view via a selector, railed rows flagged. Independent fixtures, user-facing
-// assertions (the rendered table the operator reads), not internal calls.
-
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
@@ -18,7 +14,6 @@ const PROV = {
   n_sources: 4,
 };
 
-// A clean second maturity so the selector has two options to switch between.
 const CLEAN_12M: AnalyticsMaturity = {
   maturity_years: 1.0,
   tenor_label: "12m",
@@ -56,16 +51,16 @@ describe("DollarGreeksByMaturity", () => {
   test("lays Greeks as columns and delta bands as rows, with raw + currency pairs", () => {
     render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />);
     const table = screen.getByRole("table", { name: /Dollar Greeks — / });
-    // Each Greek is a column group with a (raw | currency-value) pair.
+
     for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
       expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
     }
-    // Each Greek group has two sub-columns: a "raw" column and a "{currency} value" column.
+
     expect(within(table).getAllByRole("columnheader", { name: /^raw / }).length).toBe(5);
     expect(within(table).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(5);
-    // The delta band is a row header (deltas as ROWS).
+
     expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
-    // Currency unit strings are rendered in € (the index's quote currency), not "$".
+
     expect(within(table).getByText("€ per 1% move")).toBeInTheDocument();
   });
 
@@ -74,10 +69,10 @@ describe("DollarGreeksByMaturity", () => {
     render(
       <DollarGreeksByMaturity maturities={[ANALYTICS_AAA.maturities[0], CLEAN_12M]} currency="€" />,
     );
-    // First maturity is shown by default.
+
     expect(screen.getByRole("table", { name: /Dollar Greeks — 3m/ })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Dollar Greeks — 12m/ })).not.toBeInTheDocument();
-    // Switching the selector swaps the visible maturity (only ONE in view).
+
     await user.selectOptions(screen.getByLabelText("Greeks maturity"), "12m (1.000y)");
     expect(screen.getByRole("table", { name: /Dollar Greeks — 12m/ })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: /Dollar Greeks — 3m/ })).not.toBeInTheDocument();
@@ -88,18 +83,17 @@ describe("DollarGreeksByMaturity", () => {
       <DollarGreeksByMaturity maturities={ANALYTICS_AAA_DEGENERATE.maturities} currency="€" />,
     );
     const table = screen.getByRole("table", { name: /Dollar Greeks — 10d/ });
-    // All three rows render — the railed rows are NOT dropped (the served datum stays visible).
+
     expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /14dp/ })).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /12dp/ })).toBeInTheDocument();
-    // The two railed rows carry the ⚠ flag; the good row does not.
+
     const railed = within(table).getByRole("row", { name: /14dp/ });
     expect(railed).toHaveClass("flagged-row");
     expect(within(railed).getByTitle(/railed slice/i)).toBeInTheDocument();
     const good = within(table).getByRole("row", { name: /30dp/ });
     expect(good).not.toHaveClass("flagged-row");
-    // The railed row's served dollar value is still rendered intact (the data is shown, just
-    // flagged): the 14dp delta-$ is -2700 → "−2.7 × 10³".
+
     expect(within(railed).getByText(/2\.7 × 10³/)).toBeInTheDocument();
   });
 });

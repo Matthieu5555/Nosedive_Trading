@@ -1,5 +1,3 @@
-"""Term-structure slope — sign convention and the missing-pillar refusal."""
-
 from __future__ import annotations
 
 import pytest
@@ -7,7 +5,6 @@ from algotrading.infra.signals import TermStructureError, term_structure_slope
 
 
 def test_contango_is_positive() -> None:
-    # back (0.23) above front (0.20) -> upward slope of +0.03 vol points.
     slope = term_structure_slope({"1m": 0.20, "3m": 0.23}, front="1m", back="3m")
     assert slope == pytest.approx(0.03)
 
@@ -23,7 +20,7 @@ def test_flat_term_structure_is_zero() -> None:
 
 @pytest.mark.parametrize("missing", ["1m", "6m"])
 def test_missing_pillar_is_refused(missing: str) -> None:
-    vols = {"1m": 0.20, "3m": 0.23}  # has 1m and 3m, never 6m
+    vols = {"1m": 0.20, "3m": 0.23}
     front, back = ("1m", "6m") if missing == "6m" else ("1m", "3m")
     available = {"1m", "3m"}
     if missing == "1m":

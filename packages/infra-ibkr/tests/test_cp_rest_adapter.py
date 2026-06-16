@@ -1,10 +1,3 @@
-"""Client Portal market-data adapter (ADR 0024) — REST snapshot + WS frame → RawMarketEvent.
-
-No live socket: a fake transport drives :meth:`snapshot`, and :meth:`_handle_frame` is fed a WS
-frame directly. The read-only invariant (ADR 0024 §4) is asserted — the adapter touches only
-market-data paths, never an order endpoint.
-"""
-
 from __future__ import annotations
 
 import json
@@ -25,18 +18,14 @@ _CONID = 265598
 _IK = "OPT:SPY:OPT:20260626:C:758:100:SMART:USD"
 _INSTRUMENT = CpInstrument(instrument_key=_IK, conid=_CONID, underlying="SPY")
 _RECEIPT = datetime(2026, 6, 4, 18, 29, 21, tzinfo=UTC)
-# 2026-06-04T18:29:20.115Z as CP's `_updated` epoch-ms.
 _UPDATED_MS = int((datetime(2026, 6, 4, 18, 29, 20, 115000, tzinfo=UTC) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
 
 
 def _snapshot_transport(snapshot_rows: list[dict[str, Any]]) -> FakeCpTransport:
-    """Every snapshot GET answers the same canned rows (the warm steady state)."""
     return FakeCpTransport(get_response=snapshot_rows)
 
 
 def _adapter(transport: FakeCpTransport) -> CpRestMarketDataAdapter:
-    # _sleep injected as a no-op: a transport whose rows never warm must not stall the test on
-    # the snapshot engine's real warm-up sleeps.
     return CpRestMarketDataAdapter(
         transport, [_INSTRUMENT], session_id="ibkr-cp", now_fn=lambda: _RECEIPT,
         _sleep=lambda _seconds: None,
@@ -53,7 +42,6 @@ def test_snapshot_normalizes_rows_to_events() -> None:
     assert by_field["bid"].value == 9.27 and by_field["ask"].value == 9.31
     assert by_field["bid"].instrument_key == _IK
     assert by_field["bid"].receipt_ts == _RECEIPT
-    # exchange_ts came from the `_updated` field, not the receipt clock.
     assert by_field["bid"].exchange_ts == datetime(2026, 6, 4, 18, 29, 20, 115000, tzinfo=UTC)
 
 
@@ -63,29 +51,22 @@ def test_snapshot_ignores_unknown_conid() -> None:
 
 
 def test_snapshot_warms_up_a_cold_first_response() -> None:
-    """A metadata-only first snapshot (the cold-subscription quirk) is polled until marks appear.
-
-    The adapter rides the shared snapshot engine, so it inherits the warm-up the close capture
-    proved live: the first response carries no value tag, the second carries the quote — the
-    adapter must emit the warmed quote, not an empty tuple.
-    """
 
     def _cold_then_warm(_path: str, _params: dict[str, Any]) -> list[dict[str, Any]]:
-        if len(transport.get_calls) == 1:  # the call being answered is already recorded
-            return [{"conid": _CONID, "server_id": "q0"}]  # cold: metadata only
+        if len(transport.get_calls) == 1:
+            return [{"conid": _CONID, "server_id": "q0"}]
         return [{"conid": _CONID, "84": "9.27"}]
 
     transport = FakeCpTransport(get_responder=_cold_then_warm)
     events = _adapter(transport).snapshot()
     assert [e.field_name for e in events] == ["bid"]
     assert events[0].value == 9.27
-    assert len(transport.get_paths) == 2  # one cold call, one warm retry — then it stopped
+    assert len(transport.get_paths) == 2
 
 
 def test_snapshot_is_read_only() -> None:
     transport = _snapshot_transport([{"conid": _CONID, "84": "9.27"}])
     _adapter(transport).snapshot()
-    # The only endpoint touched is the market-data snapshot; nothing order-related, ever.
     assert transport.get_paths == ["/iserver/marketdata/snapshot"]
     assert transport.post_paths == []
     assert not any("order" in path for path in transport.get_paths + transport.post_paths)
@@ -109,7 +90,7 @@ def test_handle_ws_control_frame_emits_nothing() -> None:
     adapter = _adapter(transport)
     received: list[RawMarketEvent] = []
     adapter.set_tick_callback(received.append)
-    adapter._handle_frame(json.dumps({"topic": "system", "hb": 1}))  # heartbeat, not market data
+    adapter._handle_frame(json.dumps({"topic": "system", "hb": 1}))
     assert received == []
 
 

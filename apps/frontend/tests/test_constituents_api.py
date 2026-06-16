@@ -1,11 +1,3 @@
-"""Constituents router tests: the point-in-time index basket, price-first (WS 1A/1I).
-
-The seeded cases persist real ``index_constituents`` + ``daily_bar`` rows (the conftest
-seed: AAA/BBB members, CCC removed before the as-of, FUT added after it) and assert the
-as-of resolution, the look-ahead gate, and the price-first ordering against those
-hand-chosen values.
-"""
-
 from __future__ import annotations
 
 from types import ModuleType
@@ -23,7 +15,6 @@ def test_constituents_reads_back_as_of_basket(
     assert payload["index"] == seed.INDEX
     assert payload["as_of"] == seed.TRADE_DATE.isoformat()
     symbols = [c["symbol"] for c in payload["constituents"]]
-    # AAA's close (192) > BBB's (45.5): price-first.
     assert symbols == [seed.MEMBER_AAA, seed.MEMBER_BBB]
     aaa = payload["constituents"][0]
     assert aaa["weight"] == pytest.approx(0.6)
@@ -42,15 +33,12 @@ def test_constituents_price_first_orders_by_latest_close(
             params={"index": seed.INDEX, "as_of": seed.TRADE_DATE.isoformat()},
         ).json()["constituents"]
     ]
-    # Price-first: latest close descending (names with a bar before any without).
     assert closes == sorted(closes, key=lambda c: -c)
 
 
 def test_constituents_as_of_excludes_future_members(
     seeded_client: TestClient, seed: ModuleType
 ) -> None:
-    # No look-ahead: a member added after as_of (FUT, add 2026-06-01) is absent, and one removed
-    # before it (CCC, removed 2026-04-01) is absent. The basket is the names in force *then*.
     symbols = {
         c["symbol"]
         for c in seeded_client.get(
@@ -66,9 +54,6 @@ def test_constituents_as_of_excludes_future_members(
 def test_constituents_effective_add_date_is_per_name(
     seeded_client: TestClient, seed: ModuleType
 ) -> None:
-    # Regression: _interval_for must select the interval of *that* name, not the latest-known row
-    # across all names. As of 2026-06-15 both AAA (added 2026-01-01) and FUT (added 2026-06-01) are
-    # members with DIFFERENT add dates; each must report its own (the bug reported one date for all).
     by_symbol = {
         c["symbol"]: c
         for c in seeded_client.get(
@@ -86,5 +71,4 @@ def test_constituents_bad_as_of_is_labeled_400(
         "/api/constituents", params={"index": seed.INDEX, "as_of": "nope"}
     )
     assert response.status_code == 400
-    # The full labelled shape the web client matches on: label + the raw echoed value.
     assert response.json() == {"error": "bad_as_of", "as_of": "nope"}

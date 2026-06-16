@@ -1,8 +1,3 @@
-// The shared chart theme (M34): the TS tokens must mirror the CSS custom properties in
-// src/index.css (the design source of truth), and the Plotly theming must survive a caller
-// layout that sets its own axis attributes — the regression the old spread-merge had, where
-// a caller axis title silently discarded the themed gridcolor/tickcolor on that axis.
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -15,10 +10,6 @@ import {
   themedPlotLayout,
 } from "./chartTheme";
 
-// Read the token straight out of index.css, so the expectation is independent of this module:
-// if a designer retunes --border in CSS, this test forces the TS mirror to follow. (Read via
-// fs — vitest runs with cwd at the package root — because vitest's CSS pipeline swallows both
-// `?raw` imports and file:// module URLs for .css files.)
 const indexCss = readFileSync(join(process.cwd(), "src", "index.css"), "utf8");
 
 function cssToken(name: string): string {

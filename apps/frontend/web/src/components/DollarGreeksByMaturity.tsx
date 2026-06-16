@@ -1,25 +1,9 @@
-// The per-maturity Greeks transpose (owner directive 2026-06-15): ONE maturity in view at a
-// time via a selector, the Greeks as COLUMNS — each Greek a (raw, currency) pair side by side —
-// and the DELTAS as ROWS, in a horizontally-scrollable table.
-//
-// This replaces both the per-band term-structure-adjacent matrix AND the wide strike table that
-// overflowed the page far to the right: one maturity's grid is narrow enough to read, and the
-// selector keeps the whole Greeks block to a single bounded table no matter how many tenors or
-// delta bands the capture carries.
-//
-// Render-layer honesty: a row seated on a railed slice (its implied vol outside the sane band)
-// is flagged inline (⚠) and rendered with its served values intact — we never mutate the data,
-// we only mark it so a reader does not mistake a railed-slice Greek for a clean one. The
-// scientific-notation + currency helpers are reused verbatim (no per-component formatting).
-
 import { useEffect, useState } from "react";
 
 import type { AnalyticsMaturity, AnalyticsPoint } from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
 
-// The Greek columns, in the owner's reading order, each carrying its raw mathematical unit. The
-// $-Greek (currency) unit travels from the backend on the metric and is rendered per cell.
 const GREEKS: ReadonlyArray<{ name: keyof AnalyticsPoint["metrics"]; rawUnit: string }> = [
   { name: "delta", rawUnit: UNITS.delta },
   { name: "gamma", rawUnit: UNITS.gamma },
@@ -28,8 +12,6 @@ const GREEKS: ReadonlyArray<{ name: keyof AnalyticsPoint["metrics"]; rawUnit: st
   { name: "rho", rawUnit: UNITS.rho },
 ];
 
-// The first non-null currency-unit string a Greek carries across the maturity's points, in the
-// index's quote currency — shown once in the column header, never re-derived per cell.
 function currencyUnitFor(
   points: AnalyticsPoint[],
   name: keyof AnalyticsPoint["metrics"],
@@ -48,8 +30,6 @@ export function DollarGreeksByMaturity({
 }) {
   const label = "Per-maturity dollar Greeks (Greeks as columns, deltas as rows)";
 
-  // The selected maturity, by its stable label. Keep the selection valid if the maturity set
-  // changes under it (index/date switch) by snapping back to the first available one.
   const [selected, setSelected] = useState<string>(() => maturities[0]?.label ?? "");
   useEffect(() => {
     if (maturities.length === 0) return;
@@ -68,8 +48,7 @@ export function DollarGreeksByMaturity({
   }
 
   const maturity = maturities.find((m) => m.label === selected) ?? maturities[0];
-  // Delta bands as ROWS, ordered put → ATM → call (signed target delta — the smile's reading
-  // order), so the table reads left wing → ATM → right wing top-to-bottom.
+
   const rows = [...maturity.points].sort((a, b) => a.target_delta - b.target_delta);
 
   return (

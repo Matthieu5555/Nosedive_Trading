@@ -1,15 +1,3 @@
-"""A trivial toy ``Strategy`` (NOT S1–S5) used to prove the spine.
-
-The done-criteria fixture: a deliberately minimal strategy whose only job is to exercise the
-protocol — one signal threshold, one two-leg basket, a band rebalance and a kill rule simple
-enough to hand-check. It exists so the harness, the stamp seam, the book composition, and the
-attribution grouping can be tested against a *real* implementor without dragging in any of the
-real strategies' economics (which the S-tasks own).
-
-It implements :class:`~algotrading.strategy.Strategy` structurally (no inheritance), which is
-itself part of what the tests check: the protocol is satisfiable by shape alone.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,16 +17,14 @@ from algotrading.strategy import (
     StrategyContract,
 )
 
-# The toy's hand-checkable rules — all internal invariants of the fixture, not business config.
 TOY_STRATEGY_ID = "TOY"
-TOY_ENTRY_THRESHOLD = 0.50  # enter when the implied-correlation reading exceeds this
-TOY_DELTA_BAND = 0.25  # flatten when |net delta| breaches this band (kill rule)
-TOY_HEDGE_RATIO = -1.0  # hedge quantity = -net_delta * ratio (a unit delta-neutralising hedge)
+TOY_ENTRY_THRESHOLD = 0.50
+TOY_DELTA_BAND = 0.25
+TOY_HEDGE_RATIO = -1.0
 
 
 @dataclass(frozen=True, slots=True)
 class ToyStrategy:
-    """A minimal, hand-checkable strategy: enter on ρ̄ > 0.5, flatten on a delta-band breach."""
 
     @property
     def contract(self) -> StrategyContract:
@@ -56,7 +42,6 @@ class ToyStrategy:
         )
 
     def decide_entry(self, as_of: date, signals: object) -> EntryDecision:
-        # `signals` is a SignalSnapshot; typed loosely here so the fixture stays dependency-light.
         reading = signals.latest(SignalKind.IMPLIED_CORRELATION)  # type: ignore[attr-defined]
         if reading is None:
             return EntryDecision(EntryAction.NOOP, "no implied-correlation reading; holding flat")
@@ -79,7 +64,6 @@ class ToyStrategy:
         return ExitDecision(ExitAction.HOLD, f"net delta {net_delta} inside band {TOY_DELTA_BAND}")
 
     def construct(self, as_of: date, *, basket_id: str) -> Basket:
-        # A two-leg toy: long one call grid cell, short the underlying — stamped with the identity.
         legs = (
             BasketLeg(
                 instrument_kind="option", side="long", quantity=1.0,

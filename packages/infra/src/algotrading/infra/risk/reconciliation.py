@@ -1,18 +1,3 @@
-"""Reconcile computed Greeks against broker-returned Greeks; surface the breaches.
-
-Step 11 requires that discrepancies beyond a threshold are surfaced automatically, and
-the blueprint is explicit that this is diagnostic only (``risk/aggregation.py``:
-"Reconcile to broker Greeks only as diagnostics, never as the source of truth"). The
-broker may return only some Greeks, so each is optional and a missing one is skipped
-(not treated as zero — an absent broker value is not a disagreement). The thresholds are
-versioned so "what counts as a breach" is part of the data lineage, and only the breaches
-are returned: a quiet, empty result means everything agreed.
-
-A non-finite broker Greek (NaN/inf) is treated as a breach, not silent agreement: a bare
-``abs_diff > threshold`` would read ``nan`` as "agrees". This guard is correctness, not
-taste, and it goes in.
-"""
-
 from __future__ import annotations
 
 import math
@@ -23,8 +8,6 @@ from algotrading.core.log import get_logger
 
 from .greeks import PositionRisk
 
-# Per-unit absolute thresholds. Versioned so a change to "what is a breach" is a
-# deliberate, reviewable bump, not a silent edit.
 RECON_TOLERANCE_VERSION = "risk-recon-1.0.0"
 
 _log = get_logger(__name__)
@@ -32,7 +15,6 @@ _log = get_logger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class BrokerGreeks:
-    """Per-unit Greeks as returned by the broker. Any field may be ``None`` (absent)."""
 
     contract_key: str
     delta: float | None = None
@@ -43,7 +25,6 @@ class BrokerGreeks:
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationTolerance:
-    """Per-Greek absolute thresholds beyond which a difference is a breach."""
 
     version: str
     delta: float
@@ -59,7 +40,6 @@ DEFAULT_RECON_TOLERANCE = ReconciliationTolerance(
 
 @dataclass(frozen=True, slots=True)
 class GreekDiscrepancy:
-    """One Greek whose computed-vs-broker difference exceeded the threshold."""
 
     contract_key: str
     greek: str
@@ -76,12 +56,6 @@ def reconcile(
     *,
     tolerance: ReconciliationTolerance = DEFAULT_RECON_TOLERANCE,
 ) -> list[GreekDiscrepancy]:
-    """Return the Greeks whose per-unit computed value differs from broker beyond threshold.
-
-    Compares only the Greeks the broker actually returned. The result is empty when
-    everything is within tolerance; each entry is one surfaced breach, ordered
-    delta, gamma, vega, theta.
-    """
     computed = line.greeks
     pairs = (
         ("delta", computed.delta, broker.delta, tolerance.delta),
@@ -94,8 +68,6 @@ def reconcile(
         if theirs is None:
             continue
         abs_diff = abs(mine - theirs)
-        # A non-finite broker value (NaN/inf) is corrupt data, not agreement: surface
-        # it. ``nan > threshold`` is False, so without this a NaN would read as "agrees".
         if not math.isfinite(theirs) or abs_diff > threshold:
             breaches.append(
                 GreekDiscrepancy(
@@ -113,11 +85,6 @@ def reconcile(
 
 @dataclass(frozen=True, slots=True)
 class ReconciliationReport:
-    """Outcome of a reconciliation pass over a book: the breaches and the compare count.
-
-    ``compared`` is the number of (contract, greek) pairs actually compared — a breach
-    rate needs the denominator. ``ok`` is True when no breach surfaced.
-    """
 
     breaches: tuple[GreekDiscrepancy, ...]
     compared: int
@@ -134,13 +101,6 @@ def reconcile_report(
     *,
     tolerance: ReconciliationTolerance = DEFAULT_RECON_TOLERANCE,
 ) -> ReconciliationReport:
-    """Reconcile every line that has a broker counterpart, collect the breaches, and log.
-
-    Only contracts present in both sides and Greeks the broker actually supplied are
-    compared. Breaches surface automatically via a warning log rather than hiding in a
-    column nobody reads, matching the blueprint's "so they surface automatically".
-    Lines are processed in contract-key order so the report is deterministic.
-    """
     breaches: list[GreekDiscrepancy] = []
     compared = 0
     for line in sorted(lines, key=lambda ln: ln.contract_key):

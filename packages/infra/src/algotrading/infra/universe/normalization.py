@@ -1,16 +1,3 @@
-"""Turn one raw broker contract row into a validated, canonical instrument key.
-
-This is where the broker's loose, string-ish payload is made strict: expiries in
-whatever format the broker used become a single ``date``, strikes become real
-numbers, and the multiplier and currency are *required* — a missing one is rejected,
-never defaulted to a guess. Every rejection raises :class:`UnresolvedContractError`
-naming the field and carrying the payload, so a bad contract is loud, not skipped.
-
-The broker contract id is read as an external foreign key (``conId``); it identifies
-the contract to the broker but is only one of the nine fields of the canonical
-:class:`~contracts.InstrumentKey`, never the platform's sole identifier.
-"""
-
 from __future__ import annotations
 
 import math
@@ -21,21 +8,12 @@ from algotrading.infra.contracts import InstrumentKey
 
 from .errors import UnresolvedContractError
 
-# Option-right spellings a broker might use, mapped to the canonical single letter.
 _RIGHT_ALIASES = {"C": "C", "CALL": "C", "P": "P", "PUT": "P"}
 
-# Broker expiry formats accepted, normalized to one canonical ``date``. IBKR uses the
-# compact ``YYYYMMDD``; ISO ``YYYY-MM-DD`` is accepted too so a second broker's format
-# folds to the same canonical form.
 _EXPIRY_FORMATS = ("%Y%m%d", "%Y-%m-%d")
 
 
 def _coerce_number(raw: object) -> float | None:
-    """Coerce a broker numeric (number or numeric string) to a finite float, or None.
-
-    ``bool`` is rejected (``True`` is not the strike 1.0); a non-numeric string or a
-    non-finite value returns ``None`` so the caller can raise a field-named error.
-    """
     if isinstance(raw, bool):
         return None
     if isinstance(raw, (int, float)):
@@ -58,7 +36,6 @@ def _require_text(payload: Mapping[str, object], field: str) -> str:
 
 
 def _require_broker_contract_id(payload: Mapping[str, object]) -> str:
-    """Read the broker's external id (``conId``), accepting an int or a non-empty str."""
     raw = payload.get("conId")
     if isinstance(raw, bool):
         raise UnresolvedContractError(payload, "conId", f"must be an id, got {raw!r}")
@@ -99,7 +76,6 @@ def _require_strike(payload: Mapping[str, object]) -> float:
 
 
 def normalize_expiry(payload: Mapping[str, object], raw: object) -> date:
-    """Normalize a broker expiry (any accepted format) to one canonical ``date``."""
     if isinstance(raw, datetime):
         return raw.date()
     if isinstance(raw, date):
@@ -117,7 +93,6 @@ def normalize_expiry(payload: Mapping[str, object], raw: object) -> date:
 
 
 def normalize_right(payload: Mapping[str, object], raw: object) -> str:
-    """Normalize a broker option right (C/P/CALL/PUT, any case) to ``C`` or ``P``."""
     if isinstance(raw, str):
         canonical = _RIGHT_ALIASES.get(raw.strip().upper())
         if canonical is not None:
@@ -128,12 +103,6 @@ def normalize_right(payload: Mapping[str, object], raw: object) -> str:
 
 
 def resolve_contract_row(payload: Mapping[str, object]) -> InstrumentKey:
-    """Resolve one verbatim broker row into a validated canonical instrument key.
-
-    Underlyings (``secType`` other than ``OPT``) have no expiry/strike/right; options
-    require all three. Any missing or invalid field raises
-    :class:`UnresolvedContractError` rather than producing a half-built key.
-    """
     symbol = _require_text(payload, "symbol")
     security_type = _require_text(payload, "secType")
     exchange = _require_text(payload, "exchange")

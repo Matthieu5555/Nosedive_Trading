@@ -1,9 +1,3 @@
-// Reusable TradingView Lightweight Charts line panel for dense 2D analytical curves.
-//
-// The component is intentionally narrow: it draws numeric-x line series with a crosshair
-// read-out and a formatter supplied by the caller. Plotly remains the charting path for
-// 3D surfaces, heatmaps, and non-line analytical views.
-
 import {
   createYieldCurveChart,
   type IYieldCurveChartApi,

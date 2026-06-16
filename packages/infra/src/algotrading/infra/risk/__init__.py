@@ -1,16 +1,3 @@
-"""algotrading.infra.risk — portfolio Greeks, monetized sensitivities, aggregation,
-scenario stress, and broker reconciliation (roadmap steps 11-12).
-
-Pure functions over a typed valuation input: price each position through the frozen
-pricer, net the lines into portfolio sensitivities grouped by any configured key,
-reconcile against the broker (diagnostics only), and stress the book under explicit
-shocked market states. The full-reprice scenario PnL and the net aggregates project
-into the M0-frozen ``RiskAggregate`` / ``ScenarioResult`` contracts; the versioned
-``RiskSnapshot`` and ``ScenarioReport`` are the in-memory surfaces the actor, API, and
-dashboards consume. Risk never implements a pricing formula — it binds the pricing seam
-through :mod:`valuation` only. See ``README.md`` and ADR 0006.
-"""
-
 from __future__ import annotations
 
 from .aggregation import (
@@ -119,35 +106,28 @@ from .valuation import (
     pricing_state_for,
 )
 
-# The risk-engine code version, stamped onto emitted contracts via the provenance
-# stamp the caller injects. Bump on a change that can alter an emitted number.
 RISK_ENGINE_VERSION = "risk-1.0.0"
 
 __all__ = [
     "RISK_ENGINE_VERSION",
-    # book composition (2D)
     "BookLayerInput",
     "COMPOSITION_VERSION",
     "book_stress_surface",
     "build_book_greeks",
-    # valuation
     "ContractValuationInput",
     "ValuationError",
     "pricing_state_for",
     "CONFIDENCE_OK",
     "CONFIDENCE_LOW",
     "CONFIDENCE_LABELS",
-    # bumps
     "BumpSpec",
     "DEFAULT_BUMPS",
     "BUMP_VERSION",
-    # greeks
     "PositionRisk",
     "position_risk",
     "net_lots",
     "central_difference_greeks",
     "LotConsistencyError",
-    # aggregation
     "NetSensitivities",
     "aggregate_lines",
     "aggregate_by_desk",
@@ -158,7 +138,6 @@ __all__ = [
     "GROUP_DIMENSIONS",
     "DESK_DIMENSION",
     "AggregationError",
-    # scenarios
     "Scenario",
     "scenario_grid",
     "effective_scenario_version",
@@ -183,7 +162,6 @@ __all__ = [
     "TaylorTerms",
     "taylor_terms",
     "terms_from_move",
-    # attribution (by-Greek axis, 2C)
     "AttributionConfig",
     "LineAttribution",
     "BookAttribution",
@@ -194,14 +172,12 @@ __all__ = [
     "BOOK_CONTRACT_KEY",
     "LEVEL_POSITION",
     "LEVEL_BOOK",
-    # realized day-over-day attribution (TARGET §5.2)
     "RealizedMove",
     "RealizedLineAttribution",
     "RealizedBookAttribution",
     "RealizedAttributionError",
     "attribute_realized_line",
     "attribute_realized_book",
-    # reconciliation
     "BrokerGreeks",
     "GreekDiscrepancy",
     "ReconciliationTolerance",
@@ -210,14 +186,11 @@ __all__ = [
     "reconcile_report",
     "DEFAULT_RECON_TOLERANCE",
     "RECON_TOLERANCE_VERSION",
-    # positions
     "Position",
     "PositionSet",
     "hypothetical_positions",
-    # basket (index variance, Eq 23 — NOT the multi-leg basket below)
     "BasketVarianceResult",
     "basket_variance",
-    # multi-leg basket (2A) — book-additive summation of analytics dollar Greeks
     "BasketRisk",
     "BasketGap",
     "LegRisk",
@@ -225,10 +198,8 @@ __all__ = [
     "analytics_cell_key",
     "index_rows_by_cell_and_side",
     "resolve_cell_side",
-    # config
     "RiskParams",
     "DEFAULT_GROUPING_KEYS",
-    # snapshot
     "RiskSnapshot",
     "GroupedRisk",
     "build_risk_snapshot",

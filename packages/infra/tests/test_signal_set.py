@@ -1,11 +1,3 @@
-"""Store-backed signal-set orchestration — as-of reads, look-ahead gate, labelled absence.
-
-Seeds a temporary ParquetStore with membership, per-name + index combined-surface ATM grids,
-their trailing history, and daily bars, then runs :func:`persist_signal_set` and checks the
-persisted readings against independently derived values. Expected ρ̄ comes from the forward
-basket identity (set so it is exactly 0.5); expected realized vol from ``statistics.stdev``.
-"""
-
 from __future__ import annotations
 
 import math
@@ -25,14 +17,11 @@ INDEX = "SX5E"
 KNOWN = date(2020, 1, 1)
 VENDOR = "test-vendor"
 
-D0 = date(2026, 5, 29)  # the as-of day
+D0 = date(2026, 5, 29)
 DM1 = date(2026, 5, 28)
 DM2 = date(2026, 5, 27)
-FUTURE = date(2026, 6, 3)  # must never be read for an as-of of D0
+FUTURE = date(2026, 6, 3)
 
-# Index 3m IV chosen so the basket identity gives rho_bar = 0.5 exactly:
-#   own = 0.6^2*0.20^2 + 0.4^2*0.30^2 = 0.0288 ; cross = 0.24^2 - 0.0288 = 0.0288
-#   index_var = own + 0.5*cross = 0.0432 -> index_vol = sqrt(0.0432)
 INDEX_3M_IV = math.sqrt(0.0432)
 AAA_CLOSES = [100.0, 110.0, 99.0, 103.0]
 
@@ -53,8 +42,6 @@ def _analytics(underlying: str, day: date, tenor: str, iv: float) -> object:
 
 
 def _bar(underlying: str, day: date, close: float) -> object:
-    # A flat OHLC bar (open=high=low=close): only the close drives realized vol, and the OHLC
-    # validator requires open/close within [low, high].
     return make_record(
         "daily_bar",
         provider=PROVIDER,
@@ -76,7 +63,6 @@ def _seed(store: ParquetStore) -> None:
         ),
     )
     rows = [
-        # D0 combined-surface ATM grid: index + both constituents across three tenors.
         _analytics(INDEX, D0, "1m", 0.24),
         _analytics(INDEX, D0, "3m", INDEX_3M_IV),
         _analytics(INDEX, D0, "6m", 0.27),
@@ -86,10 +72,8 @@ def _seed(store: ParquetStore) -> None:
         _analytics("BBB", D0, "1m", 0.28),
         _analytics("BBB", D0, "3m", 0.30),
         _analytics("BBB", D0, "6m", 0.31),
-        # AAA 3m history for IV-rank: window becomes [0.10, 0.30, 0.20] -> rank(0.20) = 0.5.
         _analytics("AAA", DM2, "3m", 0.10),
         _analytics("AAA", DM1, "3m", 0.30),
-        # A future grid that would move rho_bar and the IV-rank window if it leaked into D0.
         _analytics(INDEX, FUTURE, "3m", 0.50),
         _analytics("AAA", FUTURE, "3m", 0.99),
     ]
@@ -121,18 +105,14 @@ def test_persisted_signal_set(tmp_path: Path) -> None:
     _seed(store)
     signals = _persist(store)
 
-    # rho_bar at 3m: independent forward-identity value, unaffected by the future 0.50 grid.
     assert signals[("implied_correlation", INDEX, "3m")] == pytest.approx(0.5)
 
-    # IV-rank on AAA: window [0.10, 0.30, 0.20] -> (0.20-0.10)/(0.30-0.10) = 0.5.
     assert signals[("iv_rank", "AAA", "3m")] == pytest.approx(0.5)
 
-    # RV−IV on AAA: independent realized vol minus the AAA 3m implied (0.20).
     log_returns = [math.log(b / a) for a, b in zip(AAA_CLOSES, AAA_CLOSES[1:], strict=False)]
     realized = statistics.stdev(log_returns) * math.sqrt(252.0)
     assert signals[("iv_vs_realized", "AAA", "3m")] == pytest.approx(realized - 0.20)
 
-    # Term slope on AAA across 1m->6m: 0.25 - 0.22 = 0.03.
     assert signals[("term_structure_slope", "AAA", "1m:6m")] == pytest.approx(0.03)
 
 
@@ -151,15 +131,11 @@ def test_unanswerable_signal_is_omitted_not_fabricated(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
     _seed(store)
     signals = _persist(store)
-    # BBB has a single 3m IV point (flat window) and no daily bars: its IV-rank and RV−IV are
-    # undefined, so they are absent — a labelled absence, never a fabricated 0.
     assert ("iv_rank", "BBB", "3m") not in signals
     assert ("iv_vs_realized", "BBB", "3m") not in signals
 
 
 def test_signal_config_for_maps_the_typed_universe_block() -> None:
-    # The EOD batch's single config→DTO seam: signal_config_for joins the fired index identity
-    # onto the typed universe `signals` block, carrying every economic param through unchanged.
     entry = SignalEntryConfig(
         version="sig-1",
         reference_tenor="3m",

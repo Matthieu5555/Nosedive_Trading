@@ -1,18 +1,3 @@
-"""The booking audit log — append-only, provenance-stamped, replay-stable (TARGET §6).
-
-The named obligations from ``tasks/execution-booking-commit.md``:
-
-* **Append-only + provenance:** every commit/block writes one stamped record; a mutate or delete
-  of a prior record is structurally impossible (no such verb) and a duplicate id is rejected at
-  the door; a record without a valid stamp cannot enter.
-* **Replay is reorder-stable:** the stamp hash is order-independent, so two records that differ
-  only in the order their source fills were passed produce the same stamp — and a JSONL round-trip
-  reconstructs the decision sequence in append order, unchanged.
-* **Cross-process hash stability** (TESTING.md): a record's provenance ``stamp_hash`` is identical
-  across separate Python processes under different ``PYTHONHASHSEED``s — the classic salted-hash
-  bug does not bite.
-"""
-
 from __future__ import annotations
 
 import os
@@ -39,7 +24,6 @@ NOW = datetime(2026, 6, 12, 16, 0, tzinfo=UTC)
 
 
 def _stamp(*refs: tuple[str, str, str]) -> ProvenanceStamp:
-    """A valid stamp pointing at the given (table, key0, key1) source refs."""
     records = tuple(source_ref(t, a, b) for t, a, b in refs)
     return stamp(
         calc_ts=NOW,
@@ -81,13 +65,9 @@ def _block(audit_id: str, reason: str, prov: ProvenanceStamp) -> BookingAudit:
 
 @pytest.fixture(params=["memory", "jsonl"])
 def audit_log(request: pytest.FixtureRequest, tmp_path: Path) -> object:
-    """Run every invariant against both the in-memory and the durable JSONL implementation."""
     if request.param == "memory":
         return InMemoryBookingAuditLog()
     return JsonlBookingAuditLog(tmp_path / "booking_audit.jsonl")
-
-
-# --- append-only + provenance -------------------------------------------------------------
 
 
 def test_a_record_is_appended_and_read_back_in_order(audit_log: object) -> None:
@@ -105,12 +85,10 @@ def test_a_duplicate_audit_id_is_rejected(audit_log: object) -> None:
     with pytest.raises(BookingAuditError) as exc:
         log.append(_commit("a1", ("fill-1",), _stamp(("fills", "fill-1", "k"))))
     assert exc.value.field == "audit_id"
-    # The first record is untouched — append-only never overwrites.
     assert log.read()[0].fill_ids == ("fill-0",)
 
 
 def test_the_log_offers_no_mutate_or_delete_verb(audit_log: object) -> None:
-    # The append-only guarantee is structural: there is simply no way to remove or rewrite.
     for forbidden in ("delete", "remove", "update", "pop", "clear", "mutate"):
         assert not hasattr(audit_log, forbidden)
 
@@ -118,7 +96,6 @@ def test_the_log_offers_no_mutate_or_delete_verb(audit_log: object) -> None:
 def test_a_record_with_a_tampered_stamp_is_refused_at_the_door(audit_log: object) -> None:
     log: InMemoryBookingAuditLog = audit_log  # type: ignore[assignment]
     good = _stamp(("fills", "fill-0", "k"))
-    # Forge a stamp whose stored hash no longer matches its contents.
     forged = ProvenanceStamp(
         calc_ts=good.calc_ts,
         code_version=good.code_version,
@@ -127,7 +104,7 @@ def test_a_record_with_a_tampered_stamp_is_refused_at_the_door(audit_log: object
         source_timestamps=good.source_timestamps,
         stamp_hash="0" * 64,
     )
-    with pytest.raises(ProvenanceValidationError):  # surfaces from the append door
+    with pytest.raises(ProvenanceValidationError):
         log.append(_commit("a1", ("fill-0",), forged))
     assert log.read() == ()
 
@@ -135,7 +112,7 @@ def test_a_record_with_a_tampered_stamp_is_refused_at_the_door(audit_log: object
 def test_a_block_must_name_a_reason_and_a_commit_must_not() -> None:
     prov = _stamp(("fills", "fill-0", "k"))
     with pytest.raises(BookingAuditError) as block_exc:
-        _block("a1", "", prov)  # blank reason on a block
+        _block("a1", "", prov)
     assert block_exc.value.field == "block_reason"
     with pytest.raises(BookingAuditError) as commit_exc:
         BookingAudit(
@@ -146,12 +123,7 @@ def test_a_block_must_name_a_reason_and_a_commit_must_not() -> None:
     assert commit_exc.value.field == "block_reason"
 
 
-# --- replay reorder-stability -------------------------------------------------------------
-
-
 def test_the_stamp_is_unchanged_when_source_fills_are_reordered() -> None:
-    # The same decision over the same fills, passed in two different orders, stamps identically:
-    # provenance sorts its sources, so arrival order cannot leak into the hash.
     forward = _stamp(("fills", "fill-0", "k0"), ("fills", "fill-1", "k1"))
     reversed_ = _stamp(("fills", "fill-1", "k1"), ("fills", "fill-0", "k0"))
     assert forward.stamp_hash == reversed_.stamp_hash
@@ -166,18 +138,13 @@ def test_a_jsonl_replay_reconstructs_the_sequence_and_preserves_the_stamp(
     a2 = _block("a2", "unresolvable_leg", _stamp(("order_tickets", "bsk-1", "a2")))
     first.append(a1)
     first.append(a2)
-    # A fresh log over the same file replays the records in append order, stamps intact.
     replayed = JsonlBookingAuditLog(path)
     records = replayed.read()
     assert [r.audit_id for r in records] == ["a1", "a2"]
     assert records[0].provenance.stamp_hash == a1.provenance.stamp_hash
     assert records[1].provenance.stamp_hash == a2.provenance.stamp_hash
-    # A duplicate is still rejected across the restart (ids recovered from the file).
     with pytest.raises(BookingAuditError):
         replayed.append(_commit("a1", ("fill-9",), _stamp(("fills", "fill-9", "k"))))
-
-
-# --- cross-process hash stability ---------------------------------------------------------
 
 
 def test_the_audit_stamp_hash_is_stable_across_processes() -> None:

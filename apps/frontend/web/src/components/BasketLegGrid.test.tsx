@@ -5,9 +5,6 @@ import { expect, test, vi } from "vitest";
 import type { BasketLegInput } from "../api";
 import { BasketLegGrid } from "./BasketLegGrid";
 
-// A 32-band axis the page would thread from GET /api/config/delta-bands; derived here by hand
-// (put→ATM→call) independently of any backend output, with bands the hard-coded 8-list lacks
-// (e.g. 02dp / 02dc) so a test can prove the selector is driven by the prop, not a const.
 const BANDS_32 = [
   "30dp",
   "28dp",
@@ -95,9 +92,9 @@ test("the band selector is driven by the bands prop, not a hard-coded list", () 
   renderGrid([], BANDS_32);
   const bandSelect = screen.getByLabelText("leg band");
   const options = within(bandSelect).getAllByRole("option");
-  // All 32 platform bands are offered (the old hard-coded list was only 8).
+
   expect(options).toHaveLength(32);
-  // Bands present only in the 32-band axis (the hard-coded 8-list never had these).
+
   expect(within(bandSelect).getByRole("option", { name: "30dp" })).toBeInTheDocument();
   expect(within(bandSelect).getByRole("option", { name: "02dp" })).toBeInTheDocument();
   expect(within(bandSelect).getByRole("option", { name: "02dc" })).toBeInTheDocument();
@@ -108,7 +105,7 @@ test("with no bands (loading/error) the selector still renders a usable fallback
   renderGrid([]);
   const bandSelect = screen.getByLabelText("leg band");
   const options = within(bandSelect).getAllByRole("option");
-  // The minimal fallback keeps the form usable rather than rendering an empty selector.
+
   expect(options.length).toBeGreaterThan(0);
   expect(within(bandSelect).getByRole("option", { name: "atm" })).toBeInTheDocument();
 });

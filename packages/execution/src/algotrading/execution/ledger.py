@@ -1,26 +1,3 @@
-"""The fills ledger: the append-only, auditable source of record for accounting from fills.
-
-Blueprint governance (Part XV/XIX): "No downstream layer may silently overwrite an upstream
-observation"; "Any replay or backfill must write a new version identifier instead of silently
-mutating past results." A fills ledger is the purest case of that rule — a fill is an
-*observation* of an execution, so the ledger is **append-only** by construction:
-
-* a fill, once appended, is immutable;
-* re-appending a known ``fill_id`` is a labelled rejection (no silent overwrite);
-* there is **no** update or delete verb on the contract — a correction is a new
-  (compensating) fill, never a mutation of a past one.
-
-Two implementations share these invariants behind the :class:`FillsLedger` protocol: an
-:class:`InMemoryFillsLedger` (the working store, used in tests and by pure callers) and a
-:class:`JsonlFillsLedger` (durable — one canonical-JSON line per fill, a file that only ever
-grows, replayable on restart). Reads filter by ``(trade_date, underlying)`` and return fills
-in append order, so a replay reconstructs the booking sequence stably.
-
-The provenance stamp on each fill is validated at the **append door** (the storage-boundary
-convention: typed objects are checked before any bytes are written), so a tampered or
-hand-built stamp cannot enter the ledger.
-"""
-
 from __future__ import annotations
 
 import json
@@ -37,11 +14,6 @@ from .fills import Fill, FillError
 
 
 class FillsLedgerError(Exception):
-    """A labelled rejection from the ledger door (a duplicate fill_id, a malformed record).
-
-    Carries the offending ``field``/``value`` and a human ``reason`` so an audit reader sees
-    exactly which invariant was violated.
-    """
 
     def __init__(self, reason: str, *, field: str, value: object) -> None:
         self.reason = reason
@@ -52,12 +24,6 @@ class FillsLedgerError(Exception):
 
 @runtime_checkable
 class FillsLedger(Protocol):
-    """The append-only fills store risk and attribution read from.
-
-    An implementation must reject a duplicate ``fill_id`` and must offer no mutate/delete
-    verb. ``read`` returns fills in append order, optionally narrowed to one trade date and/or
-    underlying.
-    """
 
     def append(self, fill: Fill) -> None: ...
 
@@ -69,11 +35,8 @@ class FillsLedger(Protocol):
 
 
 def _validated(fill: Fill, *, seen: frozenset[str]) -> None:
-    """Run the append-door checks for one fill: a Fill instance, a valid stamp, a fresh id."""
     if not isinstance(fill, Fill):
         raise FillsLedgerError("must be a Fill", field="fill", value=fill)
-    # The Fill contract already validated its scalar fields at construction; the stamp is the
-    # one field it deliberately leaves to the door, so it is checked here.
     validate_stamp(fill.provenance)
     if fill.fill_id in seen:
         raise FillsLedgerError(
@@ -90,11 +53,6 @@ def _matches(fill: Fill, *, trade_date: date | None, underlying: str | None) -> 
 
 
 class InMemoryFillsLedger:
-    """An append-only fills ledger held in memory — the working store.
-
-    Append order is preserved; a duplicate ``fill_id`` is rejected; there is no verb that
-    mutates or removes a stored fill.
-    """
 
     def __init__(self) -> None:
         self._fills: list[Fill] = []
@@ -106,8 +64,6 @@ class InMemoryFillsLedger:
         self._ids.add(fill.fill_id)
 
     def append_many(self, fills: Iterable[Fill]) -> None:
-        # Append one at a time so a duplicate inside the batch is caught against the ids
-        # already taken earlier in the same batch, not only against the prior contents.
         for fill in fills:
             self.append(fill)
 
@@ -120,14 +76,6 @@ class InMemoryFillsLedger:
 
 
 class JsonlFillsLedger:
-    """A durable append-only fills ledger: one canonical-JSON line per fill.
-
-    The backing file only ever grows — :meth:`append` opens it in append mode and writes a
-    single line; there is no rewrite path, so the file *is* the audit trail. On construction
-    the existing file is replayed to recover the set of known ids (so a duplicate is rejected
-    across restarts) and the in-order contents. Serialization is canonical (sorted keys,
-    UTC-ISO timestamps) so two identical fills produce byte-identical lines.
-    """
 
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
@@ -159,12 +107,6 @@ class JsonlFillsLedger:
         return tuple(
             f for f in self._fills if _matches(f, trade_date=trade_date, underlying=underlying)
         )
-
-
-# --- JSONL serialization ------------------------------------------------------------------
-# A fill carries a Decimal, two dates/timestamps, and a nested ProvenanceStamp. Each is
-# reduced to a JSON-stable scalar and rebuilt faithfully so a round-trip preserves the stamp
-# hash (validate_stamp passes on the way back in).
 
 
 def _stamp_to_jsonable(stamp: ProvenanceStamp) -> dict[str, object]:

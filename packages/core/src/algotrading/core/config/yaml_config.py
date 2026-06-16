@@ -1,16 +1,3 @@
-"""Versioned YAML configuration loading with a deterministic content hash.
-
-The blueprint keeps economic inputs in versioned config files (Part VII), not as
-constants in code. This is the generic, untyped loader for those YAML artifacts: a
-base config can be specialized by an overlay (inheritance), and the resolved config
-carries a ``mapping_config_hash`` so any output can record which inputs produced it.
-
-It complements the typed :class:`~algotrading.core.config.PlatformConfig` path: use
-the typed loader when the four economic sections are required with field validation,
-and this overlay loader for free-form versioned YAML bundles (calendars, exchange
-tables, per-broker settings) where inheritance is the point.
-"""
-
 from __future__ import annotations
 
 import json
@@ -30,11 +17,6 @@ _log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class LoadedConfig:
-    """A resolved configuration with its provenance.
-
-    ``data`` is deeply read-only. Equality and hashing are defined on ``config_hash``
-    alone, so a config is safe to use as a cache key by its content.
-    """
 
     data: Mapping[str, Any] = field(compare=False)
     config_hash: str
@@ -42,34 +24,16 @@ class LoadedConfig:
 
 
 def _stringify_keys(value: Any) -> Any:
-    """Return ``value`` with every mapping key coerced to ``str``.
-
-    YAML allows non-string keys (ints, bools); coercing them keeps the canonical
-    serialization sortable and stable.
-    """
     if isinstance(value, Mapping):
         return {str(k): _stringify_keys(v) for k, v in value.items()}
     if isinstance(value, list | tuple):
         return [_stringify_keys(v) for v in value]
     if isinstance(value, float):
-        # Collapse -0.0 onto 0.0 so the two never split a hash; non-finite floats fall
-        # through and are rejected by mapping_config_hash's allow_nan=False.
         return 0.0 if value == 0.0 else value
     return value
 
 
 def mapping_config_hash(data: Mapping[str, Any]) -> str:
-    """Return a deterministic SHA-256 over free-form config content.
-
-    Key order does not affect the hash; identical content always hashes identically.
-    ``-0.0`` is collapsed onto ``0.0`` and ``allow_nan=False`` rejects NaN/Inf, so the
-    hash is well-formed and never splits on a signed zero. The typed-config equivalent is
-    ``config.config_hash`` over a ``PlatformConfig``.
-
-    This is the *yaml-loader* canonical-JSON convention (``default=str`` on top of the
-    stringified-keys pre-pass) — deliberately distinct from the bare and typed-config
-    conventions; see ``core.hashing``. Golden-pinned, so it must not be "unified".
-    """
     normalized = _stringify_keys(data)
     canonical = json.dumps(
         normalized, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
@@ -78,7 +42,6 @@ def mapping_config_hash(data: Mapping[str, Any]) -> str:
 
 
 def _deep_merge(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
-    """Recursively merge ``overlay`` onto ``base``; overlay wins on conflict."""
     merged = dict(base)
     for key, value in overlay.items():
         existing = merged.get(key)
@@ -90,7 +53,6 @@ def _deep_merge(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str
 
 
 def _freeze(value: Any) -> Any:
-    """Return a deeply immutable view: mappings to read-only proxies, lists to tuples."""
     if isinstance(value, Mapping):
         return MappingProxyType({k: _freeze(v) for k, v in value.items()})
     if isinstance(value, list):
@@ -99,7 +61,6 @@ def _freeze(value: Any) -> Any:
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
-    """Load a YAML file into a mapping; log and re-raise on a missing file or invalid YAML."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -117,13 +78,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 
 
 def load_yaml_config(path: str | Path, base: str | Path | None = None) -> LoadedConfig:
-    """Load a YAML config, optionally overlaying it onto a base config.
-
-    Raises:
-        FileNotFoundError: if a referenced file does not exist.
-        ValueError: if a YAML root is not a mapping.
-        yaml.YAMLError: if a file is not valid YAML.
-    """
     path = Path(path)
     sources: tuple[Path, ...] = ()
     data: dict[str, Any] = {}
@@ -134,6 +88,5 @@ def load_yaml_config(path: str | Path, base: str | Path | None = None) -> Loaded
     overlay = _read_yaml(path)
     data = _deep_merge(data, overlay)
     sources += (path,)
-    # Hash the plain data, then store a deeply-immutable view so the hash cannot drift.
     digest = mapping_config_hash(data)
     return LoadedConfig(data=_freeze(data), config_hash=digest, sources=sources)

@@ -1,7 +1,3 @@
-// The single fetch path (M33): every verb goes through one handler, and a non-OK response
-// throws a typed ApiError carrying the status and the BFF's labelled detail. Served by msw,
-// so the real fetch/URL/JSON path is exercised, not a stubbed Response object.
-
 import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
@@ -43,8 +39,6 @@ test("postJson sends the JSON body and returns the parsed payload", async () => 
 });
 
 test("postJson surfaces the BFF's typed 400 detail, not a bare status line", async () => {
-  // The regression M33 fixes: postJson used to throw "400 Bad Request", dropping the detail
-  // the BFF deliberately serves (the batch preload's error path showed nothing useful).
   server.use(
     http.post("/api/echo", () =>
       HttpResponse.json({ error: "bad_basket", detail: "leg 0: missing side" }, { status: 400 }),

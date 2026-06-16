@@ -1,23 +1,3 @@
-"""Determinism for the risk engine: golden risk output, cross-process hashes, reorder.
-
-The risk invariant is determinism and provenance on every risk and scenario output, with
-the headline guarantee that worst-case loss reproduces under a pinned scenario version
-(``tasks/M3-risk-engine.md``). Backed by real machinery, per TESTING.md:
-
-* **Golden file.** The pf-risk portfolio is run through aggregation and the scenario
-  grid and its outputs compared to ``golden/risk_pf_risk.json``. Regenerate deliberately
-  (the diff is then reviewed) with the one shared flag (``conftest.golden_artifact``):
-
-      uv run pytest packages/infra/tests/test_determinism_risk.py -k golden --regen-golden
-
-* **Cross-process hash stability.** The ``stamp_hash`` on an emitted contract is
-  recomputed in a separate interpreter (no inherited state, ``PYTHONHASHSEED`` unset) and
-  must match — catching a stamp built from a salted ``hash()``/``set``.
-
-* **Reordering invariance.** Shuffling the input positions changes neither the aggregate
-  nor its stamp.
-"""
-
 from __future__ import annotations
 
 import dataclasses
@@ -54,8 +34,6 @@ SCENARIO_CONFIG = ScenarioConfig(
     version="scn-1", spot_shocks=(-0.05, 0.05), vol_shocks=(0.05, -0.05)
 )
 _GOLDEN_PATH = Path(__file__).parent / "golden" / "risk_pf_risk.json"
-# The tests directory, so a subprocess can import this module and the fixtures package
-# (algotrading.* is installed editable in the workspace venv and needs no path help).
 _TESTS_DIR = str(Path(__file__).resolve().parent)
 
 
@@ -71,11 +49,6 @@ def _lines() -> list:
 
 
 def _stamp_for(contract_keys: tuple[str, ...]) -> ProvenanceStamp:
-    """A stamp whose sources are the priced contracts — order-free by construction.
-
-    Parameters passed explicitly (not fixture defaults): the committed risk golden
-    pins the stamp hashes these produce.
-    """
     return make_stamp(
         tuple(source_ref("market_state_snapshots", TS, key) for key in contract_keys),
         calc_ts=TS,
@@ -86,11 +59,6 @@ def _stamp_for(contract_keys: tuple[str, ...]) -> ProvenanceStamp:
 
 
 def compute_risk_summary() -> dict[str, Any]:
-    """Run aggregation and the scenario engine on pf-risk and summarize the outputs.
-
-    Shared by the golden test, the byte-identical repeat, and the cross-process
-    subprocess, so all three exercise the same path.
-    """
     lines = _lines()
     keys = tuple(line.contract_key for line in lines)
     net = aggregate_lines(lines, portfolio_id="pf-risk", dimension="underlying")[0]
@@ -125,18 +93,14 @@ def compute_risk_summary() -> dict[str, Any]:
     }
 
 
-# --- Golden artifact ---------------------------------------------------------
 def test_golden_risk_matches_committed_artifact(golden_artifact: Any) -> None:
     summary = compute_risk_summary()
     golden = golden_artifact(_GOLDEN_PATH, summary)
-    # Lineage hashes match byte-for-byte (the determinism handle).
     assert summary["aggregate_stamp_hash"] == golden["aggregate_stamp_hash"]
     assert summary["first_scenario_stamp_hash"] == golden["first_scenario_stamp_hash"]
-    # Worst case reproduces under the pinned scenario version (the headline guarantee).
     assert summary["worst_case_scenario"] == golden["worst_case_scenario"]
     assert summary["worst_case_total"] == pytest.approx(golden["worst_case_total"], rel=1e-9)
     assert summary["scenario_result_count"] == golden["scenario_result_count"]
-    # The persisted scenario version is pinned: a grid-construction change moves it.
     assert summary["scenario_version"] == golden["scenario_version"]
     for key, pnl in summary["scenario_pnl"].items():
         assert pnl == pytest.approx(golden["scenario_pnl"][key], rel=1e-9)
@@ -144,7 +108,6 @@ def test_golden_risk_matches_committed_artifact(golden_artifact: Any) -> None:
         assert summary[greek] == pytest.approx(golden[greek], rel=1e-9)
 
 
-# --- Byte-identical repeats and reordering invariance ------------------------
 def test_repeated_runs_are_byte_identical() -> None:
     assert compute_risk_summary() == compute_risk_summary()
 
@@ -164,19 +127,10 @@ def test_aggregate_is_invariant_to_input_position_order() -> None:
     )
     assert forward.net_delta == backward.net_delta
     assert forward.net_gamma == backward.net_gamma
-    # Source records are canonicalized before hashing, so the stamp is order-free too.
     assert forward.provenance.stamp_hash == backward.provenance.stamp_hash
 
 
-# --- Duplicate-lot determinism (ADR 0006, decision 7) ------------------------
-# The Position contract carries a `source`, so one contract can arrive as several lots.
-# The derived contracts have no lot dimension, so risk nets lots into one canonical line
-# per contract — and that ordering must not depend on the order lots arrive in, which is
-# exactly what byte-identical replay needs (live vs. stored events need not preserve
-# position order). Without netting these lines sort only by contract_key and keep caller
-# order; this is the regression that guards it.
 def _dup_lot_lines() -> list:
-    """A book holding C100 as two lots (4 + 6) plus one P100 lot."""
     return [
         position_risk(portfolio_id="pf-risk", quantity=4.0, valuation=CALL_100),
         position_risk(portfolio_id="pf-risk", quantity=6.0, valuation=CALL_100),
@@ -186,7 +140,6 @@ def _dup_lot_lines() -> list:
 
 def test_net_lots_collapses_same_contract_lots() -> None:
     netted = net_lots(_dup_lot_lines())
-    # One canonical line per contract, sorted by key; the two C100 lots net to 10.
     assert [line.contract_key for line in netted] == ["AAPL|OPT|C|100", "AAPL|OPT|P|100"]
     call = next(line for line in netted if line.contract_key == "AAPL|OPT|C|100")
     assert call.quantity == 10.0
@@ -200,7 +153,6 @@ def test_duplicate_lots_are_order_independent() -> None:
         net = aggregate_lines(book, portfolio_id="pf-risk", dimension="underlying")[0]
         return (net.net_delta, net.net_gamma, net.net_vega, net.net_theta)
 
-    # Netting a duplicate lot must equal pricing the merged quantity in one lot.
     merged = [
         position_risk(portfolio_id="pf-risk", quantity=10.0, valuation=CALL_100),
         position_risk(portfolio_id="pf-risk", quantity=-5.0, valuation=PUT_100),
@@ -215,14 +167,10 @@ def test_duplicate_lots_are_order_independent() -> None:
             for c in scenario_line_pnls(book, grid)
         ]
 
-    # Ordered cells are byte-identical under reversal, and one cell per contract per
-    # scenario — no duplicate (scenario, contract) keys from the two C100 lots.
     assert cell_keys(lines) == cell_keys(reversed_lines) == cell_keys(merged)
 
 
 def test_inconsistent_lots_are_rejected() -> None:
-    # Same contract_key, divergent market state (a corrupt upstream join) must not be
-    # silently collapsed onto one lot's valuation.
     other_state = dataclasses.replace(CALL_100, volatility=CALL_100.volatility + 0.05)
     book = [
         position_risk(portfolio_id="pf-risk", quantity=4.0, valuation=CALL_100),
@@ -233,7 +181,6 @@ def test_inconsistent_lots_are_rejected() -> None:
     assert info.value.contract_key == "AAPL|OPT|C|100"
 
 
-# --- Cross-process hash stability --------------------------------------------
 _SUBPROCESS_SCRIPT = """
 import json
 from test_determinism_risk import compute_risk_summary

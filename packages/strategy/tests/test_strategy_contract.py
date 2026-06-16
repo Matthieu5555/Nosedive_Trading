@@ -1,10 +1,3 @@
-"""Unit tests for the typed ``StrategyContract`` (the four §3 columns as data).
-
-Expected values are derived from the spec (TARGET §1/§3) and the validation rules in
-``contract.py``, never from running the constructor: a contract with an empty premium or no
-declared kill condition is malformed *by definition*, and the test states that independently.
-"""
-
 from __future__ import annotations
 
 import pytest
@@ -34,7 +27,6 @@ def _contract(**overrides: object) -> StrategyContract:
 
 
 def test_valid_contract_carries_all_four_columns() -> None:
-    # The §3 S1 row, transcribed: the four columns are exactly what the record holds.
     contract = _contract()
     assert contract.strategy_id == "S1"
     assert contract.premium_harvested.startswith("correlation premium")
@@ -44,8 +36,6 @@ def test_valid_contract_carries_all_four_columns() -> None:
 
 
 def test_intended_greeks_are_signed_directions_not_magnitudes() -> None:
-    # S1's intended profile (§3): ~0 net delta, long gamma & vega. The contract records the
-    # SIGN of each, the thing attribution checks P&L against — not a sizing magnitude.
     greeks = _contract().intended_greeks
     assert greeks.delta is GreekSign.FLAT
     assert greeks.gamma is GreekSign.LONG
@@ -70,8 +60,6 @@ def test_contract_is_frozen() -> None:
     ],
 )
 def test_empty_required_text_is_rejected_with_the_offending_value(field: str, value: str) -> None:
-    # A contract with no named premium / no death mode / no identity is malformed by §1's
-    # definition ("a strategy NAMES the premium ... and its kill condition").
     with pytest.raises(StrategyContractError) as exc:
         _contract(**{field: value})
     assert exc.value.field == field
@@ -79,14 +67,12 @@ def test_empty_required_text_is_rejected_with_the_offending_value(field: str, va
 
 
 def test_signal_kinds_cover_the_book_triggers() -> None:
-    # The §3 entry triggers across S1–S5 — each must be a nameable SignalKind so a strategy
-    # declares the one it reads (derived from the §3 table, not from the enum).
     declared = {kind.value for kind in SignalKind}
     expected = {
-        "implied_correlation",  # S1
-        "iv_vs_realized",       # S2, S3
-        "iv_rank",              # S3
-        "term_structure_slope",  # S5
-        "range_premium",        # S4
+        "implied_correlation",
+        "iv_vs_realized",
+        "iv_rank",
+        "term_structure_slope",
+        "range_premium",
     }
     assert declared == expected

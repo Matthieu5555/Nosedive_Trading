@@ -1,23 +1,3 @@
-"""The booking audit log: an append-only, provenance-stamped record of every commit/block.
-
-TARGET §6 requires "an append-only audit log" of the booking decisions. Every call through the
-password-gated write barrier (:func:`~.commit.book`) writes exactly one :class:`BookingAudit`
-record here — a commit *or* a labelled block — so the log is the complete, ordered, tamper-evident
-history of every attempt to mutate the book, including the refusals.
-
-This is the *decision* log, distinct from the fills ledger (:mod:`~..ledger`): the ledger holds
-the fills a *commit* produced (nothing on a block), while this log holds *every* decision. They
-share the same append-only discipline (blueprint Part XV/XIX): a record, once appended, is
-immutable; re-appending a known ``audit_id`` is a labelled rejection; there is **no** update or
-delete verb — a correction is a new record, never a mutation of a past one.
-
-Two implementations share the invariants behind :class:`BookingAuditLog`: an in-memory store and a
-durable JSONL store (one canonical-JSON line per record, a file that only grows, replayed on
-restart), mirroring the fills ledger. The provenance stamp is validated at the **append door**, so
-a hand-built or tampered stamp cannot enter the log; the stamp is order-independent, which is what
-makes a replay of the decision sequence reorder-stable.
-"""
-
 from __future__ import annotations
 
 import json
@@ -35,7 +15,6 @@ _DECISIONS = (COMMIT, BLOCK)
 
 
 class BookingAuditError(Exception):
-    """A labelled rejection from the audit-log door (a duplicate id, a malformed record)."""
 
     def __init__(self, reason: str, *, field: str, value: object) -> None:
         self.reason = reason
@@ -46,16 +25,6 @@ class BookingAuditError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class BookingAudit:
-    """One immutable record of a booking commit/block decision.
-
-    ``decision`` is :data:`COMMIT` or :data:`BLOCK`. ``block_reason`` names *why* a block was
-    blocked (the gate's ``wrong_password``/``absent_password``/… or ``unresolvable_leg``) and is
-    ``None`` on a commit. ``fill_ids`` lists the fills a commit appended to the ledger (empty on
-    a block — a block writes no fill). ``booking_id`` ties the audit record to the fills it
-    produced (a fill's ``booking_id`` equals this), and ``source_basket_id`` stamps the
-    originating intention. ``provenance`` makes the decision replayable and reorder-stable; it is
-    validated at the append door, not here (this contract validates its own scalar fields).
-    """
 
     audit_id: str
     booking_id: str
@@ -106,7 +75,6 @@ def _matches(record: BookingAudit, *, trade_date: date | None, underlying: str |
 
 
 def _validated(record: BookingAudit, *, seen: frozenset[str]) -> None:
-    """Append-door checks: a BookingAudit instance, a valid stamp, a fresh audit_id."""
     if not isinstance(record, BookingAudit):
         raise BookingAuditError("must be a BookingAudit", field="record", value=record)
     validate_stamp(record.provenance)
@@ -120,11 +88,6 @@ def _validated(record: BookingAudit, *, seen: frozenset[str]) -> None:
 
 @runtime_checkable
 class BookingAuditLog(Protocol):
-    """The append-only booking-decision log the commit verb writes to.
-
-    An implementation must reject a duplicate ``audit_id`` and offer no mutate/delete verb.
-    ``read`` returns records in append order, optionally narrowed to one trade date / underlying.
-    """
 
     def append(self, record: BookingAudit) -> None: ...
 
@@ -134,7 +97,6 @@ class BookingAuditLog(Protocol):
 
 
 class InMemoryBookingAuditLog:
-    """An append-only booking-decision log held in memory — the working store."""
 
     def __init__(self) -> None:
         self._records: list[BookingAudit] = []
@@ -154,14 +116,6 @@ class InMemoryBookingAuditLog:
 
 
 class JsonlBookingAuditLog:
-    """A durable append-only booking-decision log: one canonical-JSON line per record.
-
-    The backing file only ever grows — :meth:`append` opens it in append mode and writes a
-    single line; there is no rewrite path, so the file *is* the audit trail. On construction the
-    existing file is replayed to recover the known ids (so a duplicate is rejected across
-    restarts) and the in-order contents. Serialization is canonical (sorted keys, UTC-ISO
-    timestamps) so two identical records produce byte-identical lines.
-    """
 
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
@@ -189,12 +143,6 @@ class JsonlBookingAuditLog:
         return tuple(
             r for r in self._records if _matches(r, trade_date=trade_date, underlying=underlying)
         )
-
-
-# --- JSONL serialization ------------------------------------------------------------------
-# An audit record carries two dates/timestamps, a tuple of ids, and a nested ProvenanceStamp.
-# Each is reduced to a JSON-stable scalar and rebuilt faithfully so a round-trip preserves the
-# stamp hash (validate_stamp passes on the way back in).
 
 
 def _stamp_to_jsonable(prov: ProvenanceStamp) -> dict[str, object]:

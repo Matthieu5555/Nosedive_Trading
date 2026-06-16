@@ -1,4 +1,3 @@
-// shadcn/ui Dialog — themed onto the operator-console dark palette. `ui` layer.
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";

@@ -1,15 +1,3 @@
-"""Forward & carry engine — a chain of call/put pairs in, a forward and DF out.
-
-The pure heart of step 6. :func:`estimate_forward` recovers the forward ``F`` and
-discount factor ``DF`` jointly from the put-call-parity line, rejects MAD outliers
-(via :mod:`algotrading.infra.utils.robust`), and derives the implied carry/dividend,
-returning a rich :class:`ForwardEstimate`. :func:`forward_curve_point` projects the
-usable part into the stamped ``ForwardCurvePoint`` contract. The parity math lives in
-:mod:`forwards.parity`.
-
-    from algotrading.infra.forwards import estimate_forward, ForwardPair, forward_curve_point
-"""
-
 from __future__ import annotations
 
 from .estimate import (

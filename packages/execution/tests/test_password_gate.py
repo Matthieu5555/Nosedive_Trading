@@ -1,11 +1,3 @@
-"""The booking write-barrier password gate — scrypt verification, fail-closed.
-
-Independent oracle: the gate hashes with ``hashlib.scrypt``; the test computes the *same* scrypt
-digest directly from the standard library (the engine, not the gate's own round-trip) and asserts
-the gate opens for the matching password and blocks for everything else. The constant-time
-comparison and the closed set of labelled block reasons are pinned here.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,14 +16,11 @@ from algotrading.execution.booking.password_gate import (
     verify_password,
 )
 
-# The pinned scrypt parameters the gate uses (RFC 7914 interactive cost). The oracle below
-# recomputes the digest with these exact values, independently of the gate's own helper.
 _N, _R, _P, _DKLEN, _MAXMEM = 2**14, 8, 1, 32, 2**25
 _PASSWORD = "correct horse battery staple"
 
 
 def _independent_digest(password: str, salt: bytes) -> str:
-    """The expected digest, computed straight from hashlib — the oracle for the gate."""
     raw = hashlib.scrypt(
         password.encode("utf-8"), salt=salt, n=_N, r=_R, p=_P, dklen=_DKLEN, maxmem=_MAXMEM
     )
@@ -44,7 +33,6 @@ def _env(password: str, salt: bytes) -> dict[str, str]:
 
 def test_hash_password_matches_an_independent_scrypt_computation() -> None:
     salt = secrets.token_bytes(16)
-    # hash_password must produce exactly the stdlib scrypt digest — no homegrown crypto.
     assert hash_password(_PASSWORD, salt) == _independent_digest(_PASSWORD, salt)
 
 
@@ -72,10 +60,10 @@ def test_an_empty_or_whitespace_password_is_absent_password(password: str) -> No
 @pytest.mark.parametrize(
     "env",
     [
-        {},  # nothing configured
-        {ENV_GATE_SALT: "abcd"},  # salt only
-        {ENV_GATE_HASH: "abcd"},  # digest only
-        {ENV_GATE_SALT: "", ENV_GATE_HASH: ""},  # present but blank
+        {},
+        {ENV_GATE_SALT: "abcd"},
+        {ENV_GATE_HASH: "abcd"},
+        {ENV_GATE_SALT: "", ENV_GATE_HASH: ""},
     ],
 )
 def test_an_unconfigured_gate_blocks(env: dict[str, str]) -> None:
@@ -87,8 +75,8 @@ def test_an_unconfigured_gate_blocks(env: dict[str, str]) -> None:
 @pytest.mark.parametrize(
     "env",
     [
-        {ENV_GATE_SALT: "zzzz", ENV_GATE_HASH: "abcd"},  # salt not hex
-        {ENV_GATE_SALT: "abcd", ENV_GATE_HASH: "xyz!"},  # digest not hex
+        {ENV_GATE_SALT: "zzzz", ENV_GATE_HASH: "abcd"},
+        {ENV_GATE_SALT: "abcd", ENV_GATE_HASH: "xyz!"},
     ],
 )
 def test_a_malformed_gate_config_blocks(env: dict[str, str]) -> None:
@@ -98,8 +86,6 @@ def test_a_malformed_gate_config_blocks(env: dict[str, str]) -> None:
 
 
 def test_a_different_salt_does_not_verify_even_with_a_matching_password() -> None:
-    # The salt is load-bearing: the same password under a different salt yields a different
-    # digest, so a digest provisioned for salt A must not open under salt B.
     salt_a = secrets.token_bytes(16)
     salt_b = secrets.token_bytes(16)
     env = {ENV_GATE_SALT: salt_b.hex(), ENV_GATE_HASH: _independent_digest(_PASSWORD, salt_a)}

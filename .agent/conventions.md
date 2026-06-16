@@ -55,9 +55,19 @@ or conda. The backend targets Python 3.13.
   existence (deletion is idempotent, search returns empty) rather than raising.
 - **Configuration** centralized in a validated config object, hydrated from versioned YAML —
   **no business/compute parameter is a `.py` literal** (the binding standard is ADR 0028). Only genuine internal
-  invariants (math constants, separators) stay in code, at the top of the file with a comment.
+  invariants (math constants, separators) stay in code, named so their meaning is self-evident.
 - **Dependency injection.** Functions accept their dependencies as parameters
   rather than constructing clients internally.
+- **No comments, no docstrings.** Code is the only statement of *what* it does;
+  make names, types, and structure carry the meaning. Cross-cutting *why* —
+  rationale, design decisions, domain context — lives in `.agent/`, the ADRs, and
+  per-directory `README.md`, never inline. Do not write `#` comments, module /
+  class / function docstrings, or JSDoc/`/* */`. The **only** exception is
+  functional directives the toolchain reads and acts on — `# type: ignore`,
+  `# noqa`, `# pragma: no cover`, `# fmt: off/on`, shebangs, `// eslint-disable`,
+  `// @ts-expect-error`, `/// <reference>`. Keep those; they are code, not prose.
+  (A handful of module docstrings are consumed at runtime via `__doc__` for CLI
+  `--help`; those count as functional and stay.)
 
 Before declaring Python work done, run it through `python-quality-gate`. For
 design-sensitive modules (deep interfaces, orthogonality, information hiding),
@@ -71,8 +81,8 @@ Code without tests is not presentable. See `write-tests`.
   integration for wiring, property-based for invariants, contract for API
   shapes, component/end-to-end for UI.
 - **Derive expected values independently** — hand-calculated, from a reference,
-  or from the spec. Never copy the output of the code under test. Cite where the
-  expected value came from in a comment.
+  or from the spec. Never copy the output of the code under test. Record where the
+  expected value came from in the test's name or an assertion message — not a comment.
 - Floats compared with explicit tolerances (`pytest.approx`,
   `numpy.testing.assert_allclose` with `rtol`/`atol`), never `==`.
 - Parameterize with named cases. Cover edge cases (empty, single, boundary,

@@ -1,21 +1,9 @@
-// The P&L attribution waterfall (TARGET §2 #5 / §7 #2; ADR 0030 waterfall path). Given one
-// ScenarioAttribution record's payload it renders the by-Greek decomposition as a Plotly
-// waterfall — Δ → Γ → Vega → Θ (→ Rho → Vanna → Volga once the seam carries them) → residual —
-// each bar dollar-labelled with its unit string. The residual is its OWN bar (the honesty meter,
-// §5.2), never hidden or folded into a term. The panel re-decomposes nothing: it plots the
-// engine's dollar terms verbatim, the same numbers the BFF serialized.
-//
-// An honest empty/degraded state: when no attribution exists for the (book/portfolio, date) the
-// payload is `found=false` and we render a labelled empty note, not a blank panel.
-
 import type { Data, Layout } from "plotly.js";
 
 import type { AttributionResponse } from "../api";
 import { sci } from "../lib/format";
 import { Plot } from "./Plot";
 
-// The residual reads as its own bar, distinct from the named terms, so the operator sees the
-// honesty meter at a glance and never mistakes it for another Greek.
 const RESIDUAL_NAME = "Residual";
 
 export function AttributionWaterfall({
@@ -44,9 +32,6 @@ export function AttributionWaterfall({
   const termUnit = attribution.terms[0]?.unit ?? "$";
   const residualUnit = attribution.residual.unit;
 
-  // The waterfall: each named term is a relative step, the residual a final relative step, both
-  // measured off the same zero. measure[] keeps every bar "relative" so the running total reads
-  // as the cumulative explained PnL and the residual closes the gap to the full reprice.
   const names = [...attribution.terms.map((term) => term.name), RESIDUAL_NAME];
   const dollars = [
     ...attribution.terms.map((term) => term.dollars ?? 0),

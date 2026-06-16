@@ -37,6 +37,7 @@ from .cp_rest_index import resolve_index
 from .cp_rest_normalize import snapshot_to_events
 from .cp_rest_snapshot import WarmupConfig, snapshot_index_spot, snapshot_with_warmup
 from .cp_rest_wire import SnapshotRow, coerce_int_or_none
+from .market_fields import to_datetime
 
 __all__ = [
     "CaptureTarget",
@@ -343,6 +344,14 @@ def _snapshot_events(
     quarantined.sort(key=lambda pair: pair[0].canonical())
     events: list[RawMarketEvent] = []
     for sequence, (instrument, row) in enumerate([*two_sided, *quarantined]):
+        # Keep the three timestamps distinct (blueprint 01-architecture §60): exchange_ts is the
+        # broker's real update time (the row's ``_updated``, ms→datetime), preserved rather than
+        # discarded; receipt_ts and canonical_ts stay at the session close ``as_of`` — the
+        # normalized ordering/as-of clock all close marks share (so the snapshot builder still
+        # treats a post-close settlement mark as the close, and the derived analytics are intact).
+        row_exchange_ts = (
+            to_datetime(row.updated_ms * 1_000_000) if row.updated_ms is not None else as_of
+        )
         events.extend(
             snapshot_to_events(
                 row,
@@ -350,8 +359,9 @@ def _snapshot_events(
                 underlying=underlying,
                 session_id=session_id,
                 sequence=sequence,
-                exchange_ts=as_of,
+                exchange_ts=row_exchange_ts,
                 receipt_ts=as_of,
+                canonical_ts=as_of,
             )
         )
     return _PromotedSnapshots(

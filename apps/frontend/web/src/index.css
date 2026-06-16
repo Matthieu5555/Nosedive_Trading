@@ -940,6 +940,36 @@ h3 {
   color: var(--negative);
 }
 
+/* The global failure surface: a fixed strip pinned to the top of the viewport so an escaped error
+   is visible on every route and never scrolls out of view. Reuses the error palette above. */
+.global-error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.global-error-banner-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(239, 156, 146, 0.72);
+  background: rgba(239, 156, 146, 0.16);
+  color: var(--negative);
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+}
+
+.global-error-banner-message {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 980px) {
   .shell {
     padding: 12px 12px 24px;

@@ -2,6 +2,18 @@
 
 **Owner:** Matthieu · **Lane:** `platform-` · **Priority:** P2 (operational primitive)
 
+> **Status (2026-06-17): LANDED (core scope).** `scripts/rebuild_from_raw.py` ships the guarded
+> wrapper around `reconstruct_day` (tests: `packages/infra/tests/test_rebuild_from_raw.py`; full gate
+> green). It asserts raw present before any purge, resolves the original close `as_of` from the
+> snapshot layer (or `--as-of`), backs up then purges the snapshot/derived/projected-analytics
+> partitions `reconstruct_day` owns, replays from raw, and hash-verifies `raw/` is untouched —
+> reproducing the derived layer byte-for-byte and idempotent on re-run. **Deliberately out of scope
+> (deferred):** re-running QC and reconstructing the `signals` layer. `reconstruct_day` does not
+> produce QC results or strategy signals (QC needs `qc_inputs` from `run_analytics_with_qc`, the
+> actor/EOD path), so those partitions are left untouched rather than purged-without-rebuild. Wiring
+> a QC re-run is a clean follow-on over `run_qc` + the existing grid-point adapter — not new
+> reconstruction logic, but beyond "wrap `reconstruct_day`".
+
 ## Why
 
 Raw is the immutable keystone (ADR 0040); everything else (derived/analytics/qc/snapshot) is

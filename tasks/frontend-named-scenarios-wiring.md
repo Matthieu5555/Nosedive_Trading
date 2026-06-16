@@ -1,5 +1,11 @@
 # frontend-named-scenarios-wiring — surface the named scenarios + correlation axis on the risk screen
 
+> **⛔ BLOCKED — do NOT start (2026-06-16).** The **named** half **landed** (`frontend-risk-scenarios-rework`,
+> see State below). All that remains is the **correlation axis**, which is **gated/dormant**: a ρ̄ bump
+> reprices to zero on the live option book until a real `BasketCorrelationExposure` exists — and the
+> owner ruling is **do not fabricate one**. So there is nothing pickable here until that exposure
+> lands. Left open only to track that follow-up.
+
 > **Deferred / owner-ruled (front-adjacent), exactly like the rate axis.** The compute side
 > (engine + config) landed in [infra-named-scenarios-and-corr-shock](archive/infra-named-scenarios-and-corr-shock.md):
 > `ScenarioConfig.named_scenarios` (seeded `2008` + `covid-2020`) and `ScenarioConfig.correlation_shocks`

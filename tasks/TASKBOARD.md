@@ -35,6 +35,15 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 > 3. **Page-1 = ONE agent at a time** on `Market.tsx`/`charts.tsx`/`pages/market/*`. The
 >    reading-model is the umbrella; `cdc-buildout` is superseded (heatmap + accordion dropped).
 >    Do not spawn parallel page-1 agents.
+> 4. **Risk / stress / scenarios = ONE agent at a time.** `frontend-scenario-rate-axis-wiring`,
+>    `frontend-second-order-greeks-panels`, and `strategy-composition` all touch the same shared
+>    files (`infra/risk/scenarios.py`, `StressSurface.tsx`, BFF `serializers.py`/`risk.py`,
+>    `RiskScenarios.tsx`). Serialize them — do not run them in parallel. The PnL/stress **compute
+>    substrate is already landed** (by-greek attribution, 2nd-order greeks, rate axis, named +
+>    correlation, 2A/2B); these are front/BFF wiring slices over it.
+> 5. **`frontend-named-scenarios-wiring` is NOT pickable** — its named half landed; only the
+>    correlation axis remains and it is **gated/dormant** (no real ρ̄ exposure on the live book —
+>    do **not** fabricate one). Blocked until a real `BasketCorrelationExposure` lands.
 
 ## Active claims
 

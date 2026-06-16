@@ -34,10 +34,12 @@ _LOGGER = structlog.get_logger("orchestration.eod_run")
 _RAW_MARKET_EVENTS = "raw_market_events"
 
 
-BasketSource = Callable[[FiredIndex, date], "IndexBasket | None"]
+BasketSource = Callable[[FiredIndex, date, str], "IndexBasket | None"]
 
 
-def _empty_basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+def _empty_basket_source(
+    fired: FiredIndex, trade_date: date, correlation_id: str
+) -> IndexBasket | None:
     _LOGGER.info(
         "orchestration.eod_run.no_basket_source",
         index=fired.entry.symbol,
@@ -166,7 +168,7 @@ def persist_triage(
 
     records = build_triage(qc_report=report)
     if records:
-        store.write(_TRIAGE_RECORDS_TABLE, list(records))
+        store.write(_TRIAGE_RECORDS_TABLE, list(records), run_id=correlation_id)
     return records
 
 
@@ -203,7 +205,7 @@ def default_stages_builder(
 
     baskets: dict[str, tuple[FiredIndex, IndexBasket]] = {}
     for fired_index in fired:
-        basket = basket_source(fired_index, trade_date)
+        basket = basket_source(fired_index, trade_date, correlation_id)
         if basket is not None:
             baskets[fired_index.entry.symbol] = (fired_index, basket)
 
@@ -270,7 +272,7 @@ def default_stages_builder(
                 provider=DEFAULT_PROVIDER,
             )
             outputs = run.outputs
-            persist_outputs(store, outputs)
+            persist_outputs(store, outputs, run_id=correlation_id)
             for cell in outputs.projected_analytics:
                 if cell.surface_side != SURFACE_SIDE_COMBINED:
                     continue
@@ -294,6 +296,7 @@ def default_stages_builder(
                 fired_index.as_of.date(),
                 calc_ts=fired_index.as_of,
                 config_hashes=dict(hashes),
+                run_id=correlation_id,
             )
             signal_rows_written += len(persisted_signals)
         if baskets:

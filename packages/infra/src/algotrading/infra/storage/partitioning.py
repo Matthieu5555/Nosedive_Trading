@@ -68,6 +68,12 @@ def _checked_version(version: str) -> str:
     return _checked_segment(version, "version")
 
 
+#: Run segment used when a run-partitioned table is written without an explicit run_id (e.g. an
+#: ad-hoc/backfill write outside an eod fire). Keeps every run-partitioned write under a ``run=``
+#: level so reads resolve uniformly, never mixing run-segmented and bare paths for one table.
+ADHOC_RUN = "_adhoc"
+
+
 def partition_dir(
     root: Path,
     table: str,
@@ -75,11 +81,17 @@ def partition_dir(
     underlying: str,
     version: str | None = None,
     provider: str | None = None,
+    run_id: str | None = None,
 ) -> Path:
+    spec = spec_for_table(table)
     base = table_dir(root, table)
     if provider is not None:
         base = base / f"provider={_checked_segment(provider, 'provider')}"
-    base = base / f"trade_date={trade_date.isoformat()}" / f"underlying={underlying}"
+    base = base / f"trade_date={trade_date.isoformat()}"
+    if spec.run_partitioned:
+        run_segment = run_id if run_id is not None else ADHOC_RUN
+        base = base / f"run={_checked_segment(run_segment, 'run')}"
+    base = base / f"underlying={underlying}"
     if version is None:
         return base
     return base / f"version={_checked_version(version)}"
@@ -92,5 +104,9 @@ def partition_file(
     underlying: str,
     version: str | None = None,
     provider: str | None = None,
+    run_id: str | None = None,
 ) -> Path:
-    return partition_dir(root, table, trade_date, underlying, version, provider) / "data.parquet"
+    return (
+        partition_dir(root, table, trade_date, underlying, version, provider, run_id)
+        / "data.parquet"
+    )

@@ -50,6 +50,12 @@ class TableSpec:
     non_negative_fields: tuple[str, ...]
     provider_partitioned: bool = False
     cold_compactable: bool = False
+    # When True the partition path carries a ``run=<run_id>`` segment between trade_date and
+    # underlying, so each fetch (one ``eod_run`` fire = one correlation_id) keeps its own
+    # complete dataset instead of overwriting the prior fire's. Reads default to the newest run
+    # for a date; an explicit ``run_id`` addresses one fetch. Off = the legacy single-slot-per-day
+    # layout (portfolio/reference/raw tables that are not produced per-fetch).
+    run_partitioned: bool = False
 
 
 REGISTRY: dict[str, TableSpec] = {
@@ -122,6 +128,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=("reference_spot",),
         non_negative_fields=("bid", "ask", "spread_pct", "completeness"),
+        run_partitioned=True,
     ),
     "forward_curve": TableSpec(
         name="forward_curve",
@@ -133,6 +140,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=("forward_price", "maturity_years"),
         non_negative_fields=(),
+        run_partitioned=True,
     ),
     "iv_points": TableSpec(
         name="iv_points",
@@ -144,6 +152,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=(),
         non_negative_fields=("implied_vol", "total_variance"),
+        run_partitioned=True,
     ),
     "surface_parameters": TableSpec(
         name="surface_parameters",
@@ -155,6 +164,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=("maturity_years", "svi_b", "svi_sigma"),
         non_negative_fields=(),
+        run_partitioned=True,
     ),
     "surface_grid": TableSpec(
         name="surface_grid",
@@ -166,6 +176,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=("maturity_years",),
         non_negative_fields=("total_variance",),
+        run_partitioned=True,
     ),
     "pricing_results": TableSpec(
         name="pricing_results",
@@ -177,6 +188,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=True,
         positive_fields=(),
         non_negative_fields=("gamma", "vega"),
+        run_partitioned=True,
     ),
     "projected_option_analytics": TableSpec(
         name="projected_option_analytics",
@@ -191,6 +203,7 @@ REGISTRY: dict[str, TableSpec] = {
         positive_fields=("maturity_years", "strike", "forward_price"),
         non_negative_fields=("implied_vol", "total_variance", "gamma", "vega", "price"),
         provider_partitioned=True,
+        run_partitioned=True,
     ),
     "positions": TableSpec(
         name="positions",
@@ -302,6 +315,7 @@ REGISTRY: dict[str, TableSpec] = {
         positive_fields=(),
         non_negative_fields=(),
         provider_partitioned=True,
+        run_partitioned=True,
     ),
     "qc_results": TableSpec(
         name="qc_results",
@@ -313,6 +327,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+        run_partitioned=True,
     ),
     "triage_records": TableSpec(
         name="triage_records",
@@ -324,6 +339,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+        run_partitioned=True,
     ),
     "constituent_capture_outcomes": TableSpec(
         name="constituent_capture_outcomes",
@@ -335,6 +351,7 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=("rank",),
         non_negative_fields=("weight", "n_options"),
+        run_partitioned=True,
     ),
 }
 

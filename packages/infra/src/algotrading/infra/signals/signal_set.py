@@ -274,9 +274,10 @@ def persist_signal_set(
     *,
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
+    run_id: str | None = None,
 ) -> tuple[StrategySignal, ...]:
     inputs = read_signal_inputs(store, config, as_of)
     rows = build_signals(inputs, config, calc_ts=calc_ts, config_hashes=config_hashes)
     if rows:
-        store.write("strategy_signals", list(rows))
+        store.write("strategy_signals", list(rows), run_id=run_id)
     return rows

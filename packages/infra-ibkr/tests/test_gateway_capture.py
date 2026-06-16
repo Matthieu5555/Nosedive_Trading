@@ -161,7 +161,7 @@ def test_gateway_requested_binds_and_captures() -> None:
     assert source is not None
 
     fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
-    basket = source(fired, TRADE_DATE)
+    basket = source(fired, TRADE_DATE, "test-corr")
     assert basket is not None and basket.events, "the requested same-day Gateway fire must capture"
     assert len(basket.instruments) >= 2
     assert {event.exchange_ts for event in basket.events} == {SPX_CLOSE}

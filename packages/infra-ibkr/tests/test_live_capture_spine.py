@@ -302,11 +302,11 @@ def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> Non
 
     past_fire = _source(TRADE_DATE + timedelta(days=1))
     assert past_fire is not None
-    assert past_fire(fired, TRADE_DATE) is None
+    assert past_fire(fired, TRADE_DATE, "test-corr") is None
 
     same_day = _source(TRADE_DATE)
     assert same_day is not None
-    basket = same_day(fired, TRADE_DATE)
+    basket = same_day(fired, TRADE_DATE, "test-corr")
     assert basket is not None and basket.events, "the same-day fire must capture a real basket"
 
 

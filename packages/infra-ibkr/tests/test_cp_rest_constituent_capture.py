@@ -322,7 +322,7 @@ def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
         store=store,
     )
     assert widened is not None
-    basket = widened(fired, TRADE_DATE)
+    basket = widened(fired, TRADE_DATE, "test-corr")
     assert basket is not None
     assert {k.underlying_symbol for k in basket.instruments} == {"SX5E", "ASML", "TTE", "SIE"}
 
@@ -333,7 +333,7 @@ def test_live_basket_source_with_a_store_routes_to_the_widened_capture(
         now=lambda: TRADE_DATE,
     )
     assert index_only is not None
-    only = index_only(fired, TRADE_DATE)
+    only = index_only(fired, TRADE_DATE, "test-corr")
     assert only is not None
     assert {k.underlying_symbol for k in only.instruments} == {"SX5E"}
 

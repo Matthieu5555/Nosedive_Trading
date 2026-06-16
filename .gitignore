@@ -58,3 +58,12 @@ Test Lenny/
 # Claude Code runtime lock
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# --- Overnight-fleet unblock (2026-06-16): machine-local + scratch paths that were
+# untracked in the root checkout and tripped the worktree.sh land clean-tree guard.
+# Gitignored (not committed/deleted) so `land` sees a clean tree; files keep working.
+.claude/settings.json
+scripts/hooks/
+scripts/ibkr_login.py
+apps/frontend/web/shot*.mjs
+notebooks/__marimo__/

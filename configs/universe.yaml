@@ -106,7 +106,7 @@ signals:
 # config_hashes["universe"]. Course value is top-10; the theory/dispersion sizing is top-50.
 # The top-N is resolved point-in-time from 1A membership weights (never a hand-set list) and
 # rejects a basket with missing weights — you cannot rank what you do not know.
-constituent_top_n: 10
+constituent_top_n: 50
 
 # Index registry (ADR 0035): which indices the platform tracks. Keyed by index symbol —
 # the same `index` key 1A membership, 1C capture, 1G cron, and the 1I picker consume.

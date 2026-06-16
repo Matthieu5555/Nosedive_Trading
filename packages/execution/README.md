@@ -107,3 +107,13 @@ Place both lines in `$HOME/.env` (gitignored). The password itself never leaves 
 The BFF exposes this as `POST /api/booking/commit` (the ticket-preview body plus a `password`);
 the React Ticket panel adds the password prompt + **Book (paper)** affordance. The 3B sign-and-send
 affordance stays disabled and labelled. **No broker bytes leave the process.**
+
+## Read side — the fills ledger and the booked book over HTTP
+
+The same `JsonlFillsLedger` the commit writes is read back by the BFF for the Positions/Execution
+blotter: `GET /api/positions/fills` projects the append-only ledger verbatim, and `GET /api/positions`
+folds it via `booked_position_set` and joins each `contract_key` to the latest banked
+`pricing_results` row to attach per-leg Greeks (`raw × signed_qty × multiplier`, dollar-Greek ×
+`signed_qty`) and a book-additive total. Accounting is from fills, marks are the as-of banked
+pricing, and the store opens read-only — no fill is written and no broker is touched on the read
+path. The endpoint shapes live in `apps/frontend/README.md`.

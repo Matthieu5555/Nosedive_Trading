@@ -32,3 +32,10 @@ this week). Accounting from fills, not orders (§6).
 A booked fill (written via [[execution-booking-commit]]) becomes a fills-based position; risk +
 attribution read it; partial fills accumulate; order/ticket lineage on every position; the store is
 append-only/auditable; gate green.
+
+## Follow-on landed (2026-06-16) — BFF read endpoints for the F-POS blotter
+The store's HTTP read side: `GET /api/positions/fills` (the append-only ledger verbatim) and
+`GET /api/positions` (the booked `PositionSet` folded from fills, joined to banked `pricing_results`
+for per-leg and book-additive Greeks). New `apps/frontend/.../routers/positions.py` +
+`positions_read.py` + `position_book_to_dict`, mounted additively. Four test layers incl. the
+fills→position seam contract test and a golden over a fixed fills set. Read-only, no broker.

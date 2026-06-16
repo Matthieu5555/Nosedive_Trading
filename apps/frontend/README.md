@@ -178,6 +178,22 @@ The BFF exposes (all under `/api` except the liveness probe):
   `by_kind == {}`, `snapshot_ts: null`, HTTP 200); a bad `trade_date` a `400`. **Not surfaced:** IV
   *percentile* — `iv_percentile` exists in `infra/signals` but the layer persists only `iv_rank`, and
   this read-only slice will not recompute it (it flows through unchanged once the layer banks it).
+- `GET /api/positions/fills[?trade_date=&underlying=]` — the append-only **fills ledger** read
+  back verbatim from `<store_root>/booking/fills.jsonl` (the file the password-gated booking commit
+  writes). Each fill carries its signed `signed_qty` (a string so the `Decimal` survives JSON),
+  paper `mode`, the venue-stamped `fill_ts`, and lineage (`booking_id`/`source_basket_id`/
+  `broker_contract_id`). No recompute — this is the §6 source of record. Empty when nothing is
+  booked (HTTP 200).
+- `GET /api/positions[?trade_date=&underlying=]` — the **booked position set** the book is
+  accounted *from fills, never from intentions*: the ledger folded by `contract_key` (partial fills
+  accumulate, a net-zero leg is closed and absent) into one line per live contract, each joined to
+  the latest banked `pricing_results` row for that key to carry per-leg Greeks (`raw` per-unit,
+  `position` = `raw × signed_qty × multiplier`, `dollar` = banked dollar-Greek × `signed_qty`, each
+  with its unit) plus `mark_price`/`market_value`. The `book` block is the **additive** sum of the
+  dollar Greeks and market value across priced legs. A booked leg with no banked pricing is a
+  labelled `unpriced_contract_keys` entry (zeroed Greeks, never silently dropped), and
+  `priced_contract_keys` counts the rest. The web Positions/Execution blotter (F-POS) consumes
+  these two endpoints. The store opens read-only; nothing here writes a fill or touches a broker.
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

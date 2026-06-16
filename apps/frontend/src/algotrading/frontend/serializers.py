@@ -21,6 +21,7 @@ from algotrading.infra.risk import BasketRisk, LegRisk
 from algotrading.infra.surfaces import DenseSurface, SlicePlotSeries, degeneracy_reasons
 
 from .basket_scenarios import BasketStressResult
+from .positions_read import GreekComponent, PositionBook, PositionLine
 
 if TYPE_CHECKING:
     from algotrading.infra.orchestration import DashboardStatus
@@ -493,4 +494,60 @@ def ticket_to_dict(ticket: OrderTicket) -> dict[str, object]:
             "transmit": False,
             "reason": "3B — sign-and-send is behind an explicit owner gate",
         },
+    }
+
+
+_POSITION_GREEK_UNITS = {
+    "delta": UNIT_STRINGS["dollar_delta"],
+    "gamma": UNIT_STRINGS["dollar_gamma_one_pct"],
+    "vega": UNIT_STRINGS["dollar_vega"],
+    "theta": UNIT_STRINGS["dollar_theta_365"],
+    "rho": UNIT_STRINGS["dollar_rho"],
+}
+
+
+def _greek_component_to_dict(name: str, component: GreekComponent) -> dict[str, object]:
+    return {
+        "raw": component.raw,
+        "position": component.position,
+        "dollar": component.dollar,
+        "unit": _POSITION_GREEK_UNITS[name],
+    }
+
+
+def _position_line_to_dict(line: PositionLine) -> dict[str, object]:
+    return {
+        "contract_key": line.contract_key,
+        "underlying": line.underlying,
+        "strike": line.strike,
+        "expiry": line.expiry,
+        "option_right": line.option_right,
+        "multiplier": line.multiplier,
+        "quantity": line.quantity,
+        "broker_contract_id": line.broker_contract_id,
+        "mark_price": line.mark_price,
+        "market_value": line.market_value,
+        "greeks": {
+            name: _greek_component_to_dict(name, line.greeks[name])
+            for name in ("delta", "gamma", "vega", "theta", "rho")
+        },
+    }
+
+
+def position_book_to_dict(book: PositionBook) -> dict[str, object]:
+    return {
+        "source": book.source,
+        "source_ts": _iso(book.source_ts),
+        "n_lines": len(book.lines),
+        "lines": [_position_line_to_dict(line) for line in book.lines],
+        "book": {
+            "delta": {"dollar": book.book.delta, "unit": _POSITION_GREEK_UNITS["delta"]},
+            "gamma": {"dollar": book.book.gamma, "unit": _POSITION_GREEK_UNITS["gamma"]},
+            "vega": {"dollar": book.book.vega, "unit": _POSITION_GREEK_UNITS["vega"]},
+            "theta": {"dollar": book.book.theta, "unit": _POSITION_GREEK_UNITS["theta"]},
+            "rho": {"dollar": book.book.rho, "unit": _POSITION_GREEK_UNITS["rho"]},
+            "market_value": book.book.market_value,
+        },
+        "priced_contract_keys": book.priced_contract_keys,
+        "unpriced_contract_keys": list(book.unpriced_contract_keys),
     }

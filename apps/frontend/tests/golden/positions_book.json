@@ -1,0 +1,165 @@
+{
+  "book": {
+    "delta": {
+      "dollar": 416.5,
+      "unit": "$ per $1 of underlying"
+    },
+    "gamma": {
+      "dollar": 14.0,
+      "unit": "$ per 1% move"
+    },
+    "market_value": 305.0,
+    "rho": {
+      "dollar": 0.0041,
+      "unit": "$ per 1% rate"
+    },
+    "theta": {
+      "dollar": -6.500000000000001e-05,
+      "unit": "$ per calendar day"
+    },
+    "vega": {
+      "dollar": 0.42999999999999994,
+      "unit": "$ per 1 vol point"
+    }
+  },
+  "lines": [
+    {
+      "broker_contract_id": null,
+      "contract_key": "DAX|OPT|EUREX|EUR|5|o-DAX-C|2026-09-18|18000|C",
+      "expiry": "2026-09-18",
+      "greeks": {
+        "delta": {
+          "dollar": 0.0,
+          "position": 0.0,
+          "raw": 0.0,
+          "unit": "$ per $1 of underlying"
+        },
+        "gamma": {
+          "dollar": 0.0,
+          "position": 0.0,
+          "raw": 0.0,
+          "unit": "$ per 1% move"
+        },
+        "rho": {
+          "dollar": 0.0,
+          "position": 0.0,
+          "raw": 0.0,
+          "unit": "$ per 1% rate"
+        },
+        "theta": {
+          "dollar": 0.0,
+          "position": 0.0,
+          "raw": 0.0,
+          "unit": "$ per calendar day"
+        },
+        "vega": {
+          "dollar": 0.0,
+          "position": 0.0,
+          "raw": 0.0,
+          "unit": "$ per 1 vol point"
+        }
+      },
+      "mark_price": 0.0,
+      "market_value": 0.0,
+      "multiplier": 5.0,
+      "option_right": "C",
+      "quantity": 1.0,
+      "strike": 18000.0,
+      "underlying": "DAX"
+    },
+    {
+      "broker_contract_id": "o-C-4400",
+      "contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4400|2026-09-18|4400|C",
+      "expiry": "2026-09-18",
+      "greeks": {
+        "delta": {
+          "dollar": 292.5,
+          "position": 27.500000000000004,
+          "raw": 0.55,
+          "unit": "$ per $1 of underlying"
+        },
+        "gamma": {
+          "dollar": 38.0,
+          "position": 1.0,
+          "raw": 0.02,
+          "unit": "$ per 1% move"
+        },
+        "rho": {
+          "dollar": 0.0025,
+          "position": 2.0,
+          "raw": 0.04,
+          "unit": "$ per 1% rate"
+        },
+        "theta": {
+          "dollar": -0.000205,
+          "position": -2.5,
+          "raw": -0.05,
+          "unit": "$ per calendar day"
+        },
+        "vega": {
+          "dollar": 1.55,
+          "position": 15.5,
+          "raw": 0.31,
+          "unit": "$ per 1 vol point"
+        }
+      },
+      "mark_price": 12.5,
+      "market_value": 625.0,
+      "multiplier": 10.0,
+      "option_right": "C",
+      "quantity": 5.0,
+      "strike": 4400.0,
+      "underlying": "SX5E"
+    },
+    {
+      "broker_contract_id": null,
+      "contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4200|2026-09-18|4200|P",
+      "expiry": "2026-09-18",
+      "greeks": {
+        "delta": {
+          "dollar": 124.0,
+          "position": 12.0,
+          "raw": -0.3,
+          "unit": "$ per $1 of underlying"
+        },
+        "gamma": {
+          "dollar": -24.0,
+          "position": -0.72,
+          "raw": 0.018,
+          "unit": "$ per 1% move"
+        },
+        "rho": {
+          "dollar": 0.0016,
+          "position": 1.2,
+          "raw": -0.03,
+          "unit": "$ per 1% rate"
+        },
+        "theta": {
+          "dollar": 0.00014,
+          "position": 1.6,
+          "raw": -0.04,
+          "unit": "$ per calendar day"
+        },
+        "vega": {
+          "dollar": -1.12,
+          "position": -11.200000000000001,
+          "raw": 0.28,
+          "unit": "$ per 1 vol point"
+        }
+      },
+      "mark_price": 8.0,
+      "market_value": -320.0,
+      "multiplier": 10.0,
+      "option_right": "P",
+      "quantity": -4.0,
+      "strike": 4200.0,
+      "underlying": "SX5E"
+    }
+  ],
+  "n_lines": 3,
+  "priced_contract_keys": 2,
+  "source": "booked",
+  "unpriced_contract_keys": [
+    "DAX|OPT|EUREX|EUR|5|o-DAX-C|2026-09-18|18000|C"
+  ]
+}

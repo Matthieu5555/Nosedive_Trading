@@ -77,7 +77,7 @@ def get_recorded_dates(ctx: CtxDep, index: str | None = None) -> JSONResponse:
                         "date": d.isoformat(),
                         "run_id": run_id,
                         "recorded_ts": recorded_ts.isoformat() if recorded_ts else None,
-                        "qc": _qc_verdict(ledger.stages) if ledger else "unknown",
+                        "qc": _qc_verdict(run_ledger.stages) if run_ledger else "unknown",
                     }
                 )
         else:

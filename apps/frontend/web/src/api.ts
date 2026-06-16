@@ -229,8 +229,12 @@ export interface DeltaBandsResponse {
 
 export type QcVerdict = "pass" | "fail" | "unknown";
 
+// One capture run (fetch). Re-fetching a trade date adds another entry — same `date`, distinct
+// `run_id` and `recorded_ts` — so the selector lists fetches newest-first, never collapsing them.
 export interface AvailableDate {
   date: string;
+  run_id: string;
+  recorded_ts: string | null;
   qc: QcVerdict;
 }
 

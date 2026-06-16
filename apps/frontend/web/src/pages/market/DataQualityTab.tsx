@@ -9,12 +9,14 @@ import { ErrorBoundary } from "../../components/ErrorBoundary";
 export function DataQualityTab({
   index,
   asOf,
+  runId,
   constituents,
   entity,
   onEntity,
 }: {
   index: string;
   asOf: string;
+  runId?: string;
   constituents: Constituent[];
   entity: string;
   onEntity: (symbol: string) => void;
@@ -41,7 +43,7 @@ export function DataQualityTab({
           <span className="status">data check</span>
         </div>
         <ErrorBoundary label="Capture coverage">
-          <CoveragePanel underlying={index} tradeDate={asOf} />
+          <CoveragePanel underlying={index} tradeDate={asOf} runId={runId} />
         </ErrorBoundary>
       </article>
     </div>

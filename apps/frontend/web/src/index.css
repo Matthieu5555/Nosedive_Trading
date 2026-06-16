@@ -1074,6 +1074,17 @@ h3 {
   margin-top: 16px;
 }
 
+.basket-tab > * + * {
+  margin-top: 16px;
+}
+
+.basket-tab__lead {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 /* Even vertical rhythm between the compose panel and the result grid. */
 .stress-composer > * + * {
   margin-top: 16px;

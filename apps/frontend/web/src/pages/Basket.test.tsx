@@ -123,6 +123,7 @@ test("stressing a composed basket renders the worst case and the PnL surface", a
   server.use(jsonPost("/api/basket/scenarios", BASKET_STRESS_AAA));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
+  await user.click(screen.getByRole("tab", { name: /^stress$/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
   await waitFor(() => expect(screen.getByText("Worst case")).toBeInTheDocument());
 
@@ -142,6 +143,7 @@ test("a stress error renders a labelled alert carrying the BFF's typed detail", 
   server.use(badBasket("/api/basket/scenarios"));
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
+  await user.click(screen.getByRole("tab", { name: /^stress$/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(/Failed to stress basket/i),

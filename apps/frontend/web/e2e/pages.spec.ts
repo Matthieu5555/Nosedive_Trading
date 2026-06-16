@@ -84,3 +84,29 @@ test("Basket: a template button composes legs and enables pricing", async ({ pag
 
   await expect(price).toBeEnabled();
 });
+
+test("Basket: Build & price / Stress / Attribution split into tabs over a shared composer", async ({
+  page,
+}) => {
+  await page.goto("/basket");
+  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
+
+  const buildTab = page.getByRole("tab", { name: "Build & price" });
+  const stressTab = page.getByRole("tab", { name: "Stress" });
+  const attributionTab = page.getByRole("tab", { name: "Attribution" });
+  await expect(buildTab).toBeVisible();
+  await expect(stressTab).toBeVisible();
+  await expect(attributionTab).toBeVisible();
+
+  await expect(page.getByRole("button", { name: "Price basket" })).toBeVisible();
+
+  await stressTab.click();
+  await expect(page.getByRole("button", { name: "Stress basket" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Price basket" })).toHaveCount(0);
+
+  await attributionTab.click();
+  await expect(page.getByRole("button", { name: "P&L attribution" })).toBeVisible();
+  await expect(page.getByLabel("portfolio", { exact: true })).toBeVisible();
+
+  await expect(page.getByLabel("underlying", { exact: true })).toBeVisible();
+});

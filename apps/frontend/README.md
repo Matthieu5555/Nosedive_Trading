@@ -169,7 +169,11 @@ The BFF exposes (all under `/api` except the liveness probe):
   `contract_key`) or `level=position` + a `contract_key` for the §5.8 per-position drill. No
   record for the `(portfolio, date)` is a labelled-empty `found=false` body (HTTP 200), a bad
   `trade_date` a labelled `400`. The web `AttributionWaterfall` (Plotly waterfall) renders it on
-  the Basket page beside the stress surface.
+  the Basket Builder's **Attribution** tab, which carries its own portfolio input. The Basket
+  Builder splits its work into three sub-views over the shared `@/ui/tabs` (the same component the
+  Market page uses): **Build & price** (price the basket → `BasketRiskPanel`), **Stress** (the
+  on-demand `StressSurface`), and **Attribution** — all over one shared leg composer
+  (underlying / trade date / tenor / templates / leg grid / order ticket) that stays above the tabs.
 - `POST /api/backtest/run` — launch a store-backed S2 backtest over the offline store and return
   the full result in one call (TARGET §7.8 / §5.7; F-STRAT Strategy/Backtest page consumes it). No
   persisted backtest table — it runs on demand through the landed research engine

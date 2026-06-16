@@ -84,7 +84,28 @@ def resolve_index(transport: SupportsRestGet, *, symbol: str, exchange: str) -> 
     return ResolvedIndex(conid=conid, option_months=parse_option_months(results, symbol=symbol))
 
 
-def parse_option_months_by_conid(results: object, *, conid: int) -> tuple[str, ...]:
+@dataclass(frozen=True, slots=True)
+class OptionListing:
+    """The option months a conid lists, plus the venue they list on.
+
+    The venue matters: a constituent's options rarely list on the index exchange
+    (Spanish names route to MEFFRV, Belgian to BELFOX, German/French to EUREX),
+    and ``/secdef/strikes`` returns nothing unless asked on the right one.
+    """
+
+    months: tuple[str, ...]
+    exchange: str | None
+
+
+def _first_venue(venues: str) -> str | None:
+    for chunk in venues.replace(",", ";").split(";"):
+        venue = chunk.strip()
+        if venue:
+            return venue
+    return None
+
+
+def parse_option_listing_by_conid(results: object, *, conid: int) -> OptionListing:
     for row in parse_secdef_search_rows(results):
         if row.conid != conid:
             continue
@@ -96,12 +117,22 @@ def parse_option_months_by_conid(results: object, *, conid: int) -> tuple[str, .
                 month = token.strip()
                 if month and month not in seen:
                     seen.append(month)
-            return tuple(seen)
-    return ()
+            return OptionListing(months=tuple(seen), exchange=_first_venue(section.exchange))
+    return OptionListing(months=(), exchange=None)
+
+
+def parse_option_months_by_conid(results: object, *, conid: int) -> tuple[str, ...]:
+    return parse_option_listing_by_conid(results, conid=conid).months
+
+
+def option_listing_for_conid(
+    transport: SupportsRestGet, *, symbol: str, conid: int
+) -> OptionListing:
+    results = transport.get("/iserver/secdef/search", params={"symbol": symbol})
+    return parse_option_listing_by_conid(results, conid=conid)
 
 
 def option_months_for_conid(
     transport: SupportsRestGet, *, symbol: str, conid: int
 ) -> tuple[str, ...]:
-    results = transport.get("/iserver/secdef/search", params={"symbol": symbol})
-    return parse_option_months_by_conid(results, conid=conid)
+    return option_listing_for_conid(transport, symbol=symbol, conid=conid).months

@@ -489,6 +489,7 @@ def test_a_transient_429_is_recovered_by_the_throttle_sweep_never_no_options(
     store: ParquetStore,
 ) -> None:
     gateway = _ThrottlingGateway(throttle_conid=_EQUITY_CONID["TTE"], fail_first=1)
+    backoffs: list[float] = []
     collect_index_and_constituents_basket(
         gateway,
         store=store,
@@ -497,12 +498,15 @@ def test_a_transient_429_is_recovered_by_the_throttle_sweep_never_no_options(
         next_open=NEXT_OPEN,
         config=_config(5),
         selection=_selection(),
+        sleep=backoffs.append,
     )
     by_name = {
         row.underlying: row
         for row in store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
     }
     assert gateway.strike_calls >= 2
+    # the sweep backs off before retrying rather than re-hammering a rate-limited gateway
+    assert backoffs and backoffs[0] > 0.0
     assert by_name["TTE"].outcome == "captured"
     assert by_name["TTE"].n_options == len(_STRIKES) * 2 * len(_MONTHS)
 
@@ -519,6 +523,7 @@ def test_a_persistent_429_is_recorded_as_throttled_never_no_options(
         next_open=NEXT_OPEN,
         config=_config(5),
         selection=_selection(),
+        sleep=lambda _seconds: None,
     )
     by_name = {
         row.underlying: row
@@ -528,6 +533,69 @@ def test_a_persistent_429_is_recorded_as_throttled_never_no_options(
     assert by_name["SIE"].outcome != "no_options"
     assert by_name["SIE"].n_options == 0
     assert by_name["ASML"].outcome == "captured"
+
+
+class _ForeignVenueGateway(_FakeGateway):
+    """A constituent whose options list on a national venue, not the index's EUREX.
+
+    Spanish names route to MEFFRV, Belgian to BELFOX, etc. ``/secdef/strikes`` only
+    returns a chain when asked on that venue — querying the index exchange yields
+    nothing, exactly as the live gateway behaved for IBE/BBVA/ARGX.
+    """
+
+    def __init__(self, *, foreign_conid: int, venue: str) -> None:
+        super().__init__()
+        self._foreign_conid = foreign_conid
+        self._venue = venue
+        self.foreign_strike_exchanges: list[str] = []
+
+    def _option_months_search(self, symbol: str) -> Any:
+        rows = super()._option_months_search(symbol)
+        for row in rows if isinstance(rows, list) else []:
+            if row.get("conid") != self._foreign_conid:
+                continue
+            for section in row.get("sections", []):
+                if section.get("secType") == "OPT":
+                    section["exchange"] = self._venue
+        return rows
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        params = dict(params or {})
+        if (
+            path == "/iserver/secdef/strikes"
+            and int(params.get("conid", 0)) == self._foreign_conid
+        ):
+            exchange = str(params.get("exchange", ""))
+            self.foreign_strike_exchanges.append(exchange)
+            if exchange != self._venue:
+                return {"call": [], "put": []}
+        return super().get(path, params)
+
+
+def test_a_constituent_whose_options_list_on_a_foreign_venue_is_captured_there(
+    store: ParquetStore,
+) -> None:
+    gateway = _ForeignVenueGateway(foreign_conid=_EQUITY_CONID["SIE"], venue="MEFFRV")
+    collect_index_and_constituents_basket(
+        gateway,
+        store=store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5),
+        selection=_selection(),
+        sleep=lambda _seconds: None,
+    )
+    by_name = {
+        row.underlying: row
+        for row in store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
+    }
+    # Discovery followed the listing to the foreign venue; it never settled for the
+    # index exchange (which lists nothing for this name) and so never mislabels it.
+    assert "MEFFRV" in gateway.foreign_strike_exchanges
+    assert "EUREX" not in gateway.foreign_strike_exchanges
+    assert by_name["SIE"].outcome == "captured"
+    assert by_name["SIE"].n_options == len(_STRIKES) * 2 * len(_MONTHS)
 
 
 class _ConcurrencyTrackingGateway(_FakeGateway):

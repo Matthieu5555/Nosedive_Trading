@@ -467,11 +467,16 @@ def collect_target_basket(
     discovery_cache: DiscoveryCache | None = None,
     revalidate_cached_conids: bool = False,
     warmup: WarmupConfig | None = None,
+    option_exchange: str | None = None,
 ) -> IndexBasket | None:
     log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
     selection = selection or _selection_from_config(config)
+    # Strikes/contracts are venue-scoped: a constituent's options usually list on
+    # its national derivatives exchange (MEFFRV, BELFOX, ...), not the index's
+    # exchange. ``option_exchange`` carries the venue the secdef listing reported;
+    # falling back to ``target.exchange`` preserves the index-capture path.
     discovery = CpRestDiscovery(
-        transport, exchange=target.exchange, currency=target.currency
+        transport, exchange=option_exchange or target.exchange, currency=target.currency
     )
     spot = snapshot_index_spot(transport, conid, warmup=warmup)
     chain, conid_by_contract = _resolve_chain(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -34,7 +35,7 @@ from .cp_rest_close_capture import (
 )
 from .cp_rest_discovery import CpRestDiscovery
 from .cp_rest_discovery_cache import DiscoveryCache
-from .cp_rest_index import option_months_for_conid
+from .cp_rest_index import option_listing_for_conid
 from .cp_rest_snapshot import WarmupConfig
 
 __all__ = ["ConstituentLaneError", "collect_index_and_constituents_basket"]
@@ -48,6 +49,11 @@ _UNENTITLED_STATUS = frozenset({401, 403})
 _THROTTLE_STATUS = frozenset({429, 503})
 
 _THROTTLE_SWEEP_ROUNDS = 3
+
+# Back-off before each retry sweep. A 429 means the shared gateway's rate budget is
+# spent; re-hitting it immediately just earns another 429 (the tail of a wide fan-out
+# stays throttled for the whole sweep). Pausing lets the budget refill between rounds.
+_THROTTLE_SWEEP_BACKOFF_SECONDS = (2.0, 5.0, 10.0)
 
 _OUTCOMES_TABLE = "constituent_capture_outcomes"
 
@@ -159,10 +165,10 @@ def _attempt_constituent(
         )
     conid = target.conid
     try:
-        months = option_months_for_conid(
+        listing = option_listing_for_conid(
             transport, symbol=target.resolved_search_symbol, conid=conid
         )
-        if not months:
+        if not listing.months:
             log.info("ibkr.constituent_capture.no_option_months", conid=conid)
             return _ConstituentResult(
                 member=member,
@@ -176,7 +182,7 @@ def _attempt_constituent(
             transport,
             target=target,
             conid=conid,
-            months=months,
+            months=listing.months,
             as_of=as_of,
             next_open=next_open,
             config=config,
@@ -184,6 +190,7 @@ def _attempt_constituent(
             discovery_cache=discovery_cache,
             revalidate_cached_conids=revalidate_cached_conids,
             warmup=warmup,
+            option_exchange=listing.exchange,
         )
     except CpRestTransportError as exc:
         if exc.status_code in _UNENTITLED_STATUS:
@@ -304,6 +311,7 @@ def collect_index_and_constituents_basket(
     discovery_cache: DiscoveryCache | None = None,
     revalidate_cached_conids: bool = False,
     warmup: WarmupConfig | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> IndexBasket | None:
     log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
     capture_pool_size = config.universe.strike_selection.capture_pool_size
@@ -379,12 +387,17 @@ def collect_index_and_constituents_basket(
         throttled = [idx for idx, result in enumerate(results) if result.outcome == "throttled"]
         if not throttled:
             break
+        backoff = _THROTTLE_SWEEP_BACKOFF_SECONDS[
+            min(sweep, len(_THROTTLE_SWEEP_BACKOFF_SECONDS) - 1)
+        ]
         log.info(
             "ibkr.constituent_capture.throttle_sweep",
             round=sweep + 1,
             n_throttled=len(throttled),
+            backoff_seconds=backoff,
             names=[results[idx].member.constituent for idx in throttled],
         )
+        sleep(backoff)
         for idx in throttled:
             results[idx] = attempt(ranked[idx])
 

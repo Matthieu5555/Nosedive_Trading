@@ -6,6 +6,7 @@ import pytest
 from algotrading.infra_ibkr.collectors.cp_rest_index import (
     IndexConidError,
     parse_index_conid,
+    parse_option_listing_by_conid,
     parse_option_months,
     resolve_index,
 )
@@ -51,6 +52,36 @@ def test_option_months_parse_in_listed_order_deduplicated() -> None:
 def test_no_option_section_yields_empty_months_not_a_crash() -> None:
     results = [{"conid": 1, "symbol": "SPX", "sections": [{"secType": "IND", "exchange": "CBOE"}]}]
     assert parse_option_months(results, symbol="SPX") == ()
+
+
+def test_option_listing_carries_the_venue_options_actually_route_to() -> None:
+    # A constituent's options list on a national venue, not the index exchange.
+    foreign = [
+        {
+            "conid": 46586284,
+            "symbol": "IBE",
+            "sections": [
+                {"secType": "STK", "exchange": "BM"},
+                {"secType": "OPT", "months": "JUN26;JUL26", "exchange": "MEFFRV"},
+            ],
+        }
+    ]
+    listing = parse_option_listing_by_conid(foreign, conid=46586284)
+    assert listing.months == ("JUN26", "JUL26")
+    assert listing.exchange == "MEFFRV"
+
+
+def test_option_listing_picks_the_first_venue_when_several_are_advertised() -> None:
+    assert parse_option_listing_by_conid(_SPX_SEARCH, conid=416904).exchange == "CBOE"
+
+
+def test_option_listing_is_empty_when_the_conid_lists_no_options() -> None:
+    listing = parse_option_listing_by_conid(
+        [{"conid": 1, "symbol": "X", "sections": [{"secType": "STK", "exchange": "NYSE"}]}],
+        conid=1,
+    )
+    assert listing.months == ()
+    assert listing.exchange is None
 
 
 def test_resolve_index_returns_conid_and_months_from_one_search() -> None:

@@ -67,3 +67,6 @@ scripts/hooks/
 scripts/ibkr_login.py
 apps/frontend/web/shot*.mjs
 notebooks/__marimo__/
+
+# TypeScript incremental build artifact
+*.tsbuildinfo

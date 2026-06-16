@@ -1,5 +1,14 @@
 # Task — Page-1 (Vision marché) build-out to the cahier des charges
 
+> **♻ SUPERSEDED (2026-06-16) by [`frontend-page1-reading-model`](frontend-page1-reading-model.md)
+> — owner-locked, blueprint-verified.** Two blocks here are now **dropped by owner ruling**:
+> the **§3.4 2D heatmap** (redundant with the 3D nappe — the nappe IS the stacked-smiles view,
+> blueprint §4.1) and the **accordion / side-by-side §3.5 layout** (replaced by a single **tenor
+> selector** driving {smile + greeks}, blueprint Bloc 3 "smile à maturité fixée"). Any in-flight
+> heatmap/accordion work is **obsolete** — do not continue it. The surviving blocks (§3.3
+> scorecards, §3.5 ATM-term, §3.6 greeks transpose) are **folded into the reading-model**, which
+> is the single page-1 authority. Kept here only for the block inventory + history.
+
 **Status:** queued (2026-06-10). **Owner:** unclaimed.
 **Goal:** bring Tab-1 up to the block set + reading order described in
 [`TARGET.md`](../TARGET.md) §2 (the former `cahier_des_charges_dashboard_page1.md` intent

@@ -24,6 +24,18 @@ The reminder that earns its place here: if any older spec, ADR, or README still 
 it. The gate (the only one) is in `AGENTS.md`; **green** 2026-06-14 after the core-fleet
 integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 
+> **⛔ Autonomous-run guardrail (2026-06-16) — read before picking up work overnight.**
+> 1. **Ground in the reference:** every design/scope decision traces to `docs/blueprint/` + the
+>    course transcripts `docs/transcripts/` (esp. `…Conseils-front-end.txt`,
+>    `…Greeks-et-strategies-vol.md`). Read them first; don't ask the owner what they already specify.
+> 2. **Do NOT revert recent owner+Claude decisions:** **ADR 0051** (index + constituent *prices*
+>    only, realized-vol ρ̄), the **page-1 reading model** (`frontend-page1-reading-model.md`), and
+>    this hygiene pass. Load-bearing. (≠ Matthieu's `c665614` page-1 rebuild, which is being
+>    *corrected*, not preserved.)
+> 3. **Page-1 = ONE agent at a time** on `Market.tsx`/`charts.tsx`/`pages/market/*`. The
+>    reading-model is the umbrella; `cdc-buildout` is superseded (heatmap + accordion dropped).
+>    Do not spawn parallel page-1 agents.
+
 ## Active claims
 
 | Who | Area / files | Claimed | Note |

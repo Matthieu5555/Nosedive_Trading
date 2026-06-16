@@ -10,6 +10,12 @@
 - [`frontend-page1-cdc-buildout`](frontend-page1-cdc-buildout.md) is the CDC block inventory; this spec
   supersedes its *layout/reading-order* parts.
 
+> **⚠️ SINGLE OWNER — collision guard.** Page 1 (`Market.tsx`, `charts.tsx`, `pages/market/*`)
+> is touched by THREE specs (this one, `frontend-page1-cdc-0051-correction`, the superseded
+> `frontend-page1-cdc-buildout`). **Only one agent works page-1 at a time.** This spec is the
+> umbrella: it **absorbs** the correction's ADR-0051 structural fixes and the surviving
+> cdc-buildout blocks (§3.3 scorecards, §3.5 ATM-term). Do **not** spawn parallel page-1 agents.
+
 ## Principle
 
 The page answers one question for an options trader: **"what is the market doing, fast?"** Reading

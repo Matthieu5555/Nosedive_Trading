@@ -48,6 +48,17 @@ Do not search blind. The map exists so you don't have to.
    only while its task is in flight.
 3. **Read `.agent/conventions.md`** before writing code. It is the distilled
    house style and it points at the deeper skills.
+4. **Ground every design/scope decision in the reference, and do not revert recent
+   owner decisions.** Trace each choice to `docs/blueprint/` and the course transcripts
+   in `docs/transcripts/` (especially `AlgoTradingCourse2-Conseils-front-end.txt` and
+   `AlgoTradingCourse2-Greeks-et-strategies-vol.md`) — read them *before* deciding;
+   never ask the owner to rule what they already specify. And **do not re-open or revert
+   the recent owner+Claude decisions**: **ADR 0051** (index-options + constituent
+   *prices* only; ρ̄ from *realized* vol; no constituent-option capture, no `top_n`
+   capture gate), the **page-1 reading model** (`tasks/frontend-page1-reading-model.md`),
+   and the 2026-06-16 task/board hygiene. These are load-bearing and intentional. This is
+   **distinct from Matthieu's `c665614` page-1 rebuild**, which is being *corrected*
+   (see the page-1 tasks), not preserved.
 
 ## Conventions
 

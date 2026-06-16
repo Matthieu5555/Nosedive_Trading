@@ -105,7 +105,14 @@ export function MarketPage() {
         </div>
       </div>
 
-      <AsyncBlock loading={indices.loading || recorded.loading} error={recorded.error}>
+      {/* The index list gates the whole page: if it fails, no selector and no panel can render, so
+          its error must front the page rather than be dropped (which left a silent, dead screen
+          with a disabled, empty dropdown and no explanation). Indices error takes precedence; once
+          the index resolves, the recorded-dates error fronts here instead. */}
+      <AsyncBlock
+        loading={indices.loading || recorded.loading}
+        error={indices.error ?? recorded.error}
+      >
         {recorded.data &&
           (() => {
             if (available.length === 0 || effectiveAsOf === null) {

@@ -5,6 +5,7 @@ import { transferableAbortController } from "node:util";
 import { cleanup } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 
+import { resetRuntimeErrorsForTests } from "../lib/runtimeErrors";
 import { server } from "./server";
 
 // vitest's jsdom environment shadows Node's AbortController/AbortSignal with jsdom's, while
@@ -28,4 +29,7 @@ afterAll(() => server.close());
 afterEach(() => {
   cleanup();
   server.resetHandlers();
+  // Drop any accumulated global-error state (and re-arm the install guard) so the runtime-error
+  // surface starts each test clean — module-level state would otherwise leak across cases.
+  resetRuntimeErrorsForTests();
 });

@@ -139,6 +139,20 @@ export function BasketPage() {
         the book-additive sum of the per-position dollar Greeks — never a fresh pricing pass.
       </p>
 
+      {/* The registry-driven inputs (the underlying list and the delta-band axis) are fetched up
+          front; a failure used to only disable the dropdown / empty the leg grid with no word why.
+          Surface it so the operator knows the controls are degraded because a fetch failed. */}
+      {indices.error !== null && (
+        <p role="alert" className="error">
+          Could not load the index list: {indices.error}
+        </p>
+      )}
+      {deltaBands.error !== null && (
+        <p role="alert" className="error">
+          Could not load the delta-band axis: {deltaBands.error}
+        </p>
+      )}
+
       <div className="basket-controls">
         <label>
           Underlying{" "}

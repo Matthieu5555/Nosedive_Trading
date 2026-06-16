@@ -49,6 +49,13 @@ export function RiskScenariosPage() {
               </option>
             ))}
           </select>
+          {/* The portfolio list failing used to be silent — the dropdown just showed "All
+              portfolios" with no hint the real list never arrived. Say so. */}
+          {portfolios.isError && (
+            <p role="alert" className="error">
+              Could not load the portfolio list: {portfolios.error.message}
+            </p>
+          )}
         </div>
       </div>
 

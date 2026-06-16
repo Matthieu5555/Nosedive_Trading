@@ -115,7 +115,10 @@ test("a fetch error renders a labelled alert on the page, not a blank page", asy
   );
   render(<BasketPage />);
   await user.click(screen.getByRole("button", { name: /P&L attribution/i }));
+  // With every fetch stubbed to fail, the page now surfaces each failure as its own alert (the
+  // index list and delta-band axis included — no silent swallowing). Target the attribution alert
+  // specifically rather than assuming it is the only one on the page.
   await waitFor(() =>
-    expect(screen.getByRole("alert")).toHaveTextContent(/Failed to load attribution/i),
+    expect(screen.getByText(/Failed to load attribution/i)).toBeInTheDocument(),
   );
 });

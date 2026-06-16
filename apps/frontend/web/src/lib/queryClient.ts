@@ -9,13 +9,22 @@
 //   - refetchOnWindowFocus off: an operator alt-tabbing to a chat window should not trigger a
 //     refetch storm across every mounted panel; explicit refetch / interval polling drives refresh.
 //
-// This module imports nothing internal (only the external library), so it sits in the `lib` layer
-// and any layer above may construct/consume it. The provider that hands it to React lives in the
-// app shell (src/main.tsx).
+// This module sits in the `lib` layer and any layer above may construct/consume it; its only
+// internal dependency is the sibling `runtimeErrors` reporter (a lib→lib edge). The provider that
+// hands the client to React lives in the app shell (src/main.tsx).
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryCache, QueryClient } from "@tanstack/react-query";
+
+import { describeError, reportRuntimeError } from "./runtimeErrors";
 
 export const queryClient = new QueryClient({
+  // A cache-level onError is the backstop for the silent-failure class TanStack makes easy: a query
+  // that fails is caught by the library and stays invisible unless its component reads `isError`.
+  // Routing every query failure to the global banner means a component that forgets that check can
+  // no longer swallow an outage — the operator still sees that something failed.
+  queryCache: new QueryCache({
+    onError: (error) => reportRuntimeError(describeError(error)),
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

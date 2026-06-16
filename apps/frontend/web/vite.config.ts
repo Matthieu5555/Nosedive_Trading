@@ -12,9 +12,12 @@ export default defineConfig({
     },
   },
   server: {
+    // The BFF the dev server proxies to. Defaults to the conventional local backend on :8000;
+    // override with BFF_TARGET to point the UI at a backend on another port (e.g. a second instance
+    // on :8001 when :8000 is held by someone else's process on a shared box).
     proxy: {
-      "/api": "http://127.0.0.1:8000",
-      "/healthz": "http://127.0.0.1:8000",
+      "/api": process.env.BFF_TARGET ?? "http://127.0.0.1:8000",
+      "/healthz": process.env.BFF_TARGET ?? "http://127.0.0.1:8000",
     },
   },
   test: {

@@ -79,13 +79,13 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "bde234944ed2039a5f79ce28625ada6289e6a53674f950cec44f7498b5a68360"
+        "b06e149b23bfcdcd8e463f4661cf285df5b4dcb5f77ab90226ca8f4b5ccf0b47"
     )
     assert config_hashes(config) == {
         "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
         "qc": "4e60cf756dba172f161eba2dcba0061afc1fff17e61d25dd446c3b17d4c3f564",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
-        "universe": "84aa7f8fa44cb3303f5340b00dd606e598184e4b1fabf760e907b40c4423708b",
+        "universe": "f0e5d901537247aaf877a8fc4bc14ba3b0b8ee14e3b1cde5c14912ab2ad2607e",
     }
 
 

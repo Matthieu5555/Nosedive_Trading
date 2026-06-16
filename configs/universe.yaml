@@ -40,16 +40,6 @@ exchange: SMART
 #     changes how fast the SAME calls are made, never which calls (the strike window is untouched).
 #     Kept small (the CP Gateway is one paced session; the transport's 429/503 backoff is the real
 #     valve — a flood the backoff serialises back to sequential is a net loss). 1 = sequential.
-#   - capture_pool_size: the TOTAL gateway-concurrency budget for the EOD constituent capture
-#     (ibkr-capture-cross-underlying-concurrency). The index + top-N constituents each run an
-#     independent chain walk against the one paced CP Gateway session, so the prior serial march
-#     left it idle through every name's gaps. One shared BoundedSemaphore of this width gates EVERY
-#     gateway call — the cross-underlying fan-out AND the within-underlying /secdef/info walk both
-#     draw from it, so total in-flight calls never exceed it: discovery_pool_size COMPOSES into this
-#     budget, it is never MULTIPLIED by it (the 429-storm hazard of nesting two pools). A PACING
-#     knob like discovery_pool_size — same calls, faster; baskets byte-identical to serial. Default
-#     6 (the proven within-walk width; the win is filling idle gaps across names, at the same peak
-#     load that already shipped). 1 = the serial cross-underlying march.
 strike_selection:
   version: "2026.06.15"
   delta_bound: 0.30
@@ -57,7 +47,6 @@ strike_selection:
   min_strikes_per_side: 2
   discovery_working_vol: 0.40
   discovery_pool_size: 6
-  capture_pool_size: 6
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
 # the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary
@@ -65,12 +54,12 @@ strike_selection:
 # enters config_hashes["universe"]. Order is meaningful — kept as written.
 tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 
-# Dispersion-basket size (S1, ADR 0044): how many of an index's heaviest constituents by index
-# weight the top-N resolver (`top_n_by_weight`) returns for the S1 dispersion book. Economic — it
-# decides which constituent names trade and so which chains get captured, hence which records
-# exist — so it is hashed config here (config_hashes["universe"]), never a `.py` literal (ADR 0028
-# / C7). Set to the theory's top-50 (the SX5E carries 50 names); the course's top-10 is the model
-# default and the smaller live sub-basket a caller can ask for explicitly. Must be >= 1.
+# Dispersion-basket size (S1, ADR 0044, narrowed by ADR 0051): how many of an index's heaviest
+# constituents by index weight the top-N resolver (`top_n_by_weight`) returns for the S1 dispersion
+# book. A pure STRATEGY-side selector over banked raw — it decides which constituent names the S1
+# book trades, NOT what gets captured (ADR 0051 retired constituent-option capture; the close banks
+# index options + constituent prices). Still hashed config (config_hashes["universe"]), never a
+# `.py` literal (ADR 0028 / C7). Top-50 = the full SX5E; top-10 is the course default. Must be >= 1.
 dispersion_top_n: 50
 # Strategy-entry signal-computation params (R3 / §3, ADR 0028). The daily signal layer
 # (`infra/signals`) derives the readings the §3 book triggers on — ρ̄ (S1), IV-rank/RV−IV (S3),
@@ -94,19 +83,10 @@ signals:
   # Annualization factor for realized vol — 252 trading days (the daily-bar convention).
   periods_per_year: 252.0
   # The ρ̄ basket: how many of the index's heaviest constituents by weight enter the dispersion
-  # identity. Set to `constituent_top_n` (10) so the ρ̄ universe IS the set we actually land
-  # surfaces for that close — a full-basket ρ̄ would read the cross term over 50 names while only
-  # the top-10 have surfaces, biasing ρ̄ high. `null` = the full as-of basket.
-  basket_size: 10
-
-# How many of an enabled index's constituents the option-chain capture widens to — the
-# point-in-time top-N BY INDEX WEIGHT (ibkr-constituent-option-capture, ADR 0045; TARGET §0/§7.4;
-# the S1 dispersion book input). Economic: it decides which constituent names land option chains /
-# surfaces / Greeks each close, so it changes which records exist and travels inside
-# config_hashes["universe"]. Course value is top-10; the theory/dispersion sizing is top-50.
-# The top-N is resolved point-in-time from 1A membership weights (never a hand-set list) and
-# rejects a basket with missing weights — you cannot rank what you do not know.
-constituent_top_n: 50
+  # identity. `null` = the full as-of basket. Per ADR 0051 ρ̄ is solved from REALIZED constituent
+  # vol (available for every name from the daily bars we backfill), so there is no surface-coverage
+  # reason to truncate — the blueprint's Eq. 23 diagnostic reads the WHOLE basket (no top-N bias).
+  basket_size: null
 
 # Index registry (ADR 0035): which indices the platform tracks. Keyed by index symbol —
 # the same `index` key 1A membership, 1C capture, 1G cron, and the 1I picker consume.

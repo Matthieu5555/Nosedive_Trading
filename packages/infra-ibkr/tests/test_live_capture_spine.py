@@ -310,6 +310,24 @@ def test_past_trade_date_skips_live_snapshot_no_lookahead(tmp_path: Path) -> Non
     assert basket is not None and basket.events, "the same-day fire must capture a real basket"
 
 
+def test_a_store_backs_the_cache_without_widening_scope(tmp_path: Path) -> None:
+    # ADR 0051: passing a store backs only the discovery cache — it never widens the capture to
+    # constituent option chains. The same-day fire banks the index leg alone.
+    fired = FiredIndex(entry=_registry().get("SPX"), as_of=SPX_CLOSE, next_open=SPX_NEXT_OPEN)
+    source = live_basket_source(
+        env=_env(tmp_path),
+        transport=_FakeMarketGateway(),
+        config=_config(),
+        selection=ChainSelection(max_expiries=3, min_strikes_per_side=10, option_exchange="CBOE"),
+        now=lambda: TRADE_DATE,
+        store=ParquetStore(tmp_path / "data"),
+    )
+    assert source is not None
+    basket = source(fired, TRADE_DATE, "test-corr")
+    assert basket is not None
+    assert {key.underlying_symbol for key in basket.instruments} == {"SPX"}
+
+
 def test_non_credentialed_environment_falls_back_to_empty_no_capture(tmp_path: Path) -> None:
     source = live_basket_source(env={})
     assert source is None

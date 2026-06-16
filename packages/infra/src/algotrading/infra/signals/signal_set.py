@@ -172,13 +172,20 @@ def read_signal_inputs(store: ParquetStore, config: SignalConfig, as_of: date) -
 
 
 def _correlation_rows(inputs: SignalInputs, config: SignalConfig) -> list[_SignalRow]:
+    # ρ̄ is the blueprint's index-variance diagnostic (Part II, Eq. 23): a reusable risk
+    # primitive, not strategy logic. Per ADR 0051 the constituent volatilities are the REALIZED
+    # vols — computed for EVERY constituent from the daily bars we backfill — not captured
+    # implied ATM vols, which existed only for the retired top-N option-capture lane and biased
+    # ρ̄ high (only the heaviest names had a surface). The index leg stays the index's implied
+    # ATM vol, so ρ̄ is a hybrid implied/realized reading whose tenor structure comes from the
+    # index's implied term structure against a single realized constituent baseline.
     index_vols = inputs.atm_vol_by_subject.get(config.index, {})
     rows: list[_SignalRow] = []
     for tenor, index_vol in sorted(index_vols.items()):
         paired = [
-            (weight, inputs.atm_vol_by_subject[name][tenor])
+            (weight, inputs.realized_vol_by_subject[name])
             for name, weight in inputs.weights.items()
-            if name in inputs.atm_vol_by_subject and tenor in inputs.atm_vol_by_subject[name]
+            if name in inputs.realized_vol_by_subject
         ]
         if not paired:
             continue

@@ -22,8 +22,16 @@ DM1 = date(2026, 5, 28)
 DM2 = date(2026, 5, 27)
 FUTURE = date(2026, 6, 3)
 
-INDEX_3M_IV = math.sqrt(0.0432)
-AAA_CLOSES = [100.0, 110.0, 99.0, 103.0]
+# Index 3m implied vol, kept below the weighted constituent reach so the realized-vol ρ̄ lands in
+# a sane band. ρ̄ itself is asserted from an independent closed-form derivation, not this constant.
+INDEX_3M_IV = 0.10
+AAA_CLOSES = [100.0, 101.0, 100.5, 101.0]
+BBB_CLOSES = [50.0, 50.7, 50.3, 50.6]
+
+
+def _realized_vol(closes: list[float]) -> float:
+    log_returns = [math.log(b / a) for a, b in zip(closes, closes[1:], strict=False)]
+    return statistics.stdev(log_returns) * math.sqrt(252.0)
 
 
 def _analytics(underlying: str, day: date, tenor: str, iv: float) -> object:
@@ -58,8 +66,9 @@ def _seed(store: ParquetStore) -> None:
     ingest_membership_changes(
         store,
         (
-            MembershipChange(INDEX, "AAA", date(2020, 1, 1), None, KNOWN, VENDOR, 0.6),
-            MembershipChange(INDEX, "BBB", date(2020, 1, 1), None, KNOWN, VENDOR, 0.4),
+            MembershipChange(INDEX, "AAA", date(2020, 1, 1), None, KNOWN, VENDOR, 0.5),
+            MembershipChange(INDEX, "BBB", date(2020, 1, 1), None, KNOWN, VENDOR, 0.3),
+            MembershipChange(INDEX, "CCC", date(2020, 1, 1), None, KNOWN, VENDOR, 0.2),
         ),
     )
     rows = [
@@ -72,6 +81,9 @@ def _seed(store: ParquetStore) -> None:
         _analytics("BBB", D0, "1m", 0.28),
         _analytics("BBB", D0, "3m", 0.30),
         _analytics("BBB", D0, "6m", 0.31),
+        # CCC carries a reference surface but no daily bars and no IV history — the
+        # "unanswerable" name whose realized-vol / IV-rank signals must be omitted.
+        _analytics("CCC", D0, "3m", 0.26),
         _analytics("AAA", DM2, "3m", 0.10),
         _analytics("AAA", DM1, "3m", 0.30),
         _analytics(INDEX, FUTURE, "3m", 0.50),
@@ -80,8 +92,10 @@ def _seed(store: ParquetStore) -> None:
     store.write("projected_option_analytics", rows)
     store.write(
         "daily_bar",
-        [_bar("AAA", day, close) for day, close in zip([DM2, DM1, D0], AAA_CLOSES[1:], strict=False)]
-        + [_bar("AAA", date(2026, 5, 26), AAA_CLOSES[0])],
+        [_bar("AAA", day, c) for day, c in zip([DM2, DM1, D0], AAA_CLOSES[1:], strict=False)]
+        + [_bar("AAA", date(2026, 5, 26), AAA_CLOSES[0])]
+        + [_bar("BBB", day, c) for day, c in zip([DM2, DM1, D0], BBB_CLOSES[1:], strict=False)]
+        + [_bar("BBB", date(2026, 5, 26), BBB_CLOSES[0])],
     )
 
 
@@ -105,13 +119,20 @@ def test_persisted_signal_set(tmp_path: Path) -> None:
     _seed(store)
     signals = _persist(store)
 
-    assert signals[("implied_correlation", INDEX, "3m")] == pytest.approx(0.5)
+    # ρ̄ (ADR 0051) is solved from the constituents' REALIZED vols (every name with bars), with
+    # the index's implied ATM vol as the index leg — independently derived here via Eq. 23's
+    # closed form. CCC has no bars, so only AAA and BBB enter the basket.
+    realized_aaa = _realized_vol(AAA_CLOSES)
+    realized_bbb = _realized_vol(BBB_CLOSES)
+    w_aaa, w_bbb = 0.5, 0.3
+    own = (w_aaa * realized_aaa) ** 2 + (w_bbb * realized_bbb) ** 2
+    cross = (w_aaa * realized_aaa + w_bbb * realized_bbb) ** 2 - own
+    expected_rho = (INDEX_3M_IV**2 - own) / cross
+    assert signals[("implied_correlation", INDEX, "3m")] == pytest.approx(expected_rho)
 
     assert signals[("iv_rank", "AAA", "3m")] == pytest.approx(0.5)
 
-    log_returns = [math.log(b / a) for a, b in zip(AAA_CLOSES, AAA_CLOSES[1:], strict=False)]
-    realized = statistics.stdev(log_returns) * math.sqrt(252.0)
-    assert signals[("iv_vs_realized", "AAA", "3m")] == pytest.approx(realized - 0.20)
+    assert signals[("iv_vs_realized", "AAA", "3m")] == pytest.approx(realized_aaa - 0.20)
 
     assert signals[("term_structure_slope", "AAA", "1m:6m")] == pytest.approx(0.03)
 
@@ -131,8 +152,8 @@ def test_unanswerable_signal_is_omitted_not_fabricated(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
     _seed(store)
     signals = _persist(store)
-    assert ("iv_rank", "BBB", "3m") not in signals
-    assert ("iv_vs_realized", "BBB", "3m") not in signals
+    assert ("iv_rank", "CCC", "3m") not in signals
+    assert ("iv_vs_realized", "CCC", "3m") not in signals
 
 
 def test_signal_config_for_maps_the_typed_universe_block() -> None:

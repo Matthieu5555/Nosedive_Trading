@@ -5,7 +5,6 @@ from .cp_rest_close_capture import (
     collect_live_basket,
     collect_target_basket,
 )
-from .cp_rest_constituent_capture import collect_index_and_constituents_basket
 from .cp_rest_discovery import CpRestDiscovery, DiscoveryError
 from .cp_rest_discovery_cache import (
     CachedChain,
@@ -57,7 +56,6 @@ __all__ = [
     "collect_live_basket",
     "collect_target_basket",
     "CaptureTarget",
-    "collect_index_and_constituents_basket",
     "CloseCaptureError",
     "DiscoveryCache",
     "DiscoveryCacheRow",

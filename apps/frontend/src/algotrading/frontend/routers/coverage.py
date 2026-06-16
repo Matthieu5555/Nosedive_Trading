@@ -4,7 +4,6 @@ import json
 from collections import defaultdict
 from datetime import date, timedelta
 
-from algotrading.infra.contracts.errors import UnknownTableError
 from algotrading.infra.surfaces import PINNED_TENORS, tenor_years
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -134,23 +133,6 @@ def _overall_qc_status(qc_rows: list, underlying: str) -> str:
     return "pass"
 
 
-def _constituent_outcome_rows(outcomes: list, index: str) -> list[dict[str, object]]:
-    rows = [
-        {
-            "symbol": outcome.underlying,
-            "rank": outcome.rank,
-            "weight": outcome.weight,
-            "outcome": outcome.outcome,
-            "n_options": outcome.n_options,
-            "detail": outcome.detail,
-        }
-        for outcome in outcomes
-        if outcome.index == index
-    ]
-    rows.sort(key=lambda row: (row["rank"], row["symbol"]))
-    return rows
-
-
 def _check_status(qc_rows: list, check_name: str, underlying: str) -> str:
     for row in qc_rows:
         if row.check_name == check_name and row.target_key == underlying:
@@ -165,9 +147,9 @@ def get_coverage(
     underlying: str | None = None,
     run_id: str | None = None,
 ) -> JSONResponse:
-    # ``run_id`` pins coverage to the selected fetch; run-partitioned reads (snapshots, qc,
-    # capture outcomes) resolve that fetch's ``run=`` partition, while non-run-partitioned reads
-    # (instrument_master) ignore it. Absent, every read resolves the newest fetch as before.
+    # ``run_id`` pins coverage to the selected fetch; run-partitioned reads (snapshots, qc)
+    # resolve that fetch's ``run=`` partition, while non-run-partitioned reads (instrument_master)
+    # ignore it. Absent, every read resolves the newest fetch as before.
     resolved_underlying = underlying or ctx.default_underlying
 
     resolved_date = trade_date or latest_partition_date(
@@ -182,7 +164,6 @@ def get_coverage(
                 "n_expiries": 0,
                 "expiries": [],
                 "tenors": [],
-                "constituents": [],
                 "qc_status": "unknown",
                 "delta_band_status": "unknown",
             }
@@ -192,12 +173,6 @@ def get_coverage(
         "instrument_master", trade_date=resolved_date, underlying=resolved_underlying
     )
     qc_rows = ctx.store.read("qc_results", trade_date=resolved_date, run_id=run_id)
-    try:
-        outcomes = ctx.store.read(
-            "constituent_capture_outcomes", trade_date=resolved_date, run_id=run_id
-        )
-    except UnknownTableError:
-        outcomes = []
     snapshots = ctx.store.read(
         "market_state_snapshots",
         trade_date=resolved_date,
@@ -209,7 +184,6 @@ def get_coverage(
     volume_by_expiry = _volume_by_expiry(snapshots)
     expiry_rows = _expiry_rows(masters, targets, volume_by_expiry)
     tenor_rows, _ = _tenor_coverage_rows(qc_rows, resolved_underlying)
-    constituent_rows = _constituent_outcome_rows(outcomes, resolved_underlying)
 
     return JSONResponse(
         {
@@ -218,7 +192,6 @@ def get_coverage(
             "n_expiries": len(expiry_rows),
             "expiries": expiry_rows,
             "tenors": tenor_rows,
-            "constituents": constituent_rows,
             "qc_status": _overall_qc_status(qc_rows, resolved_underlying),
             "delta_band_status": _check_status(qc_rows, _CHECK_DELTA_BAND, resolved_underlying),
         }

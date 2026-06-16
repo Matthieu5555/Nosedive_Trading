@@ -75,7 +75,6 @@ class StrikeSelectionConfig(_ConfigModel):
     min_strikes_per_side: int = Field(default=2, ge=1)
     discovery_working_vol: float = Field(default=0.40, gt=0.0)
     discovery_pool_size: int = Field(default=6, ge=1)
-    capture_pool_size: int = Field(default=6, ge=1)
 
 
 class SignalEntryConfig(_ConfigModel):
@@ -114,7 +113,6 @@ class UniverseConfig(_ConfigModel):
     strike_selection: StrikeSelectionConfig = Field(
         default_factory=lambda: StrikeSelectionConfig(version="strike-selection-default")
     )
-    constituent_top_n: int = Field(default=10, ge=1)
     signals: SignalEntryConfig = Field(
         default_factory=lambda: SignalEntryConfig(version="signals-default")
     )

@@ -4,17 +4,6 @@ import { AsyncBlock } from "./AsyncBlock";
 
 export type QcStatus = "pass" | "fail" | "unknown";
 
-export type ConstituentOutcomeLabel = "captured" | "no_options" | "unentitled" | "unresolved";
-
-export interface ConstituentOutcome {
-  symbol: string;
-  rank: number;
-  weight: number;
-  outcome: ConstituentOutcomeLabel;
-  n_options: number;
-  detail: string;
-}
-
 export interface CoverageExpiry {
   expiry: string;
   tenor: string;
@@ -38,20 +27,11 @@ export interface CoverageData {
   n_expiries: number;
   expiries: CoverageExpiry[];
   tenors: CoverageTenor[];
-
-  constituents: ConstituentOutcome[];
   qc_status: QcStatus;
   delta_band_status: QcStatus;
 }
 
 const STATUS_GLYPH: Record<QcStatus, string> = { pass: "✓", fail: "✗", unknown: "—" };
-
-const OUTCOME_STATUS: Record<ConstituentOutcomeLabel, QcStatus> = {
-  captured: "pass",
-  no_options: "fail",
-  unentitled: "fail",
-  unresolved: "fail",
-};
 
 function StatusBadge({ status, label }: { status: QcStatus; label: string }) {
   return (
@@ -129,37 +109,6 @@ export function CoverageTable({ data }: { data: CoverageData }) {
           ))}
         </tbody>
       </table>
-
-      {data.constituents.length > 0 && (
-        <table role="table" aria-label="Constituent capture outcomes">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Constituent</th>
-              <th>Weight</th>
-              <th>Outcome</th>
-              <th>Options</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.constituents.map((row) => (
-              <tr
-                key={row.symbol}
-                data-status={OUTCOME_STATUS[row.outcome]}
-                data-outcome={row.outcome}
-              >
-                <td>{row.rank}</td>
-                <td>{row.symbol}</td>
-                <td>{row.weight.toFixed(4)}</td>
-                <td title={row.detail}>
-                  <StatusBadge status={OUTCOME_STATUS[row.outcome]} label={row.outcome} />
-                </td>
-                <td>{row.n_options}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
     </section>
   );
 }

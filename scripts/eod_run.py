@@ -53,10 +53,10 @@ def _select_basket_source(store: ParquetStore) -> BasketSource | None:
     are present, else ``None``. Both ``None`` leaves the runner on its empty no-capture default (a
     clean exit-0 day).
 
-    ``store`` is threaded into the source so the capture widens to the index's point-in-time top-N
-    constituents' option chains (T-§7.4, the S1 dispersion input): the source reads the as-of
-    membership weights from it. It is the same store the runner persists into (the canonical
-    ``data_root``), so the membership the source reads is the membership the platform banked.
+    ``store`` is threaded into the source only to back the discovery cache (it is the same store
+    the runner persists into, the canonical ``data_root``). Per ADR 0051 the capture scope is the
+    enabled index's option chains only — constituent option chains are no longer swept; the
+    dispersion ρ̄ diagnostic uses realized constituent vol from the daily bars.
     """
     return gateway_basket_source(store=store) or live_basket_source(store=store)
 
@@ -66,8 +66,7 @@ def _deps_factory() -> RunnerDeps:
 
     ``build_default_deps(basket_source=...)`` threads whichever source :func:`_select_basket_source`
     picks into the stage wiring; ``None`` leaves the runner on its empty no-capture default. The
-    source and the runner share one canonical-``data_root`` store so the constituent capture reads
-    the membership the platform actually banked.
+    source and the runner share one canonical-``data_root`` store (used for the discovery cache).
     """
     store = ParquetStore(data_root())
     return build_default_deps(basket_source=_select_basket_source(store))

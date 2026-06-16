@@ -13,7 +13,6 @@ from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import ChainSelection
 
 from .collectors.cp_rest_close_capture import collect_live_basket
-from .collectors.cp_rest_constituent_capture import collect_index_and_constituents_basket
 from .collectors.cp_rest_discovery_cache import DiscoveryCache
 from .collectors.cp_rest_snapshot import WarmupConfig
 from .connectivity.cp_rest_transport import SupportsRestGet
@@ -60,7 +59,7 @@ def live_basket_source(
     warmup = WarmupConfig() if use_discovery_cache else None
 
     def source(
-        fired: FiredIndex, trade_date: date, correlation_id: str
+        fired: FiredIndex, trade_date: date, _correlation_id: str
     ) -> IndexBasket | None:
         current_day = today()
         if trade_date < current_day:
@@ -73,20 +72,12 @@ def live_basket_source(
                 "(no look-ahead) — option capture skipped, use the /history OHLC backfill",
             )
             return None
-        if store is not None:
-            return collect_index_and_constituents_basket(
-                transport,
-                store=store,
-                index=fired.entry,
-                as_of=fired.as_of,
-                next_open=fired.next_open,
-                config=resolved_config,
-                selection=selection,
-                run_id=correlation_id,
-                discovery_cache=discovery_cache,
-                revalidate_cached_conids=discovery_cache is not None,
-                warmup=warmup,
-            )
+        # ADR 0051: capture the enabled index's option chains only. The dispersion ρ̄
+        # diagnostic uses REALIZED constituent vol (from the daily bars we already
+        # backfill), so constituent option chains are no longer swept (supersedes ADR
+        # 0044/0045). ``store`` is retained solely for the discovery cache, not to widen
+        # scope. Full retirement of the constituent lane is the cold follow-up
+        # (tasks/blueprint-return-dispersion-diagnostic.md).
         return collect_live_basket(
             transport,
             index=fired.entry,
@@ -102,7 +93,7 @@ def live_basket_source(
     _LOGGER.info(
         "ibkr.live_capture.credentialed",
         reason="basket source bound",
-        scope="index+constituents" if store is not None else "index-only",
+        scope="index-only",
     )
     return source
 

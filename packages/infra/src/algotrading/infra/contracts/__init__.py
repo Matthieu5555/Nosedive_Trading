@@ -16,7 +16,6 @@ from .registry import (
     table_for_contract,
 )
 from .tables import (
-    CONSTITUENT_OUTCOMES,
     FILL_SIDES,
     SURFACE_SIDE_COMBINED,
     SURFACE_SIDES,
@@ -28,7 +27,6 @@ from .tables import (
     BrokerFill,
     BrokerPosition,
     ConidEntry,
-    ConstituentCaptureOutcome,
     DailyBar,
     DiscoveryCacheRow,
     ForwardCurvePoint,
@@ -57,9 +55,7 @@ __all__ = [
     "Basket",
     "BookGreeks",
     "BasketLeg",
-    "CONSTITUENT_OUTCOMES",
     "ConidEntry",
-    "ConstituentCaptureOutcome",
     "DiscoveryCacheRow",
     "BrokerAccountSnapshot",
     "BrokerCashBalance",

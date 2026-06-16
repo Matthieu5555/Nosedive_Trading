@@ -372,46 +372,6 @@ class TriageRecord:
     threshold_version: str
 
 
-CONSTITUENT_OUTCOMES = ("captured", "no_options", "unentitled", "unresolved", "throttled")
-
-
-@dataclass(frozen=True, slots=True)
-class ConstituentCaptureOutcome:
-
-    run_id: str
-    run_ts: datetime
-    index: str
-    underlying: str
-    outcome: str
-    rank: int
-    weight: float
-    n_options: int
-    detail: str
-
-    def __post_init__(self) -> None:
-        if self.outcome not in CONSTITUENT_OUTCOMES:
-            raise ContractValidationError(
-                "ConstituentCaptureOutcome",
-                "outcome",
-                self.outcome,
-                f"must be one of {CONSTITUENT_OUTCOMES}",
-            )
-        if self.n_options < 0:
-            raise ContractValidationError(
-                "ConstituentCaptureOutcome",
-                "n_options",
-                self.n_options,
-                "captured option count must be non-negative",
-            )
-        if self.outcome != "captured" and self.n_options != 0:
-            raise ContractValidationError(
-                "ConstituentCaptureOutcome",
-                "n_options",
-                self.n_options,
-                "only a 'captured' outcome carries a non-zero option count",
-            )
-
-
 INSTRUMENT_KINDS = ("option", "stock")
 LEG_SIDES = ("long", "short")
 

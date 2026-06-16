@@ -16,7 +16,7 @@ test("Market: index and as-of selectors are present and switchable", async ({ pa
 
   expect(await index.locator("option").count()).toBeGreaterThan(0);
 
-  await expect(page.getByLabel("As-of date")).toBeVisible();
+  await expect(page.getByLabel("As-of fetch")).toBeVisible();
 
   const values = await index
     .locator("option")

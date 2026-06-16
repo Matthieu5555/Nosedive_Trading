@@ -44,7 +44,12 @@ class ParquetStore:
         self.root = Path(root)
 
     def write(
-        self, table: str, records: Sequence[object], *, version: str | None = None
+        self,
+        table: str,
+        records: Sequence[object],
+        *,
+        version: str | None = None,
+        run_id: str | None = None,
     ) -> None:
         if not records:
             return
@@ -71,10 +76,11 @@ class ParquetStore:
         prepared: list[tuple[Path, pa.Table]] = []
         for (provider, trade_date, underlying), partition_records in grouped.items():
             path = partition_file(
-                self.root, table, trade_date, underlying, version, provider
+                self.root, table, trade_date, underlying, version, provider, run_id
             )
             new_table = self._prepare_partition(
-                table, spec, schema, trade_date, underlying, partition_records, version, provider
+                table, spec, schema, trade_date, underlying, partition_records, version,
+                provider, run_id,
             )
             prepared.append((path, new_table))
         self._commit(prepared)
@@ -89,8 +95,11 @@ class ParquetStore:
         records: list[object],
         version: str | None = None,
         provider: str | None = None,
+        run_id: str | None = None,
     ) -> pa.Table:
-        path = partition_file(self.root, table, trade_date, underlying, version, provider)
+        path = partition_file(
+            self.root, table, trade_date, underlying, version, provider, run_id
+        )
         new_rows = [to_row(spec.contract, record) for record in records]
         new_table = _rows_to_arrow(new_rows, schema)
 
@@ -195,8 +204,10 @@ class ParquetStore:
             for date_dir in segment_root.iterdir():
                 if not date_dir.is_dir() or not date_dir.name.startswith("trade_date="):
                     continue
-                for underlying_dir in date_dir.iterdir():
-                    if underlying_dir.is_dir() and underlying_dir.name.startswith("underlying="):
+                # ``underlying=`` sits directly under the date for legacy tables, or one level
+                # deeper (under ``run=``) for run-partitioned tables — glob spans both.
+                for underlying_dir in date_dir.glob("**/underlying=*"):
+                    if underlying_dir.is_dir():
                         names.add(underlying_dir.name.split("=", 1)[1])
         return frozenset(names)
 
@@ -343,6 +354,53 @@ class ParquetStore:
                         files.append(candidate)
         return sorted(files)
 
+    @staticmethod
+    def _filter_runs(
+        files: list[Path], spec: TableSpec, run_id: str | None
+    ) -> list[Path]:
+        """Resolve which fetch's files to surface for a run-partitioned table.
+
+        Run-partitioned files live at ``.../trade_date=<d>/run=<rid>/underlying=<u>/data.parquet``.
+        With an explicit ``run_id`` we keep only that fetch's files. With ``run_id=None`` (the
+        default) we keep, per (provider, trade_date, underlying) group, only the files under the
+        newest ``run=`` directory by mtime — so the rest of the platform sees the latest fetch for
+        a day, exactly as it did before run-partitioning, while older fetches stay on disk.
+        """
+        if not spec.run_partitioned:
+            return files
+
+        def split(path: Path) -> tuple[int | None, tuple[str, ...], Path | None]:
+            parts = path.parts
+            idx = next(
+                (i for i, part in enumerate(parts) if part.startswith("run=")), None
+            )
+            if idx is None:
+                return None, parts, None
+            group = parts[:idx] + parts[idx + 1:]
+            run_dir = Path(*parts[: idx + 1])
+            return idx, group, run_dir
+
+        if run_id is not None:
+            wanted = f"run={run_id}"
+            return [path for path in files if wanted in path.parts]
+
+        newest: dict[tuple[str, ...], tuple[float, Path]] = {}
+        for path in files:
+            _idx, group, run_dir = split(path)
+            if run_dir is None:
+                continue
+            mtime = run_dir.stat().st_mtime
+            current = newest.get(group)
+            if current is None or mtime > current[0]:
+                newest[group] = (mtime, run_dir)
+
+        kept: list[Path] = []
+        for path in files:
+            _idx, group, run_dir = split(path)
+            if run_dir is None or (group in newest and run_dir == newest[group][1]):
+                kept.append(path)
+        return kept
+
     def _partition_files(
         self,
         table: str,
@@ -352,8 +410,17 @@ class ParquetStore:
         provider: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        run_id: str | None = None,
     ) -> list[Path]:
         spec = spec_for_table(table)
+        if spec.run_partitioned:
+            # The ``run=`` level sits between trade_date and underlying, so the single-file and
+            # date-range-direct fast paths (which assume trade_date/underlying are adjacent) don't
+            # apply; glob discovery walks the run level, then _filter_runs picks the right fetch.
+            files = self._files_by_glob(
+                table, trade_date, underlying, version, provider, start_date, end_date
+            )
+            return self._filter_runs(files, spec, run_id)
         if (
             trade_date is not None
             and underlying is not None
@@ -401,10 +468,11 @@ class ParquetStore:
         provider: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        run_id: str | None = None,
     ) -> list[Any]:
         spec = spec_for_table(table)
         files = self._partition_files(
-            table, trade_date, underlying, version, provider, start_date, end_date
+            table, trade_date, underlying, version, provider, start_date, end_date, run_id
         )
         if not files:
             return []
@@ -458,7 +526,9 @@ class ParquetStore:
         for date_root in date_roots:
             for date_dir in sorted(date_root.glob("trade_date=*")):
                 trade_date = date.fromisoformat(date_dir.name.split("=", 1)[1])
-                for underlying_dir in sorted(date_dir.glob("underlying=*")):
+                # ``underlying=`` is directly under the date for legacy tables, or under ``run=``
+                # for run-partitioned ones; ``**`` spans both and we de-dup across runs below.
+                for underlying_dir in sorted(date_dir.glob("**/underlying=*")):
                     underlying = underlying_dir.name.split("=", 1)[1]
                     key = (trade_date, underlying)
                     if key not in seen:

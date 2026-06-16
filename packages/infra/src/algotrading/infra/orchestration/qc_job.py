@@ -88,7 +88,7 @@ def run_qc(
     escalation = escalation_level(report)
 
     if persist and results:
-        store.write(_QC_RESULTS_TABLE, results)
+        store.write(_QC_RESULTS_TABLE, results, run_id=run_id)
 
     log.info(
         "orchestration.qc.done",

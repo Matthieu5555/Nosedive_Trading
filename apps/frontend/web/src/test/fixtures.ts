@@ -195,8 +195,8 @@ export const RECORDED_TWO_DATES: RecordedDatesResponse = {
   count: 2,
   dates: ["2026-05-29", "2026-05-28"],
   available: [
-    { date: "2026-05-29", qc: "pass" },
-    { date: "2026-05-28", qc: "pass" },
+    { date: "2026-05-29", run_id: "run-0529", recorded_ts: "2026-05-29T17:30:00", qc: "pass" },
+    { date: "2026-05-28", run_id: "run-0528", recorded_ts: "2026-05-28T17:30:00", qc: "pass" },
   ],
 };
 

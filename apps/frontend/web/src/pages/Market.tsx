@@ -31,7 +31,7 @@ export function MarketPage() {
     }
   }, [indexOptions, index]);
 
-  const [asOf, setAsOf] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   // The analytics entity: the index itself, or one of its members. Defaults to the index.
   const [entity, setEntity] = useState<string | null>(null);
   // Default to the downside wing: for an index the put skew is the interesting read, and it's the
@@ -44,10 +44,17 @@ export function MarketPage() {
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );
 
-  // The default as-of must be ONE value, shared by the picker and the panels (see the long note in
-  // git history): the latest available day, newest-first, its quality announced by the QC badge.
+  // The selection is ONE fetch (capture run), shared by the picker and the panels — computed once
+  // here so the header and the data on screen can never drift apart. ``available`` is one row per
+  // fetch, newest-first; the DEFAULT is the freshest fetch (available[0]), its quality announced by
+  // the QC badge. From the chosen fetch we derive its run_id (addresses that fetch's
+  // analytics/coverage — no other fetch can overwrite it) and its trade date (drives the
+  // cross-date constituents panel, which is not per-fetch).
   const available = recorded.data?.available ?? [];
-  const effectiveAsOf = asOf ?? available[0]?.date ?? null;
+  const selectedFetch =
+    available.find((fetch) => fetch.run_id === selectedRunId) ?? available[0] ?? null;
+  const effectiveRunId = selectedFetch?.run_id ?? null;
+  const effectiveAsOf = selectedFetch?.date ?? null;
   // The entity defaults to the index, and falls back to it whenever the index changes.
   const effectiveEntity = entity ?? index;
   const isIndex = effectiveEntity === index;
@@ -61,7 +68,8 @@ export function MarketPage() {
 
   const analytics = useFetch<AnalyticsResponse>(
     effectiveEntity && effectiveAsOf
-      ? `/api/analytics?underlying=${encodeURIComponent(effectiveEntity)}&trade_date=${encodeURIComponent(effectiveAsOf)}`
+      ? `/api/analytics?underlying=${encodeURIComponent(effectiveEntity)}&trade_date=${encodeURIComponent(effectiveAsOf)}` +
+          (effectiveRunId ? `&run_id=${encodeURIComponent(effectiveRunId)}` : "")
       : "",
   );
   const maturityOptions = useMemo(
@@ -93,7 +101,7 @@ export function MarketPage() {
             disabled={indexOptions.length === 0}
             onChange={(event) => {
               setIndex(event.target.value);
-              setAsOf(null);
+              setSelectedRunId(null);
               setEntity(null);
             }}
           >
@@ -105,9 +113,9 @@ export function MarketPage() {
           </select>
           <AsOfSelect
             recorded={recorded.data}
-            value={effectiveAsOf}
-            onChange={(date) => {
-              setAsOf(date);
+            value={effectiveRunId}
+            onChange={(runId) => {
+              setSelectedRunId(runId);
               setEntity(null);
             }}
           />
@@ -124,7 +132,7 @@ export function MarketPage() {
                 </article>
               );
             }
-            const qc = available.find((a) => a.date === effectiveAsOf)?.qc ?? "unknown";
+            const qc = selectedFetch?.qc ?? "unknown";
             return (
               <Tabs defaultValue="analytics" className="market-tabs">
                 <div className="market-tabs__bar">
@@ -175,6 +183,7 @@ export function MarketPage() {
                     <DataQualityTab
                       index={index}
                       asOf={effectiveAsOf}
+                      runId={effectiveRunId ?? undefined}
                       constituents={constituentList}
                       entity={effectiveEntity}
                       onEntity={(symbol) => setEntity(symbol)}

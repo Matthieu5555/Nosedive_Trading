@@ -128,7 +128,9 @@ def test_real_eod_fire_flows_capture_to_persisted_grid(tmp_path: Path) -> None:
     registry = _registry()
     clock = ManualClock(start=CLOCK_NOW)
 
-    def basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+    def basket_source(
+        fired: FiredIndex, trade_date: date, correlation_id: str
+    ) -> IndexBasket | None:
         return _grid_basket(fired.entry.symbol, fired.as_of)
 
     deps = RunnerDeps(
@@ -290,7 +292,9 @@ def test_calendar_bounds_are_deterministic_for_an_as_of() -> None:
 def _grid_deps(store: ParquetStore, tmp_path: Path) -> RunnerDeps:
     clock = ManualClock(start=CLOCK_NOW)
 
-    def basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+    def basket_source(
+        fired: FiredIndex, trade_date: date, correlation_id: str
+    ) -> IndexBasket | None:
         return _grid_basket(fired.entry.symbol, fired.as_of)
 
     return RunnerDeps(
@@ -355,7 +359,9 @@ def test_real_eod_fire_persists_the_strategy_entry_signal_set(tmp_path: Path) ->
     )
     clock = ManualClock(start=CLOCK_NOW)
 
-    def basket_source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
+    def basket_source(
+        fired: FiredIndex, trade_date: date, correlation_id: str
+    ) -> IndexBasket | None:
         return _grid_basket(fired.entry.symbol, fired.as_of)
 
     deps = RunnerDeps(

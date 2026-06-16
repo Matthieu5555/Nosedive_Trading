@@ -26,7 +26,7 @@ test("leads with the context selector strip (entity / side / maturity) and an as
   expect(within(side).getByRole("radio", { name: "Puts" })).toBeInTheDocument();
   expect(within(side).getByRole("radio", { name: "Calls" })).toBeInTheDocument();
   expect(screen.getByLabelText("Maturity")).toBeInTheDocument();
-  expect(screen.getByLabelText("As-of date")).toBeInTheDocument();
+  expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument();
 });
 
 test("the entity selector lists the index itself and each member", async () => {
@@ -137,7 +137,9 @@ test("shows a qc-failing day with a QC fail badge instead of hiding it", async (
       index: "SPX",
       count: 0,
       dates: [],
-      available: [{ date: "2026-06-10", qc: "fail" }],
+      available: [
+        { date: "2026-06-10", run_id: "run-0610", recorded_ts: "2026-06-10T17:30:00", qc: "fail" },
+      ],
     }),
   );
   render(<MarketPage />);
@@ -161,7 +163,9 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
       index: "SX5E",
       count: 1,
       dates: ["2026-05-29"],
-      available: [{ date: "2026-05-29", qc: "pass" }],
+      available: [
+        { date: "2026-05-29", run_id: "run-0529", recorded_ts: "2026-05-29T17:30:00", qc: "pass" },
+      ],
     }),
   );
   render(<MarketPage />);

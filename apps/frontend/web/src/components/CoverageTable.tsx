@@ -164,17 +164,20 @@ export function CoverageTable({ data }: { data: CoverageData }) {
   );
 }
 
-/** Self-fetching wrapper: drop `<CoveragePanel underlying=… tradeDate=… />` into a page. */
+/** Self-fetching wrapper: drop `<CoveragePanel underlying=… tradeDate=… runId=… />` into a page. */
 export function CoveragePanel({
   underlying,
   tradeDate,
+  runId,
 }: {
   underlying: string;
   tradeDate?: string;
+  runId?: string;
 }) {
   const query =
     `/api/coverage?underlying=${encodeURIComponent(underlying)}` +
-    (tradeDate ? `&trade_date=${encodeURIComponent(tradeDate)}` : "");
+    (tradeDate ? `&trade_date=${encodeURIComponent(tradeDate)}` : "") +
+    (runId ? `&run_id=${encodeURIComponent(runId)}` : "");
   const { data, loading, error } = useFetch<CoverageData>(query);
   return (
     <AsyncBlock loading={loading} error={error}>

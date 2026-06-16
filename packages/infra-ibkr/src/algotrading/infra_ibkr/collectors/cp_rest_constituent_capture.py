@@ -403,7 +403,7 @@ def collect_index_and_constituents_basket(
 
     ledger = _ledger_rows(results, index=index.symbol, run_id=resolved_run_id, run_ts=as_of)
     if ledger:
-        store.write(_OUTCOMES_TABLE, ledger)
+        store.write(_OUTCOMES_TABLE, ledger, run_id=resolved_run_id)
 
     captured = [result for result in results if result.basket is not None]
     counts: dict[str, int] = {}

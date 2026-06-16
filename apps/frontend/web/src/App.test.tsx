@@ -37,33 +37,14 @@ test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
   await waitFor(() => expect(window.location.pathname).toBe("/risk"));
 });
 
-// The remaining scaffold stubs. Signals and Operations have been built out — see their own
-// page tests (Signals.test.tsx / Operations.test.tsx).
-const STUB_TABS = [
-  { link: "Strategy", heading: "Strategy", path: "/strategy" },
-] as const;
-
-// Every newly-added top tab — built page or stub — is directly addressable and marks its nav
-// link active.
+// Every newly-added top tab — all now built out (see each page's own test) — is directly
+// addressable and marks its nav link active.
 const ALL_NEW_TABS = [
   { link: "Operations", heading: "Operations", path: "/operations" },
   { link: "Signals", heading: "Signals", path: "/signals" },
-  ...STUB_TABS,
+  { link: "Strategy", heading: "Strategy", path: "/strategy" },
+  { link: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
-
-test("top navigation reaches the remaining scaffold tabs, each on an empty-state stub", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
-
-  for (const tab of STUB_TABS) {
-    await user.click(screen.getByRole("link", { name: tab.link }));
-    expect(await screen.findByRole("heading", { name: tab.heading, level: 1 })).toBeInTheDocument();
-    await waitFor(() => expect(window.location.pathname).toBe(tab.path));
-    expect(screen.getByText("No data yet")).toBeInTheDocument();
-  }
-});
 
 test("the Signals tab is a live page rendering the persisted signal layer", async () => {
   const user = userEvent.setup();
@@ -75,6 +56,18 @@ test("the Signals tab is a live page rendering the persisted signal layer", asyn
   expect(await screen.findByRole("heading", { name: "Signals", level: 1 })).toBeInTheDocument();
   await waitFor(() => expect(window.location.pathname).toBe("/signals"));
   expect(await screen.findByRole("heading", { name: "IV rank" })).toBeInTheDocument();
+});
+
+test("top navigation reaches the Strategy backtest page (now a real page, not a stub)", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("link", { name: "Strategy" }));
+  expect(await screen.findByRole("heading", { name: "Strategy", level: 1 })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/strategy"));
+  expect(await screen.findByRole("button", { name: /run backtest/i })).toBeInTheDocument();
 });
 
 for (const tab of ALL_NEW_TABS) {

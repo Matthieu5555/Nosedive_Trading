@@ -676,6 +676,91 @@ export interface AttributionQuery {
   contractKey?: string;
 }
 
+export interface PutLineParams {
+  put_tenor: string;
+  put_delta_band: string;
+  line_capacity: number;
+  contracts_per_day: number;
+  max_rv_minus_iv: number;
+  exit_delta_ceiling?: number | null;
+}
+
+export interface BacktestCosts {
+  commission_per_contract: number;
+  slippage_rate: number;
+}
+
+export interface StressScenarioInput {
+  scenario_id: string;
+  spot_shock: number;
+  vol_shock: number;
+  time_shock: number;
+}
+
+export interface BacktestRunRequest {
+  index: string;
+  reference_tenor: string;
+  start_date: string;
+  end_date: string;
+  provider: string;
+  put_line: PutLineParams;
+  costs?: BacktestCosts;
+  stress_grid?: StressScenarioInput[];
+}
+
+export interface BacktestSummary {
+  total_pnl: number;
+  total_net_pnl: number;
+  total_transaction_cost: number;
+  max_drawdown: number;
+  sharpe: number;
+  turnover: number;
+  worst_stress_loss: number;
+}
+
+export interface BacktestAttribution {
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  rho: number;
+  vanna: number;
+  volga: number;
+}
+
+export interface BacktestDayGreeks {
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+}
+
+export interface BacktestDay {
+  as_of: string;
+  open_contracts: number;
+  entered: number;
+  realized_pnl: number;
+  cumulative_pnl: number;
+  cumulative_net_pnl: number;
+  transaction_cost: number;
+  stress_loss: number;
+  greeks: BacktestDayGreeks;
+}
+
+export interface BacktestResult {
+  strategy_id: string;
+  summary: BacktestSummary;
+  cumulative_attribution: BacktestAttribution;
+  days: BacktestDay[];
+}
+
+export async function runBacktest(
+  body: BacktestRunRequest,
+  signal?: AbortSignal,
+): Promise<BacktestResult> {
+  return postJson<BacktestResult>("/api/backtest/run", body, signal);
+}
+
 // Fetch one attribution record's waterfall payload. The book aggregate by default; a position
 // drill passes level=position + contractKey (the §5.8 drill target). An unknown (portfolio, date)
 // comes back as a labelled-empty 200; a bad trade_date is a labelled 400 surfaced as an Error.

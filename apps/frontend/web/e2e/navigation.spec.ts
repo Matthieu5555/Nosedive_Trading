@@ -13,10 +13,8 @@ const TABS = [
   { button: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
-// Signals and Operations have been built out (see their own specs); the rest remain empty stubs.
-const STUB_TABS = [
-  { button: "Strategy", heading: "Strategy", path: "/strategy" },
-] as const;
+// All four newer tabs (Operations, Signals, Strategy, Positions) have been built out — each is
+// covered by its own spec — so no "No data yet" empty-state stubs remain to sweep here.
 
 test.beforeEach(async ({ page }) => {
   await mockBff(page);
@@ -54,15 +52,6 @@ for (const tab of TABS) {
     await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
     // No uncaught exceptions (a real crash) on mount.
     expect(pageErrors, pageErrors.join("\n")).toEqual([]);
-  });
-}
-
-for (const tab of STUB_TABS) {
-  test(`"${tab.button}" is an empty-state scaffold stub`, async ({ page }) => {
-    await page.goto(tab.path);
-    await expect(page.getByRole("heading", { level: 1, name: tab.heading })).toBeVisible();
-    await expect(page.getByText("No data yet", { exact: true })).toBeVisible();
-    await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
   });
 }
 

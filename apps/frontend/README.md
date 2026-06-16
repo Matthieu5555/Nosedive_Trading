@@ -106,13 +106,18 @@ Further built operator pages:
   `/api/recorded-dates` per index: when risk/analytics last computed, the latest snapshot's QC
   badge, the clean gap-free day count, and a recent-fetches table. Read-only over the BFF —
   launching a SAMPLE run replays the latest committed day into a throwaway store, never `data/`.
+- **Strategy / Backtest** (`/strategy`, `src/pages/Strategy.tsx`) — the F-STRAT backtest page over
+  `POST /api/backtest/run`. A config form (index, window, the short-put-line rules, optional costs +
+  crash-stress grid) with sensible defaults drives one on-demand run; the results read, in plain PM
+  framing, *where the return came from*: a cumulative-P&L equity line (gross vs net, the cost drag is
+  the gap), the headline scorecard (net/gross P&L, transaction cost, max drawdown, Sharpe, turnover,
+  worst stress loss), a by-Greek "which Greek paid" bar view over `cumulative_attribution`, and the
+  exposure Greeks day by day. Every fetch/run error surfaces as an alert. Components:
+  `BacktestForm` / `BacktestResults` / `EquityCurve` / `WhichGreekPaid` / `GreeksOverTime`.
 
-One further tab is a **scaffold stub** (`frontend-tab-shell`, 2026-06-16) the fleet fills
-in — it renders its header plus a plain "No data yet" empty-state behind the shared
-`ErrorBoundary`, with no data wired yet. It owns exactly one page file; later work edits
-only that file and never `routes.ts`/`App.tsx`:
-
-- **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the composed strategy book.
+The `frontend-tab-shell` scaffold (2026-06-16) seeded the four newer tabs as empty-state stubs;
+each has since been filled in by its owning slice, so no "No data yet" stub tabs remain. Each page
+owns exactly one page file; later work edits only that file and never `routes.ts`/`App.tsx`.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
 `market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture

@@ -120,8 +120,55 @@ const TICKET_AAA = {
   gated: { transmit: false, reason: "sign-and-send is behind an explicit owner gate" },
 };
 
+const BACKTEST_RESULT = {
+  strategy_id: "bt-SX5E-put-line",
+  summary: {
+    total_pnl: 125000,
+    total_net_pnl: 118500,
+    total_transaction_cost: 6500,
+    max_drawdown: -42000,
+    sharpe: 1.37,
+    turnover: 0.85,
+    worst_stress_loss: -310000,
+  },
+  cumulative_attribution: {
+    delta: -8000,
+    gamma: -55000,
+    vega: -22000,
+    theta: 215000,
+    rho: 1500,
+    vanna: -3000,
+    volga: -1000,
+  },
+  days: [
+    {
+      as_of: "2026-03-02",
+      open_contracts: 1,
+      entered: 1,
+      realized_pnl: 4000,
+      cumulative_pnl: 4000,
+      cumulative_net_pnl: 3800,
+      transaction_cost: 200,
+      stress_loss: -90000,
+      greeks: { delta: -12, gamma: -0.4, vega: 800, theta: -1500 },
+    },
+    {
+      as_of: "2026-03-03",
+      open_contracts: 2,
+      entered: 1,
+      realized_pnl: -1500,
+      cumulative_pnl: 2500,
+      cumulative_net_pnl: 2100,
+      transaction_cost: 200,
+      stress_loss: -180000,
+      greeks: { delta: -25, gamma: -0.9, vega: 1700, theta: -3100 },
+    },
+  ],
+};
+
 const ROUTES: Record<string, unknown> = {
   "/healthz": HEALTH_HEALTHY,
+  "/api/backtest/run": BACKTEST_RESULT,
   "/api/health": HEALTH_HEALTHY,
   "/api/indices": INDICES_SPX_SX5E,
   "/api/recorded-dates": RECORDED_TWO_DATES,

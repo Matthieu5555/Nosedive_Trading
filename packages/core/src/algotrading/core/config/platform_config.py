@@ -148,6 +148,18 @@ class GridQcConfig(_ConfigModel):
     band_high_delta: float = Field(default=0.30, le=1.0)
     band_step: float = Field(default=0.02, gt=0.0)
     max_delta_step: float = Field(default=0.25, gt=0.0)
+    # Coverage is a ratio over the MONITORED (liquid) range, not a flat per-tenor floor
+    # (ADR 0052 / blueprint 14-slos): the share of interior pinned tenors that are covered
+    # (direct capture OR Eq.-22 interpolatable from liquid neighbours) must clear this.
+    monitored_coverage_ratio: float = Field(default=0.95, ge=0.0, le=1.0)
+    # Calendar (Eq. 21) pages CRITICAL only on a MATERIAL/GROSS variance inversion. A breach
+    # is sub-threshold noise unless it exceeds BOTH an absolute total-variance gap and a gap
+    # relative to the long-leg variance — and the short leg sits at/above the ultra-short floor.
+    calendar_abs_variance_tol: float = Field(default=5e-4, ge=0.0)
+    calendar_rel_variance_tol: float = Field(default=0.05, ge=0.0)
+    # Maturities below this (years) are ultra-short: their variances are numerically noisy, so
+    # a calendar inversion involving them is at most a WARNING (blueprint 05-math-notes).
+    ultra_short_maturity_years: float = Field(default=14.0 / 365.0, ge=0.0)
 
     @model_validator(mode="after")
     def _check_band(self) -> GridQcConfig:

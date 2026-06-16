@@ -12,7 +12,13 @@ from algotrading.infra.forwards import ForwardEstimate, ParityLine
 from algotrading.infra.iv import STATUS_CONVERGED, IvResult
 from algotrading.infra.risk import BrokerGreeks, GreekDiscrepancy, PositionRisk, reconcile
 from algotrading.infra.snapshots import SnapshotBatch
-from algotrading.infra.surfaces import CalendarViolation, SliceFit
+from algotrading.infra.surfaces import (
+    PROVENANCE_EXTRAPOLATED,
+    CalendarViolation,
+    SliceFit,
+    classify_tenor_provenance,
+    tenor_years,
+)
 from algotrading.infra.utils import robust_zscore_vs_baseline
 
 from .errors import ContractKeyMismatchError, EmptyBaselineError
@@ -396,8 +402,13 @@ def check_calendar_sanity(
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
+    abs_tol = thresholds.grid.calendar_abs_variance_tol
+    rel_tol = thresholds.grid.calendar_rel_variance_tol
+    ultra_short = thresholds.grid.ultra_short_maturity_years
+
     count = len(violations)
-    status = STATUS_PASS if count == 0 else STATUS_FAIL
+    material: list[CalendarViolation] = []
+    noise: list[CalendarViolation] = []
     worst = None
     worst_gap = 0.0
     for violation in violations:
@@ -405,9 +416,33 @@ def check_calendar_sanity(
         if worst is None or gap > worst_gap:
             worst = violation
             worst_gap = gap
+        if _is_material_calendar_violation(
+            violation, abs_tol=abs_tol, rel_tol=rel_tol, ultra_short=ultra_short
+        ):
+            material.append(violation)
+        else:
+            noise.append(violation)
+
+    # Page CRITICAL only on a MATERIAL/GROSS inversion (blueprint 02-math-framework); a
+    # sub-threshold or ultra-short-maturity wiggle is at most a WARNING (ADR 0052).
+    if material:
+        status = STATUS_FAIL
+        severity = SEVERITY_CRITICAL
+    elif noise:
+        status = STATUS_WARN
+        severity = SEVERITY_WARNING
+    else:
+        status = STATUS_PASS
+        severity = SEVERITY_CRITICAL
+
     context: dict[str, object] = {
         "underlying": underlying,
         "violation_count": count,
+        "material_count": len(material),
+        "noise_count": len(noise),
+        "calendar_abs_variance_tol": abs_tol,
+        "calendar_rel_variance_tol": rel_tol,
+        "ultra_short_maturity_years": ultra_short,
     }
     if worst is not None:
         context.update(
@@ -417,19 +452,45 @@ def check_calendar_sanity(
                 "failing_k": worst.k,
                 "w_short": worst.w_short,
                 "w_long": worst.w_long,
+                "worst_variance_gap": worst_gap,
             }
         )
+    measured = float(len(material)) if material else float(count)
     return build_result(
         check_name=CHECK_CALENDAR_SANITY,
         target_key=underlying,
         status=status,
-        severity=SEVERITY_CRITICAL,
-        measured_value=float(count),
+        severity=severity,
+        measured_value=measured,
         threshold_version=thresholds.version,
         context=context,
         run_id=run_id,
         run_ts=run_ts,
     )
+
+
+def _is_material_calendar_violation(
+    violation: CalendarViolation,
+    *,
+    abs_tol: float,
+    rel_tol: float,
+    ultra_short: float,
+) -> bool:
+    """A calendar inversion is material only when it is GROSS (blueprint Eq. 21 diagnostic).
+
+    Gross means the short-minus-long total-variance gap clears BOTH an absolute tolerance and a
+    fraction of the long-leg variance, AND the short leg is not an ultra-short (numerically
+    noisy) maturity. Anything below is sub-threshold noise — a WARNING, never a page.
+    """
+    gap = violation.w_short - violation.w_long
+    if gap <= 0.0:
+        return False
+    if violation.maturity_short < ultra_short:
+        return False
+    if gap <= abs_tol:
+        return False
+    reference = abs(violation.w_long)
+    return not (reference > 0.0 and gap <= rel_tol * reference)
 
 
 def check_greek_sanity(
@@ -541,6 +602,21 @@ def check_scenario_completeness(
     )
 
 
+def _liquid_span(
+    tenor_grid: Sequence[str], floor_clearing: set[str],
+) -> tuple[float, float] | None:
+    """(min, max) maturity of the tenors that clear their within-liquid floor.
+
+    This is the captured liquid maturity range — the "monitored maturities" of blueprint
+    14-slos. Interior pinned tenors fall inside it (interpolatable, Eq. 22); edge pinned tenors
+    fall outside it (extrapolation fallback, ADR 0052).
+    """
+    maturities = [tenor_years(t) for t in tenor_grid if t in floor_clearing]
+    if not maturities:
+        return None
+    return min(maturities), max(maturities)
+
+
 def check_tenor_coverage_floor(
     points: Sequence[GridPointInput],
     underlying: str,
@@ -554,36 +630,99 @@ def check_tenor_coverage_floor(
     for point in points:
         if point.tenor_label in counts:
             counts[point.tenor_label] += 1
-    breaches: list[dict[str, object]] = []
+    floors = {tenor: thresholds.grid.floor_for(tenor) for tenor in tenor_grid}
+    floor_clearing = {tenor for tenor in tenor_grid if counts[tenor] >= floors[tenor]}
+    span = _liquid_span(tenor_grid, floor_clearing)
+    direct = [tenor_years(t) for t in floor_clearing]
+
+    interior_tenors: list[str] = []
+    interior_covered: list[str] = []
+    critical_breaches: list[dict[str, object]] = []  # liquid-core collapse -> CRITICAL
+    edge_warnings: list[dict[str, object]] = []  # extrapolated edge fallback -> WARNING
     worst_margin: float | None = None
+
     for tenor in tenor_grid:
-        floor = thresholds.grid.floor_for(tenor)
+        floor = floors[tenor]
         count = counts[tenor]
         margin = float(count - floor)
         if worst_margin is None or margin < worst_margin:
             worst_margin = margin
-        if count < floor:
-            breaches.append({"tenor": tenor, "measured": count, "floor": floor})
-    status = STATUS_PASS if not breaches else STATUS_FAIL
+        provenance = classify_tenor_provenance(
+            tenor_years(tenor), liquid_span=span, direct_maturities=direct
+        )
+        if count >= floor:
+            # A liquid, monitored maturity that clears its own floor.
+            interior_tenors.append(tenor)
+            interior_covered.append(tenor)
+            continue
+        if provenance == PROVENANCE_EXTRAPOLATED:
+            # Edge tenor beyond the liquid range — blueprint fallback, never a hard CRITICAL.
+            edge_warnings.append(
+                {"tenor": tenor, "measured": count, "floor": floor, "provenance": provenance}
+            )
+            continue
+        # Interior pin below its floor.
+        interior_tenors.append(tenor)
+        if count == 0:
+            # No direct capture, but bracketed by liquid neighbours → filled by Eq.-22
+            # total-variance interpolation (covered, not a breach).
+            interior_covered.append(tenor)
+        else:
+            # Partial capture inside the liquid range that fell short of the within-liquid
+            # floor — a real liquid-core coverage collapse, the CRITICAL tooth.
+            critical_breaches.append(
+                {"tenor": tenor, "measured": count, "floor": floor, "provenance": provenance}
+            )
+
+    # The ≥95% monitored-coverage ratio is the second CRITICAL tooth (blueprint 14-slos): if the
+    # liquid core collapses across many maturities, the ratio falls below the floor and pages.
+    monitored = len(interior_tenors)
+    covered = len(interior_covered)
+    coverage_ratio = covered / monitored if monitored > 0 else 0.0
+    min_ratio = thresholds.grid.monitored_coverage_ratio
+    # A grid with no liquid maturity at all is a genuine collapse, not an edge fallback.
+    ratio_breach = (span is None) or (coverage_ratio < min_ratio)
+
+    if critical_breaches or ratio_breach:
+        status = STATUS_FAIL
+        severity = SEVERITY_CRITICAL
+    elif edge_warnings:
+        status = STATUS_WARN
+        severity = SEVERITY_WARNING
+    else:
+        status = STATUS_PASS
+        severity = SEVERITY_CRITICAL
+
     measured = worst_margin if worst_margin is not None else 0.0
     context = {
         "underlying": underlying,
         "pinned_tenor_count": len(tenor_grid),
-        "breach_count": len(breaches),
-        "breaching_tenors": breaches,
+        "monitored_tenor_count": monitored,
+        "monitored_covered_count": covered,
+        "coverage_ratio": coverage_ratio,
+        "min_coverage_ratio": min_ratio,
+        "breach_count": len(critical_breaches),
+        "breaching_tenors": critical_breaches,
+        "edge_warning_count": len(edge_warnings),
+        "edge_tenors": edge_warnings,
     }
     if status == STATUS_FAIL:
         _log.warning(
-            "qc tenor_coverage_floor fail: underlying=%s breaches=%d",
+            "qc tenor_coverage_floor fail: underlying=%s critical=%d ratio=%.3f",
             underlying,
-            len(breaches),
-            extra={"underlying": underlying, "breaching_tenors": breaches},
+            len(critical_breaches),
+            coverage_ratio,
+            extra={
+                "underlying": underlying,
+                "breaching_tenors": critical_breaches,
+                "coverage_ratio": coverage_ratio,
+            },
         )
     return build_result(
         check_name=CHECK_TENOR_COVERAGE_FLOOR,
         target_key=underlying,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=measured,
         threshold_version=thresholds.version,
         context=context,
@@ -609,41 +748,76 @@ def check_delta_band_completeness(
     band_high = thresholds.grid.band_high_delta
     max_step = thresholds.grid.max_delta_step
     edge_tol = 1e-9
-    gaps: list[dict[str, object]] = []
+
+    # The liquid range for the band check is the maturities whose ±band is complete (no gaps).
+    # Inside it, an incomplete band is a real liquid-core defect → CRITICAL; outside it (the
+    # extrapolated edges, e.g. 2y/3y or sub-front 10d) a partial band is a WARNING (ADR 0052).
+    band_reasons: dict[str, list[dict[str, object]]] = {}
+    complete_tenors: set[str] = set()
     for tenor in tenor_grid:
         deltas = sorted(by_tenor[tenor])
         reasons = _band_gap_reasons(
-            deltas,
-            band_low=band_low,
-            band_high=band_high,
-            max_step=max_step,
-            edge_tol=edge_tol,
+            deltas, band_low=band_low, band_high=band_high, max_step=max_step, edge_tol=edge_tol,
         )
-        if reasons:
-            gaps.append({"tenor": tenor, "point_count": len(deltas), "missing": reasons})
-    status = STATUS_PASS if not gaps else STATUS_FAIL
+        band_reasons[tenor] = reasons
+        if not reasons:
+            complete_tenors.add(tenor)
+    span = _liquid_span(tenor_grid, complete_tenors)
+    direct = [tenor_years(t) for t in complete_tenors]
+
+    critical_gaps: list[dict[str, object]] = []
+    edge_gaps: list[dict[str, object]] = []
+    for tenor in tenor_grid:
+        reasons = band_reasons[tenor]
+        if not reasons:
+            continue
+        provenance = classify_tenor_provenance(
+            tenor_years(tenor), liquid_span=span, direct_maturities=direct
+        )
+        entry = {
+            "tenor": tenor, "point_count": len(by_tenor[tenor]),
+            "missing": reasons, "provenance": provenance,
+        }
+        if provenance == PROVENANCE_EXTRAPOLATED:
+            edge_gaps.append(entry)
+        else:
+            critical_gaps.append(entry)
+
+    if critical_gaps:
+        status = STATUS_FAIL
+        severity = SEVERITY_CRITICAL
+    elif edge_gaps:
+        status = STATUS_WARN
+        severity = SEVERITY_WARNING
+    else:
+        status = STATUS_PASS
+        severity = SEVERITY_CRITICAL
+
+    all_gaps = critical_gaps + edge_gaps
     context = {
         "underlying": underlying,
         "band_low_delta": band_low,
         "band_high_delta": band_high,
         "max_delta_step": max_step,
         "pinned_tenor_count": len(tenor_grid),
-        "gap_count": len(gaps),
-        "band_gaps": gaps,
+        "gap_count": len(critical_gaps),
+        "band_gaps": critical_gaps,
+        "edge_gap_count": len(edge_gaps),
+        "edge_band_gaps": edge_gaps,
     }
     if status == STATUS_FAIL:
         _log.warning(
             "qc delta_band_completeness fail: underlying=%s gaps=%d",
             underlying,
-            len(gaps),
-            extra={"underlying": underlying, "band_gaps": gaps},
+            len(critical_gaps),
+            extra={"underlying": underlying, "band_gaps": critical_gaps},
         )
     return build_result(
         check_name=CHECK_DELTA_BAND_COMPLETENESS,
         target_key=underlying,
         status=status,
-        severity=SEVERITY_CRITICAL,
-        measured_value=float(len(gaps)),
+        severity=severity,
+        measured_value=float(len(all_gaps)),
         threshold_version=thresholds.version,
         context=context,
         run_id=run_id,

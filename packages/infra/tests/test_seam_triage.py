@@ -159,8 +159,12 @@ def _grid_breach_qc_report() -> tuple[TriageRecord, ...]:
             self.tenor_label = tenor
             self.delta = delta
 
+    # 10d and 3m are liquid (clear floor 2) so [10d, 3m] is the liquid range; 1m sits strictly
+    # inside it with a partial 1/2 capture — a within-liquid-range CRITICAL collapse (ADR 0052),
+    # which lands in triage and names the offending tenor.
     points = [_GP("SPX", "10d", d) for d in (-0.3, 0.3)]
-    points += [_GP("SPX", "1m", d) for d in (-0.3, 0.3)]
+    points += [_GP("SPX", "3m", d) for d in (-0.3, 0.3)]
+    points += [_GP("SPX", "1m", -0.3)]
     result = check_tenor_coverage_floor(
         points, "SPX", ("10d", "1m", "3m"),
         thresholds=thresholds, run_id=RUN_ID, run_ts=RUN_TS,
@@ -176,7 +180,7 @@ def test_grid_breach_lands_in_triage_records(tmp_path: Path) -> None:
     assert record.source == "qc"
     assert record.name == "tenor_coverage_floor"
     assert record.underlying == "SPX"
-    assert "3m" in record.detail
+    assert "1m" in record.detail
 
     store = ParquetStore(tmp_path)
     store.write("triage_records", records)

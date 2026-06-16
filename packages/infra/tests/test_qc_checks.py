@@ -731,6 +731,54 @@ def test_calendar_sanity_fails_and_names_maturity_pair() -> None:
     assert context["failing_k"] == pytest.approx(0.1)
 
 
+def test_calendar_sanity_short_end_noise_is_a_warning_not_critical() -> None:
+    # The 2026-06-16 SX5E wiggle: w_short 1.87e-3 vs w_long 1.62e-3 — a ~2.5e-4 total-variance
+    # inversion at the short end. Below the 5e-4 absolute tolerance AND inside the ultra-short
+    # maturity floor → a WARNING, never a page (ADR 0052).
+    wiggle = CalendarViolation(
+        k=0.0, maturity_short=10.0 / 365.0, maturity_long=1.0 / 12.0,
+        w_short=1.87e-3, w_long=1.62e-3,
+    )
+    result = check_calendar_sanity(
+        [wiggle], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
+    context = deserialize_context(result.context)
+    assert context["material_count"] == 0
+    assert context["noise_count"] == 1
+
+
+def test_calendar_sanity_material_inversion_is_critical() -> None:
+    # A gross inversion well inside the liquid range: w_short 0.05 vs w_long 0.02 at 6m vs 12m —
+    # a 0.03 total-variance gap, far above both the absolute (5e-4) and relative (5% of 0.02 =
+    # 1e-3) tolerances, at non-ultra-short maturities → CRITICAL (ADR 0052).
+    gross = CalendarViolation(
+        k=0.1, maturity_short=0.5, maturity_long=1.0, w_short=0.05, w_long=0.02,
+    )
+    result = check_calendar_sanity(
+        [gross], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+    context = deserialize_context(result.context)
+    assert context["material_count"] == 1
+    assert result.measured_value == pytest.approx(1.0)
+
+
+def test_calendar_sanity_relative_tolerance_spares_a_proportionally_small_gap() -> None:
+    # An inversion above the absolute floor but small relative to the long-leg variance: a 6e-4
+    # gap on a w_long of 0.10 is 0.6% — under the 5% relative tolerance → WARNING, not CRITICAL.
+    small_rel = CalendarViolation(
+        k=0.0, maturity_short=0.5, maturity_long=1.0, w_short=0.1006, w_long=0.10,
+    )
+    result = check_calendar_sanity(
+        [small_rel], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
+
+
 def test_calendar_sanity_single_violation() -> None:
     one = CalendarViolation(
         k=0.0, maturity_short=0.25, maturity_long=0.5, w_short=0.05, w_long=0.04
@@ -1051,7 +1099,10 @@ def test_tenor_coverage_floor_passes_when_every_tenor_clears_its_floor() -> None
     assert result.measured_value == pytest.approx(0.0)
 
 
-def test_tenor_coverage_floor_names_the_breaching_tenor() -> None:
+def test_tenor_coverage_floor_partial_interior_is_a_critical_breach() -> None:
+    # 10d and 3m are liquid (clear floor) so [10d, 3m] is the liquid range; 1m sits strictly
+    # inside it with 2/3 points — a partial-capture collapse of a maturity that should be
+    # liquid, which is the within-liquid-range CRITICAL tooth (ADR 0052).
     points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
     points += [_GridPoint("SPX", "1m", d) for d in (-0.30, 0.30)]
     result = check_tenor_coverage_floor(
@@ -1059,13 +1110,34 @@ def test_tenor_coverage_floor_names_the_breaching_tenor() -> None:
         thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
     )
     assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
     context = deserialize_context(result.context)
     breaches = context["breaching_tenors"]
     assert len(breaches) == 1
-    assert breaches[0] == {"tenor": "1m", "measured": 2, "floor": 3}
+    assert {k: breaches[0][k] for k in ("tenor", "measured", "floor")} == {
+        "tenor": "1m", "measured": 2, "floor": 3
+    }
     named = {b["tenor"] for b in breaches}
     assert "10d" not in named and "3m" not in named
     assert result.measured_value == pytest.approx(-1.0)
+
+
+def test_tenor_coverage_floor_interior_zero_is_interpolated_not_a_breach() -> None:
+    # 10d and 3m are liquid; 1m carries NO points but is bracketed by two liquid neighbours, so
+    # it is filled by Eq.-22 total-variance interpolation — covered, no breach (ADR 0052).
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    result = check_tenor_coverage_floor(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_PASS
+    context = deserialize_context(result.context)
+    assert context["breach_count"] == 0
+    assert context["edge_warning_count"] == 0
+    # 1m counts as a covered monitored maturity.
+    assert context["monitored_tenor_count"] == 3
+    assert context["monitored_covered_count"] == 3
+    assert context["coverage_ratio"] == pytest.approx(1.0)
 
 
 def test_tenor_coverage_floor_count_exactly_on_floor_passes() -> None:
@@ -1077,17 +1149,41 @@ def test_tenor_coverage_floor_count_exactly_on_floor_passes() -> None:
     assert result.qc_status == STATUS_PASS
 
 
-def test_tenor_coverage_floor_absent_tenor_is_a_breach() -> None:
+def test_tenor_coverage_floor_edge_tenor_is_warning_not_critical() -> None:
+    # 10d and 1m are liquid (span [10d, 1m]); 3m sits ABOVE the liquid range — an extrapolation
+    # edge. Its emptiness is a labelled fallback (WARNING), not a CRITICAL (ADR 0052).
     points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "1m")
     result = check_tenor_coverage_floor(
         points, "SPX", GRID_TENORS,
         thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
     )
-    assert result.qc_status == STATUS_FAIL
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
     context = deserialize_context(result.context)
-    breaches = context["breaching_tenors"]
-    assert breaches == [{"tenor": "3m", "measured": 0, "floor": 3}]
+    assert context["breach_count"] == 0
+    edges = context["edge_tenors"]
+    assert len(edges) == 1
+    assert edges[0]["tenor"] == "3m"
+    assert edges[0]["provenance"] == "extrapolated"
     assert result.measured_value == pytest.approx(-3.0)
+
+
+def test_tenor_coverage_floor_collapsed_core_pages_critical_via_ratio() -> None:
+    # A genuine liquid-core collapse: only 10d is liquid (span [10d, 10d]); 1m carries a partial
+    # 2/3 capture inside... but with the span pinned to a single point, 1m and 3m are edges. To
+    # exercise the ratio tooth we keep a real interior range: 10d and 3m liquid, and 1m a
+    # PARTIAL interior collapse — coverage_ratio = 2/3 < 0.95 → CRITICAL.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", -0.30)]  # 1/3, interior, partial -> core breach
+    result = check_tenor_coverage_floor(
+        points, "SPX", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+    context = deserialize_context(result.context)
+    assert context["coverage_ratio"] == pytest.approx(2.0 / 3.0)
+    assert context["coverage_ratio"] < context["min_coverage_ratio"]
 
 
 def test_delta_band_completeness_passes_for_full_band() -> None:
@@ -1164,20 +1260,26 @@ def test_delta_band_completeness_flags_one_sided_chain() -> None:
 
 
 def test_delta_band_edge_cases() -> None:
+    # Only 3m carries a complete band, so the liquid range is [3m, 3m]; 10d and 1m sit below it
+    # (extrapolation edges). Their partial/empty bands are a labelled fallback (WARNING), not a
+    # CRITICAL (ADR 0052).
     points = _full_tenor("SPX", "3m")
     points += [_GridPoint("SPX", "1m", 0.0)]
     result = check_delta_band_completeness(
         points, "SPX", GRID_TENORS,
         thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
     )
-    assert result.qc_status == STATUS_FAIL
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
     context = deserialize_context(result.context)
-    gaps = {g["tenor"]: g for g in context["band_gaps"]}
+    assert context["gap_count"] == 0  # no CRITICAL liquid-core gaps
+    gaps = {g["tenor"]: g for g in context["edge_band_gaps"]}
     assert set(gaps) == {"10d", "1m"}
     empty_regions = {m["region"] for m in gaps["10d"]["missing"]}
     assert "too_few_points" in empty_regions
     assert {"low_edge_unreached", "high_edge_unreached"} <= empty_regions
     assert gaps["10d"]["point_count"] == 0
+    assert gaps["10d"]["provenance"] == "extrapolated"
     single_regions = {m["region"] for m in gaps["1m"]["missing"]}
     assert "too_few_points" in single_regions
     assert {"low_edge_unreached", "high_edge_unreached"} <= single_regions
@@ -1207,6 +1309,7 @@ def test_grid_thresholds_missing_tenor_floor_raises() -> None:
 def test_grid_checks_roll_into_report_and_escalation() -> None:
     from algotrading.infra.qc import (
         ESCALATION_NONE,
+        ESCALATION_NOTICE,
         ESCALATION_PAGE,
         build_report,
         escalation_level,
@@ -1226,14 +1329,17 @@ def test_grid_checks_roll_into_report_and_escalation() -> None:
     assert clean_report.overall_status == STATUS_PASS
     assert escalation_level(clean_report) == ESCALATION_NONE
 
-    thin = _full_tenor("SPX", "10d") + _full_tenor("SPX", "1m")
+    # A genuine liquid-core collapse (10d and 3m liquid, 1m a partial interior capture) still
+    # pages CRITICAL through both grid checks.
+    collapsed = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    collapsed += [_GridPoint("SPX", "1m", -0.30)]
     breaching = [
         check_tenor_coverage_floor(
-            thin, "SPX", GRID_TENORS,
+            collapsed, "SPX", GRID_TENORS,
             thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
         ),
         check_delta_band_completeness(
-            thin, "SPX", GRID_TENORS,
+            collapsed, "SPX", GRID_TENORS,
             thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
         ),
     ]
@@ -1241,3 +1347,16 @@ def test_grid_checks_roll_into_report_and_escalation() -> None:
     assert breaching_report.overall_status == STATUS_FAIL
     assert breaching_report.fail_count == 2
     assert escalation_level(breaching_report) == ESCALATION_PAGE
+
+    # An edge-only illiquidity (3m absent, beyond the liquid [10d, 1m] range) degrades to a
+    # NOTICE warning, never a page.
+    edge_only = _full_tenor("SPX", "10d") + _full_tenor("SPX", "1m")
+    warned = [
+        check_tenor_coverage_floor(
+            edge_only, "SPX", GRID_TENORS,
+            thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+        ),
+    ]
+    warned_report = build_report(warned, run_id=RUN_ID, run_ts=RUN_TS)
+    assert warned_report.overall_status == STATUS_WARN
+    assert escalation_level(warned_report) == ESCALATION_NOTICE

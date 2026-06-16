@@ -37,9 +37,9 @@ def _iv_point(k: float, w: float, key: str) -> IvPoint:
     )
 
 
-def _fit(points: tuple[IvPoint, ...]) -> SliceFit:
+def _fit(points: tuple[IvPoint, ...], *, maturity_years: float | None = None) -> SliceFit:
     return fit_slice(
-        "AAPL", _SURFACE.maturity_years, points,
+        "AAPL", _SURFACE.maturity_years if maturity_years is None else maturity_years, points,
         expiry_date=_EXPIRY, day_count="ACT/365", config=SURFACE_CONFIG,
     )
 
@@ -83,3 +83,78 @@ def test_insufficient_fit_projects_nothing() -> None:
 
     assert projection.parameters is None
     assert projection.grid_cells == ()
+
+
+def test_classify_tenor_provenance_interior_edge_and_direct() -> None:
+    from algotrading.infra.surfaces import (
+        PROVENANCE_DIRECT,
+        PROVENANCE_EXTRAPOLATED,
+        PROVENANCE_INTERPOLATED,
+        classify_tenor_provenance,
+    )
+
+    span = (1.0 / 12.0, 1.5)  # liquid range 1m..18m, with 1m and 18m captured directly
+    direct = (1.0 / 12.0, 1.5)
+
+    # 10d (10/365 ≈ 0.0274y) is below the front of the liquid range → extrapolated edge.
+    assert (
+        classify_tenor_provenance(10.0 / 365.0, liquid_span=span, direct_maturities=direct)
+        == PROVENANCE_EXTRAPOLATED
+    )
+    # 2y and 3y are above the longest liquid maturity (18m) → extrapolated edges.
+    assert (
+        classify_tenor_provenance(2.0, liquid_span=span, direct_maturities=direct)
+        == PROVENANCE_EXTRAPOLATED
+    )
+    # 6m lies strictly inside [1m, 18m] with no direct capture → interpolated (Eq. 22).
+    assert (
+        classify_tenor_provenance(0.5, liquid_span=span, direct_maturities=direct)
+        == PROVENANCE_INTERPOLATED
+    )
+    # 18m coincides with a captured maturity → direct.
+    assert (
+        classify_tenor_provenance(1.5, liquid_span=span, direct_maturities=direct)
+        == PROVENANCE_DIRECT
+    )
+    # No liquid span at all → everything is an (unusable) extrapolation.
+    assert (
+        classify_tenor_provenance(0.5, liquid_span=None, direct_maturities=())
+        == PROVENANCE_EXTRAPOLATED
+    )
+
+
+def test_tenor_provenance_map_labels_the_pinned_grid() -> None:
+    from algotrading.infra.surfaces import (
+        PINNED_TENORS,
+        PROVENANCE_DIRECT,
+        PROVENANCE_EXTRAPOLATED,
+        PROVENANCE_INTERPOLATED,
+        tenor_provenance_map,
+        tenor_years,
+    )
+
+    # Captured liquid slices at 1m, 3m, 6m, 12m, 18m (the SX5E liquid core).
+    liquid_labels = ("1m", "3m", "6m", "12m", "18m")
+
+    slices = tuple(
+        _fit(
+            (
+                _iv_point(-0.1, 0.04, f"{lbl}_K90"),
+                _iv_point(0.0, 0.045, f"{lbl}_K100"),
+                _iv_point(0.1, 0.05, f"{lbl}_K110"),
+            ),
+            maturity_years=tenor_years(lbl),
+        )
+        for lbl in liquid_labels
+    )
+    provenance = tenor_provenance_map(slices, PINNED_TENORS)
+
+    assert provenance["10d"] == PROVENANCE_EXTRAPOLATED
+    assert provenance["2y"] == PROVENANCE_EXTRAPOLATED
+    assert provenance["3y"] == PROVENANCE_EXTRAPOLATED
+    assert provenance["1m"] == PROVENANCE_DIRECT
+    assert provenance["18m"] == PROVENANCE_DIRECT
+    # 1m, 3m, 6m, 12m, 18m all captured directly; no interior pin needs interpolation here.
+    assert PROVENANCE_INTERPOLATED not in {
+        provenance[t] for t in ("1m", "3m", "6m", "12m", "18m")
+    }

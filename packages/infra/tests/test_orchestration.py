@@ -820,7 +820,12 @@ def _full_cells(underlying: str, tenor: str) -> list[_GridCell]:
 def test_coverage_breach_alert_fires_per_breaching_tenor(tmp_path: Path) -> None:
     store = ParquetStore(tmp_path)
     thresholds = thresholds_from_config(_grid_config().qc_threshold)
-    thin = _full_cells("SPX", "10d") + [_GridCell("SPX", "1m", -0.30)]
+    # A genuine liquid-core collapse: 10d and 3m are liquid (span [10d, 3m]); 1m sits strictly
+    # inside it with a single point — a partial-capture CRITICAL breach (ADR 0052), which pages
+    # a coverage_breach alert. Edge illiquidity (a missing 2y/3y) would only WARN and not page.
+    thin = (
+        _full_cells("SPX", "10d") + _full_cells("SPX", "3m") + [_GridCell("SPX", "1m", -0.30)]
+    )
     job = run_qc(
         store=store, thresholds=thresholds, collector_summary=None,
         trade_date=TRADE_DATE, run_id="qc-grid-breach", run_ts=CALC_TS,
@@ -830,7 +835,7 @@ def test_coverage_breach_alert_fires_per_breaching_tenor(tmp_path: Path) -> None
     alerts = coverage_breach_alerts(job.report)
     assert {a.kind for a in alerts} == {"coverage_breach"}
     subjects = {a.subject for a in alerts}
-    assert subjects == {"SPX@1m", "SPX@3m"}
+    assert subjects == {"SPX@1m"}
 
     full = {"SPX": _full_cells("SPX", "10d") + _full_cells("SPX", "1m") + _full_cells("SPX", "3m")}
     clean_job = run_qc(

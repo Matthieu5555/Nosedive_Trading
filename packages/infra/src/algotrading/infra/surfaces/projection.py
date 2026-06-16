@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from algotrading.core.config import (
@@ -181,6 +181,59 @@ def tenor_years(label: str) -> float:
         ) from None
 
 
+# How a pinned (projected) tenor was produced from the captured liquid maturities — the
+# blueprint's Eq.-22 interior interpolation vs the 05-math-notes edge fallback, made explicit
+# and auditable (ADR 0052). `direct`: the pin coincides with a captured liquid slice maturity.
+# `interpolated`: the pin lies strictly inside the liquid span, filled by total-variance
+# interpolation. `extrapolated`: the pin is below/above the liquid span — a low-confidence
+# fallback, never a hard defect.
+PROVENANCE_DIRECT = "direct"
+PROVENANCE_INTERPOLATED = "interpolated"
+PROVENANCE_EXTRAPOLATED = "extrapolated"
+
+_MATURITY_MATCH_TOL = 1e-9
+
+
+def classify_tenor_provenance(
+    maturity_years: float,
+    *,
+    liquid_span: tuple[float, float] | None,
+    direct_maturities: Sequence[float] = (),
+) -> str:
+    """Label a pinned tenor `direct | interpolated | extrapolated` against the liquid span.
+
+    `liquid_span` is the (min, max) maturity of the captured liquid slices; `direct_maturities`
+    are the maturities that carry a captured liquid slice. A pin outside the span is
+    `extrapolated` (edge fallback); a pin matching a captured maturity is `direct`; any other
+    pin inside the span is `interpolated` (Eq. 22).
+    """
+    if liquid_span is None:
+        return PROVENANCE_EXTRAPOLATED
+    low, high = liquid_span
+    if maturity_years < low - _MATURITY_MATCH_TOL or maturity_years > high + _MATURITY_MATCH_TOL:
+        return PROVENANCE_EXTRAPOLATED
+    for direct in direct_maturities:
+        if abs(direct - maturity_years) <= _MATURITY_MATCH_TOL:
+            return PROVENANCE_DIRECT
+    return PROVENANCE_INTERPOLATED
+
+
+def tenor_provenance_map(
+    slices: Sequence[SliceFit], tenor_grid: Sequence[str],
+) -> dict[str, str]:
+    """Per-pinned-tenor provenance label, keyed by tenor label (ADR 0052)."""
+    span = _usable_span(slices)
+    direct = tuple(
+        s.maturity_years for s in slices if s.method != METHOD_INSUFFICIENT
+    )
+    return {
+        label: classify_tenor_provenance(
+            tenor_years(label), liquid_span=span, direct_maturities=direct
+        )
+        for label in tenor_grid
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectionGap:
 
@@ -197,6 +250,9 @@ class ProjectionResult:
 
     cells: tuple[ProjectedOptionAnalytics, ...]
     gaps: tuple[ProjectionGap, ...]
+    # Per-pinned-tenor provenance label (`direct | interpolated | extrapolated`, ADR 0052),
+    # so QC and the front can read how each pin was produced. Empty for legacy callers.
+    tenor_provenance: Mapping[str, str] = field(default_factory=dict)
 
 
 def _usable_span(slices: Sequence[SliceFit]) -> tuple[float, float] | None:
@@ -418,7 +474,10 @@ def project_grid(
                     source_snapshot_ts=source_snapshot_ts, provenance=provenance,
                 ))
 
-    return ProjectionResult(cells=tuple(cells), gaps=tuple(gaps))
+    provenance_map = tenor_provenance_map(slices, projection.tenor_grid)
+    return ProjectionResult(
+        cells=tuple(cells), gaps=tuple(gaps), tenor_provenance=provenance_map
+    )
 
 
 def _mirror_right(option_right: str) -> str:

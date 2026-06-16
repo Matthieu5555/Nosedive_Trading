@@ -70,8 +70,8 @@ def get_recorded_dates(ctx: CtxDep, index: str | None = None) -> JSONResponse:
         on_disk = store.runs_for(_ANALYTICS_TABLE, d)
         if on_disk:
             for run_id in on_disk:
-                ledger = runs.get(run_id)
-                recorded_ts = ledger.recorded_ts if ledger else None
+                run_ledger = runs.get(run_id)
+                recorded_ts = run_ledger.recorded_ts if run_ledger else None
                 available.append(
                     {
                         "date": d.isoformat(),

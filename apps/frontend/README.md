@@ -150,6 +150,21 @@ The BFF exposes (all under `/api` except the liveness probe):
   the entitlement question (*which* names return chains on this account) is visible per name rather
   than a silent absence. A missing partition is a labelled-empty payload (`n_expiries == 0`,
   `constituents == []`, HTTP 200); a bad `trade_date` a `400`.
+- `GET /api/signals[?underlying=&trade_date=&run_id=]`, `GET /api/signals/underlyings` — the
+  persisted **signal layer** (`strategy_signals`, layer `signals`) read back per index and as-of,
+  rendered by the web **Signals** page (F-SIG). Read-only over what the EOD cron banked — the BFF
+  **recomputes no signal math**. Each row is the serialized `StrategySignal` (`signal_kind`,
+  `subject`, `tenor_label`, `value`, `snapshot_ts`, `source_snapshot_ts`, full `provenance`) plus a
+  display `label`/`unit` keyed off the kind: `iv_rank` (IV rank, `fraction [0,1]`), `iv_vs_realized`
+  (Realized − implied, `vol points (annualized)`), `term_structure_slope` (Term-structure slope,
+  `vol points (back − front)`), `implied_correlation` (ρ̄, `correlation [-1,1]`). The payload carries
+  the flat `signals` list **and** a `by_kind` index (so F-SIG keys off kind without re-grouping) plus
+  the `kinds` order. `underlying` is the *index* (the `underlying` column); `subject` is the name the
+  reading is about (index or constituent). `trade_date` absent resolves the latest persisted
+  partition; `run_id` pins one fetch. A missing partition is a labelled-empty body (`n_signals == 0`,
+  `by_kind == {}`, `snapshot_ts: null`, HTTP 200); a bad `trade_date` a `400`. **Not surfaced:** IV
+  *percentile* — `iv_percentile` exists in `infra/signals` but the layer persists only `iv_rank`, and
+  this read-only slice will not recompute it (it flows through unchanged once the layer banks it).
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

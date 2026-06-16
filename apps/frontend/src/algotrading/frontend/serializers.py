@@ -12,6 +12,7 @@ from algotrading.infra.contracts import (
     RiskAggregate,
     ScenarioAttribution,
     ScenarioResult,
+    StrategySignal,
     SurfaceParameters,
 )
 from algotrading.infra.orders import Limit, OrderTicket
@@ -220,6 +221,34 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
         "residual_rel_tol": row.residual_rel_tol,
         "scenario_version": row.scenario_version,
         "attribution_version": row.attribution_version,
+        "source_snapshot_ts": _iso(row.source_snapshot_ts),
+        "provenance": provenance_to_dict(row.provenance),
+    }
+
+
+SIGNAL_KIND_IV_RANK = "iv_rank"
+SIGNAL_KIND_IV_VS_REALIZED = "iv_vs_realized"
+SIGNAL_KIND_TERM_STRUCTURE_SLOPE = "term_structure_slope"
+SIGNAL_KIND_IMPLIED_CORRELATION = "implied_correlation"
+
+SIGNAL_DISPLAY: dict[str, tuple[str, str]] = {
+    SIGNAL_KIND_IV_RANK: ("IV rank", "fraction [0,1]"),
+    SIGNAL_KIND_IV_VS_REALIZED: ("Realized − implied", "vol points (annualized)"),
+    SIGNAL_KIND_TERM_STRUCTURE_SLOPE: ("Term-structure slope", "vol points (back − front)"),
+    SIGNAL_KIND_IMPLIED_CORRELATION: ("Implied correlation ρ̄", "correlation [-1,1]"),
+}
+
+
+def strategy_signal_to_dict(row: StrategySignal) -> dict[str, object]:
+    label, unit = SIGNAL_DISPLAY.get(row.signal_kind, (row.signal_kind, None))
+    return {
+        "signal_kind": row.signal_kind,
+        "label": label,
+        "subject": row.subject,
+        "tenor_label": row.tenor_label,
+        "value": row.value,
+        "unit": unit,
+        "snapshot_ts": _iso(row.snapshot_ts),
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
     }

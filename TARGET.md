@@ -409,6 +409,10 @@ Each row is roughly one spec.
    spread signal + QC. Remaining: the BFF/front `surface_side` toggle (frontend-per-side-surfaces-toggle).
 7. **Signal layer:** implied correlation (R3), IV rank/percentile per name, realized-vs-
    implied spread, term slope — persisted daily, the strategy entry inputs (§1's chain).
+   **Compute + daily persistence landed** (infra-signal-layer → `strategy_signals`); **BFF read
+   surface landed 2026-06-16 (frontend-signals-bff):** `GET /api/signals[/underlyings]` serializes
+   the persisted layer per index and as-of for the Signals page (F-SIG), recomputing nothing. Open:
+   IV *percentile* persistence (only `iv_rank` is banked today).
 8. **Backtester:** research first, production shadow second (§5.7); S2 on banked history
    is the first case. **Research machine LANDED** (`strategy/backtest/`, S2 target met);
    production shadow + store-backed adapter remain.

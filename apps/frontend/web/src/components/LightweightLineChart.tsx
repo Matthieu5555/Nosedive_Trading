@@ -64,13 +64,16 @@ export function LightweightLineChart({
 
   useEffect(() => {
     const container = containerRef.current;
-    if (container === null) return;
+    const legend = legendRef.current;
+    if (container === null || legend === null) return;
 
     const maxX = Math.max(12, ...series.flatMap((item) => item.points.map((point) => point.x)));
     const base = baseLightweightOptions();
     const chart: IYieldCurveChartApi = createYieldCurveChart(container, {
       ...base,
-      layout: { ...base.layout, attributionLogo: true },
+      // The in-canvas TradingView logo sat bottom-left over the axis labels. Drop it so nothing is
+      // painted on top of the data (lightweight-charts is Apache-2.0; the logo is optional).
+      layout: { ...base.layout, attributionLogo: false },
       localization: {
         priceFormatter: valueFormatter,
       },
@@ -96,6 +99,7 @@ export function LightweightLineChart({
         return {
           api,
           label: item.label,
+          color: item.color,
           latest: data[data.length - 1],
           valueByX: new Map(data.map((point) => [point.time, point.value])),
         };
@@ -104,17 +108,37 @@ export function LightweightLineChart({
 
     chart.timeScale().fitContent();
 
+    // Build a compact, wrapping legend ABOVE the plot: a muted "x · unit" token, then one
+    // swatch + label + value chip per series. Rebuilding real nodes (not one nowrap text line over
+    // the canvas) keeps the legend off the data so it can never collide with the curves, and lets
+    // it wrap onto multiple rows instead of overflowing the panel the way the old run-on line did.
+    legend.replaceChildren();
+    const xToken = document.createElement("span");
+    xToken.className = "legend-x";
+    legend.appendChild(xToken);
+    const valueNodes = rendered.map((item) => {
+      const chip = document.createElement("span");
+      chip.className = "legend-item";
+      const swatch = document.createElement("i");
+      swatch.className = "legend-swatch";
+      swatch.style.backgroundColor = item.color;
+      const name = document.createElement("span");
+      name.className = "legend-label";
+      name.textContent = item.label;
+      const value = document.createElement("span");
+      value.className = "legend-value";
+      chip.append(swatch, name, value);
+      legend.appendChild(chip);
+      return value;
+    });
+
     const renderLegend = (x: number | null): void => {
-      const legend = legendRef.current;
-      if (legend === null) return;
-      const values = rendered
-        .map((item) => {
-          const value = x === null ? item.latest.value : item.valueByX.get(x);
-          return value === undefined ? null : `${item.label} ${valueFormatter(value)}`;
-        })
-        .filter((item) => item !== null);
-      const xLabel = x === null ? xFormatter(rendered[0]?.latest.time ?? 0) : xFormatter(x);
-      legend.textContent = `${xLabel}   ${values.join("   ")}   ${yUnit}`;
+      const xValue = x === null ? (rendered[0]?.latest.time ?? 0) : x;
+      xToken.textContent = `${xFormatter(xValue)} · ${yUnit}`;
+      rendered.forEach((item, index) => {
+        const value = x === null ? item.latest.value : item.valueByX.get(x);
+        valueNodes[index].textContent = value === undefined ? "—" : valueFormatter(value);
+      });
     };
 
     renderLegend(null);
@@ -146,9 +170,8 @@ export function LightweightLineChart({
   return (
     <figure aria-label={label} className="plot lightweight-line-figure">
       <figcaption>{label}</figcaption>
-      <div ref={containerRef} className="lightweight-line-chart">
-        <div ref={legendRef} className="lightweight-line-legend" aria-hidden="true" />
-      </div>
+      <div ref={legendRef} className="lightweight-line-legend" aria-hidden="true" />
+      <div ref={containerRef} className="lightweight-line-chart" />
     </figure>
   );
 }

@@ -402,14 +402,31 @@ const GREEK_PANELS: ReadonlyArray<{ name: GreekName; title: string }> = [
   { name: "theta", title: "Theta $" },
 ];
 
-const BAND_COLORS = [
-  CHART_COLORS.positive,
-  "#8fc7ff",
-  "#f0cf7a",
-  "#d6b3ff",
-  CHART_COLORS.negative,
-  "#79d7cf",
-] as const;
+// Delta bands run put → ATM → call (orderedBands sorts by signed target delta). Colour them on a
+// continuous put→call diverging ramp (red puts → amber ATM → green calls) rather than a fixed
+// palette cycled with `index % n`: a real capture carries ~30 bands, so the old 6-colour cycle
+// repeated every sixth line and neither the curves nor the legend swatches could be told apart.
+// The ramp encodes each band's place in the smile — the same order the legend reads in.
+const BAND_RAMP = ["#ef9c92", "#e5c36a", "#a8e6ba"] as const; // red put → amber ATM → green call
+
+function lerpHex(a: string, b: string, t: number): string {
+  const channels = [1, 3, 5].map((i) => {
+    const from = parseInt(a.slice(i, i + 2), 16);
+    const to = parseInt(b.slice(i, i + 2), 16);
+    return Math.round(from + (to - from) * t)
+      .toString(16)
+      .padStart(2, "0");
+  });
+  return `#${channels.join("")}`;
+}
+
+// The colour for band `index` of `count` ordered bands, sampled along the put→call ramp.
+function bandColor(index: number, count: number): string {
+  if (count <= 1) return BAND_RAMP[1];
+  const t = (index / (count - 1)) * (BAND_RAMP.length - 1); // 0 = first put … last = last call
+  const lo = Math.min(BAND_RAMP.length - 2, Math.floor(t));
+  return lerpHex(BAND_RAMP[lo], BAND_RAMP[lo + 1], t - lo);
+}
 
 // Distinct delta bands across all maturities, ordered by their signed target delta (put → call)
 // so the legend reads left-to-right the way the smile does.
@@ -435,7 +452,8 @@ function maturityMonths(maturity: AnalyticsMaturity): number {
 // the point is still visible in the per-maturity transpose table, flagged). A non-finite dollar is
 // likewise excluded rather than plotted as a spike.
 function bandSeries(maturities: AnalyticsMaturity[], greek: GreekName): LightweightLineSeries[] {
-  return orderedBands(maturities)
+  const bands = orderedBands(maturities);
+  return bands
     .map((band, index): LightweightLineSeries => {
       const points = maturities.flatMap((maturity) => {
         const point = maturity.points.find((p) => p.delta_band === band);
@@ -447,7 +465,7 @@ function bandSeries(maturities: AnalyticsMaturity[], greek: GreekName): Lightwei
         if (dollar === null || dollar === undefined || !Number.isFinite(dollar)) return [];
         return [{ x: maturityMonths(maturity), label: maturity.tenor_label, value: dollar }];
       });
-      return { label: band, color: BAND_COLORS[index % BAND_COLORS.length], points };
+      return { label: band, color: bandColor(index, bands.length), points };
     })
     .filter((series) => series.points.length > 0);
 }

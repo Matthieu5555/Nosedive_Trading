@@ -11,7 +11,12 @@ export const CHART_COLORS = {
   transparent: "rgba(0,0,0,0)",
 } as const;
 
-export const CHART_FONT_FAMILY = '"Basis Grotesque", Inter, sans-serif';
+// The single UI font stack, kept byte-identical to the `:root` font-family in src/index.css so
+// canvas-drawn chart text resolves to the exact same font as the surrounding HTML. No web font is
+// loaded, so a divergent fallback chain here vs. the CSS is what made charts render in a different
+// fallback than the page — keep these two in lockstep.
+export const CHART_FONT_FAMILY =
+  'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 export const CHART_FONT_SIZE = 11;
 
 export const VOL_COLORSCALE = "Plasma" as const;

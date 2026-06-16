@@ -53,14 +53,19 @@
   --amber: #e5c36a;
   --blue: #86b9ff;
   --radius: 8px;
+  /* One UI font stack for the whole app. No web font is bundled, so leading with an uninstalled
+   * "Basis Grotesque"/"Inter" only made elements fall back inconsistently — every surface now
+   * resolves to the same system font. Kept byte-identical to CHART_FONT_FAMILY in chartTheme.ts so
+   * canvas chart text matches the surrounding HTML. */
   font-family:
-    "Basis Grotesque",
-    Inter,
     ui-sans-serif,
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
 }
 
@@ -105,6 +110,18 @@ button:disabled {
 select,
 input {
   padding: 0 12px;
+}
+
+/* Native selects render an OS-default dropdown arrow that clashes with the dark pill design and
+ * differs per browser. Strip it and draw one consistent muted chevron, with room reserved so the
+ * caret never overlaps the value. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238f978f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
 }
 
 table {
@@ -277,7 +294,8 @@ td span {
 }
 
 h1,
-h2 {
+h2,
+h3 {
   margin: 0;
   font-weight: 500;
   letter-spacing: 0;
@@ -289,6 +307,12 @@ h1 {
 
 h2 {
   font-size: 16px;
+}
+
+/* Section titles inside content blocks (charts, tables, accordions). Without a rule these fell back
+ * to the browser default (bold, ~18px) and read as a different font than the h1/h2 above them. */
+h3 {
+  font-size: 14px;
 }
 
 .panel {
@@ -595,19 +619,45 @@ h2 {
   white-space: nowrap;
 }
 
+/* The line-chart legend sits ABOVE the plot in normal flow (not overlaid on the canvas), so a
+   many-series legend wraps onto extra rows instead of running off the panel and printing over the
+   curves — the failure mode the old single nowrap line had with one entry per delta band. */
 .lightweight-line-legend {
-  position: absolute;
-  top: 8px;
-  left: 10px;
-  right: 10px;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 0 0 10px;
   color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.lightweight-line-legend .legend-x {
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lightweight-line-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lightweight-line-legend .legend-swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.lightweight-line-legend .legend-label {
+  color: var(--muted);
+}
+
+.lightweight-line-legend .legend-value {
+  color: var(--text);
 }
 
 .scenario-cell {

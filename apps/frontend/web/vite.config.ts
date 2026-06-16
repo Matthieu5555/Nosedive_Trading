@@ -12,9 +12,13 @@ export default defineConfig({
     },
   },
   server: {
+    // Backend the dev server proxies to. Defaults to the shared :8000 process, but is overridable
+    // via BFF_TARGET so an operator running their own backend (e.g. when the shared :8000 is broken)
+    // can point the front at it: `BFF_TARGET=http://127.0.0.1:8001 npm run dev`. Without this, a set
+    // BFF_TARGET is silently ignored and the front talks to :8000 regardless.
     proxy: {
-      "/api": "http://127.0.0.1:8000",
-      "/healthz": "http://127.0.0.1:8000",
+      "/api": process.env.BFF_TARGET ?? "http://127.0.0.1:8000",
+      "/healthz": process.env.BFF_TARGET ?? "http://127.0.0.1:8000",
     },
   },
   test: {

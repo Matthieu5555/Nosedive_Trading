@@ -54,6 +54,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0049** — Named historical scenarios (2008/COVID) compose as compound `Scenario`s repriced through the pricer; the correlation family reprices through `basket_variance` (a second path, built but dormant until ρ̄ exposure is real); additive-when-non-empty construction hash. *(extends 0006)*
 - **0050** — RT-Vega (running-time / annualised vega) = `vega/√T`; per strike, raw + cash, T→0 guarded to 0.
 - **0051** — Return to the blueprint: dispersion ρ̄ is a **realized-vol diagnostic** (Eq. 23 on constituent realized vols from bars), **not** a single-name-options trade. Retires constituent-option capture + the `constituent_top_n` capture gate; dissolves the throughput "emergency" and the permanent option-history loss. *(supersedes 0045, partially 0044)*
+- **0052** — QC coverage to the blueprint: interior pinned tenors are **interpolated** (Eq. 22), edge/illiquid tenors (10d, 2y/3y LEAPs) are a **labelled low-confidence/unusable fallback** (`05-math-notes`) — not a hard per-tenor floor. Coverage = ≥95% ratio over monitored maturities (`14-slos`); `calendar_sanity` pages CRITICAL only on a **gross** inversion. Kills the SX5E false-critical; no capture-path change.
 
 ## Execution & booking
 - **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*

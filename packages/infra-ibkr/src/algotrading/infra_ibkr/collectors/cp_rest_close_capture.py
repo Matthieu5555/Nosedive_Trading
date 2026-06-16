@@ -317,18 +317,20 @@ def _snapshot_events(
     option_row_count = 0
     two_sided_count = 0
     drop_reasons: list[tuple[str, str]] = []
-    promoted: list[tuple[InstrumentKey, SnapshotRow]] = []
+    two_sided: list[tuple[InstrumentKey, SnapshotRow]] = []
+    quarantined: list[tuple[InstrumentKey, SnapshotRow]] = []
     for instrument, row in kept:
         if not instrument.is_option():
-            promoted.append((instrument, row))
+            two_sided.append((instrument, row))
             continue
         option_row_count += 1
         reason = _two_sided_quote_reason(row, max_spread_pct=max_spread_pct)
         if reason is None:
             two_sided_count += 1
-            promoted.append((instrument, row))
+            two_sided.append((instrument, row))
             continue
         drop_reasons.append((instrument.canonical(), reason))
+        quarantined.append((instrument, row))
         _LOGGER.info(
             "ibkr.close_capture.quarantine_row",
             instrument_key=instrument.canonical(),
@@ -337,9 +339,10 @@ def _snapshot_events(
             ask=row.ask,
             last=row.last,
         )
-    promoted.sort(key=lambda pair: pair[0].canonical())
+    two_sided.sort(key=lambda pair: pair[0].canonical())
+    quarantined.sort(key=lambda pair: pair[0].canonical())
     events: list[RawMarketEvent] = []
-    for sequence, (instrument, row) in enumerate(promoted):
+    for sequence, (instrument, row) in enumerate([*two_sided, *quarantined]):
         events.extend(
             snapshot_to_events(
                 row,
@@ -567,16 +570,16 @@ def collect_target_basket(
         )
     min_fraction = qc.quote_integrity.min_two_sided_fraction
     if promoted.option_row_count > 0 and two_sided_fraction < min_fraction:
-        log.info(
+        log.warning(
             "ibkr.close_capture.closed_market",
-            reason="basket has no live two-sided quotes — last-only / market-closed capture",
+            reason="basket has no live two-sided quotes — last-only / market-closed capture; "
+            "rows landed to raw faithfully, derived grid will be empty and QC will page",
             option_row_count=promoted.option_row_count,
             two_sided_count=promoted.two_sided_count,
             two_sided_fraction=two_sided_fraction,
             min_two_sided_fraction=min_fraction,
             quarantined=list(promoted.drop_reasons),
         )
-        return None
     return IndexBasket(
         instruments=instruments, events=tuple(events), masters=masters
     )

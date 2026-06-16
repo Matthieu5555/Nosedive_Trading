@@ -10,6 +10,7 @@ from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
 from algotrading.infra.storage import ParquetStore
 
+from .alerts import coverage_breach_alerts, qc_fail_alert
 from .eod_planning import EOD_JOB_NAME, FiredIndex
 from .jobs import (
     AnalyticsResult,
@@ -334,6 +335,20 @@ def default_stages_builder(
             triage_row_count=len(triage),
             escalation=job.escalation,
         )
+        # Fail-loud alerting (platform-capture-alert-wiring): evaluate the named alert conditions
+        # over the report and log every firing one at ERROR, so the operator — and the systemd
+        # OnFailure= journald sink — reads *what* fired. The page escalation a qc_fail_alert
+        # reflects also maps to a non-zero exit in the runner (the exit that engages OnFailure=);
+        # these lines are the human-readable detail behind it. The alert builders are pure
+        # functions of the report, so this neither recomputes QC nor can drift from its verdict.
+        for alert in (qc_fail_alert(job.report), *coverage_breach_alerts(job.report)):
+            if alert is not None:
+                log.error(
+                    "orchestration.eod_run.alert",
+                    alert_kind=alert.kind,
+                    subject=alert.subject,
+                    detail=alert.detail,
+                )
         return job
 
     return EodStages(

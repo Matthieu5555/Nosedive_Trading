@@ -15,6 +15,7 @@ top-level area, update this file in the same change.
 | Research | `research/` | Research notes and experiments. Reproducibility and as-of discipline rules. | `research/README.md` |
 | Data | `data/` | Shared datasets (parquet/duckdb). Large/secret data stays out of git. | `data/README.md` |
 | Tasks | `tasks/` | In-flight work claims (collision guard) and archived task notes. | `tasks/TASKBOARD.md` |
+| Docs | `docs/` | Relocated reference documentation: the `blueprint/` tree (the as-transcribed plan-of-record source, ADR 0011), plus connectivity guides and supporting notes. Routing only — the canonical-vs-absorbed status of individual docs is governed by ADR 0011 / `platform-doc-coherence-fix`. | `docs/blueprint/README.md` |
 | Conventions | `.agent/conventions.md` | House style for code in any area. | `.agent/conventions.md` |
 | Glossary | `.agent/glossary.md` | Domain vocabulary an agent won't infer. | `.agent/glossary.md` |
 | Decisions | `.agent/decisions/` | Process/architecture ADRs — **read `decisions/README.md` (one-line index) first**; open a body only for the *why*. Domain lives in `TARGET.md`, not here. Superseded/dead ADRs are removed (git history is the archive). | `.agent/decisions/README.md` |

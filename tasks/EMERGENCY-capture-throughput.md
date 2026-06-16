@@ -1,5 +1,25 @@
 # T-capture-throughput — ⛔ EMERGENCY — the close walk is too slow to be a *close* snapshot
 
+> **⚠️ STATUS CORRECTION (2026-06-15) — only the FIRST lever landed; this spec is NOT fully done.**
+> Commit `7697e77` ("concurrent chain discovery") implemented the within-underlying `/secdef/info`
+> pool below (`discovery_pool_size`, output-identical, tested) and the TASKBOARD then marked this
+> spec **done**. That was overstated. The **load-bearing done-criterion — "wall-clock for the index
+> + 10 constituents fits comfortably inside the settlement window with margin" — was never met or
+> even measured.** Concurrency *inside* one underlying does nothing for the serial march *across*
+> the 11 underlyings, which is still strictly sequential. The unfinished work is split into three
+> tightly-scoped follow-ups, in priority order:
+>
+> 1. [ibkr-capture-cross-underlying-concurrency](ibkr-capture-cross-underlying-concurrency.md) — the
+>    dominant remaining cost: the index + 10 constituents capture one-at-a-time. Needs a single
+>    shared bounded gateway-concurrency budget (NOT a pool nested inside the existing per-walk pool).
+> 2. [ibkr-snapshot-warmup-concurrency](ibkr-snapshot-warmup-concurrency.md) — the snapshot phase
+>    walks URI-safe batches serially, each paying its own 8×1 s cold warm-up.
+> 3. [ibkr-intraday-conid-cache](ibkr-intraday-conid-cache.md) — this spec's own "optional second
+>    lever" (see Scope below), never built.
+>
+> Treat the section below as the (delivered) first lever's spec; the real "fits in the window" goal
+> lives in follow-up #1.
+
 > **⛔ EMERGENCY (timeliness).** A "close capture" that takes 30–60 min is not a close snapshot —
 > it smears across a moving market and risks not finishing inside the settlement window. The
 > index-alone canary already took **~7 minutes**; ×11 underlyings (once

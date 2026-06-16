@@ -14,7 +14,7 @@ from algotrading.core.config import (
     StrikeSelectionConfig,
     UniverseConfig,
 )
-from algotrading.infra.actor import IndexBasket
+from algotrading.infra.actor import IndexBasket, run_analytics
 from algotrading.infra.universe import ChainSelection, IbkrRef, IndexEntry
 from algotrading.infra_ibkr.collectors import cp_rest_snapshot
 from algotrading.infra_ibkr.collectors.cp_rest_chain_window import (
@@ -535,12 +535,46 @@ class _ClosedMarketGateway(_FakeGateway):
         return rows
 
 
-def test_closed_market_basket_is_refused_not_banked() -> None:
+def test_closed_market_basket_is_captured_to_raw_faithfully_not_dropped() -> None:
     basket = collect_live_basket(
         _ClosedMarketGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
     )
-    assert basket is None
+    assert basket is not None, "a closed-market basket must still be captured to raw, not dropped"
+    # Every listed option's last-only observation is recorded (the marks land in raw, not erased).
+    option_keys = {k.canonical() for k in basket.instruments if k.is_option()}
+    event_keys = {e.instrument_key for e in basket.events}
+    assert option_keys <= event_keys, "every closed-market option row must contribute raw events"
+
+
+def test_closed_market_basket_through_analytics_persists_snapshots_but_no_iv() -> None:
+    """End-to-end on the REAL ``-1`` wire path: capture → ``run_analytics``.
+
+    The closed-market basket (bid/ask = the ``-1`` sentinel → no two-sided quote, only ``last``
+    real) is captured faithfully, then driven through the same analytics choke the live and replay
+    paths share. The observations PERSIST as (last-fallback) snapshots — faithful raw — but produce
+    ZERO IV points and an EMPTY surface grid: the derived two-sided gate
+    (``actor.driver._has_two_sided_option_quote``) admits no option to the solver. That empty grid
+    is exactly what the QC coverage-floor checks page on (→ non-zero exit → OnFailure alert), so the
+    canary fails LOUD instead of banking a converged surface off ``last``-only marks or silently
+    exiting 0. Closes the full real-wire seam (sentinel → normalize → capture → analytics).
+    """
+    basket = collect_live_basket(
+        _ClosedMarketGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+    )
+    assert basket is not None
+    outputs = run_analytics(
+        basket.events, [], instruments=basket.instruments, masters=basket.masters,
+        config=_config(), config_hashes={"cfg": "closed-market"}, as_of=CLOSE, calc_ts=CLOSE,
+    )
+    option_keys = {k.canonical() for k in basket.instruments if k.is_option()}
+    snapshot_keys = {s.instrument_key for s in outputs.snapshots}
+    # FAITHFUL: the closed-market option observations persisted as (last-fallback) snapshots.
+    assert option_keys & snapshot_keys, "closed-market options must persist as flagged snapshots"
+    # DERIVED GATE held end-to-end: no option priced, and the surface grid is empty (QC pages).
+    assert not outputs.iv_points, "a closed-market basket must produce no IV points"
+    assert not outputs.surface_grid, "a closed-market basket must produce an empty surface grid"
 
 
 def test_genuine_two_sided_close_passes_untouched() -> None:
@@ -565,7 +599,7 @@ class _OneSidedGateway(_FakeGateway):
         return rows
 
 
-def test_single_sided_row_is_quarantined_but_basket_still_banks() -> None:
+def test_single_sided_row_is_captured_to_raw_faithfully_and_basket_still_banks() -> None:
     basket = collect_live_basket(
         _OneSidedGateway(), index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
         selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
@@ -576,10 +610,9 @@ def test_single_sided_row_is_quarantined_but_basket_still_banks() -> None:
         k.canonical() for k in basket.instruments
         if k.is_option() and k.broker_contract_id == str(quarantined)
     )
-    assert all(e.instrument_key != quarantined_key for e in basket.events)
-    healthy_option_keys = {
-        k.canonical() for k in basket.instruments
-        if k.is_option() and k.broker_contract_id != str(quarantined)
+    assert any(e.instrument_key == quarantined_key for e in basket.events)
+    all_option_keys = {
+        k.canonical() for k in basket.instruments if k.is_option()
     }
     event_keys = {e.instrument_key for e in basket.events}
-    assert healthy_option_keys <= event_keys
+    assert all_option_keys <= event_keys

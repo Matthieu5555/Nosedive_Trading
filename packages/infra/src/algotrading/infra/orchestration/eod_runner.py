@@ -6,6 +6,7 @@ from datetime import date
 
 import structlog
 from algotrading.core.config import config_hashes
+from algotrading.infra.qc import ESCALATION_PAGE
 from algotrading.infra.storage import RunStatus
 
 from .eod_dependencies import RunnerDeps, build_default_deps
@@ -82,8 +83,17 @@ def run_fire(
         _record_manifest(deps, plan, status=RunStatus.FAILED)
         log.error("orchestration.eod_run.failed")
         raise
-    _record_manifest(deps, plan, status=RunStatus.OK)
-    log.info("orchestration.eod_run.done", ran=result.ran)
+    # A critical (page) QC escalation is a failed fire: every stage ran and persisted, but the
+    # result is not trustworthy, so the manifest is FAILED (not OK) and `main` maps it to a
+    # non-zero exit that engages systemd OnFailure= (the close-capture alert). A notice/clean
+    # report stays OK — it belongs in the triage queue, not a page. The result is returned either
+    # way (the data is on disk); the page is reported here, never an abort mid-pipeline.
+    paged = result.escalation == ESCALATION_PAGE
+    _record_manifest(deps, plan, status=RunStatus.FAILED if paged else RunStatus.OK)
+    if paged:
+        log.error("orchestration.eod_run.qc_escalated_to_page", escalation=result.escalation)
+    else:
+        log.info("orchestration.eod_run.done", ran=result.ran)
     return result
 
 
@@ -123,7 +133,7 @@ def main(
     if deps is None:
         deps = (deps_factory or build_default_deps)()
     try:
-        run_fire(
+        result = run_fire(
             deps,
             trade_date=args.trade_date,
             calendar=args.calendar,
@@ -134,6 +144,13 @@ def main(
         return 2
     except Exception as exc:  # noqa: BLE001 — surface any stage failure as a non-zero exit
         _LOGGER.error("orchestration.eod_run.error", error=str(exc))
+        return 1
+    # A critical (page) QC escalation completes the pipeline (data persisted) but is not a clean
+    # close: exit non-zero so Restart=on-failure / OnFailure= engage and the operator is alerted,
+    # instead of a silent exit 0 (the gap the 2026-06-15 ingestion audit found). A no-op fire
+    # (result is None) and a notice/clean report exit 0.
+    if result is not None and result.escalation == ESCALATION_PAGE:
+        _LOGGER.error("orchestration.eod_run.qc_escalated_to_page", escalation=result.escalation)
         return 1
     return 0
 

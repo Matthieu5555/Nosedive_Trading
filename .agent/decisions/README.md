@@ -53,6 +53,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0048** — Per-side vol surfaces (R2): fit put/call/combined; `surface_side` in the grid PK; combined is the reference; put−call IV spread = signal + QC.
 - **0049** — Named historical scenarios (2008/COVID) compose as compound `Scenario`s repriced through the pricer; the correlation family reprices through `basket_variance` (a second path, built but dormant until ρ̄ exposure is real); additive-when-non-empty construction hash. *(extends 0006)*
 - **0050** — RT-Vega (running-time / annualised vega) = `vega/√T`; per strike, raw + cash, T→0 guarded to 0.
+- **0051** — Return to the blueprint: dispersion ρ̄ is a **realized-vol diagnostic** (Eq. 23 on constituent realized vols from bars), **not** a single-name-options trade. Retires constituent-option capture + the `constituent_top_n` capture gate; dissolves the throughput "emergency" and the permanent option-history loss. *(supersedes 0045, partially 0044)*
 
 ## Execution & booking
 - **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*

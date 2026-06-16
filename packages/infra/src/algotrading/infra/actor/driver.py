@@ -337,6 +337,21 @@ def _calendar_violations_by_underlying(
     return tuple(out)
 
 
+def _has_two_sided_option_quote(snapshot: MarketStateSnapshot) -> bool:
+    """An option feeds forward/IV only with a genuine two-sided quote: bid AND ask both positive.
+
+    A one-sided / non-positive option quote — the closed-market canary's ``bid==ask<=0``, or a
+    last-only fallback — cannot anchor an option mid, so it is excluded from the derived inputs
+    *here, in the derived layer*. This is the one rule the live and replay paths share (ADR 0027),
+    which is what lets the raw-capture layer faithfully record EVERY observed row (blueprint
+    01-architecture §13/§39: a downstream concern must not erase an upstream observation): the
+    excluded rows still land in raw and persist as flagged :class:`MarketStateSnapshot`\\ s for the
+    quote-health QC — they are simply not fed to the IV solver as if they were a quote. The
+    underlying's spot keeps its own last-fallback (resolved separately, not an option mid).
+    """
+    return snapshot.bid > 0.0 and snapshot.ask > 0.0
+
+
 def _option_snapshots_by_underlying_maturity(
     batch: SnapshotBatch,
     masters: dict[str, InstrumentKey],
@@ -348,6 +363,8 @@ def _option_snapshots_by_underlying_maturity(
     for snapshot in batch.usable:
         instrument = masters.get(snapshot.instrument_key)
         if instrument is None or not instrument.is_option():
+            continue
+        if not _has_two_sided_option_quote(snapshot):
             continue
         assert instrument.expiry is not None
         maturity_years = _maturity_years(instrument.expiry, as_of_date)
@@ -466,6 +483,8 @@ def _build_iv_points(
     for snapshot in batch.usable:
         instrument = masters.get(snapshot.instrument_key)
         if instrument is None or not instrument.is_option():
+            continue
+        if not _has_two_sided_option_quote(snapshot):
             continue
         assert instrument.expiry is not None and instrument.strike is not None
         maturity_years = _maturity_years(instrument.expiry, as_of_date)

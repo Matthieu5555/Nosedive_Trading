@@ -114,8 +114,9 @@ def _config() -> PlatformConfig:
 
 class _StagesRecorder:
 
-    def __init__(self, *, explode: str | None = None) -> None:
+    def __init__(self, *, explode: str | None = None, qc_escalation: str = "none") -> None:
         self.explode = explode
+        self.qc_escalation = qc_escalation
         self.calls: list[dict[str, object]] = []
         self.built_stages: list[EodStages] = []
 
@@ -152,7 +153,7 @@ class _StagesRecorder:
             collection=_stage("collection"),
             analytics=_stage("analytics"),
             reconciliation=_CleanRecon(self.explode == "reconciliation"),
-            qc=_CleanQc(self.explode == "qc"),
+            qc=_CleanQc(self.explode == "qc", escalation=self.qc_escalation),
         )
         self.built_stages.append(stages)
         return stages
@@ -182,22 +183,27 @@ class _ReconResult:
 
 class _CleanQc:
 
-    def __init__(self, explode: bool) -> None:
+    def __init__(self, explode: bool, *, escalation: str = "none") -> None:
         self.explode = explode
+        self.escalation = escalation
 
     def __call__(self):  # type: ignore[no-untyped-def]
         if self.explode:
             raise RuntimeError("simulated kill mid-qc")
-        return _QcResult()
+        return _QcResult(self.escalation)
 
 
 class _QcReport:
-    overall_status = "pass"
+    def __init__(self, escalation: str) -> None:
+        # A page rides a non-passing report; none/notice are a clean pass for this stand-in.
+        self.overall_status = "fail" if escalation == "page" else "pass"
+        self.fail_count = 1 if escalation == "page" else 0
 
 
 class _QcResult:
-    report = _QcReport()
-    escalation = "none"
+    def __init__(self, escalation: str = "none") -> None:
+        self.report = _QcReport(escalation)
+        self.escalation = escalation
 
 
 def _deps(
@@ -369,6 +375,36 @@ def test_eod_run_failure_exit_code(tmp_path: Path) -> None:
     exploding = _StagesRecorder(explode="collection")
     deps, _ = _deps(tmp_path, builder=exploding)
     assert main(["--index", "SX5E"], deps=deps) == 1
+
+
+def test_eod_run_qc_page_escalation_exits_nonzero_and_records_failed(tmp_path: Path) -> None:
+    """A critical (page) QC escalation fails the fire LOUD, closing the silent-exit-0 gap.
+
+    A close that escalates QC to ``page`` runs every stage and persists (the data is on disk) but
+    is not a clean close — so ``main`` returns non-zero (Restart=on-failure / OnFailure= engage,
+    the close-capture alert fires) and the per-run manifest records the fire as FAILED. The page is
+    *reported* after a full pipeline, never an abort mid-run: the ledger shows the stages ran.
+    Found by the 2026-06-15 ingestion audit (a QC-critical close used to exit 0 with no alert).
+    """
+    deps, _ = _deps(tmp_path, builder=_StagesRecorder(qc_escalation="page"))
+    root = _store_root(deps)
+
+    assert main(["--index", "SX5E"], deps=deps) == 1
+
+    # The pipeline ran to completion before the page was reported: the non-QC stages are recorded
+    # clean (QC itself commits as a non-pass, so it is correctly absent from the clean set).
+    done = completed_stages(root, CLOCK_DAY)
+    assert {"universe_refresh", "collection", "analytics", "reconciliation"} <= set(done)
+    # The manifest marks the page as a FAILED fire — reproducible and auditable, not a silent OK.
+    assert any(m.status == RunStatus.FAILED for m in _read_manifests(deps.run_repository))
+
+
+def test_eod_run_clean_fire_exits_zero_with_an_ok_manifest(tmp_path: Path) -> None:
+    """The control case: a clean (no escalation) fire exits 0 and records an OK manifest — so the
+    page path above is the *difference*, not a blanket failure."""
+    deps, _ = _deps(tmp_path, builder=_StagesRecorder())
+    assert main(["--index", "SX5E"], deps=deps) == 0
+    assert all(m.status == RunStatus.OK for m in _read_manifests(deps.run_repository))
 
 
 def test_eod_run_script_shim_exits_nonzero_in_a_real_process(tmp_path: Path) -> None:

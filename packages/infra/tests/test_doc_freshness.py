@@ -25,7 +25,7 @@ REQUIRED_AREAS = {
     "research",
     "data",
     "tasks",
-    "documentation",
+    "docs",
 }
 
 REFERENCE_DIRS = {"ThomasHossen"}

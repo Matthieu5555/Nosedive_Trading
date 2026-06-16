@@ -188,6 +188,22 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   (`apps/frontend` `CoverageTable` + `/api/coverage`) surfaces it. A per-name failure never aborts
   the fire — one bad name is a recorded outcome, the rest still capture.
 
+  **Cross-underlying concurrency — one shared gateway budget** (ibkr-capture-cross-underlying-concurrency).
+  The index spine runs first (it gates whether constituents are swept and its failure still fails the
+  fire); the N constituents then capture **concurrently**, not one after another. The lever is one
+  shared bounded budget: the injected transport is wrapped once in a single `threading.BoundedSemaphore`
+  (`connectivity.cp_rest_transport.bounded_transport`) of width `StrikeSelectionConfig.capture_pool_size`
+  (typed config, `universe.yaml` / ADR 0028, default 6), and **every** gateway `.get` — the spine, the
+  per-name conid resolution, and each name's within-underlying `/secdef/info` walk — draws a permit from
+  it. So total in-flight gateway calls are bounded by that one number regardless of how the work
+  decomposes: `discovery_pool_size` **composes into** the budget (shares its permits), it is **never
+  multiplied** by it — the nested-pool 429-storm. A shared **semaphore**, not a shared executor: a permit
+  is held only across one round-trip, so the nested pools cannot deadlock. A budget of 1 *is* the serial
+  capture, so the output is **byte-identical** at any width (merge and ledger reassemble by rank; each
+  chain folds in a sorted, content-addressed order). Locked by a parity test (serial vs concurrent → same
+  basket + same ledger) and a ceiling test (total in-flight ≤ budget while names provably overlap); the
+  fan-out budget is logged (`ibkr.constituent_capture.fanout`).
+
   **Fail-loud, never silent (EMERGENCY-constituent-lane-activation).** "Scope says constituents but
   zero were resolved/attempted" raises `ConstituentLaneError` (logged CRITICAL), so the runner
   exits non-zero and `OnFailure=` alerts fire — never the clean exit that hid the 2026-06-15 SX5E

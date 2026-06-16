@@ -185,3 +185,19 @@ class CpRestTransport:
 
     def close(self) -> None:
         self._client.close()
+
+
+class _BoundedRestTransport:
+    def __init__(self, inner: SupportsRestGet, semaphore: threading.BoundedSemaphore) -> None:
+        self._inner = inner
+        self._semaphore = semaphore
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        with self._semaphore:
+            return self._inner.get(path, params)
+
+
+def bounded_transport(inner: SupportsRestGet, *, width: int) -> SupportsRestGet:
+    if width < 1:
+        raise ValueError(f"bounded_transport width must be >= 1, got {width}")
+    return _BoundedRestTransport(inner, threading.BoundedSemaphore(width))

@@ -40,6 +40,16 @@ exchange: SMART
 #     changes how fast the SAME calls are made, never which calls (the strike window is untouched).
 #     Kept small (the CP Gateway is one paced session; the transport's 429/503 backoff is the real
 #     valve — a flood the backoff serialises back to sequential is a net loss). 1 = sequential.
+#   - capture_pool_size: the TOTAL gateway-concurrency budget for the EOD constituent capture
+#     (ibkr-capture-cross-underlying-concurrency). The index + top-N constituents each run an
+#     independent chain walk against the one paced CP Gateway session, so the prior serial march
+#     left it idle through every name's gaps. One shared BoundedSemaphore of this width gates EVERY
+#     gateway call — the cross-underlying fan-out AND the within-underlying /secdef/info walk both
+#     draw from it, so total in-flight calls never exceed it: discovery_pool_size COMPOSES into this
+#     budget, it is never MULTIPLIED by it (the 429-storm hazard of nesting two pools). A PACING
+#     knob like discovery_pool_size — same calls, faster; baskets byte-identical to serial. Default
+#     6 (the proven within-walk width; the win is filling idle gaps across names, at the same peak
+#     load that already shipped). 1 = the serial cross-underlying march.
 strike_selection:
   version: "2026.06.15"
   delta_bound: 0.30
@@ -47,6 +57,7 @@ strike_selection:
   min_strikes_per_side: 2
   discovery_working_vol: 0.40
   discovery_pool_size: 6
+  capture_pool_size: 6
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
 # the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -55,13 +57,20 @@ _NO_OPTION_NAMES = {"ENEL"}
 _ENEL_CONID = 600004
 
 
-def _config(top_n: int) -> PlatformConfig:
+def _config(
+    top_n: int, *, capture_pool_size: int = 6, discovery_pool_size: int = 6
+) -> PlatformConfig:
     return PlatformConfig(
         universe=UniverseConfig(
             version="u-1",
             exchange="EUREX",
             tenor_grid=("1m", "3m"),
-            strike_selection=StrikeSelectionConfig(version="ss-1", min_strikes_per_side=3),
+            strike_selection=StrikeSelectionConfig(
+                version="ss-1",
+                min_strikes_per_side=3,
+                capture_pool_size=capture_pool_size,
+                discovery_pool_size=discovery_pool_size,
+            ),
             constituent_top_n=top_n,
         ),
         qc_threshold=QcThresholdConfig(
@@ -397,6 +406,100 @@ def test_capture_attempts_all_resolved_constituents_and_records_one_ledger_row_e
         for p in store.root.rglob("constituent_capture_outcomes/**/*.parquet")
     }
     assert partitions == {f"underlying={name}" for name in by_name}
+
+
+def _bank_membership(store: ParquetStore) -> None:
+    ingest_membership_changes(
+        store,
+        [
+            MembershipChange("SX5E", name, KNOWN, None, KNOWN, VENDOR, weight)
+            for name, weight in _WEIGHTS.items()
+        ],
+        complete_snapshot=True,
+    )
+
+
+def test_concurrent_capture_is_byte_identical_to_the_serial_capture(tmp_path: Any) -> None:
+    serial_store = ParquetStore(tmp_path / "serial")
+    concurrent_store = ParquetStore(tmp_path / "concurrent")
+    _bank_membership(serial_store)
+    _bank_membership(concurrent_store)
+
+    serial = collect_index_and_constituents_basket(
+        _FakeGateway(),
+        store=serial_store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5, capture_pool_size=1),
+        selection=_selection(),
+    )
+    concurrent = collect_index_and_constituents_basket(
+        _FakeGateway(),
+        store=concurrent_store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5, capture_pool_size=4),
+        selection=_selection(),
+    )
+    assert serial is not None and concurrent is not None
+    assert serial.instruments == concurrent.instruments
+    assert serial.events == concurrent.events
+    assert serial.masters == concurrent.masters
+    serial_rows = sorted(
+        serial_store.read("constituent_capture_outcomes", trade_date=TRADE_DATE),
+        key=lambda r: r.rank,
+    )
+    concurrent_rows = sorted(
+        concurrent_store.read("constituent_capture_outcomes", trade_date=TRADE_DATE),
+        key=lambda r: r.rank,
+    )
+    assert serial_rows == concurrent_rows
+    assert [r.outcome for r in serial_rows] == [
+        "captured",
+        "captured",
+        "captured",
+        "captured",
+        "no_options",
+    ]
+
+
+class _ConcurrencyTrackingGateway(_FakeGateway):
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self.max_in_flight = 0
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        with self._lock:
+            self._in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self._in_flight)
+        try:
+            time.sleep(0.01)
+            return super().get(path, params)
+        finally:
+            with self._lock:
+                self._in_flight -= 1
+
+
+def test_one_shared_budget_bounds_total_concurrency_and_overlaps_underlyings(
+    store: ParquetStore,
+) -> None:
+    gw = _ConcurrencyTrackingGateway()
+    basket = collect_index_and_constituents_basket(
+        gw,
+        store=store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5, capture_pool_size=3, discovery_pool_size=1),
+        selection=_selection(),
+    )
+    assert basket is not None
+    assert gw.max_in_flight <= 3
+    assert gw.max_in_flight >= 2
 
 
 def test_an_unresolved_constituent_is_recorded_not_silently_dropped(tmp_path: Any) -> None:

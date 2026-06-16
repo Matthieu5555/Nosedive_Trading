@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -21,7 +22,11 @@ from algotrading.infra.universe import (
     top_n_by_weight,
 )
 
-from ..connectivity.cp_rest_transport import CpRestTransportError, SupportsRestGet
+from ..connectivity.cp_rest_transport import (
+    CpRestTransportError,
+    SupportsRestGet,
+    bounded_transport,
+)
 from .cp_rest_close_capture import (
     CaptureTarget,
     collect_live_basket,
@@ -70,18 +75,21 @@ def _constituent_targets(
     *,
     index: IndexEntry,
     top_n: Sequence[BasketMember],
+    pool_size: int,
 ) -> dict[str, CaptureTarget]:
     log = _LOGGER.bind(index=index.symbol)
     pins = {label: conid for label, conid in index.ibkr.constituent_conids}
-    targets: dict[str, CaptureTarget] = {}
-    discovery = CpRestDiscovery(transport, exchange=index.ibkr.exchange, currency=index.currency)
+    labels: list[str] = []
+    seen: set[str] = set()
     for member in top_n:
-        label = member.constituent
-        if label in targets:
-            continue
+        if member.constituent not in seen:
+            seen.add(member.constituent)
+            labels.append(member.constituent)
+
+    def resolve(label: str) -> tuple[str, CaptureTarget | None]:
         pinned = pins.get(label)
         if pinned is not None:
-            targets[label] = CaptureTarget(
+            return label, CaptureTarget(
                 symbol=label,
                 exchange=index.ibkr.exchange,
                 currency=index.currency,
@@ -89,7 +97,9 @@ def _constituent_targets(
                 search_symbol=label,
                 conid=pinned,
             )
-            continue
+        discovery = CpRestDiscovery(
+            transport, exchange=index.ibkr.exchange, currency=index.currency
+        )
         try:
             conid = discovery.underlying_conid(label)
         except Exception as exc:  # noqa: BLE001 — one unresolved name is non-fatal (recorded below)
@@ -98,8 +108,8 @@ def _constituent_targets(
                 constituent=label,
                 error=str(exc),
             )
-            continue
-        targets[label] = CaptureTarget(
+            return label, None
+        return label, CaptureTarget(
             symbol=label,
             exchange=index.ibkr.exchange,
             currency=index.currency,
@@ -107,6 +117,13 @@ def _constituent_targets(
             search_symbol=label,
             conid=conid,
         )
+
+    targets: dict[str, CaptureTarget] = {}
+    workers = max(min(pool_size, len(labels)), 1)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for label, target in pool.map(resolve, labels):
+            if target is not None:
+                targets[label] = target
     return targets
 
 
@@ -270,8 +287,10 @@ def collect_index_and_constituents_basket(
     warmup: WarmupConfig | None = None,
 ) -> IndexBasket | None:
     log = _LOGGER.bind(index=index.symbol, as_of=as_of.isoformat())
+    capture_pool_size = config.universe.strike_selection.capture_pool_size
+    gw = bounded_transport(transport, width=capture_pool_size)
     index_basket = collect_live_basket(
-        transport,
+        gw,
         index=index,
         as_of=as_of,
         next_open=next_open,
@@ -308,10 +327,19 @@ def collect_index_and_constituents_basket(
             "ingest a weighted membership source before the capture stage",
         )
 
-    targets = _constituent_targets(transport, index=index, top_n=top_n)
-    results = [
-        _attempt_constituent(
-            transport,
+    targets = _constituent_targets(gw, index=index, top_n=top_n, pool_size=capture_pool_size)
+    log.info(
+        "ibkr.constituent_capture.fanout",
+        capture_pool_size=capture_pool_size,
+        discovery_pool_size=config.universe.strike_selection.discovery_pool_size,
+        constituents=len(top_n),
+    )
+    ranked = list(enumerate(top_n, start=1))
+
+    def attempt(item: tuple[int, BasketMember]) -> _ConstituentResult:
+        rank, member = item
+        return _attempt_constituent(
+            gw,
             member=member,
             rank=rank,
             target=targets.get(member.constituent),
@@ -323,8 +351,10 @@ def collect_index_and_constituents_basket(
             revalidate_cached_conids=revalidate_cached_conids,
             warmup=warmup,
         )
-        for rank, member in enumerate(top_n, start=1)
-    ]
+
+    workers = max(min(capture_pool_size, len(ranked)), 1)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(attempt, ranked))
 
     ledger = _ledger_rows(results, index=index.symbol, run_id=resolved_run_id, run_ts=as_of)
     if ledger:

@@ -29,6 +29,7 @@ from algotrading.infra_ibkr.collectors.cp_rest_constituent_capture import (
     ConstituentLaneError,
     collect_index_and_constituents_basket,
 )
+from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
 from algotrading.infra_ibkr.live_capture import live_basket_source
 from fixtures.library import FORWARD_CONFIG, SURFACE_CONFIG
 
@@ -463,6 +464,70 @@ def test_concurrent_capture_is_byte_identical_to_the_serial_capture(tmp_path: An
         "captured",
         "no_options",
     ]
+
+
+class _ThrottlingGateway(_FakeGateway):
+    def __init__(self, *, throttle_conid: int, fail_first: int) -> None:
+        super().__init__()
+        self._throttle_conid = throttle_conid
+        self._fail_first = fail_first
+        self._lock = threading.Lock()
+        self.strike_calls = 0
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        params = dict(params or {})
+        if path == "/iserver/secdef/strikes" and int(params.get("conid", 0)) == self._throttle_conid:
+            with self._lock:
+                self.strike_calls += 1
+                throttle = self.strike_calls <= self._fail_first
+            if throttle:
+                raise CpRestTransportError("429 Too Many Requests", status_code=429)
+        return super().get(path, params)
+
+
+def test_a_transient_429_is_recovered_by_the_throttle_sweep_never_no_options(
+    store: ParquetStore,
+) -> None:
+    gateway = _ThrottlingGateway(throttle_conid=_EQUITY_CONID["TTE"], fail_first=1)
+    collect_index_and_constituents_basket(
+        gateway,
+        store=store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5),
+        selection=_selection(),
+    )
+    by_name = {
+        row.underlying: row
+        for row in store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
+    }
+    assert gateway.strike_calls >= 2
+    assert by_name["TTE"].outcome == "captured"
+    assert by_name["TTE"].n_options == len(_STRIKES) * 2 * len(_MONTHS)
+
+
+def test_a_persistent_429_is_recorded_as_throttled_never_no_options(
+    store: ParquetStore,
+) -> None:
+    gateway = _ThrottlingGateway(throttle_conid=_EQUITY_CONID["SIE"], fail_first=10_000)
+    collect_index_and_constituents_basket(
+        gateway,
+        store=store,
+        index=SX5E,
+        as_of=CLOSE,
+        next_open=NEXT_OPEN,
+        config=_config(5),
+        selection=_selection(),
+    )
+    by_name = {
+        row.underlying: row
+        for row in store.read("constituent_capture_outcomes", trade_date=TRADE_DATE)
+    }
+    assert by_name["SIE"].outcome == "throttled"
+    assert by_name["SIE"].outcome != "no_options"
+    assert by_name["SIE"].n_options == 0
+    assert by_name["ASML"].outcome == "captured"
 
 
 class _ConcurrencyTrackingGateway(_FakeGateway):

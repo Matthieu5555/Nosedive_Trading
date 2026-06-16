@@ -45,6 +45,10 @@ _EQUITY_SECURITY_TYPE = "STK"
 
 _UNENTITLED_STATUS = frozenset({401, 403})
 
+_THROTTLE_STATUS = frozenset({429, 503})
+
+_THROTTLE_SWEEP_ROUNDS = 3
+
 _OUTCOMES_TABLE = "constituent_capture_outcomes"
 
 
@@ -195,6 +199,21 @@ def _attempt_constituent(
                 basket=None,
                 n_options=0,
                 detail=f"account not entitled (HTTP {exc.status_code}) for conid {conid}",
+            )
+        if exc.status_code in _THROTTLE_STATUS:
+            log.info(
+                "ibkr.constituent_capture.throttled",
+                conid=conid,
+                status_code=exc.status_code,
+            )
+            return _ConstituentResult(
+                member=member,
+                rank=rank,
+                outcome="throttled",
+                basket=None,
+                n_options=0,
+                detail=f"gateway throttled (HTTP {exc.status_code}) for conid {conid} — "
+                "transient, not a verdict on the name",
             )
         log.info("ibkr.constituent_capture.capture_failed", conid=conid, error=str(exc))
         return _ConstituentResult(
@@ -355,6 +374,19 @@ def collect_index_and_constituents_basket(
     workers = max(min(capture_pool_size, len(ranked)), 1)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         results = list(pool.map(attempt, ranked))
+
+    for sweep in range(_THROTTLE_SWEEP_ROUNDS):
+        throttled = [idx for idx, result in enumerate(results) if result.outcome == "throttled"]
+        if not throttled:
+            break
+        log.info(
+            "ibkr.constituent_capture.throttle_sweep",
+            round=sweep + 1,
+            n_throttled=len(throttled),
+            names=[results[idx].member.constituent for idx in throttled],
+        )
+        for idx in throttled:
+            results[idx] = attempt(ranked[idx])
 
     ledger = _ledger_rows(results, index=index.symbol, run_id=resolved_run_id, run_ts=as_of)
     if ledger:

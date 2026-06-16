@@ -372,7 +372,7 @@ class TriageRecord:
     threshold_version: str
 
 
-CONSTITUENT_OUTCOMES = ("captured", "no_options", "unentitled", "unresolved")
+CONSTITUENT_OUTCOMES = ("captured", "no_options", "unentitled", "unresolved", "throttled")
 
 
 @dataclass(frozen=True, slots=True)

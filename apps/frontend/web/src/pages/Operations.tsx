@@ -1,30 +1,112 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { useEffect, useMemo, useState } from "react";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Label } from "@/ui/label";
+
+import type { IndicesResponse } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { FreshnessPanel } from "../components/operations/FreshnessPanel";
+import { RunControlPanel } from "../components/operations/RunControlPanel";
+import { SystemHealthPanel } from "../components/operations/SystemHealthPanel";
+import { useHealth, useRecordedDates } from "../hooks/queries";
+import { useFetch } from "../hooks/useFetch";
 
 export function OperationsPage() {
+  const health = useHealth();
+  const indices = useFetch<IndicesResponse>("/api/indices");
+  const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
+
+  const [index, setIndex] = useState("");
+  useEffect(() => {
+    if (indexOptions.length === 0) return;
+    if (!index || !indexOptions.some((o) => o.symbol === index)) {
+      setIndex(indexOptions[0].symbol);
+    }
+  }, [indexOptions, index]);
+
+  const recorded = useRecordedDates(index);
+
   return (
     <section className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Capture & run health</p>
+          <p className="eyebrow">
+            Is the system healthy, is today&rsquo;s data in, when did we last compute risk?
+          </p>
           <h1>Operations</h1>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Operations</CardTitle>
+          <CardTitle>System health</CardTitle>
           <CardDescription>
-            The capture, run-state and connectivity surface lands here.
+            One glance: are services up, is market data flowing, and did the surfaces, quality
+            control and stress scenarios all complete for the latest day?
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AsyncBlock loading={false} error={null}>
-            <div className="state-panel" role="status">
-              No data yet
+          <ErrorBoundary label="System health">
+            <AsyncBlock
+              loading={health.isPending}
+              error={health.isError ? health.error.message : null}
+            >
+              {health.data && <SystemHealthPanel health={health.data} />}
+            </AsyncBlock>
+          </ErrorBoundary>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Run control</CardTitle>
+          <CardDescription>
+            Launch a capture run and watch it land. Pick a provider and underlying, launch, and the
+            job list below tracks each run from queued to done.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ErrorBoundary label="Run control">
+            <RunControlPanel />
+          </ErrorBoundary>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Risk &amp; analytics freshness</CardTitle>
+          <CardDescription>
+            When risk and analytics last computed, and how many clean days are on record.
+          </CardDescription>
+          <div className="control-row">
+            <div className="control-field">
+              <Label htmlFor="ops-index">Index</Label>
+              <select
+                id="ops-index"
+                aria-label="Index"
+                value={index}
+                disabled={indexOptions.length === 0}
+                onChange={(event) => setIndex(event.target.value)}
+              >
+                {indexOptions.map((item) => (
+                  <option key={item.symbol} value={item.symbol}>
+                    {item.name} ({item.symbol})
+                  </option>
+                ))}
+              </select>
             </div>
-          </AsyncBlock>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <ErrorBoundary label="Freshness">
+            <AsyncBlock
+              loading={indices.loading || recorded.isPending}
+              error={indices.error ?? (recorded.isError ? recorded.error.message : null)}
+            >
+              {recorded.data && <FreshnessPanel recorded={recorded.data} />}
+            </AsyncBlock>
+          </ErrorBoundary>
         </CardContent>
       </Card>
     </section>

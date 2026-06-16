@@ -95,13 +95,23 @@ Further built operator pages:
   booked fill with its venue timestamp), and a labelled **booked-but-unpriced legs** notice (zeroed,
   shown, never hidden). All analytics numbers via `lib/format.ts` (`sci`/`sciUnit`), re-currencied to
   the index quote currency.
+- **Operations** (`/operations`, `src/pages/Operations.tsx`) — the operator dashboard, three
+  stacked layers answering "is the system healthy, is today's data in, when did we last compute
+  risk" at a glance. **Layer 1 — system health** reads `/api/health`: a green/red headline plus
+  per-stage status pills (data flowing, surfaces building, quality control, stress scenarios), the
+  stored-event count and the backlog of stages still to compute. **Run control** reads
+  `/api/providers` + `/api/run/underlyings`, launches a capture run via `POST /api/run`, and polls
+  `/api/jobs` to track each run from queued → done in a job table (an unavailable provider, e.g.
+  live IBKR, is offered disabled, never silently runnable). **Layer 3 — freshness** reads
+  `/api/recorded-dates` per index: when risk/analytics last computed, the latest snapshot's QC
+  badge, the clean gap-free day count, and a recent-fetches table. Read-only over the BFF —
+  launching a SAMPLE run replays the latest committed day into a throwaway store, never `data/`.
 
-Three further tabs are **scaffold stubs** (`frontend-tab-shell`, 2026-06-16) the fleet fills
-in — each renders its header plus a plain "No data yet" empty-state behind the shared
-`ErrorBoundary`, with no data wired yet. Each owns exactly one page file; later work edits
+One further tab is a **scaffold stub** (`frontend-tab-shell`, 2026-06-16) the fleet fills
+in — it renders its header plus a plain "No data yet" empty-state behind the shared
+`ErrorBoundary`, with no data wired yet. It owns exactly one page file; later work edits
 only that file and never `routes.ts`/`App.tsx`:
 
-- **Operations** (`/operations`, `src/pages/Operations.tsx`) — capture / run-state / connectivity.
 - **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the composed strategy book.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their

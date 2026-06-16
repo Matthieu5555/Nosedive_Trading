@@ -13,8 +13,8 @@ const TABS = [
   { button: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
+// Signals and Operations have been built out (see their own specs); the rest remain empty stubs.
 const STUB_TABS = [
-  { button: "Operations", heading: "Operations", path: "/operations" },
   { button: "Strategy", heading: "Strategy", path: "/strategy" },
 ] as const;
 

@@ -37,12 +37,21 @@ test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
   await waitFor(() => expect(window.location.pathname).toBe("/risk"));
 });
 
+// The remaining scaffold stubs. Signals and Operations have been built out — see their own
+// page tests (Signals.test.tsx / Operations.test.tsx).
 const STUB_TABS = [
-  { link: "Operations", heading: "Operations", path: "/operations" },
   { link: "Strategy", heading: "Strategy", path: "/strategy" },
 ] as const;
 
-test("top navigation reaches the scaffold tabs, each on an empty-state stub", async () => {
+// Every newly-added top tab — built page or stub — is directly addressable and marks its nav
+// link active.
+const ALL_NEW_TABS = [
+  { link: "Operations", heading: "Operations", path: "/operations" },
+  { link: "Signals", heading: "Signals", path: "/signals" },
+  ...STUB_TABS,
+] as const;
+
+test("top navigation reaches the remaining scaffold tabs, each on an empty-state stub", async () => {
   const user = userEvent.setup();
   render(<App />);
 
@@ -68,7 +77,7 @@ test("the Signals tab is a live page rendering the persisted signal layer", asyn
   expect(await screen.findByRole("heading", { name: "IV rank" })).toBeInTheDocument();
 });
 
-for (const tab of STUB_TABS) {
+for (const tab of ALL_NEW_TABS) {
   test(`${tab.heading} is directly addressable and marks its nav link active`, async () => {
     window.history.pushState({}, "", tab.path);
     render(<App />);

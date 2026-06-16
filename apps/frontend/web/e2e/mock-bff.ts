@@ -40,6 +40,55 @@ const COVERAGE_AAA: CoverageData = {
   delta_band_status: "pass",
 };
 
+const PROVIDERS_OPS = {
+  providers: [
+    {
+      provider: "SAMPLE",
+      asset_class: "equity",
+      auth_required: false,
+      data_latency: "offline",
+      status: "ready",
+      note: "Offline synthetic chain fixture.",
+    },
+    {
+      provider: "IBKR",
+      asset_class: "equity",
+      auth_required: false,
+      data_latency: "delayed",
+      status: "unavailable",
+      note: "Live IBKR needs an authenticated CP gateway.",
+    },
+  ],
+};
+
+const RUN_UNDERLYINGS_OPS = { underlyings: ["SPX", "SX5E"] };
+
+const RUN_JOB = {
+  job_id: "job-e2e",
+  provider: "SAMPLE",
+  underlying: "SPX",
+  state: "queued",
+  started_at: "2026-06-01T17:30:00",
+  finished_at: null,
+  message: "Queued",
+  summary: {},
+};
+
+const JOBS_ONE = {
+  jobs: [
+    {
+      job_id: "job-e2e",
+      provider: "SAMPLE",
+      underlying: "SPX",
+      state: "done",
+      started_at: "2026-06-01T17:30:00",
+      finished_at: "2026-06-01T17:30:04",
+      message: "Built a surface with 6 slices.",
+      summary: {},
+    },
+  ],
+};
+
 const TICKET_AAA = {
   source_basket_id: "basket-SPX-latest",
   trade_date: "",
@@ -88,6 +137,10 @@ const ROUTES: Record<string, unknown> = {
   "/api/config/delta-bands": { delta_bands: DELTA_BANDS_32 },
   "/api/signals/underlyings": SIGNAL_UNDERLYINGS,
   "/api/signals": SIGNALS_SX5E,
+  "/api/providers": PROVIDERS_OPS,
+  "/api/run/underlyings": RUN_UNDERLYINGS_OPS,
+  "/api/run": RUN_JOB,
+  "/api/jobs": JOBS_ONE,
 };
 
 export interface BffMock {

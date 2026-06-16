@@ -48,7 +48,7 @@ REQUIRED_AREAS = {
     "research",
     "data",
     "tasks",
-    "documentation",
+    "docs",
 }
 
 # Non-routable top-level dirs: reference checkouts (kept in place, flagged by their

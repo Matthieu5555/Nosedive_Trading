@@ -62,7 +62,6 @@ from algotrading.core.config import PlatformConfig, StrikeSelectionConfig
 from algotrading.infra.actor import IndexBasket
 from algotrading.infra.contracts import InstrumentKey, InstrumentMaster, RawMarketEvent
 from algotrading.infra.snapshots import assess_quote
-from algotrading.infra.surfaces import tenor_years as tenor_year_fraction
 from algotrading.infra.universe import (
     AvailableChain,
     ChainSelection,
@@ -708,7 +707,7 @@ def collect_target_basket(
     existing callers are unchanged.
     """
     log = _LOGGER.bind(underlying=target.symbol, as_of=as_of.isoformat())
-    selection = selection or _selection_from_config(config, as_of.date())
+    selection = selection or _selection_from_config(config)
     discovery = CpRestDiscovery(
         transport, exchange=target.exchange, currency=target.currency
     )
@@ -875,24 +874,32 @@ def collect_live_basket(
     )
 
 
-def _selection_from_config(config: PlatformConfig, as_of: date) -> ChainSelection:
+# The clean-fetch contract is the FULL term structure: every listed expiry, not just the few that
+# bracket the pinned tenor grid. We therefore drive maturity selection down the legacy nearest-N
+# path (``tenor_years`` left empty → no tenor-target bracket) with a budget set far above any real
+# index's listed-maturity count, so every listed expiry survives both discovery and capture. This
+# is a generous superset bound (the same fail-safe philosophy as the per-expiry strike runaway
+# guard), not a trim: a real SX5E/SPX listing tops out well under this even counting LEAPS.
+_CAPTURE_ALL_MATURITIES_BUDGET = 64
+
+
+def _selection_from_config(config: PlatformConfig) -> ChainSelection:
     """Build the capture :class:`ChainSelection` from the universe strike-selection config.
 
-    The maturity budget and per-side floor are economic and come from the typed
-    ``universe.yaml`` (never a ``.py`` literal). The pinned ``tenor_grid`` labels are resolved to
-    their ACT/365 year fractions through ``surfaces.projection.tenor_years`` — the **single home**
-    of the label→year map — and passed with ``as_of`` (the trade date) so expiry selection targets
-    the term structure (:func:`select_expiries_bracketing`) instead of the nearest few weeklies.
-    ``max_expiries`` keeps the grid length as the legacy fallback budget. The %-of-spot window and
-    option exchange keep their request-shaping defaults (a discovery heuristic, not an economic
-    parameter).
+    The clean-fetch contract is the full chain: **every listed maturity**, the full 30Δ strike
+    band (``qualify_strikes_for_expiry`` — uncapped by owner ruling), both rights. So maturity
+    selection uses the legacy nearest-N path (``tenor_years`` left empty, so no tenor-target
+    bracket trims the long end or the months between grid points) with
+    :data:`_CAPTURE_ALL_MATURITIES_BUDGET` as the budget — far above any real listing, so every
+    listed expiry is kept. The pinned ``tenor_grid`` still drives the downstream surface
+    projection (its own consumer of the label→year map); it simply no longer governs which
+    expiries are captured. ``max_strikes_per_session`` stays ``None`` (uncapped) so the strike
+    band is not re-clipped per session. The %-of-spot window and option exchange keep their
+    request-shaping defaults.
     """
     strike_selection = config.universe.strike_selection
-    grid = config.universe.tenor_grid
     return ChainSelection(
-        max_expiries=len(grid),
+        max_expiries=_CAPTURE_ALL_MATURITIES_BUDGET,
         min_strikes_per_side=strike_selection.min_strikes_per_side,
         option_exchange=config.universe.exchange,
-        tenor_years=tuple(tenor_year_fraction(label) for label in grid),
-        as_of=as_of,
     )

@@ -425,7 +425,12 @@ REGISTRY: dict[str, TableSpec] = {
     "triage_records": TableSpec(
         name="triage_records",
         contract=TriageRecord,
-        primary_key=("run_id", "source", "name", "target_key"),
+        # ``underlying`` is part of the key: the same check can fail for several underlyings at the
+        # *same* offender (e.g. ``calendar_sanity`` whose ``target_key`` names a maturity shared
+        # across names), which are genuinely distinct operator-investigation rows. Keying only on
+        # (run, source, name, target_key) collapsed them into a duplicate-key write. ``target_key``
+        # still names the offending object; ``underlying`` scopes it to the name it belongs to.
+        primary_key=("run_id", "source", "name", "underlying", "target_key"),
         layer="qc",
         append_only=False,
         requires_provenance=False,

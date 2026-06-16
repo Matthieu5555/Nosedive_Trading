@@ -25,6 +25,7 @@ from algotrading.infra.qc import (
     check_surface_fit_error,
     thresholds_from_config,
 )
+from algotrading.infra.storage import primary_key_of
 from algotrading.infra.surfaces import CalendarViolation, SliceFit
 from algotrading.infra.validation import (
     AnomalyThresholds,
@@ -146,6 +147,39 @@ def test_triage_from_qc_drops_passes_and_names_the_offender() -> None:
     assert "surface_fit_error" in row.detail
     # The underlying is recovered for partitioning, from the "AAPL@1" target key.
     assert row.underlying == "AAPL"
+
+
+def test_triage_rows_for_a_shared_offender_have_distinct_keys_per_underlying() -> None:
+    # Regression: two underlyings whose calendar_sanity fails at the SAME offending maturity.
+    # The triage target_key names that shared maturity (``failing_maturity_short`` outranks
+    # ``underlying`` in the offender-naming order), so keying triage rows only on
+    # (run, source, name, target_key) collapsed both names into ONE duplicate-key write — the
+    # "appears more than once in one write" failure seen live once the capture widened to the
+    # full term structure across the whole basket. The underlying must scope the key so both
+    # distinct operator rows survive, while target_key still names the shared offender.
+    shared = CalendarViolation(
+        k=0.0,
+        maturity_short=0.049315068493150684,
+        maturity_long=0.25,
+        w_short=0.10,
+        w_long=0.05,
+    )
+    aaa = check_calendar_sanity(
+        [shared], "AAA", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    bbb = check_calendar_sanity(
+        [shared], "BBB", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    report = build_report([aaa, bbb], run_id=RUN_ID, run_ts=RUN_TS)
+
+    records = triage_from_qc(report)
+    assert len(records) == 2
+    # Both rows name the SAME offending maturity (the specificity rule is preserved) ...
+    assert all("0.049315" in record.target_key for record in records)
+    assert {record.underlying for record in records} == {"AAA", "BBB"}
+    # ... yet their primary keys are DISTINCT, so a single write cannot collide.
+    keys = [primary_key_of("triage_records", record) for record in records]
+    assert len(set(keys)) == 2, f"triage rows collide on a shared offender: {keys}"
 
 
 def test_anomaly_flag_lands_under_source_anomaly() -> None:

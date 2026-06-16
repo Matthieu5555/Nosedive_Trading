@@ -19,7 +19,10 @@ from typing import Any
 
 import httpx
 import pytest
-from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransport
+from algotrading.infra_ibkr.connectivity.cp_rest_transport import (
+    _DEFAULT_MAX_BURST_TOKENS,
+    CpRestTransport,
+)
 
 _URL = "https://localhost:5000/v1/api/some/path"
 
@@ -140,20 +143,21 @@ def test_jitter_is_added_only_to_a_nonzero_wait() -> None:
     client = _CountingClient(clock)
     transport = _transport(clock, client, rate=rate, jitter=jitter)
 
-    # Drain the free initial burst — a request is free while >= 1 token remains, so with a full
-    # bucket of `rate` tokens that is floor(rate) requests (derived independently of the impl).
-
-    free_burst = math.floor(rate)
+    # Drain the free initial burst — the bucket starts at its burst CAPACITY (min(rate, burst cap),
+    # NOT a full second of tokens), and a request is free while >= 1 token remains before its own
+    # deduction, so floor(capacity) requests are free. Derived independently of the impl arithmetic.
+    capacity = min(rate, _DEFAULT_MAX_BURST_TOKENS)
+    free_burst = math.floor(capacity)
     for _ in range(free_burst):
         transport.get("/some/path")
     assert clock.slept == []  # nothing waited yet, so nothing jittered
 
     transport.get("/some/path")  # bucket now below one token -> a real wait, jittered
     assert len(clock.slept) == 1
-    # After floor(rate) free requests the bucket holds rate - floor(rate) tokens (no time has
-    # passed); the next request must wait for the missing fraction: (1 - leftover) / rate, plus the
-    # jitter that is only ever added to a non-zero wait. Derived independently of the impl.
-    leftover = rate - free_burst
+    # After floor(capacity) free requests the bucket holds capacity - floor(capacity) tokens (no
+    # time has passed); the next request must wait for the missing fraction: (1 - leftover) / rate,
+    # plus the jitter that is only ever added to a non-zero wait. Derived independently of the impl.
+    leftover = capacity - free_burst
     expected_wait = (1.0 - leftover) / rate + jitter
     assert clock.slept[0] == pytest.approx(expected_wait)
 
@@ -176,13 +180,17 @@ def test_disabling_pacing_means_no_waits_at_all() -> None:
 
 
 def test_pacing_also_governs_retries() -> None:
-    # A 429 then 200, with a tiny penalty box so the test reads cleanly: the retry's send must also
-    # pass through the bucket. After the box wait (which advances the clock), the bucket has long
-    # since refilled, so the retried send itself adds no extra bucket wait — but the very first
-    # send drained the only-relevant token, proving the bucket is consulted per-send.
+    # A 429 (carrying a server Retry-After so the retry wait is a clean, deterministic 2.0s) then
+    # 200: the retry's send must also pass through the bucket. After the Retry-After wait (which
+    # advances the clock), the bucket has long since refilled, so the retried send itself adds no
+    # extra bucket wait — but the very first send drained the only-relevant token, proving the
+    # bucket is consulted per-send. (A no-Retry-After 429 would instead take the bounded backoff;
+    # that path is covered in the retry test module — here we want a fixed wait to read the pacing.)
     clock = _FakeClock()
     script = [
-        httpx.Response(429, content=b"", request=httpx.Request("GET", _URL)),
+        httpx.Response(
+            429, headers={"Retry-After": "2"}, content=b"", request=httpx.Request("GET", _URL)
+        ),
         _ok(),
     ]
 

@@ -1,19 +1,25 @@
-"""CpRestTransport retry behavior: penalty-box backoff, Retry-After, fast-fail, status_code.
+"""CpRestTransport retry behavior: bounded backoff, Retry-After, fast-fail, status_code.
 
 These pin the documented retry semantics with independently derived expectations:
 
-* a 429/503 WITHOUT a ``Retry-After`` waits the full penalty box, NOT a sub-second backoff
-  (sub-second retries during the documented box are the ban vector this transport exists to
-  avoid) — the expected value is the box length, derived from the constructor arg, not the impl;
-* a sane numeric ``Retry-After`` header wins over the penalty box, verbatim;
+* a 429/503 WITHOUT a ``Retry-After`` backs off a BOUNDED exponential — ``backoff_base * 2**(n)``
+  capped at the no-Retry-After cap — NOT the full penalty box (the old full-box wait froze a
+  pooled worker for ~10 minutes on the first routine burst). The expected values are derived from
+  ``backoff_base_s`` and the attempt index, not copied from the impl;
+* the bounded backoff is CAPPED, so a deep retry sequence can never balloon into a multi-minute
+  wait;
+* a sane numeric ``Retry-After`` header is honoured verbatim, but bounded by ``penalty_box_s`` so
+  a pathological header cannot wedge the walk — that bound is the only path that may wait minutes,
+  and only because the server asked;
+* an unparsable (HTTP-date) ``Retry-After`` falls back to the bounded backoff, not the box;
 * only 429/503 re-enter the loop — any other status or a connect error fails fast;
 * the raised ``CpRestTransportError`` carries the HTTP status as ``status_code`` (``None``
   for a connection-level failure), so callers never reach into ``__cause__``;
 * the OAuth signer runs once per attempt (a retry needs a fresh nonce/timestamp).
 
 These tests isolate retry behaviour from the proactive token bucket by DISABLING pacing
-(``max_requests_per_second=None``); the bucket has its own dedicated test module. No real
-waiting: the injected ``sleep`` records the delays instead of sleeping.
+(``max_requests_per_second=None``) and zeroing jitter; the bucket has its own dedicated test
+module. No real waiting: the injected ``sleep`` records the delays instead of sleeping.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ from typing import Any
 import httpx
 import pytest
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import (
+    _NO_RETRY_AFTER_BACKOFF_CAP_S,
     CpRestTransport,
     CpRestTransportError,
 )
@@ -58,17 +65,23 @@ class _ScriptedClient:
         return None
 
 
-# Independently chosen box length (not the production default), so the assertions below derive
-# their expected wait from THIS value rather than copying the implementation's 600.0.
+# Independently chosen box bound (not the production default), so the Retry-After-bound assertions
+# below derive their expected wait from THIS value rather than copying the implementation's 600.0.
 _BOX_S = 123.0
+# The no-Retry-After backoff base used in these tests (not the production default), so expected
+# waits are derived as ``_BASE_S * 2**n``, not copied from the impl.
+_BASE_S = 0.5
 
 
 def _transport(
     client: _ScriptedClient, slept: list[float], *, max_retries: int = 6, **kwargs: Any
 ) -> CpRestTransport:
-    # Pacing OFF here: these tests isolate retry/backoff. penalty_box_s is set unless the caller
-    # overrides it, so the expected waits are derived from _BOX_S, not the production default.
+    # Pacing OFF and jitter ZEROED here: these tests isolate retry/backoff math. penalty_box_s and
+    # backoff_base_s are set unless overridden, so expected waits derive from _BOX_S / _BASE_S, not
+    # the production defaults.
     kwargs.setdefault("penalty_box_s", _BOX_S)
+    kwargs.setdefault("backoff_base_s", _BASE_S)
+    kwargs.setdefault("jitter", lambda: 0.0)
     return CpRestTransport(
         _client=client,
         sleep=slept.append,
@@ -78,18 +91,31 @@ def _transport(
     )
 
 
-def test_429_without_retry_after_waits_full_penalty_box_then_succeeds() -> None:
+def test_429_without_retry_after_uses_bounded_exponential_backoff() -> None:
     slept: list[float] = []
     client = _ScriptedClient([_response(429), _response(429), _response(200)])
     transport = _transport(client, slept)
 
     assert transport.get("/some/path") == {"ok": True}
-    # No Retry-After -> the full penalty box on EVERY retry, never a sub-second backoff.
-    assert slept == [_BOX_S, _BOX_S]
+    # No Retry-After -> bounded exponential backoff (base * 2**(attempt-1)), NOT the full box.
+    assert slept == [_BASE_S, _BASE_S * 2]
     assert len(client.calls) == 3
 
 
-def test_retry_after_header_wins_over_penalty_box() -> None:
+def test_no_retry_after_backoff_is_capped() -> None:
+    # The bounded backoff must never exceed the cap, however many retries deep. With a cap below
+    # the base's first step, every wait collapses to the cap — the no-hang guarantee.
+    slept: list[float] = []
+    client = _ScriptedClient([_response(429), _response(429), _response(200)])
+    transport = _transport(client, slept, backoff_base_s=1000.0)
+    cap = _NO_RETRY_AFTER_BACKOFF_CAP_S
+
+    assert transport.get("/some/path") == {"ok": True}
+    assert slept == [cap, cap]
+    assert cap < 60.0  # the whole point: a no-header 429 costs seconds, never minutes
+
+
+def test_retry_after_header_is_honoured_verbatim_within_the_box_bound() -> None:
     slept: list[float] = []
     client = _ScriptedClient(
         [_response(503, headers={"Retry-After": "7"}), _response(200)]
@@ -97,10 +123,22 @@ def test_retry_after_header_wins_over_penalty_box() -> None:
     transport = _transport(client, slept)
 
     assert transport.get("/some/path") == {"ok": True}
-    assert slept == [7.0]  # the server's wait, verbatim — not the box
+    assert slept == [7.0]  # the server's wait, verbatim — within the box bound, no jitter added
 
 
-def test_http_date_retry_after_falls_back_to_penalty_box() -> None:
+def test_retry_after_is_bounded_by_the_penalty_box() -> None:
+    # A pathological Retry-After cannot wedge the walk: it is capped at penalty_box_s.
+    slept: list[float] = []
+    client = _ScriptedClient(
+        [_response(429, headers={"Retry-After": "99999"}), _response(200)]
+    )
+    transport = _transport(client, slept)
+
+    assert transport.get("/some/path") == {"ok": True}
+    assert slept == [_BOX_S]  # clamped to the documented box, not the absurd header value
+
+
+def test_http_date_retry_after_falls_back_to_bounded_backoff() -> None:
     slept: list[float] = []
     client = _ScriptedClient(
         [_response(429, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}), _response(200)]
@@ -108,18 +146,7 @@ def test_http_date_retry_after_falls_back_to_penalty_box() -> None:
     transport = _transport(client, slept)
 
     assert transport.get("/some/path") == {"ok": True}
-    assert slept == [_BOX_S]  # unparsable as seconds -> the full penalty box
-
-
-def test_backoff_base_floors_the_penalty_box() -> None:
-    # backoff_base_s is the retained legacy knob; it now floors the no-Retry-After wait. A box
-    # smaller than the floor yields the floor, verifying the max(floor, box) contract.
-    slept: list[float] = []
-    client = _ScriptedClient([_response(429), _response(200)])
-    transport = _transport(client, slept, penalty_box_s=1.0, backoff_base_s=9.0)
-
-    assert transport.get("/some/path") == {"ok": True}
-    assert slept == [9.0]
+    assert slept == [_BASE_S]  # unparsable as seconds -> bounded backoff, NOT the box
 
 
 def test_exhausted_retries_raise_with_status_code() -> None:
@@ -132,7 +159,7 @@ def test_exhausted_retries_raise_with_status_code() -> None:
         transport.get("/some/path")
     assert excinfo.value.status_code == 429
     assert len(client.calls) == 3
-    assert slept == [_BOX_S, _BOX_S]  # no sleep after the final failure
+    assert slept == [_BASE_S, _BASE_S * 2]  # bounded backoff, no sleep after the final failure
 
 
 def test_non_retryable_status_fails_fast_with_status_code() -> None:

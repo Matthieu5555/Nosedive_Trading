@@ -7,6 +7,7 @@ deps; the live socket is never opened in the gate (tests inject a fake client / 
 The CP Gateway serves a self-signed cert on localhost, hence ``verify_tls`` defaults off.
 """
 
+import threading
 import time
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -34,27 +35,45 @@ _DEFAULT_TIMEOUT_S = 15.0
 # violation, every sub-second retry an escalation toward a ban, and most wall-clock spent
 # overshooting backoff rather than working.
 #
-# So the transport is now PROACTIVE. A client-side token bucket (see ``_TokenBucket``) paces every
-# real HTTP send to just UNDER the ceiling — default ~8.5 req/s with a little jitter — so we almost
-# never emit the 11th request in a second and thus almost never see a 429. Steady ~8.5 req/s beats
-# thrash-and-stall, so this is both safer AND faster. A 429/503 should now be vanishingly rare; if
-# one slips through it is treated as the penalty box it announces: honour ``Retry-After`` if the
-# server sent one, else wait the full documented box (``penalty_box_s``, default 600s) — NEVER the
-# old sub-second cadence, which is exactly what gets an IP banned. Every other status fails fast.
+# So the transport is now PROACTIVE. A client-side, LOCK-SERIALISED token bucket (see
+# ``_TokenBucket``) paces every real HTTP send to under the ceiling — default ~7 req/s with a small
+# burst headroom and a little jitter. The lock matters: the close capture drives the transport from
+# a ThreadPoolExecutor, and an unsynchronised bucket let several threads each see a token free and
+# fire at once — an aggregate ~8.5 req/s that still burst past 10 in a sub-second window and drew
+# 429s. Serialising the token accounting (and capping the post-idle burst) makes the pace actually
+# hold across the pool, so a 429 is genuinely rare. If one still slips through it is handled by its
+# own signal: honour a sane ``Retry-After`` in full (a declared box), else — far more likely just
+# transient burst contention, NOT a 10-minute box — back off a BOUNDED, jittered exponential
+# (capped well under a minute) and retry. The old code waited the full 600s documented box on a
+# no-header 429, which froze each pooled worker for 10 minutes on the first routine burst — a hang,
+# not a safeguard. Sub-second retry storms (the actual ban risk) stay ruled out by the backoff
+# floor + the bucket. Every other status fails fast.
 _RETRYABLE_STATUS = frozenset({429, 503})
-# With the token bucket pacing us under the ceiling, a 429/503 is a rare anomaly; one retry after a
-# full penalty box is enough — we are not trying to grind through a wall of violations.
+# With the bucket pacing us under the ceiling a 429/503 is a rare anomaly; a couple of bounded
+# retries is enough — we are not trying to grind through a wall of violations.
 _DEFAULT_MAX_RETRIES = 2
-# Proactive pace, pinned just under the documented 10 req/s ceiling.
-_DEFAULT_MAX_REQUESTS_PER_SECOND = 8.5
-# The documented penalty box is ~10 minutes; if we ever 429 without a Retry-After, wait it out.
+# Proactive pace, with margin under the documented 10 req/s ceiling: at this rate plus the bounded
+# post-idle burst (below) the worst-case 1-second window stays under 10, even back-to-back.
+_DEFAULT_MAX_REQUESTS_PER_SECOND = 7.0
+# Post-idle burst cap (tokens). The bucket refills to at most this many tokens, so after an idle
+# gap it releases a bounded burst rather than a full second's worth — chosen with the rate so
+# ``burst + rate`` stays under the 10 req/s ceiling in any rolling second.
+_DEFAULT_MAX_BURST_TOKENS = 2.0
+# A no-``Retry-After`` 429/503 is treated as transient burst contention: bounded exponential
+# backoff capped here (NOT the full documented box), so a routine burst costs seconds, never a
+# 10-minute per-worker hang. A genuine box still announces itself via ``Retry-After``.
+_NO_RETRY_AFTER_BACKOFF_CAP_S = 20.0
+# A sane ``Retry-After`` is honoured in full but bounded by this documented ~10-minute box, so a
+# pathological header value cannot wedge the walk. This is the ONLY path that can wait minutes, and
+# only when the server explicitly asked us to.
 _DEFAULT_PENALTY_BOX_S = 600.0
 # Default per-request jitter ceiling (seconds) ADDED to the bucket's computed wait, so a fleet of
 # clients does not phase-lock onto identical send instants. Deterministic in tests: the jitter
 # source is injectable and defaults below to a constant-yielding generator.
 _DEFAULT_JITTER_S = 0.05
-# Repurposed legacy knob: retained for backward-compatible construction (call sites and the LST
-# factory still pass it). It now seeds the safety-net floor only — see ``_retry_delay``.
+# Base of the bounded exponential backoff for a no-``Retry-After`` 429/503
+# (``base * 2**(attempt-1)``, capped by ``_NO_RETRY_AFTER_BACKOFF_CAP_S``). Retained as a
+# construction knob — see ``_retry_delay``.
 _DEFAULT_BACKOFF_BASE_S = 0.5
 
 
@@ -73,11 +92,17 @@ JitterSource = Callable[[], float]
 class _TokenBucket:
     """A monotonic-clock token bucket gating sends to ``rate`` requests/second.
 
-    Capacity is one second's worth of tokens, so a short idle period lets a small burst through
-    but the *sustained* rate can never exceed ``rate``. ``acquire`` returns the seconds the caller
-    must sleep before its token is available (0.0 when one is ready now); it deducts the token
-    immediately, so callers that honour the returned wait are paced even back-to-back. The clock
-    and the jitter source are injected, so tests advance time by hand and never really wait.
+    Capacity is ``burst_tokens`` (a SMALL post-idle burst, not a full second's worth), so an idle
+    gap releases at most that burst and ``burst + rate`` stays under the hard ceiling in any rolling
+    second; the *sustained* rate can never exceed ``rate``. ``acquire`` returns the seconds the
+    caller must sleep before its token is available (0.0 when one is ready now); it deducts the
+    token immediately, so callers that honour the returned wait are paced even back-to-back.
+
+    ``acquire`` is LOCK-SERIALISED: the close capture drives this from a thread pool, and without
+    the lock concurrent callers each read the same token count and fire together — the burst that
+    defeats the whole point and draws 429s. The lock makes the token accounting atomic so the pace
+    holds across threads. The clock and the jitter source are injected, so tests advance time by
+    hand and never really wait.
     """
 
     def __init__(
@@ -86,23 +111,31 @@ class _TokenBucket:
         *,
         monotonic: Callable[[], float],
         jitter: JitterSource,
+        burst_tokens: float = _DEFAULT_MAX_BURST_TOKENS,
     ) -> None:
         self._rate = rate
-        self._capacity = rate  # one second of tokens
+        # Cap the post-idle burst (never more than the rate itself for a slow pace).
+        self._capacity = min(rate, burst_tokens)
         self._monotonic = monotonic
         self._jitter = jitter
-        self._tokens = rate  # start full: the first request never waits
+        self._tokens = self._capacity  # start at the burst cap, not a full second
         self._updated = monotonic()
+        self._lock = threading.Lock()
 
     def acquire(self) -> float:
-        """Seconds to wait before the next send; deducts one token (may drive the count < 0)."""
-        now = self._monotonic()
-        elapsed = now - self._updated
-        self._updated = now
-        self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
-        wait = 0.0 if self._tokens >= 1.0 else (1.0 - self._tokens) / self._rate
-        self._tokens -= 1.0
-        return wait + (self._jitter() if wait > 0.0 else 0.0)
+        """Seconds to wait before the next send; deducts one token (may drive the count < 0).
+
+        Serialised under ``self._lock`` so concurrent pool threads cannot each see a free token and
+        fire at once — the accounting is atomic, so the sustained pace holds across the pool.
+        """
+        with self._lock:
+            now = self._monotonic()
+            elapsed = now - self._updated
+            self._updated = now
+            self._tokens = min(self._capacity, self._tokens + elapsed * self._rate)
+            wait = 0.0 if self._tokens >= 1.0 else (1.0 - self._tokens) / self._rate
+            self._tokens -= 1.0
+            return wait + (self._jitter() if wait > 0.0 else 0.0)
 
 # An OAuth signer: given (method, full_url, query_params) it returns the request headers to
 # add (the ``Authorization: OAuth …`` header). Injected so the transport stays unaware of the
@@ -155,14 +188,15 @@ class CpRestTransport:
     ) -> None:
         """Construct the transport.
 
-        ``max_requests_per_second`` pins the proactive token bucket just under the Gateway's
-        documented 10 req/s ceiling (default ~8.5). Pass ``None`` or ``0`` to DISABLE pacing — the
-        unsigned fast unit tests that inject a fake client do this so they never sleep. ``jitter``
-        is an injectable, deterministic-in-test source of the extra seconds added to a non-zero
-        bucket wait so a fleet does not phase-lock; it defaults to a small constant.
-        ``penalty_box_s`` is how long a 429/503 *without* a ``Retry-After`` waits — the box, the
-        safety net behind the bucket, never the old sub-second cadence. ``backoff_base_s`` is the
-        retained legacy knob: it now floors that safety-net wait only.
+        ``max_requests_per_second`` pins the proactive, lock-serialised token bucket under the
+        Gateway's documented 10 req/s ceiling (default ~7, with a small post-idle burst). Pass
+        ``None`` or ``0`` to DISABLE pacing — the unsigned fast unit tests that inject a fake client
+        do this so they never sleep. ``jitter`` is an injectable, deterministic-in-test source of
+        the extra seconds added both to a non-zero bucket wait and to the backoff (so a fleet does
+        not phase-lock); it defaults to a small constant. ``penalty_box_s`` bounds a *server-sent*
+        ``Retry-After`` (a declared box) — it is no longer the wait for a no-header 429, which now
+        takes the bounded exponential backoff (see :meth:`_retry_delay`) so a routine burst never
+        freezes a worker for minutes. ``backoff_base_s`` is the base of that exponential.
         """
         self._base_url = base_url.rstrip("/")
         self._oauth_signer = oauth_signer
@@ -173,6 +207,7 @@ class CpRestTransport:
         jitter_source: JitterSource = (
             jitter if jitter is not None else (lambda: _DEFAULT_JITTER_S)
         )
+        self._jitter = jitter_source  # also seeds the no-Retry-After backoff jitter
         self._bucket: _TokenBucket | None = (
             _TokenBucket(
                 max_requests_per_second, monotonic=monotonic, jitter=jitter_source
@@ -248,29 +283,36 @@ class CpRestTransport:
         return response
 
     def _retry_wait(self, retry_state: RetryCallState) -> float:
-        """Seconds to wait before retrying a 429/503: ``Retry-After`` if sane, else the box."""
+        """Seconds to wait before retrying a 429/503 — see :meth:`_retry_delay`."""
         outcome = retry_state.outcome
         exception = outcome.exception() if outcome is not None else None
         if not isinstance(exception, httpx.HTTPStatusError):  # pragma: no cover — predicate gates
-            return self._penalty_box_s
-        return self._retry_delay(exception.response)
+            return self._backoff_base_s
+        return self._retry_delay(exception.response, retry_state.attempt_number)
 
-    def _retry_delay(self, response: httpx.Response) -> float:
-        """Penalty-box wait for a 429/503.
+    def _retry_delay(self, response: httpx.Response, attempt_number: int) -> float:
+        """How long to wait before retrying a 429/503.
 
-        With the proactive token bucket pacing us under the ceiling a 429/503 should be vanishingly
-        rare, so it is treated as the penalty box it announces, NOT the old ``0.5 * 2**n`` cadence
-        (sub-second retries during a box are exactly what escalate an IP to a permanent ban). Honour
-        the server's ``Retry-After`` when it is a sane number of seconds; otherwise wait the full
-        documented box (``penalty_box_s``), floored by the legacy ``backoff_base_s`` knob.
+        Two cases, by what the server told us:
+
+        - **A sane ``Retry-After``** is honoured in full — a declared penalty box — but bounded by
+          ``penalty_box_s`` so a pathological header value cannot wedge the walk. This is the only
+          path that can wait minutes, and only when the server explicitly asked.
+        - **No ``Retry-After``** is treated as transient burst contention (far more likely than a
+          silent 10-minute box now the lock-serialised bucket paces us under the ceiling): a
+          BOUNDED, jittered exponential backoff — ``backoff_base_s * 2**(attempt-1)``, capped at
+          ``_NO_RETRY_AFTER_BACKOFF_CAP_S`` — so a routine burst costs seconds, not the 10-minute
+          per-worker hang the old full-box wait caused. The cap + ``backoff_base_s`` floor still
+          rule out the sub-second retry storm that risks an IP ban.
         """
         header = response.headers.get("Retry-After")
         if header is not None:
             try:
-                return max(0.0, float(header))
+                return min(self._penalty_box_s, max(0.0, float(header)))
             except ValueError:
-                pass  # an HTTP-date Retry-After — fall back to the penalty box
-        return max(self._backoff_base_s, self._penalty_box_s)
+                pass  # an HTTP-date Retry-After — fall back to the bounded backoff below
+        backoff = self._backoff_base_s * (2.0 ** max(0, attempt_number - 1))
+        return min(_NO_RETRY_AFTER_BACKOFF_CAP_S, backoff) + self._jitter()
 
     def streaming_url(self) -> str:
         """The WebSocket endpoint for live market data, derived from the REST base URL."""

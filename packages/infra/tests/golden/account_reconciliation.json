@@ -1,0 +1,103 @@
+{
+  "account_id": "DUQ574355",
+  "book_source": "booked",
+  "cash_counts": {
+    "book_only": 0,
+    "breaks": 0,
+    "broker_only": 1,
+    "match": 0
+  },
+  "cash_lines": [
+    {
+      "broker_cash_balance": 100000.0,
+      "broker_net_liquidation": 109310.0,
+      "broker_settled_cash": 98000.0,
+      "currency": "EUR",
+      "status": "broker_only",
+      "threshold_version": "account-recon-1.0.0"
+    }
+  ],
+  "fill_counts": {
+    "book_only": 0,
+    "breaks": 0,
+    "broker_only": 0,
+    "match": 2
+  },
+  "fill_lines": [
+    {
+      "book_contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4400|2026-09-18|4400|C",
+      "book_signed_quantity": 5.0,
+      "broker_contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4400|2026-09-18|4400|C",
+      "broker_signed_quantity": 5.0,
+      "join_key": "265598",
+      "quantity_diff": 0.0,
+      "status": "match",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    },
+    {
+      "book_contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4200|2026-09-18|4200|P",
+      "book_signed_quantity": -4.0,
+      "broker_contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4200|2026-09-18|4200|P",
+      "broker_signed_quantity": -4.0,
+      "join_key": "311042",
+      "quantity_diff": 0.0,
+      "status": "match",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    }
+  ],
+  "position_counts": {
+    "book_only": 1,
+    "breaks": 1,
+    "broker_only": 1,
+    "match": 1
+  },
+  "position_lines": [
+    {
+      "book_contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4400|2026-09-18|4400|C",
+      "book_quantity": 5.0,
+      "broker_contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4400|2026-09-18|4400|C",
+      "broker_quantity": 5.0,
+      "join_key": "265598",
+      "quantity_diff": 0.0,
+      "status": "match",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    },
+    {
+      "book_contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4200|2026-09-18|4200|P",
+      "book_quantity": -3.0,
+      "broker_contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4200|2026-09-18|4200|P",
+      "broker_quantity": -4.0,
+      "join_key": "311042",
+      "quantity_diff": -1.0,
+      "status": "break",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    },
+    {
+      "book_contract_key": null,
+      "book_quantity": null,
+      "broker_contract_key": "SX5E|OPT|EUREX|EUR|10|o-C-4600|2026-09-18|4600|C",
+      "broker_quantity": 2.0,
+      "join_key": "400000",
+      "quantity_diff": null,
+      "status": "broker_only",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    },
+    {
+      "book_contract_key": "SX5E|OPT|EUREX|EUR|10|o-P-4000|2026-09-18|4000|P",
+      "book_quantity": 1.0,
+      "broker_contract_key": null,
+      "broker_quantity": null,
+      "join_key": "500000",
+      "quantity_diff": null,
+      "status": "book_only",
+      "threshold": 1e-06,
+      "threshold_version": "account-recon-1.0.0"
+    }
+  ],
+  "threshold_version": "account-recon-1.0.0"
+}

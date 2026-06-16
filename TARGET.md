@@ -421,8 +421,12 @@ Each row is roughly one spec.
    (ibkr-broker-account-read):** the read-only CP-REST positions/cash/fills collector
    (`infra-ibkr` `cp_rest_account`) + its frozen-seam contracts (`BrokerPosition`/
    `BrokerCashBalance`/`BrokerFill`/`BrokerAccountSnapshot`) — the recon sub-lane's broker side.
-   Remaining in this item: the recon diff/tolerance/alert logic
-   (execution-operational-hardening), margin forecasting, alert delivery, kill switch.
+   **Recon diff/tolerance engine + its BFF endpoint LANDED (execution-recon-diff):**
+   `infra.risk.reconcile_account` diffs the broker account snapshot (positions/cash/fills) against
+   the fills-based book with per-line tolerances, classifying match/break/broker-only/book-only;
+   served read-only at `GET /api/reconciliation` for the Operations/Risk recon view.
+   Remaining in this item: margin forecasting, alert delivery (the recon report's `ok`/break counts
+   are the natural trigger), kill switch.
 10. **Residual diagnosis (destination):** once realized attribution (#2) and a week-plus of
     banked realized P&L exist, regress the attribution residual against candidate unmodeled
     exposures (skew/vanna dynamics, liquidity, jump/gap, vol-of-vol, regime) to name what the

@@ -64,6 +64,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import indices as indices_router  # noqa: PLC0415
     from .routers import positions as positions_router  # noqa: PLC0415
     from .routers import price_history as price_history_router  # noqa: PLC0415
+    from .routers import reconciliation as reconciliation_router  # noqa: PLC0415
     from .routers import recorded_dates as recorded_dates_router  # noqa: PLC0415
     from .routers import risk as risk_router  # noqa: PLC0415
     from .routers import run as run_router  # noqa: PLC0415
@@ -89,6 +90,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(signals_router.router)
     app.include_router(positions_router.router)
     app.include_router(backtest_router.router)
+    app.include_router(reconciliation_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

@@ -165,6 +165,39 @@ explicit check `nan > threshold` is `False`, so a NaN would otherwise read as "a
 logs a warning when breaches surface. Broker Greeks are a diagnostic, never the source of
 truth.
 
+### Broker-account reconciliation (positions / cash / fills)
+
+`account_reconciliation.py` is a **distinct** reconciliation from the Greek one above: it
+diffs the broker's *account state* — a `contracts.BrokerAccountSnapshot` (positions, cash,
+fills) — against the fills-based book (a `PositionSet` plus the booked `Fill` rows). This is
+the operational recon a desk runs to catch a position the book missed, a fill the broker
+booked we didn't, or a quantity that drifted. `reconcile_account(snapshot, position_set, *,
+book_fills, tolerance)` returns an `AccountReconciliationReport`:
+
+- **Positions** join on the broker conid (`str(BrokerPosition.conid)` ↔ the book
+  `Position.broker_contract_id`), falling back to the shared `contract_key` when a book line
+  carries no broker id and the broker line resolved its real contract_key. Each line is
+  classified `match` / `break` / `broker_only` / `book_only`; a `break` is a signed-quantity
+  diff whose absolute value exceeds the versioned `quantity_abs` tolerance (or a non-finite
+  diff — the same NaN-is-not-agreement guard the Greek recon uses). Both sides carry the same
+  signed long/short convention, so quantities subtract directly.
+- **Cash** lines surface each `BrokerCashBalance` per currency. The fills-book has no cash
+  leg, so these are `broker_only` by construction — reported honestly, never dropped; a
+  non-finite balance is a `break`.
+- **Fills** net each side by conid and diff the signed totals (a broker `SELL` is a negative
+  signed quantity), classified the same four ways.
+
+The report carries per-section status counts, the threshold version, and an `ok` flag (no
+position/fill breaks and nothing one-sided; cash-only lines do not flip `ok`). Tolerances are
+a versioned `AccountReconciliationTolerance` (`DEFAULT_ACCOUNT_RECON_TOLERANCE`). The engine
+is pure and order-invariant (lines sort by join key); `BookFill` is a `Protocol` so infra
+stays blind to the execution-layer `Fill` type while still typing the seam. The BFF reads it
+back at `GET /api/reconciliation` (latest broker snapshot per account + the fills ledger) for
+the Operations / Risk recon view. The remaining §7.9 operational pieces — **margin
+forecasting**, the **kill switch**, and recon-break **alert delivery** — are deferred
+follow-ups, not built here; the report's `ok` + break counts are the natural alert trigger
+when that lands.
+
 ## Scenario stress (step 12)
 
 A scenario is an explicit shocked market *state*, never a Greek multiplier.

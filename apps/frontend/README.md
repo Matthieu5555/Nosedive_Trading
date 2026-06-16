@@ -216,6 +216,18 @@ The BFF exposes (all under `/api` except the liveness probe):
   labelled `unpriced_contract_keys` entry (zeroed Greeks, never silently dropped), and
   `priced_contract_keys` counts the rest. The web Positions/Execution blotter (F-POS) consumes
   these two endpoints. The store opens read-only; nothing here writes a fill or touches a broker.
+- `GET /api/reconciliation[?account_id=]` — the **broker-account reconciliation** for the
+  Operations / Risk recon view: it reads the latest banked broker snapshot per account
+  (`broker_positions`/`broker_cash_balances`/`broker_fills`, picked by the most recent `as_of_ts`)
+  plus the fills ledger, and runs `infra.risk.reconcile_account` to diff the broker's account state
+  against the fills-based book. The body carries an `ok` flag and three sections (`positions`,
+  `cash`, `fills`), each with `counts` (`match`/`break`/`broker_only`/`book_only`) and per-line
+  detail. Positions/fills join on the broker conid (`str(conid)` ↔ the book `broker_contract_id`),
+  signed-quantity diffed against a versioned tolerance; cash is informational broker-only (the
+  fills-book carries no cash leg). No recompute beyond the diff. `account_id` absent resolves the
+  account on the latest broker positions; **no broker positions captured** is a `400`
+  (`no_broker_account`). Margin forecasting, kill switch, and recon-break alert delivery (§7.9) are
+  deferred follow-ups — not wired by this endpoint.
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 

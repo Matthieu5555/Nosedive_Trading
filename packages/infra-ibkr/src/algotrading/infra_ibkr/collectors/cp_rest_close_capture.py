@@ -401,13 +401,16 @@ def _planned_option_keys(
 class _PromotedSnapshots:
     """The outcome of the kept/drop + quote-integrity pass over one underlying's snapshot rows.
 
-    ``events`` are the ``RawMarketEvent`` rows promoted to the derived close set (the basket the
-    IV solver consumes). ``option_row_count`` is how many option rows survived the look-ahead
-    guard (the denominator of the two-sided fraction); ``two_sided_count`` is how many of those
-    carried a healthy two-sided quote (a positive, uncrossed bid AND ask). ``drop_reasons`` is the
-    per-row audit receipt — one ``(instrument_key, reason)`` for every option row excluded from the
-    derived close set by the quote-integrity gate — the "discard the bullshit" trail. Raw stays
-    immutable (ADR 0040): a dropped row is excluded from *promotion*, never deleted from ``raw/``.
+    ``events`` are the **faithful** ``RawMarketEvent`` rows for EVERY kept observation — both the
+    healthy two-sided quotes and the quarantined (one-sided / non-positive / crossed) ones — so the
+    raw layer records what the broker actually returned (blueprint 01-architecture §13/§39). The
+    two-sided gate that keeps a quarantined row out of the IV solver is a *derived* concern applied
+    downstream (``actor.driver``), not a raw-capture filter. ``option_row_count`` is how many option
+    rows survived the look-ahead guard (the denominator of the two-sided fraction);
+    ``two_sided_count`` is how many carried a healthy two-sided quote; ``drop_reasons`` is the
+    receipt — one ``(instrument_key, reason)`` per quarantined option row — and the basket-integrity
+    verdict thresholds on the resulting fraction. Quarantined rows are appended after the two-sided
+    ones, so their inclusion is *additive* (the two-sided rows' event ids are unchanged).
     """
 
     events: tuple[RawMarketEvent, ...]
@@ -464,20 +467,21 @@ def _snapshot_events(
     so the post-close settlement marks the timer fires into — whose ``_updated`` is after ``as_of``
     but before the next open — are kept, not dropped. A row for an unrequested conid is ignored.
 
-    On top of the look-ahead guard, the kept OPTION rows pass a **quote-integrity gate**: only a row
-    carrying a healthy two-sided quote (positive, uncrossed bid AND ask — :func:`assess_quote`) is
-    promoted to the derived close set. A zero / single-sided / crossed row (the closed-market
-    canary, where every row was ``bid==ask<=0`` with only ``last`` real) is quarantined — excluded
-    from promotion with a recorded drop reason — never fed to the IV solver as if it were a quote.
-    The underlying leg is always promoted (it anchors the chain's reference spot, not a tradable
-    option quote). Raw stays immutable: the gate is on promotion, nothing is deleted from ``raw/``.
+    On top of the look-ahead guard, the kept OPTION rows are classified by a **two-sided
+    quote-integrity rule** (positive, uncrossed bid AND ask — :func:`assess_quote`): a healthy row
+    counts toward ``two_sided_count``; a zero / single-sided / crossed row (the closed-market
+    canary, ``bid==ask<=0`` with only ``last`` real) is recorded with a drop reason. **Both** are
+    written to raw (faithful capture, blueprint 01-architecture §13/§39): the quarantined row is
+    NOT erased — it is simply excluded from the IV solver downstream, in the derived layer
+    (``actor.driver._has_two_sided_option_quote``), the one rule the live and replay paths share
+    (ADR 0027). The underlying leg always anchors the chain's reference spot.
 
-    ``sequence`` is assigned from the *promoted* contracts' stable identity (their canonical
-    instrument key), NOT from the broker's response row order: a re-fire / retry that returns the
-    same contracts in a different order must yield identical content-addressed event ids, so the
-    append-only store dedupes the re-capture instead of keeping a second copy. Broker-supplied
-    ``conid`` / ``_updated`` scalars coerce through the wire model's validators, so an unexpected
-    payload shape skips the row rather than raising a bare ``ValueError``.
+    ``sequence`` is assigned from the kept contracts' stable canonical order (two-sided first,
+    quarantined appended), NOT the broker's response row order: a re-fire / retry that returns the
+    same contracts in a different order yields identical content-addressed event ids, so the
+    append-only store dedupes the re-capture; appending the quarantine rows leaves the two-sided
+    rows' ids unchanged. Broker-supplied ``conid`` / ``_updated`` scalars coerce through the wire
+    model's validators, so an unexpected payload shape skips the row rather than raising.
     """
     if not keys_by_conid:
         return _PromotedSnapshots(events=(), option_row_count=0, two_sided_count=0, drop_reasons=())
@@ -506,26 +510,37 @@ def _snapshot_events(
             )
             continue
         kept.append((instrument, row))
-    # Second pass: the quote-integrity gate. Classify each kept OPTION row; promote only the
-    # healthy two-sided ones to the derived close set, recording a drop reason for the rest (the
-    # audit receipt). The underlying leg is promoted unconditionally (its quote anchors the spot,
-    # not an option mark). Sequence is then assigned by the promoted contract's stable canonical key
-    # (not arrival order), so a shuffled re-fire reproduces the same event ids.
+    # Second pass: classify each kept OPTION row by the two-sided quote-integrity rule, recording
+    # a drop reason for the rest (the audit receipt) and the two-sided fraction the basket verdict
+    # thresholds on. The underlying leg is always healthy here (its quote anchors the spot, not an
+    # option mark).
+    #
+    # Raw is FAITHFUL (blueprint 01-architecture §13/§39: "no downstream layer may silently
+    # overwrite an upstream observation"; the collector "writes [the ticks] to the raw layer").
+    # Every kept row — two-sided AND quarantined — is normalized to events and written to raw. The
+    # two-sided gate is a DERIVED concern, applied where the IV solver selects its inputs
+    # (`actor.driver._has_two_sided_option_quote`), shared by the live and replay paths (ADR 0027),
+    # so a quarantined row never reaches the solver yet is reproducible from raw. Sequence keeps the
+    # two-sided rows in their stable canonical order FIRST (so their content-addressed event ids are
+    # unchanged — the quarantine rows are appended, an additive raw gain), each contract's events
+    # sharing its ordinal; a shuffled re-fire of the same set reproduces the same ids.
     option_row_count = 0
     two_sided_count = 0
     drop_reasons: list[tuple[str, str]] = []
-    promoted: list[tuple[InstrumentKey, SnapshotRow]] = []
+    two_sided: list[tuple[InstrumentKey, SnapshotRow]] = []
+    quarantined: list[tuple[InstrumentKey, SnapshotRow]] = []
     for instrument, row in kept:
         if not instrument.is_option():
-            promoted.append((instrument, row))
+            two_sided.append((instrument, row))
             continue
         option_row_count += 1
         reason = _two_sided_quote_reason(row, max_spread_pct=max_spread_pct)
         if reason is None:
             two_sided_count += 1
-            promoted.append((instrument, row))
+            two_sided.append((instrument, row))
             continue
         drop_reasons.append((instrument.canonical(), reason))
+        quarantined.append((instrument, row))
         _LOGGER.info(
             "ibkr.close_capture.quarantine_row",
             instrument_key=instrument.canonical(),
@@ -534,9 +549,10 @@ def _snapshot_events(
             ask=row.ask,
             last=row.last,
         )
-    promoted.sort(key=lambda pair: pair[0].canonical())
+    two_sided.sort(key=lambda pair: pair[0].canonical())
+    quarantined.sort(key=lambda pair: pair[0].canonical())
     events: list[RawMarketEvent] = []
-    for sequence, (instrument, row) in enumerate(promoted):
+    for sequence, (instrument, row) in enumerate([*two_sided, *quarantined]):
         events.extend(
             snapshot_to_events(
                 row,
@@ -690,12 +706,15 @@ def collect_target_basket(
     contracts but keeps none after that guard raises :class:`CloseCaptureError` (a loud failure),
     never a silently-empty basket.
 
-    A **quote-integrity verdict** (EMERGENCY-quote-integrity-gate) sits on top: each kept option
-    row is classified, and only rows carrying a healthy two-sided quote are promoted to the derived
-    close set (the rest are quarantined with a recorded reason — kept in ``raw/``, excluded from
-    promotion). If the *whole* basket falls below ``config.qc_threshold.quote_integrity``'s
-    two-sided floor — a closed / last-only / degenerate capture (the 2026-06-15 SX5E canary) —
-    this returns ``None`` (a labelled no-capture), NOT a surface fit off last-only marks.
+    A **quote-integrity verdict** (EMERGENCY-quote-integrity-gate) is logged on top: each kept
+    option row is classified, the two-sided fraction is computed, and a closed / last-only /
+    degenerate basket below ``config.qc_threshold.quote_integrity``'s two-sided floor (the
+    2026-06-15 SX5E canary) is flagged loudly. The verdict no longer drops anything: the faithful
+    basket — EVERY observed row — is returned so it lands in raw (blueprint 01-architecture §13).
+    A degenerate basket then fails LOUD by construction (the derived two-sided gate admits no option
+    to the IV solver → empty grid → QC coverage page → non-zero exit), never a silent surface fit
+    off last-only marks and never the old silent ``None`` that dropped the marks and exited 0.
+    ``None`` is now returned ONLY when the underlying lists no qualifiable option chain at all.
 
     **Discovery cache (speed lever B/C).** The ``(underlying, month, strike, right) -> conid`` map
     is static, so when a ``discovery_cache`` is supplied and holds a fresh entry for the underlying,
@@ -813,25 +832,30 @@ def collect_target_basket(
             f"rows after the look-ahead guard (as_of={as_of.isoformat()}, "
             f"next_open={next_open.isoformat()}) — empty close set, refusing to land it silently"
         )
-    # Basket-level quote-integrity verdict (EMERGENCY-quote-integrity-gate). If the whole basket is
-    # closed / last-only / degenerate — too few rows carrying a healthy two-sided quote — this is a
-    # labelled no-capture, NOT a fit. Distinct from the wrong-day CloseCaptureError above: that is a
-    # look-ahead failure (rows belong to a later session); this is a market-closed verdict (rows are
-    # in-window but carry no live two-sided quote). The 2026-06-15 SX5E canary banked a converged
-    # surface off exactly this — every row bid==ask<=0, only `last` real — so it returns None with a
-    # structured reason rather than feeding `last`-only marks to the solver as if they were quotes.
+    # Basket-level quote-integrity verdict (EMERGENCY-quote-integrity-gate). A closed / last-only /
+    # degenerate basket — too few rows carrying a healthy two-sided quote (the 2026-06-15 SX5E
+    # canary, every row bid==ask<=0 with only `last` real) — must NOT bank a surface fit off
+    # last-only marks. But the verdict is no longer a *capture-layer drop*: per the blueprint
+    # (01-architecture §13/§39 — a downstream concern must not erase an upstream observation), the
+    # faithful basket is still returned so EVERY observed row lands in raw. The degenerate close
+    # then fails LOUD downstream by construction: the derived two-sided gate
+    # (`actor.driver._has_two_sided_option_quote`) admits no option to the IV solver, so the grid is
+    # empty, the QC coverage-floor checks fail, QC escalates to `page`, and the runner exits
+    # non-zero (OnFailure= alerts) — instead of the old silent ``None`` no-capture that dropped the
+    # marks AND exited 0. The wrong-day ``CloseCaptureError`` above stays a hard raise (look-ahead,
+    # not a market verdict). The verdict is logged loudly here for the operator triage trail.
     min_fraction = qc.quote_integrity.min_two_sided_fraction
     if promoted.option_row_count > 0 and two_sided_fraction < min_fraction:
-        log.info(
+        log.warning(
             "ibkr.close_capture.closed_market",
-            reason="basket has no live two-sided quotes — last-only / market-closed capture",
+            reason="basket has no live two-sided quotes — last-only / market-closed capture; "
+            "rows landed to raw faithfully, derived grid will be empty and QC will page",
             option_row_count=promoted.option_row_count,
             two_sided_count=promoted.two_sided_count,
             two_sided_fraction=two_sided_fraction,
             min_two_sided_fraction=min_fraction,
             quarantined=list(promoted.drop_reasons),
         )
-        return None
     return IndexBasket(
         instruments=instruments, events=tuple(events), masters=masters
     )

@@ -103,25 +103,32 @@ Same disease, other organs. Findings to fix (each its own small change, disjoint
    area; `map.md` already flags them stale.
 3. **Docstring path mentions of `infra-saxo`/`infra-deribit`** in `packages/infra/src` (cosmetic,
    flagged "low-value sweep" in `T-index-only-refactor`) — sweep them to IBKR.
-4. **The "single-names are NEVER option underlyings" absolute** (see Part C) — appears in memory and
-   risks landing in specs/ADRs. It is **wrong as an absolute** and must be stated as the nuanced rule.
+4. **The universe-model nuance** (see Part C) — this item historically warned against the
+   "single-names are NEVER option underlyings" absolute. **ADR 0051 (2026-06-16) reinstated
+   prices-only constituents as the default scope**: constituents are *not* option underlyings in
+   what is captured. The rule to encode is no longer "they become underlyings at the dispersion
+   phase" — it is "index options + constituent **prices**; single-name option trading is a deferred,
+   separately-ruled re-opening." Part C is corrected accordingly.
 
-## Part C — the universe-model rule to ENCODE (do not over-narrow)
+## Part C — the universe-model rule to ENCODE (corrected by ADR 0051, 2026-06-16)
 
-Per the dispersion strategy (buy ATM straddles on the **top-10 constituents**, hedge the
-index — see `TARGET.md`) and the owner's correction: **single names DO become option underlyings —
-in the dispersion phase.** The invariant is not "never an underlying"; it is **registry-driven,
-never hand-set**:
+⚠️ **Superseded framing.** This section originally encoded "single names DO become option
+underlyings in the dispersion phase (top-10 straddles)". **ADR 0051 reversed that.** The dispersion
+ρ̄ is a *diagnostic* over **realized** constituent vol (Eq. 23) — it does not require, and the
+default scope does not include, constituent option chains. Encode the corrected model:
 
-> **Universe model:** one enabled index (SX5E) + its **top-N constituents**, all sourced from the
-> registry. The **index** carries an option chain **today** (analytics phase); the **top-N
-> constituents** carry theirs **at the dispersion phase**. Any constituent that
-> becomes an option underlying is chosen from the **enabled index's top-N**, never a hand-maintained
-> list.
+> **Universe model (ADR 0042 + 0051):** one enabled index (SX5E) + its constituents, all sourced
+> from the registry. The **index** carries the **option chain** — the only options captured. The
+> **constituents** are captured as **prices only** (daily bars, full membership) and are **not**
+> option underlyings in the default scope. The implied-correlation ρ̄ diagnostic is computed from
+> **realized** constituent vol, not single-name options. `dispersion_top_n` survives only as a pure
+> *strategy-side* selector over banked raw, never a capture gate.
 
-Encode this in ADR 0035 (registry) + ADR 0042 (scope) — **owner/Matthieu's lane**: those two files
-are held uncommitted by him; flag the nuance to him rather than editing directly. Do **not** write
-"never an option underlying" anywhere as an absolute.
+Trading single-name option straddles (pure implied-correlation dispersion) is a **deferred,
+separately-ruled** decision that would re-open constituent-option capture with its own
+cost/entitlement/throughput case — not the universe-model default. Encode the corrected rule in
+ADR 0035 (registry) + ADR 0042 (scope), consistent with ADR 0051. Do **not** re-introduce
+"constituents carry option chains at the dispersion phase" — that is the retired framing.
 
 ## Acceptance
 
@@ -130,8 +137,9 @@ are held uncommitted by him; flag the nuance to him rather than editing directly
 - `.agent/glossary.md` carries no term `TARGET.md` already defines and no dead-seam vocab.
 - No `.agent/` file restates `TARGET.md` domain content; each instead links to it.
 - Part-B pollution items fixed or filed (the code-default one coordinated with the owning lane).
-- The universe-model rule (Part C) is encoded as the **registry-driven, index-now/constituents-later**
-  nuance — never the "never" absolute.
+- The universe-model rule (Part C) is encoded per **ADR 0051**: index options + constituent **prices
+  only**; ρ̄ from realized vol; single-name option capture is a deferred, separately-ruled re-opening
+  — **not** the "constituents-carry-options-at-dispersion" framing.
 - Gate green — in particular `packages/infra/tests/test_doc_freshness.py` (it checks only `[](path)`
   links in map.md + READMEs, not `decisions/*` cross-links nor `[[wiki]]` refs, so untracking an ADR
   is gate-safe provided no map/README `[](path)` points at it; sweep dangling `[[…]]` text when the

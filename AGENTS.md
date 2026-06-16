@@ -103,6 +103,29 @@ keep it green, and extend it for new UI. How to run and write it lives in `apps/
 If a gate cannot run because the tooling is absent, say so plainly. Do not claim
 verification you did not perform.
 
+**Done means the code is on `main`, in the `/srv/project` checkout on the server,
+with a clean tree — verified by looking, not by trusting the log.** This is the
+bar that keeps getting missed, so it is non-negotiable:
+- Not "it's an ancestor of `main`," not "the merge is fine, my run just missed
+  the timing," not "it's on a branch," not "it's in a worktree," not "it's
+  shelved on a `wip/*` tag." None of those are done. The work has to be present
+  and running in `/srv/project` when someone sits down and `ls`-es it.
+- You may not finish leaving the server checkout mid-merge / mid-rebase /
+  mid-cherry-pick, with unmerged paths, with conflict markers in tracked files,
+  or on any branch other than `main`. Converge first.
+- Branches and worktrees are scratch space — legitimate, but used **sparingly**
+  and always landed back onto `main` here via `scripts/worktree.sh land`. They
+  are where work pauses, never where it ends.
+- Prove it the way you'd prove anything else (see "measure, don't read"):
+  `git -C /srv/project status` clean, on `main`, and the actual changed code
+  visible in the file — then you may say done.
+
+For Claude agents on this machine a `Stop`/`SubagentStop` hook
+(`scripts/hooks/landed-on-server.sh`) enforces the structural half of this
+automatically: it blocks finishing while `/srv/project` is mid-merge, has
+unmerged paths or conflict markers, or is off `main`. Other agents have no such
+net — the rule above is yours to honor.
+
 Report status in the verb that matches what actually happened. "Done" / "verified"
 / "working" mean the thing **ran to completion and you saw the result**. Setup,
 staging, wiring, or a synced worktree is "staged," not "done" — say which.

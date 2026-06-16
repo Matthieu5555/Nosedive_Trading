@@ -14,7 +14,7 @@ The §5.4 risk screen renders the parametric spot/vol/(rate) families. It does n
   (a distinct row/section, labelled by `2008` / `covid-2020`) and their worst-case attribution.
 - the **correlation-shock axis** — `family="correlation"`. It is **dormant** on the live option
   book (a ρ̄ bump reprices to zero through the option pricer; it needs a real ρ̄ exposure via
-  constituent capture + the signal layer, both downstream). Wire the BFF/front to *display* the
+  the realized-vol ρ̄ signal layer — constituent **bars**, not option capture (ADR 0051) — downstream). Wire the BFF/front to *display* the
   axis when configured, but it stays empty-by-default until the ρ̄ exposure is real — do not
   fabricate a correlation exposure on the live book to make the cell non-zero.
 
@@ -26,5 +26,6 @@ The §5.4 risk screen renders the parametric spot/vol/(rate) families. It does n
 - Playwright: extend the e2e for the new section when the catalogue is configured.
 
 ## Depends on
-The correlation half is only *meaningful* once a real ρ̄ exposure lands (constituent capture +
-the signal layer). The named half stands alone and is the nearer-term piece.
+The correlation half is only *meaningful* once a real ρ̄ exposure lands (the realized-vol ρ̄ signal
+layer — constituent **bars** + the signal set, ADR 0051; **not** constituent option capture). The
+named half stands alone and is the nearer-term piece.

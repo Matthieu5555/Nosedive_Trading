@@ -8,14 +8,15 @@ vi.mock(
   async () => await import("../test/lightweightLineMock"),
 );
 
-vi.mock("./market/IndexAnalytics", () => ({
-  IndexAnalytics: () => {
+// A crash deep in the analytics view must be contained by the boundary around it — the selector
+// strip and tabs (the page chrome) keep rendering, so the page is never blanked.
+vi.mock("./market/AnalyticsTab", () => ({
+  AnalyticsTab: () => {
     throw new Error("plotly choked on a degenerate vol-surface cell");
   },
-  IndexHistory: () => <div data-testid="index-history">index history rendered</div>,
 }));
 
-import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
+import { MarketPage } from "./Market";
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -23,16 +24,14 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  resetConstituentHistoryBatchCacheForTests();
 });
 
-test("a crash in the analytics panel is contained — sibling panels still render", async () => {
+test("a crash in the analytics view is contained — the selector strip still renders", async () => {
   render(<MarketPage />);
 
-  expect(await screen.findByText(/Volatility analytics failed to render\./i)).toBeInTheDocument();
+  expect(await screen.findByText(/Analytics failed to render\./i)).toBeInTheDocument();
 
-  expect(await screen.findByTestId("index-history")).toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getByRole("heading", { name: "Constituents" })).toBeInTheDocument(),
-  );
+  // The shared context strip is page chrome, outside the analytics boundary, so it survives.
+  await waitFor(() => expect(screen.getByLabelText("Entity")).toBeInTheDocument());
+  expect(screen.getByRole("radiogroup", { name: /option side/i })).toBeInTheDocument();
 });

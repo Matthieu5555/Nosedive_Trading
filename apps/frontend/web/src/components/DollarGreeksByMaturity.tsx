@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-
-import type { AnalyticsMaturity, AnalyticsPoint } from "../api";
+import type { AnalyticsMaturity, AnalyticsPoint, OptionSide } from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
 
@@ -21,22 +19,34 @@ function currencyUnitFor(
   return withCurrency(unit ?? null, currency) ?? "n/a";
 }
 
+// A row is at-the-money when its band names ATM (the structurally important row — the spot pivot
+// the eye should land on first). The convention is "ATM"; we match it case-insensitively.
+function isAtmBand(band: string): boolean {
+  return band.toUpperCase().includes("ATM");
+}
+
+// The sign of a Greek's raw value at a row, ignoring ~zero (which is neither + nor −). Used to
+// mark the row where a Greek flips sign as you walk down the delta bands — the put→call crossover,
+// which is the other place an operator's eye should be drawn.
+function rawSign(value: number): -1 | 0 | 1 {
+  if (!Number.isFinite(value) || Math.abs(value) < 1e-12) return 0;
+  return value > 0 ? 1 : -1;
+}
+
 export function DollarGreeksByMaturity({
   maturities,
+  maturityLabel,
+  side,
   currency = "$",
 }: {
   maturities: AnalyticsMaturity[];
+  // The maturity in view, driven by the shared selector strip (no longer a per-panel dropdown).
+  maturityLabel?: string;
+  // The put/call switch keeps only the matching delta bands (ATM shared).
+  side?: OptionSide;
   currency?: string;
 }) {
-  const label = "Per-maturity dollar Greeks (Greeks as columns, deltas as rows)";
-
-  const [selected, setSelected] = useState<string>(() => maturities[0]?.label ?? "");
-  useEffect(() => {
-    if (maturities.length === 0) return;
-    if (!maturities.some((m) => m.label === selected)) {
-      setSelected(maturities[0].label);
-    }
-  }, [maturities, selected]);
+  const label = "Dollar Greeks by delta band (Greeks as columns, delta bands as rows)";
 
   if (maturities.length === 0) {
     return (
@@ -47,29 +57,35 @@ export function DollarGreeksByMaturity({
     );
   }
 
-  const maturity = maturities.find((m) => m.label === selected) ?? maturities[0];
+  const maturity = maturities.find((m) => m.label === maturityLabel) ?? maturities[0];
 
-  const rows = [...maturity.points].sort((a, b) => a.target_delta - b.target_delta);
+  const rows = [...maturity.points]
+    .filter((p) => {
+      if (side === "put") return p.target_delta <= 0;
+      if (side === "call") return p.target_delta >= 0;
+      return true;
+    })
+    .sort((a, b) => a.target_delta - b.target_delta);
+
+  // Pre-compute the sign-flip rows: walking down the sorted bands, a row flips when any Greek's
+  // sign differs from the last non-zero sign seen for that Greek above it.
+  const lastSign: Partial<Record<keyof AnalyticsPoint["metrics"], -1 | 1>> = {};
+  const flipRows = new Set<string>();
+  for (const point of rows) {
+    let flipped = false;
+    for (const { name } of GREEKS) {
+      const sign = rawSign(point.metrics[name].raw);
+      if (sign === 0) continue;
+      const prev = lastSign[name];
+      if (prev !== undefined && prev !== sign) flipped = true;
+      lastSign[name] = sign;
+    }
+    if (flipped) flipRows.add(point.delta_band);
+  }
 
   return (
     <section aria-label={label} className="greeks-by-maturity">
       <h3>{label}</h3>
-      <div className="greeks-by-maturity-controls">
-        <label>
-          Maturity{" "}
-          <select
-            aria-label="Greeks maturity"
-            value={maturity.label}
-            onChange={(event) => setSelected(event.target.value)}
-          >
-            {maturities.map((m) => (
-              <option key={m.label} value={m.label}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
       {rows.length === 0 ? (
         <p>No projected analytics for {maturity.label} yet.</p>
       ) : (
@@ -77,7 +93,7 @@ export function DollarGreeksByMaturity({
           <table aria-label={`Dollar Greeks — ${maturity.label}`}>
             <caption>
               Dollar Greeks — {maturity.label} (each Greek: raw and {currency} value; rows are delta
-              bands)
+              bands). The ATM row and any sign-flip row are highlighted.
             </caption>
             <thead>
               <tr>
@@ -107,10 +123,21 @@ export function DollarGreeksByMaturity({
                 // A row on a railed slice (IV outside the sane band) is rendered with its served
                 // values intact but flagged, so a reader doesn't mistake it for a clean fit.
                 const flagged = !isSaneIv(point.implied_vol);
+                const atm = isAtmBand(point.delta_band);
+                const flip = flipRows.has(point.delta_band);
+                const className = [
+                  flagged ? "flagged-row" : "",
+                  atm ? "greeks-row--atm" : "",
+                  flip ? "greeks-row--flip" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
                 return (
-                  <tr key={point.delta_band} className={flagged ? "flagged-row" : undefined}>
+                  <tr key={point.delta_band} className={className || undefined}>
                     <th scope="row">
                       {point.delta_band}
+                      {atm ? <span title="at-the-money"> ●</span> : null}
+                      {flip ? <span title="sign flip"> ±</span> : null}
                       {flagged ? <span title="railed slice — IV outside sane band"> ⚠</span> : null}
                     </th>
                     {GREEKS.map((greek) => {

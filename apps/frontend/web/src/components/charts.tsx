@@ -1,6 +1,12 @@
 import type { Data } from "plotly.js";
 
-import type { AnalyticsMaturity, AnalyticsPoint, PriceHistoryResponse, SurfaceDense } from "../api";
+import type {
+  AnalyticsMaturity,
+  AnalyticsPoint,
+  OptionSide,
+  PriceHistoryResponse,
+  SurfaceDense,
+} from "../api";
 import { sci, withCurrency } from "../lib/format";
 import {
   cleanDenseSurface,
@@ -15,6 +21,29 @@ import { LightweightLineChart, type LightweightLineSeries } from "./LightweightL
 import { Plot } from "./Plot";
 
 const SURFACE_Z_MAX = IV_SANE_MAX;
+
+// The persistent put/call switch filters every surface/smile/Greeks panel to one wing. Puts are
+// the downside (log-moneyness ≤ 0), calls the upside (≥ 0); ATM (k = 0) is shared, so it survives
+// either filter and the two wings always join at the money. `undefined` keeps both wings (the
+// accordion's full-smile view still wants that).
+function keepK(k: number, side?: OptionSide): boolean {
+  if (side === "put") return k <= 0;
+  if (side === "call") return k >= 0;
+  return true;
+}
+
+// Same split applied to a signed target delta (puts ≤ 0, calls ≥ 0), for the Greeks views whose
+// rows/bands are keyed by delta rather than log-moneyness. ATM bands (target delta 0) survive both.
+function keepDelta(targetDelta: number, side?: OptionSide): boolean {
+  if (side === "put") return targetDelta <= 0;
+  if (side === "call") return targetDelta >= 0;
+  return true;
+}
+
+const SIDE_NOTE: Record<OptionSide, string> = { put: "puts", call: "calls" };
+function sideSuffix(side?: OptionSide): string {
+  return side ? ` — ${SIDE_NOTE[side]}` : "";
+}
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
   const label = `${data.underlying} — daily price (OHLC candlestick)`;
@@ -36,17 +65,26 @@ const SURFACE_LABEL = "Implied-volatility surface (vol vs log-moneyness vs matur
 // of implied vol, so it plots as the smooth fitted model — no kinks from a sparse delta-band
 // polyline. y is maturity in *years* (a real continuous axis; the dense grid never bunches the way
 // the 8 raw tenors did, so the index hack the fallback needs is unnecessary here).
-function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
+function DenseVolSurface({ surface, side }: { surface: SurfaceDense; side?: OptionSide }) {
   // Robustness (render layer only — the served values are never mutated): a railed slice serves
   // absurd IVs (108%, 140% at deep-OTM deltas) and duplicate log-moneyness columns; left raw they
   // spike the nappe's height and stretch its colour band. Clamp out-of-band / non-finite cells to
   // null holes (bridged by connectgaps) and collapse duplicate-k columns, then surface an honest
   // count of the flagged slices instead of rendering the garbage peak.
-  const cleaned = cleanDenseSurface(
+  const full = cleanDenseSurface(
     surface.log_moneyness,
     surface.maturity_years,
     surface.implied_vol,
   );
+  // The put/call switch keeps one wing of columns (k ≤ 0 or k ≥ 0), ATM shared. Slicing the
+  // columns rather than the served grid keeps every maturity row intact.
+  const keepCols = full.logMoneyness.map((k, j) => (keepK(k, side) ? j : -1)).filter((j) => j >= 0);
+  const cleaned = {
+    logMoneyness: keepCols.map((j) => full.logMoneyness[j]),
+    maturityYears: full.maturityYears,
+    impliedVol: full.impliedVol.map((row) => keepCols.map((j) => row[j])),
+    nFlaggedSlices: full.nFlaggedSlices,
+  };
   const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
   const trace = {
     type: "surface",
@@ -60,9 +98,10 @@ function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
     connectgaps: true,
     colorbar: { title: { text: "IV" } },
   } as Data;
+  const label = `${SURFACE_LABEL}${sideSuffix(side)}`;
   return (
     <Plot
-      label={note ? `${SURFACE_LABEL} — ⚠ ${note}` : SURFACE_LABEL}
+      label={note ? `${label} — ⚠ ${note}` : label}
       height={480}
       data={[trace]}
       layout={{
@@ -82,15 +121,17 @@ function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
 export function VolSurface({
   surface,
   maturities,
+  side,
 }: {
   surface?: SurfaceDense | null;
   maturities: AnalyticsMaturity[];
+  side?: OptionSide;
 }) {
   // Render the smooth reconstructed surface whenever the fit produced one; otherwise fall back to
   // the coarse grid built from the sparse delta-band points below (e.g. a single fitted slice, or
   // the surface-grid fallback with no fit).
   if (surface && surface.maturity_years.length > 0 && surface.log_moneyness.length > 0) {
-    return <DenseVolSurface surface={surface} />;
+    return <DenseVolSurface surface={surface} side={side} />;
   }
   // A clean rectangular vol surface: x = log-moneyness, y = the maturity *index* (0,1,2…),
   // z = implied vol. The x axis is ALWAYS log-moneyness (carried in both smile modes), never the
@@ -104,17 +145,30 @@ export function VolSurface({
   // z-grid, so a railed fallback slice cannot spike the surface — same render-only policy as the
   // dense path. The served values are untouched; only the plotted geometry is cleaned.
   const cleaned = [...maturities]
-    .map((maturity) => ({
-      maturity,
-      clean: cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols),
-    }))
+    .map((maturity) => {
+      const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
+      // Keep only the selected wing's columns (ATM shared) so the fallback surface matches the
+      // dense path under the put/call switch.
+      const keep = clean.logMoneyness
+        .map((k, i) => (keepK(k, side) ? i : -1))
+        .filter((i) => i >= 0);
+      return {
+        maturity,
+        clean: {
+          ...clean,
+          logMoneyness: keep.map((i) => clean.logMoneyness[i]),
+          impliedVols: keep.map((i) => clean.impliedVols[i]),
+        },
+      };
+    })
     .filter(({ clean }) => clean.logMoneyness.length > 0)
     .sort((a, b) => a.maturity.maturity_years - b.maturity.maturity_years);
   const nFlaggedSlices = cleaned.filter(
     ({ clean }) => clean.nDroppedAbsurd + clean.nDroppedNonFinite > 0,
   ).length;
   const note = flaggedNote(nFlaggedSlices, "slice");
-  const label = note ? `${SURFACE_LABEL} — ⚠ ${note}` : SURFACE_LABEL;
+  const baseLabel = `${SURFACE_LABEL}${sideSuffix(side)}`;
+  const label = note ? `${baseLabel} — ⚠ ${note}` : baseLabel;
   if (cleaned.length === 0) {
     return (
       <figure aria-label={label} className="plot">
@@ -354,7 +408,7 @@ const toSmileX = (x: number): number => Math.round((x + SMILE_X_OFFSET) * SMILE_
 // rides the chart label, which already names log-moneyness).
 const fromSmileX = (x: number): string => sci(x / SMILE_X_SCALE - SMILE_X_OFFSET);
 
-export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
+export function SmileChart({ maturity, side }: { maturity: AnalyticsMaturity; side?: OptionSide }) {
   // A degenerate calibration (parameter railed to a bound, non-converged, or arb-breached)
   // is shown flagged, never as a clean fit — the flag clears once real term structure lands.
   const degenerate = maturity.surface_slice?.degenerate ?? false;
@@ -372,15 +426,18 @@ export function SmileChart({ maturity }: { maturity: AnalyticsMaturity }) {
   const puts: LightweightLineSeries = { label: "puts", color: PUT_COLOR, points: [] };
   const calls: LightweightLineSeries = { label: "calls", color: CALL_COLOR, points: [] };
   ks.forEach((k, i) => {
+    if (!keepK(k, side)) return;
     // The point's x-label is the real log-moneyness (analytics quantity), in scientific notation.
     const point = { x: toSmileX(k), label: sci(k), value: vols[i] };
     if (k <= 0) puts.points.push(point);
     if (k >= 0) calls.points.push(point);
   });
+  // Only the wings that carry points (the put/call switch may leave one empty).
+  const wings = [puts, calls].filter((w) => w.points.length > 0);
   return (
     <LightweightLineChart
-      label={label}
-      series={[puts, calls]}
+      label={`${label}${sideSuffix(side)}`}
+      series={wings.length > 0 ? wings : [puts, calls]}
       yUnit="IV"
       xFormatter={fromSmileX}
       // Implied vol is an analytics quantity: scientific notation (the "IV" unit rides yUnit).
@@ -429,15 +486,19 @@ function bandColor(index: number, count: number): string {
 }
 
 // Distinct delta bands across all maturities, ordered by their signed target delta (put → call)
-// so the legend reads left-to-right the way the smile does.
-function orderedBands(maturities: AnalyticsMaturity[]): string[] {
+// so the legend reads left-to-right the way the smile does. Under the put/call switch, only the
+// matching wing's bands are kept (ATM, target delta 0, survives both).
+function orderedBands(maturities: AnalyticsMaturity[], side?: OptionSide): string[] {
   const target = new Map<string, number>();
   for (const m of maturities) {
     for (const p of m.points) {
       if (!target.has(p.delta_band)) target.set(p.delta_band, p.target_delta);
     }
   }
-  return [...target.entries()].sort((a, b) => a[1] - b[1]).map(([band]) => band);
+  return [...target.entries()]
+    .filter(([, t]) => keepDelta(t, side))
+    .sort((a, b) => a[1] - b[1])
+    .map(([band]) => band);
 }
 
 function maturityMonths(maturity: AnalyticsMaturity): number {
@@ -451,8 +512,12 @@ function maturityMonths(maturity: AnalyticsMaturity): number {
 // every real line. Such points are excluded from the term structure (the served data is untouched;
 // the point is still visible in the per-maturity transpose table, flagged). A non-finite dollar is
 // likewise excluded rather than plotted as a spike.
-function bandSeries(maturities: AnalyticsMaturity[], greek: GreekName): LightweightLineSeries[] {
-  const bands = orderedBands(maturities);
+function bandSeries(
+  maturities: AnalyticsMaturity[],
+  greek: GreekName,
+  side?: OptionSide,
+): LightweightLineSeries[] {
+  const bands = orderedBands(maturities, side);
   return bands
     .map((band, index): LightweightLineSeries => {
       const points = maturities.flatMap((maturity) => {
@@ -484,11 +549,13 @@ function unitFor(maturities: AnalyticsMaturity[], greek: GreekName): string {
 export function GreeksTermStructure({
   maturities,
   currency = "$",
+  side,
 }: {
   maturities: AnalyticsMaturity[];
   currency?: string;
+  side?: OptionSide;
 }) {
-  const label = "Dollar Greeks term structure ($ value vs maturity, by delta band)";
+  const label = `Dollar Greeks term structure ($ value vs maturity, by delta band)${sideSuffix(side)}`;
   const sorted = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years);
   if (!sorted.some((m) => m.points.length > 0)) {
     return (
@@ -511,7 +578,7 @@ export function GreeksTermStructure({
             <LightweightLineChart
               key={name}
               label={`${title} term structure (${unit})`}
-              series={bandSeries(sorted, name)}
+              series={bandSeries(sorted, name, side)}
               yUnit={unit}
             />
           );

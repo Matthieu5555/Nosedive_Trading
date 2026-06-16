@@ -1,24 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 
-import type { IndicesResponse, RecordedDatesResponse } from "../api";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
+
+import type {
+  AnalyticsResponse,
+  ConstituentsResponse,
+  IndicesResponse,
+  OptionSide,
+  RecordedDatesResponse,
+} from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
-import { CoveragePanel } from "../components/CoverageTable";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
-import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
-import { IndexAnalytics, IndexHistory } from "./market/IndexAnalytics";
+import { AnalyticsTab } from "./market/AnalyticsTab";
+import { DataQualityTab } from "./market/DataQualityTab";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
-
-export { resetConstituentHistoryBatchCacheForTests } from "./market/constituentHistory";
+import { SelectorStrip } from "./market/SelectorStrip";
 
 export function MarketPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
-
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
 
   const [index, setIndex] = useState("");
-
   useEffect(() => {
     if (indexOptions.length === 0) return;
     if (!index || !indexOptions.some((o) => o.symbol === index)) {
@@ -27,31 +31,54 @@ export function MarketPage() {
   }, [indexOptions, index]);
 
   const [asOf, setAsOf] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  // The analytics entity: the index itself, or one of its members. Defaults to the index.
+  const [entity, setEntity] = useState<string | null>(null);
+  // Default to the downside wing: for an index the put skew is the interesting read, and it's the
+  // side the book is typically short.
+  const [side, setSide] = useState<OptionSide>("put");
+  const [maturityLabel, setMaturityLabel] = useState<string>("");
 
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );
 
-  // The default as-of must be ONE value, shared by the picker and the panels. Computed in two
-  // places it silently drifts: the picker defaulted to the newest day (available[0]) while the
-  // panels defaulted to the newest QC-passing day — so the header showed one date while the data
-  // on screen was another, and re-selecting the date the picker already displayed fired no change
-  // event, leaving the real day unreachable. So compute it once, here.
-  //
-  // The DEFAULT is the latest available day (available[] is newest-first), not the latest
-  // QC-passing day: the freshest capture is what an operator opens the page to see, and its
-  // quality is already announced by the QC badge next to the date — hiding it by default just
-  // because QC failed left the page blank whenever the newest snapshot was the only one carrying
-  // analytics (the live case: the QC-passing days predate the projected-analytics backfill).
+  // The default as-of must be ONE value, shared by the picker and the panels (see the long note in
+  // git history): the latest available day, newest-first, its quality announced by the QC badge.
   const available = recorded.data?.available ?? [];
   const effectiveAsOf = asOf ?? available[0]?.date ?? null;
+  // The entity defaults to the index, and falls back to it whenever the index changes.
+  const effectiveEntity = entity ?? index;
+  const isIndex = effectiveEntity === index;
+
+  const constituents = useFetch<ConstituentsResponse>(
+    index && effectiveAsOf
+      ? `/api/constituents?index=${encodeURIComponent(index)}&as_of=${encodeURIComponent(effectiveAsOf)}`
+      : "",
+  );
+  const constituentList = useMemo(() => constituents.data?.constituents ?? [], [constituents.data]);
+
+  const analytics = useFetch<AnalyticsResponse>(
+    effectiveEntity && effectiveAsOf
+      ? `/api/analytics?underlying=${encodeURIComponent(effectiveEntity)}&trade_date=${encodeURIComponent(effectiveAsOf)}`
+      : "",
+  );
+  const maturityOptions = useMemo(
+    () => (analytics.data?.maturities ?? []).map((m) => m.label),
+    [analytics.data],
+  );
+  // Keep the chosen maturity valid as the entity/date changes; default to the shortest tenor.
+  useEffect(() => {
+    if (maturityOptions.length === 0) return;
+    if (!maturityOptions.includes(maturityLabel)) setMaturityLabel(maturityOptions[0]);
+  }, [maturityOptions, maturityLabel]);
+
+  const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
 
   return (
     <section className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Index data foundation</p>
+          <p className="eyebrow">Form a view on what the market is pricing</p>
           <h1>Market</h1>
         </div>
         <div className="control-row">
@@ -62,7 +89,7 @@ export function MarketPage() {
             onChange={(event) => {
               setIndex(event.target.value);
               setAsOf(null);
-              setSelected(null);
+              setEntity(null);
             }}
           >
             {indexOptions.map((item) => (
@@ -76,7 +103,7 @@ export function MarketPage() {
             value={effectiveAsOf}
             onChange={(date) => {
               setAsOf(date);
-              setSelected(null);
+              setEntity(null);
             }}
           />
         </div>
@@ -93,79 +120,63 @@ export function MarketPage() {
               );
             }
             const qc = available.find((a) => a.date === effectiveAsOf)?.qc ?? "unknown";
-            const recordedIndex = recorded.data.index;
-            // The quote-currency SYMBOL of the index being viewed (€ for SX5E, $ for SPX), from
-            // the registry — so the analytics panel's monetized Greeks render in the right
-            // currency, never a hard-coded "$". Unknown/missing → "$".
-            const currency = currencySymbol(
-              indexOptions.find((o) => o.symbol === recordedIndex)?.currency,
-            );
             return (
               <>
-                {/* The index's own daily history leads the page (price-first). */}
-                <article
-                  className="panel history-panel"
-                  aria-label={`${recordedIndex} daily history`}
-                >
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{recordedIndex}</p>
-                      <h2>Index daily history</h2>
-                    </div>
+                <SelectorStrip
+                  index={index}
+                  entity={effectiveEntity}
+                  constituents={constituentList}
+                  onEntity={(symbol) => setEntity(symbol)}
+                  side={side}
+                  onSide={setSide}
+                  maturityLabel={maturityLabel}
+                  maturityOptions={maturityOptions}
+                  onMaturity={setMaturityLabel}
+                />
+
+                <Tabs defaultValue="analytics" className="market-tabs">
+                  <div className="market-tabs__bar">
+                    <TabsList>
+                      <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                      <TabsTrigger value="dataquality">Data quality</TabsTrigger>
+                    </TabsList>
                     <span className="status">
                       as of {effectiveAsOf} <QcBadge qc={qc} />
                     </span>
                   </div>
-                  <ErrorBoundary label="Index history">
-                    <IndexHistory underlying={recordedIndex} asOf={effectiveAsOf} />
-                  </ErrorBoundary>
-                </article>
 
-                {/* Constituents (left) + all constituent histories loaded in one batch, with the
-                    selected component's price history shown on the right. */}
-                <ErrorBoundary label="Constituents">
-                  <ConstituentsWorkspace
-                    index={index}
-                    asOf={effectiveAsOf}
-                    recordedIndex={recordedIndex}
-                    recordedCount={recorded.data.count}
-                    selected={selected}
-                    onSelect={setSelected}
-                  />
-                </ErrorBoundary>
+                  <TabsContent value="analytics">
+                    <ErrorBoundary label="Analytics">
+                      <AsyncBlock loading={analytics.loading} error={analytics.error}>
+                        {analytics.data && (
+                          <AnalyticsTab
+                            index={index}
+                            entity={effectiveEntity}
+                            isIndex={isIndex}
+                            asOf={effectiveAsOf}
+                            analytics={analytics.data}
+                            side={side}
+                            maturityLabel={maturityLabel}
+                            constituents={constituentList}
+                            currency={currency}
+                          />
+                        )}
+                      </AsyncBlock>
+                    </ErrorBoundary>
+                  </TabsContent>
 
-                {/* The INDEX's volatility analytics (nappe / greeks / smile), full width below the
-                    row. The option chain is captured at the index level, not per constituent, so
-                    these always track the index — the constituent selection only drives its price
-                    chart above (cahier des charges §3.4–3.6). */}
-                <article
-                  className="panel analytics-panel"
-                  aria-label={`Volatility analytics for ${recordedIndex}`}
-                >
-                  <ErrorBoundary label="Volatility analytics">
-                    <IndexAnalytics
-                      underlying={recordedIndex}
-                      asOf={effectiveAsOf}
-                      currency={currency}
-                    />
-                  </ErrorBoundary>
-                </article>
-
-                {/* Capture coverage: the captured chain as a plain quality table (per-expiry +
-                    per-tenor QC). The surface above smooths over gaps; this shows them, so a
-                    term-structure hole (1m…3y empty) or a thin strike window is visible at a
-                    glance — the data-quality readout behind the analytics. */}
-                <article
-                  className="panel coverage-panel"
-                  aria-label={`Capture coverage for ${recordedIndex}`}
-                >
-                  <ErrorBoundary label="Capture coverage">
-                    <CoveragePanel
-                      underlying={recordedIndex}
-                      tradeDate={effectiveAsOf ?? undefined}
-                    />
-                  </ErrorBoundary>
-                </article>
+                  <TabsContent value="dataquality">
+                    <AsyncBlock loading={constituents.loading} error={constituents.error}>
+                      <DataQualityTab
+                        index={index}
+                        asOf={effectiveAsOf}
+                        constituents={constituentList}
+                        entity={effectiveEntity}
+                        onEntity={(symbol) => setEntity(symbol)}
+                      />
+                    </AsyncBlock>
+                  </TabsContent>
+                </Tabs>
               </>
             );
           })()}

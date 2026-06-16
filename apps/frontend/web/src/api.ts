@@ -153,6 +153,12 @@ export interface DollarMetric {
   unit: string | null;
 }
 
+// Which half of the smile the page is focused on. The persistent put/call switch in the market
+// selector strip carries this; every surface/smile/Greeks panel reads it the same way — puts are
+// the downside wing (log-moneyness ≤ 0, signed delta ≤ 0), calls the upside wing (≥ 0). ATM (k = 0)
+// belongs to both, so it is never filtered out.
+export type OptionSide = "put" | "call";
+
 export interface AnalyticsPoint {
   delta_band: string;
   target_delta: number;

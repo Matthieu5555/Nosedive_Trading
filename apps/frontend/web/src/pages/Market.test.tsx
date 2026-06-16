@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { afterEach, expect, test, vi } from "vitest";
+import { http } from "msw";
+import { expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 vi.mock("../components/CandleChart", async () => await import("../test/candleMock"));
@@ -13,122 +13,94 @@ vi.mock(
 import {
   ANALYTICS_AAA_DENSE,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
-  PRICE_HISTORY_BATCH_TWO,
   RECORDED_EMPTY,
 } from "../test/fixtures";
 import { jsonGet, notMocked, server } from "../test/server";
-import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
+import { MarketPage } from "./Market";
 
-afterEach(() => {
-  resetConstituentHistoryBatchCacheForTests();
+test("leads with the context selector strip (entity / side / maturity) and an as-of dropdown", async () => {
+  render(<MarketPage />);
+
+  expect(await screen.findByLabelText("Entity")).toBeInTheDocument();
+  const side = screen.getByRole("radiogroup", { name: /option side/i });
+  expect(within(side).getByRole("radio", { name: "Puts" })).toBeInTheDocument();
+  expect(within(side).getByRole("radio", { name: "Calls" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Maturity")).toBeInTheDocument();
+  expect(screen.getByLabelText("As-of date")).toBeInTheDocument();
 });
 
-function captureBatchBodies(): unknown[] {
-  const bodies: unknown[] = [];
-  server.use(
-    http.post("/api/price-history/batch", async ({ request }) => {
-      bodies.push(await request.json());
-      return HttpResponse.json(PRICE_HISTORY_BATCH_TWO);
-    }),
-  );
-  return bodies;
-}
+test("the entity selector lists the index itself and each member", async () => {
+  render(<MarketPage />);
+  const entity = await screen.findByLabelText("Entity");
+  expect(within(entity).getByRole("option", { name: /SPX \(index\)/ })).toBeInTheDocument();
+  expect(await within(entity).findByRole("option", { name: "AAA" })).toBeInTheDocument();
+  expect(within(entity).getByRole("option", { name: "BBB" })).toBeInTheDocument();
+});
 
-test("leads with the index daily-history panel and an as-of date dropdown", async () => {
+test("defaults to the index and shows its price history, surface, and smile", async () => {
   render(<MarketPage />);
 
   expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
-  expect(await screen.findByText("2 days recorded")).toBeInTheDocument();
-  const dropdown = await screen.findByLabelText("As-of date");
-  expect(within(dropdown).getByText("2026-05-29")).toBeInTheDocument();
+  expect(await screen.findByLabelText(/Implied-volatility surface/i)).toBeInTheDocument();
+  expect(await screen.findByLabelText(/Smile — 3m/i)).toBeInTheDocument();
 });
 
-test("renders the point-in-time constituent list, scrollable, price-first", async () => {
+test("the index view leads with the dispersion gap (index vol vs member vol)", async () => {
   render(<MarketPage />);
-  const region = await screen.findByRole("region", { name: /constituents/i });
-  expect(within(region).getByText("AAA")).toBeInTheDocument();
-  expect(within(region).getByText("BBB")).toBeInTheDocument();
-  expect(region).toHaveStyle({ overflowY: "auto" });
-  const coverage = await screen.findByLabelText("Underlying history coverage");
-  expect(within(coverage).getByText("2 / 2")).toBeInTheDocument();
-  expect(within(coverage).getByText("4")).toBeInTheDocument();
+  expect(
+    await screen.findByLabelText(/Dispersion: index vol vs average member vol/i),
+  ).toBeInTheDocument();
 });
 
-test("default-selects the heaviest constituent and shows its detail without a click", async () => {
-  render(<MarketPage />);
-
-  const region = await screen.findByRole("region", { name: /constituents/i });
-  const aaaRow = within(region).getByText("AAA").closest("tr");
-  await waitFor(() => expect(aaaRow).toHaveAttribute("aria-selected", "true"));
-
-  expect(await screen.findByLabelText("Volatility analytics for SPX")).toBeInTheDocument();
-});
-
-test("selecting a ticker renders candlestick, 3D surface, accordion + smile, and dollar Greeks", async () => {
+test("selecting a member repoints the analytics at it and drops the dispersion gap", async () => {
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await user.click(await screen.findByRole("button", { name: "AAA" }));
+  await screen.findByLabelText(/Dispersion: index vol/i);
+  await user.selectOptions(screen.getByLabelText("Entity"), "AAA");
 
-  const candles = await screen.findAllByLabelText(/daily price \(OHLC candlestick\)/i);
-  expect(candles.length).toBeGreaterThanOrEqual(1);
-  expect(within(candles[0]).getByTestId("candle-bars")).toHaveTextContent("2");
+  expect(await screen.findByLabelText(/AAA daily history/i)).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.queryByLabelText(/Dispersion: index vol/i)).not.toBeInTheDocument(),
+  );
+});
 
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
-  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
-
-  const smile = await screen.findByLabelText(/Smile — 3m/i);
-
-  expect(within(smile).getByTestId("line-series")).toHaveTextContent("puts");
-  expect(within(smile).getByTestId("line-series")).toHaveTextContent("calls");
+test("renders the dollar-Greeks term structure and the by-band table (puts by default)", async () => {
+  render(<MarketPage />);
 
   const deltaPanel = await screen.findByLabelText(/Delta \$ term structure/i);
   expect(within(deltaPanel).getByTestId("line-series")).toHaveTextContent("30dp");
   expect(within(deltaPanel).getByTestId("line-unit")).toHaveTextContent("$ per $1 of underlying");
-  expect(
-    await screen.findByLabelText(/Gamma \$ term structure \(\$ per 1% move\)/i),
-  ).toBeInTheDocument();
-  expect(
-    await screen.findByLabelText(/Theta \$ term structure \(\$ per calendar day\)/i),
-  ).toBeInTheDocument();
 
   const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
+  expect(within(greeks).getByText("30dp")).toBeInTheDocument();
   expect(within(greeks).getByText("$ per 1% move")).toBeInTheDocument();
-  expect(within(greeks).getByText("$ per calendar day")).toBeInTheDocument();
-  expect(within(greeks).getByText("$ per 1 vol point")).toBeInTheDocument();
 });
 
-test("the selected component's candlestick renders without waiting for the batch preload", async () => {
-  server.use(http.post("/api/price-history/batch", notMocked));
+test("the put/call switch filters the Greeks to the chosen wing", async () => {
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await user.click(await screen.findByRole("button", { name: "AAA" }));
-  const detail = await screen.findByLabelText("Price history for AAA");
-  await waitFor(() => {
-    expect(within(detail).getByTestId("candle-bars")).toHaveTextContent("2");
-  });
+  expect((await screen.findAllByText("30dp")).length).toBeGreaterThan(0);
+
+  // The only captured band in the fixture is a put; switching to calls empties the wing.
+  await user.click(screen.getByRole("radio", { name: "Calls" }));
+  await waitFor(() => expect(screen.queryByText("30dp")).not.toBeInTheDocument());
 });
 
-test("returning to the page does not re-fire the whole-basket batch preload", async () => {
-  const batchBodies = captureBatchBodies();
-  const first = render(<MarketPage />);
-  await screen.findByLabelText("Price history for AAA");
-  first.unmount();
+test("renders the dense reconstructed surface, sliced to the put wing", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DENSE));
   render(<MarketPage />);
-  await screen.findByLabelText("Price history for AAA");
 
-  expect(batchBodies.length).toBe(1);
-});
-
-test("the batch preload requests the full ticker symbols, not fragments", async () => {
-  const batchBodies = captureBatchBodies();
-  render(<MarketPage />);
-  await screen.findByLabelText("Price history for AAA");
-
-  expect(batchBodies.length).toBeGreaterThanOrEqual(1);
-  const body = batchBodies[0] as { underlyings: string[] };
-  expect(body.underlyings).toEqual(["AAA", "BBB"]);
+  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
+  // Default side is puts → only the log-moneyness ≤ 0 columns survive (k = −0.1, 0.0).
+  expect(within(surface).getByTestId("plot-z")).toHaveTextContent(
+    JSON.stringify([
+      [0.27, 0.24],
+      [0.23, 0.21],
+    ]),
+  );
 });
 
 test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {
@@ -136,23 +108,19 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
   render(<MarketPage />);
 
   const smile = await screen.findByLabelText(/Smile — 0\.250y/i);
-
   expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs log-moneyness/i);
   expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
-
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
-  expect(surface.getAttribute("aria-label")).toMatch(/vol vs log-moneyness vs maturity/i);
 });
 
-test("renders the dense reconstructed surface (smooth nappe) when the BFF serves one", async () => {
-  server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DENSE));
+test("the Data quality tab carries the constituents and the coverage table", async () => {
+  const user = userEvent.setup();
   render(<MarketPage />);
 
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
-  expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
-  expect(within(surface).getByTestId("plot-z")).toHaveTextContent(
-    JSON.stringify(ANALYTICS_AAA_DENSE.surface!.implied_vol),
-  );
+  await user.click(await screen.findByRole("tab", { name: "Data quality" }));
+
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  expect(within(constituents).getByText("AAA")).toBeInTheDocument();
+  expect(within(constituents).getByText("BBB")).toBeInTheDocument();
 });
 
 test("renders a labeled empty state when no dates are recorded", async () => {
@@ -171,7 +139,6 @@ test("shows a qc-failing day with a QC fail badge instead of hiding it", async (
     }),
   );
   render(<MarketPage />);
-  expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
   expect(await screen.findByText("QC fail")).toBeInTheDocument();
 });
 
@@ -197,14 +164,9 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
   );
   render(<MarketPage />);
 
-  const greeks = await screen.findByRole("table", { name: /Dollar Greeks — / });
-
+  const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
   expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();
-
-  expect(
-    await screen.findByLabelText(/Gamma \$ term structure \(€ per 1% move\)/i),
-  ).toBeInTheDocument();
 });
 
 test("the index selector is driven by /api/indices — a parked index is not offered", async () => {

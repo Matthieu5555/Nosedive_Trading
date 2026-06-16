@@ -590,6 +590,108 @@ h3 {
   color: var(--negative);
 }
 
+/* Selective highlight — not a gradient over the whole grid. The ATM row is the spot pivot the eye
+   should land on first (amber left-edge + faint tint); a sign-flip row marks the put→call crossover
+   (blue left-edge). Everything else stays plain so these two reads actually pop. */
+.greeks-by-maturity tr.greeks-row--atm {
+  background: rgba(229, 195, 106, 0.08);
+}
+.greeks-by-maturity tr.greeks-row--atm th[scope="row"] {
+  box-shadow: inset 3px 0 0 var(--amber);
+  color: var(--amber);
+}
+.greeks-by-maturity tr.greeks-row--flip th[scope="row"] {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+.greeks-by-maturity tr.greeks-row--atm.greeks-row--flip th[scope="row"] {
+  box-shadow:
+    inset 3px 0 0 var(--amber),
+    inset 6px 0 0 var(--blue);
+}
+
+/* ── Market analytics layout (the redesigned first page) ─────────────────────────────────────
+   The persistent context strip: entity / put-call / maturity. One pick redraws every panel below,
+   so it sits directly under the page header and stays compact. */
+.selector-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.selector-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.selector-field > span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The put/call switch: a two-segment pill. The active side carries the smile's own convention —
+   puts read red (downside), calls green (upside) — so the colour reinforces which wing is shown. */
+.side-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: #111311;
+}
+.side-toggle__option {
+  min-height: 32px;
+  min-width: 64px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+.side-toggle__option.is-active.side-toggle__option--put {
+  background: rgba(239, 156, 146, 0.16);
+  border-color: var(--negative);
+  color: var(--negative);
+}
+.side-toggle__option.is-active.side-toggle__option--call {
+  background: rgba(168, 230, 186, 0.16);
+  border-color: var(--positive);
+  color: var(--positive);
+}
+
+.market-tabs__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.analytics-stack,
+.dataquality-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* The surface block: the 3D nappe and the readable smile sit side by side — the 3D is the
+   overview, the smile is where the number is read. They stack on narrow viewports. */
+.surface-two-up {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .surface-two-up {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* lightweight-charts fills its container's box rather than auto-sizing like Plotly, so the
    candlestick panel needs an explicit height to render. position:relative anchors the hover
    read-out box overlaid on the chart. */

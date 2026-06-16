@@ -51,10 +51,17 @@ export function MarketPage() {
   // analytics/coverage — no other fetch can overwrite it) and its trade date (drives the
   // cross-date constituents panel, which is not per-fetch).
   const available = recorded.data?.available ?? [];
+  // Match on run_id when the BFF emits one, else on trade date — legacy flat partitions have no
+  // run_id, so keying purely on it would collapse the picker and lose the date selection.
   const selectedFetch =
-    available.find((fetch) => fetch.run_id === selectedRunId) ?? available[0] ?? null;
+    available.find((fetch) => (fetch.run_id ?? fetch.date) === selectedRunId) ??
+    available[0] ??
+    null;
+  // Only a genuine run_id addresses a specific fetch; for flat data it stays null so the analytics
+  // read isn't filtered to a non-existent run= dir (which would return an empty store).
   const effectiveRunId = selectedFetch?.run_id ?? null;
   const effectiveAsOf = selectedFetch?.date ?? null;
+  const selectedFetchKey = selectedFetch ? (selectedFetch.run_id ?? selectedFetch.date) : null;
   // The entity defaults to the index, and falls back to it whenever the index changes.
   const effectiveEntity = entity ?? index;
   const isIndex = effectiveEntity === index;
@@ -113,9 +120,9 @@ export function MarketPage() {
           </select>
           <AsOfSelect
             recorded={recorded.data}
-            value={effectiveRunId}
-            onChange={(runId) => {
-              setSelectedRunId(runId);
+            value={selectedFetchKey}
+            onChange={(key) => {
+              setSelectedRunId(key);
               setEntity(null);
             }}
           />

@@ -29,7 +29,16 @@ test("two fetches that land in the same second are tie-broken by short run_id", 
   expect(labels.get("bbbbbbbb2222")).toBe("2026-06-16 · 17:30:00 (bbbbbbbb)");
 });
 
-test("a missing recorded_ts renders an em-dash time, and QC verdict is suffixed", () => {
+test("a missing recorded_ts shows just the date (no placeholder time), QC verdict suffixed", () => {
   const labels = fetchOptionLabels([fetchRow({ run_id: "r-na", recorded_ts: null, qc: "fail" })]);
-  expect(labels.get("r-na")).toBe("2026-06-16 · — (QC fail)");
+  expect(labels.get("r-na")).toBe("2026-06-16 (QC fail)");
+});
+
+test("falls back to the trade date as identity when the BFF emits no run_id", () => {
+  const labels = fetchOptionLabels([
+    { date: "2026-06-16", qc: "fail" } as AvailableDate,
+    { date: "2026-06-15", qc: "pass" } as AvailableDate,
+  ]);
+  expect(labels.get("2026-06-16")).toBe("2026-06-16 (QC fail)");
+  expect(labels.get("2026-06-15")).toBe("2026-06-15");
 });

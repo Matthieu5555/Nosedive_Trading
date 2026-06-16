@@ -117,6 +117,14 @@ the code is part of the change, not a follow-up.
   only thing that may start with `#`/`//` in code is a functional directive the
   toolchain reads (`# type: ignore`, `# noqa`, `# pragma`, shebangs,
   `// eslint-disable`). Full rule in `.agent/conventions.md`.
+- **A `print`/log line is not proof — it drifts and lies like a comment.** An
+  existing status message is a *claim*, not ground truth: an unconditional
+  `print("...done")` or `log("SMS dispatched")` often fires before the thing it
+  names has actually happened. So (a) when reasoning about behavior, trust what
+  the code *reaches*, not what it prints; and (b) never emit a message asserting a
+  state you have not observed — word it for what the code has actually reached
+  ("submitted; waiting to see if a challenge fires", not "SMS dispatched"). Same
+  honesty bar as "Verify before you declare done," applied to the code's own output.
 - Financial/time-series code: no look-ahead bias. All data access through an
   as-of abstraction. See `.agent/conventions.md` and the `check-lookahead-bias` skill.
 - **Lean on well-maintained libraries; do not hand-roll what one already does.**

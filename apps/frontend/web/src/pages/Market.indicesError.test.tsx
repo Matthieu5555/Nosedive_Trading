@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { http } from "msw";
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 // Plotly and lightweight-charts draw to a canvas jsdom does not implement; swap each wrapper for a
 // DOM stub, as the other Market tests do — without these, importing the page crashes on load.
@@ -12,14 +12,12 @@ vi.mock(
 );
 
 import { notMocked, server } from "../test/server";
-import { MarketPage, resetConstituentHistoryBatchCacheForTests } from "./Market";
+import { MarketPage } from "./Market";
 
 // The regression net for the reported failure: /api/indices 500s (a stale/broken backend) and the
 // Market page used to render a disabled, empty dropdown over a blank body — no spinner, no error,
 // nothing to click and no word why. The index list gates the whole page, so its failure must front
 // a visible error instead of being silently swallowed.
-
-afterEach(() => resetConstituentHistoryBatchCacheForTests());
 
 test("a failing /api/indices fronts a visible error tile, not a silent blank page", async () => {
   server.use(http.get("/api/indices", () => notMocked()));

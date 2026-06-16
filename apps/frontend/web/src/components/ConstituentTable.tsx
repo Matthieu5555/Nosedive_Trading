@@ -31,19 +31,20 @@ const columns: ColumnDef<Constituent>[] = [
       return value === null ? "—" : sciUnit(value, UNITS.price);
     },
   },
-  { accessorKey: "effective_add_date", header: "Added" },
 ];
 
 const SORT_GLYPH: Record<"asc" | "desc", string> = { asc: " ▲", desc: " ▼" };
 
 export function ConstituentTable({
   constituents,
-  selected,
+  selected = null,
   onSelect,
 }: {
   constituents: Constituent[];
-  selected: string | null;
-  onSelect: (symbol: string) => void;
+  // Display-only when omitted (ADR 0051: index-keyed, no per-member surface route). The table then
+  // carries no cursor/click affordance — just the weight + price read.
+  selected?: string | null;
+  onSelect?: (symbol: string) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "weight", desc: true }]);
   const table = useReactTable({
@@ -86,13 +87,13 @@ export function ConstituentTable({
             return (
               <tr
                 key={row.id}
-                aria-selected={symbol === selected}
-                onClick={() => onSelect(symbol)}
-                style={{ cursor: "pointer" }}
+                aria-selected={onSelect ? symbol === selected : undefined}
+                onClick={onSelect ? () => onSelect(symbol) : undefined}
+                style={onSelect ? { cursor: "pointer" } : undefined}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>
-                    {symbol === cell.row.original.symbol && cell.column.id === "symbol" ? (
+                    {onSelect && cell.column.id === "symbol" ? (
                       <button type="button" onClick={() => onSelect(symbol)}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </button>

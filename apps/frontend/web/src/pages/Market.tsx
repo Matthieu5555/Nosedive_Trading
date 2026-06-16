@@ -11,7 +11,6 @@ import {
 import { AsyncBlock } from "../components/AsyncBlock";
 import { PriceChart, VolSurface } from "../components/charts";
 import { ConstituentTable } from "../components/ConstituentTable";
-import { CoveragePanel } from "../components/CoverageTable";
 import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Scorecards } from "../components/Scorecards";
@@ -221,8 +220,9 @@ export function MarketPage() {
                   </ErrorBoundary>
                 </article>
 
-                {/* Secondary: constituents (weights + prices) and capture coverage — display-only,
-                    index-keyed; a member row never routes into the surface (ADR 0051). */}
+                {/* Secondary: constituents (weight + price), display-only and index-keyed — a member
+                    row never routes into the surface (ADR 0051). The per-tenor capture-coverage
+                    ratios were dropped here: they are a data-check artefact, not a market read. */}
                 <article className="panel" aria-label="Index constituents">
                   <div className="panel-heading">
                     <h2>Constituents</h2>
@@ -234,23 +234,9 @@ export function MarketPage() {
                         No constituents for {index} as of {effectiveAsOf}.
                       </p>
                     ) : (
-                      <ConstituentTable constituents={constituentList} selected={null} onSelect={() => {}} />
+                      <ConstituentTable constituents={constituentList} />
                     )}
                   </AsyncBlock>
-                </article>
-
-                <article className="panel coverage-panel" aria-label={`Capture coverage for ${index}`}>
-                  <div className="panel-heading">
-                    <h2>Capture coverage</h2>
-                    <span className="status">data check</span>
-                  </div>
-                  <ErrorBoundary label="Capture coverage">
-                    <CoveragePanel
-                      underlying={index}
-                      tradeDate={effectiveAsOf}
-                      runId={effectiveRunId ?? undefined}
-                    />
-                  </ErrorBoundary>
                 </article>
               </div>
             );

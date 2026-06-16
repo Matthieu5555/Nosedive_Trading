@@ -540,6 +540,62 @@ def seed_named_scenarios_store(root: Path) -> None:
     store.write("scenario_results", rows)
 
 
+RATE_PORTFOLIO = "pf-rate"
+RATE_VERSION = "scn-rate+grid"
+RATE_LEGS: dict[float, tuple[float, float]] = {
+    -0.0010: (-300.0, -150.0),
+    0.0: (0.0, 0.0),
+    0.0010: (320.0, 160.0),
+}
+RATE_TOTALS = {shock: legs[0] + legs[1] for shock, legs in RATE_LEGS.items()}
+
+
+def _rate_id(rate_shock: float) -> str:
+    return f"rate_{rate_shock:+.4f}"
+
+
+def seed_rate_store(root: Path) -> None:
+    store = ParquetStore(root)
+    rows: list[tables.ScenarioResult] = []
+    for rate_shock, legs in RATE_LEGS.items():
+        for contract_key, leg_pnl in zip(
+            (CALL_100.canonical(), GMMA_CALL.canonical()), legs, strict=True
+        ):
+            rows.append(
+                tables.ScenarioResult(
+                    valuation_ts=AS_OF,
+                    portfolio_id=RATE_PORTFOLIO,
+                    scenario_id=_rate_id(rate_shock),
+                    contract_key=contract_key,
+                    spot_shock=0.0,
+                    vol_shock=0.0,
+                    time_shock=0.0,
+                    scenario_pnl=leg_pnl,
+                    scenario_version=RATE_VERSION,
+                    source_snapshot_ts=AS_OF,
+                    provenance=prov(f"rate:{rate_shock}:{contract_key}"),
+                    rate_shock=rate_shock,
+                )
+            )
+    rows.append(
+        tables.ScenarioResult(
+            valuation_ts=AS_OF,
+            portfolio_id=RATE_PORTFOLIO,
+            scenario_id="spot_-0.0500",
+            contract_key=CALL_100.canonical(),
+            spot_shock=-0.05,
+            vol_shock=0.0,
+            time_shock=0.0,
+            scenario_pnl=-77.0,
+            scenario_version=RATE_VERSION,
+            source_snapshot_ts=AS_OF,
+            provenance=prov("rate-store:fam:spot"),
+            rate_shock=0.0,
+        )
+    )
+    store.write("scenario_results", rows)
+
+
 COMPLETE_DATE_1 = date(2026, 5, 28)
 COMPLETE_DATE_2 = date(2026, 5, 29)
 PARTIAL_DATE = date(2026, 5, 30)
@@ -637,6 +693,20 @@ def surface_client(tmp_path: Path) -> Iterator[TestClient]:
 def named_client(tmp_path: Path) -> Iterator[TestClient]:
     store_root = tmp_path / "data"
     seed_named_scenarios_store(store_root)
+    app_ctx = AppContext(
+        store_root=store_root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(store_root),
+        default_underlying=UNDERLYING,
+    )
+    with TestClient(create_app(app_ctx)) as client:
+        yield client
+
+
+@pytest.fixture
+def rate_client(tmp_path: Path) -> Iterator[TestClient]:
+    store_root = tmp_path / "data"
+    seed_rate_store(store_root)
     app_ctx = AppContext(
         store_root=store_root,
         configs_dir=tmp_path / "configs",

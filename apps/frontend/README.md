@@ -144,8 +144,18 @@ The BFF exposes (all under `/api` except the liveness probe):
   scenarios** (`scenario_id` `named_<label>`) bucketed per scenario, each a labelled compound shock
   (`spot_shock`/`vol_shock`/`rate_shock`) with its book-summed `scenario_pnl` and `n_legs`. Empty
   list on an unconfigured / parametric-only grid, so the surface contract stays byte-identical when
-  there are no named scenarios. The correlation family stays dormant (a ρ̄ bump reprices to zero on
-  the live option book until a real `BasketCorrelationExposure` lands — `frontend-named-scenarios-wiring`).
+  there are no named scenarios. It also carries an additive `rate` sweep (`n_rate`): the engine's
+  **rate-shock family** (`scenario_id` `rate_<±shock>`, the additive forward-fixed parallel rate
+  sweep — *not* crossed with the spot×vol surface, owner-ruled) bucketed per shock, each labelled
+  with its `rate_shock` (fraction), `bp` (basis points), book-summed `scenario_pnl` and `n_legs`,
+  sorted ascending by shock. The BFF serializes the banked `rate_` valuations — it never re-shocks.
+  Empty list when the scenario grid configures no `rate_shocks` (byte-identical surface contract);
+  the web Risk Scenarios page renders the sweep as its own `RateSweep` panel only when present, so
+  an unconfigured grid renders exactly as before. The **on-demand basket** stress
+  (`/api/basket/scenarios`) carries no rate sweep yet — its engine reprices spot×vol only; a basket
+  rate sweep is a follow-up (it needs the basket stress engine to emit a rate family). The
+  correlation family stays dormant (a ρ̄ bump reprices to zero on the live option book until a real
+  `BasketCorrelationExposure` lands — `frontend-named-scenarios-wiring`).
 - `POST /api/basket/risk` — price/risk a composed multi-leg basket as the book-additive sum of
   its legs' stored dollar Greeks (WS 2A; summation, never a reprice).
 - `POST /api/basket/scenarios` — the **on-demand** full-reprice stress surface for a composed

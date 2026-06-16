@@ -1,7 +1,7 @@
 import type { Data } from "plotly.js";
 
-import { sciUnit, withCurrency } from "../lib/format";
-import type { StressSurfaceData } from "../stressApi";
+import { sci, sciUnit, withCurrency } from "../lib/format";
+import type { RateScenario, StressSurfaceData } from "../stressApi";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
 
@@ -114,5 +114,74 @@ export function StressSurface({
         />
       </article>
     </>
+  );
+}
+
+export function RateSweep({
+  rates,
+  currency,
+  emptyMessage = "No rate-shock sweep is configured for this selection.",
+}: {
+  rates: RateScenario[];
+  currency?: string;
+  emptyMessage?: string;
+}) {
+  if (rates.length === 0) {
+    return (
+      <article className="panel" aria-label="Rate-shock sweep (empty)">
+        <p role="status">{emptyMessage}</p>
+      </article>
+    );
+  }
+
+  const ordered = [...rates].sort((a, b) => a.rate_shock - b.rate_shock);
+  const worst = ordered.reduce(
+    (lowest, rate) => (rate.scenario_pnl < lowest.scenario_pnl ? rate : lowest),
+    ordered[0],
+  );
+  const worstUnit = withCurrency(worst.unit, currency) ?? worst.unit;
+
+  return (
+    <article className="panel rate-sweep" aria-label="Rate-shock sweep">
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Rates ±bp</p>
+          <h2>Rate-shock sweep</h2>
+        </div>
+        <span className={worst.scenario_pnl < 0 ? "status negative" : "status"}>
+          {sciUnit(worst.scenario_pnl, worstUnit)}
+        </span>
+      </div>
+      <p>
+        A parallel shift of the rate curve (additive, forward-fixed), full-repriced beside the spot ×
+        vol surface — swept on its own axis, not crossed with it. Each row is one shock in basis
+        points and the book&apos;s P&amp;L delta. P&amp;L unit: <strong>{worstUnit}</strong>.
+      </p>
+      <div className="table-wrap">
+        <table aria-label="Rate-shock sweep">
+          <thead>
+            <tr>
+              <th scope="col">Rate shock</th>
+              <th scope="col">Repriced P&amp;L</th>
+              <th scope="col">Legs</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordered.map((rate) => {
+              const rowUnit = withCurrency(rate.unit, currency) ?? rate.unit;
+              return (
+                <tr key={rate.scenario_id}>
+                  <th scope="row">{sciUnit(rate.bp, rate.bp_unit)}</th>
+                  <td className={rate.scenario_pnl < 0 ? "negative" : ""}>
+                    {sciUnit(rate.scenario_pnl, rowUnit)}
+                  </td>
+                  <td>{sci(rate.n_legs)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </article>
   );
 }

@@ -24,6 +24,21 @@ export interface NamedScenario {
   unit: string;
 }
 
+// One cell of the additive forward-fixed rate-shock sweep: a single parallel rate move (in
+// basis points) and the book-summed full-reprice P&L delta it produces, swept beside the
+// spot × vol surface rather than crossed with it (owner-ruled parallel sweep). `n_legs` is how
+// many position legs contributed. Mirrors rate_scenarios_to_list on the BFF.
+export interface RateScenario {
+  scenario_id: string;
+  rate_shock: number;
+  bp: number;
+  scenario_pnl: number;
+  scenario_version: string;
+  n_legs: number;
+  unit: string;
+  bp_unit: string;
+}
+
 export interface ScenariosResponse {
   portfolio_id: string | null;
   n_cells: number;
@@ -32,6 +47,10 @@ export interface ScenariosResponse {
   // surface contract is byte-identical when there are no named scenarios.
   named?: NamedScenario[];
   n_named?: number;
+  // Additive (rate-axis wiring): empty list when the scenario grid configures no rate_shocks,
+  // so the surface contract stays byte-identical when there is no rate sweep.
+  rate?: RateScenario[];
+  n_rate?: number;
 }
 
 export interface BasketScenarioGap {

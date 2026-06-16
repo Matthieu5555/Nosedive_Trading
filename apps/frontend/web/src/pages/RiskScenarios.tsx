@@ -8,7 +8,7 @@ import { AsyncBlock } from "../components/AsyncBlock";
 import { AttributionWaterfall } from "../components/AttributionWaterfall";
 import { NamedScenarios } from "../components/NamedScenarios";
 import { Reconciliation } from "../components/Reconciliation";
-import { StressSurface } from "../components/StressSurface";
+import { RateSweep, StressSurface } from "../components/StressSurface";
 import {
   useBookAttribution,
   usePortfolios,
@@ -174,6 +174,7 @@ function ScenarioBoard({ data }: { data: ScenariosResponse }) {
         kicker={data.portfolio_id ?? "All portfolios"}
         emptyMessage="No stress surface persisted yet for this selection."
       />
+      {data.rate && data.rate.length > 0 && <RateSweep rates={data.rate} />}
     </div>
   );
 }

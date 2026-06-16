@@ -136,6 +136,7 @@ def scenario_result_to_dict(row: ScenarioResult) -> dict[str, object]:
         "spot_shock": row.spot_shock,
         "vol_shock": row.vol_shock,
         "time_shock": row.time_shock,
+        "rate_shock": row.rate_shock,
         "scenario_pnl": row.scenario_pnl,
         "scenario_version": row.scenario_version,
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
@@ -212,6 +213,40 @@ def named_scenarios_to_list(rows: list[ScenarioResult]) -> list[dict[str, object
             "unit": SCENARIO_PNL_UNIT,
         }
         for scenario_id in sorted(totals)
+    ]
+
+
+_RATE_ID_PREFIX = "rate_"
+RATE_SHOCK_BP_UNIT = "bp"
+_BP_PER_UNIT_RATE = 10_000.0
+
+
+def _rate_shock_of(row: ScenarioResult) -> float:
+    return row.rate_shock if row.rate_shock is not None else 0.0
+
+
+def rate_scenarios_to_list(rows: list[ScenarioResult]) -> list[dict[str, object]]:
+    rate_rows = [row for row in rows if row.scenario_id.startswith(_RATE_ID_PREFIX)]
+    totals: dict[str, float] = {}
+    leg_counts: dict[str, int] = {}
+    seed: dict[str, ScenarioResult] = {}
+    for row in rate_rows:
+        totals[row.scenario_id] = totals.get(row.scenario_id, 0.0) + row.scenario_pnl
+        leg_counts[row.scenario_id] = leg_counts.get(row.scenario_id, 0) + 1
+        seed.setdefault(row.scenario_id, row)
+    ordered_ids = sorted(totals, key=lambda scenario_id: _rate_shock_of(seed[scenario_id]))
+    return [
+        {
+            "scenario_id": scenario_id,
+            "rate_shock": _rate_shock_of(seed[scenario_id]),
+            "bp": _rate_shock_of(seed[scenario_id]) * _BP_PER_UNIT_RATE,
+            "scenario_pnl": totals[scenario_id],
+            "scenario_version": seed[scenario_id].scenario_version,
+            "n_legs": leg_counts[scenario_id],
+            "unit": SCENARIO_PNL_UNIT,
+            "bp_unit": RATE_SHOCK_BP_UNIT,
+        }
+        for scenario_id in ordered_ids
     ]
 
 

@@ -40,3 +40,28 @@ The rate-shock sweep is in the `/api/risk/scenarios` + `/api/basket/scenarios` p
 renders on the Risk Scenarios page + Basket stress action, each cell labelled in bp and
 dollars; empty `rate_shocks` renders no rate panel (backward-compatible); no reprice
 re-implemented in the BFF; Python BFF tests + web gate green.
+
+## Landed (2026-06-17, gate green) — persisted Risk Scenarios path
+
+The persisted half is **done and on `main`**: the engine's `rate_` family (already banked in
+`scenario_results`) is now serialized through `/api/risk/scenarios` as an additive `rate` sweep
+(`n_rate`) — `rate_scenarios_to_list` buckets each `rate_<±shock>` per shock, labelled with its
+`rate_shock` (fraction), `bp`, book-summed `scenario_pnl` and `n_legs`, sorted ascending; the BFF
+serializes the banked valuations and **re-shocks nothing**. `scenario_result_to_dict` now carries
+the previously-dropped `rate_shock` on every cell. The web Risk Scenarios page renders a new
+`RateSweep` panel (in `StressSurface.tsx`, reusing the panel idiom) beside the surface, mounted
+only when `rate` is non-empty — an unconfigured grid renders **byte-identical** to before. Types in
+`stressApi.ts` (`RateScenario`), BFF tests (`test_risk_api.py` + `rate_client`/`seed_rate_store`),
+web component + page tests, and an e2e rate-panel test all landed; full gate green (Python
+2434 passed / 12 skipped; web lint + 217 vitest + build; risk-scenarios e2e 4/4).
+
+## Deferred — on-demand Basket rate sweep
+
+`/api/basket/scenarios` still carries **no** rate sweep. The basket stress engine
+(`apps/frontend/.../basket_scenarios.py::basket_stress`) reprices spot×vol only (`stress_surface`);
+emitting a rate family there is a *new* on-demand reprice in the BFF — outside this slice's file
+scope and against the parent's "never re-shock/re-reprice in the BFF" boundary. It is a clean
+follow-up: have the basket engine sweep the landed `scenario_grid` rate scenarios over its
+reconstructed legs (reusing `scenario_line_pnls`/`scenario_totals`), serialize through
+`basket_scenarios_to_dict`, and render the shared `RateSweep` in `StressTab`. The front + types are
+already rate-aware, so lighting up the basket is additive.

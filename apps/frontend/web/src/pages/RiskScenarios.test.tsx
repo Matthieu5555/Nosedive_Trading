@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import type { NamedScenario, ScenariosResponse } from "../stressApi";
+import type { NamedScenario, RateScenario, ScenariosResponse } from "../stressApi";
 import { renderWithClient } from "../test/renderWithClient";
 import { jsonGet, notMocked, server } from "../test/server";
 import { RiskScenariosPage } from "./RiskScenarios";
@@ -42,6 +42,35 @@ const SCENARIOS: ScenariosResponse = {
   },
   named: NAMED,
   n_named: 1,
+};
+
+const RATE: RateScenario[] = [
+  {
+    scenario_id: "rate_+0.0010",
+    rate_shock: 0.001,
+    bp: 10,
+    scenario_pnl: 480,
+    scenario_version: "v3",
+    n_legs: 2,
+    unit: "$ (full-reprice PnL)",
+    bp_unit: "bp",
+  },
+  {
+    scenario_id: "rate_-0.0010",
+    rate_shock: -0.001,
+    bp: -10,
+    scenario_pnl: -450,
+    scenario_version: "v3",
+    n_legs: 2,
+    unit: "$ (full-reprice PnL)",
+    bp_unit: "bp",
+  },
+];
+
+const SCENARIOS_WITH_RATE: ScenariosResponse = {
+  ...SCENARIOS,
+  rate: RATE,
+  n_rate: RATE.length,
 };
 
 const SCENARIOS_WITH_HOLE: ScenariosResponse = {
@@ -114,6 +143,24 @@ test("named historical scenarios surface their label and stressed P&L", async ()
 
   expect(await screen.findByText(/Worst case: 2008/)).toBeInTheDocument();
   expect(screen.getAllByText("-2 × 10³ $ (full-reprice PnL)").length).toBeGreaterThan(0);
+});
+
+test("the rate-shock sweep renders beside the surface when the grid carries a rate family", async () => {
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS_WITH_RATE));
+  renderWithClient(<RiskScenariosPage />);
+
+  expect(await screen.findByRole("heading", { name: "Rate-shock sweep" })).toBeInTheDocument();
+  const table = await screen.findByRole("table", { name: /Rate-shock sweep/i });
+  expect(within(table).getByText("-1 × 10¹ bp")).toBeInTheDocument();
+  expect(within(table).getByText("1 × 10¹ bp")).toBeInTheDocument();
+});
+
+test("no rate family means no rate panel — the surface render stays as it was", async () => {
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
+  renderWithClient(<RiskScenariosPage />);
+
+  expect(await screen.findByText("Stress summary")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Rate-shock sweep" })).not.toBeInTheDocument();
 });
 
 test("the broker reconciliation panel reads back the default agreeing snapshot", async () => {

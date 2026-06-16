@@ -93,6 +93,67 @@ def test_named_scenarios_sorted_by_id(
     assert ids == sorted(ids)
 
 
+def test_no_rate_sweep_is_a_labelled_empty_list(seeded_client: TestClient) -> None:
+    payload = seeded_client.get("/api/risk/scenarios").json()
+    assert payload["rate"] == []
+    assert payload["n_rate"] == 0
+
+
+def test_rate_sweep_buckets_legs_per_shock(rate_client: TestClient, seed: ModuleType) -> None:
+    payload = rate_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": seed.RATE_PORTFOLIO}
+    ).json()
+    assert payload["n_rate"] == len(seed.RATE_LEGS)
+    by_id = {item["scenario_id"]: item for item in payload["rate"]}
+    assert set(by_id) == {"rate_-0.0010", "rate_+0.0000", "rate_+0.0010"}
+
+    up = by_id["rate_+0.0010"]
+    assert up["n_legs"] == 2
+    assert up["rate_shock"] == pytest.approx(0.0010)
+    assert up["bp"] == pytest.approx(10.0)
+    assert up["scenario_pnl"] == pytest.approx(seed.RATE_TOTALS[0.0010])
+    assert up["scenario_version"] == seed.RATE_VERSION
+    assert up["unit"]
+    assert up["bp_unit"] == "bp"
+
+    down = by_id["rate_-0.0010"]
+    assert down["bp"] == pytest.approx(-10.0)
+    assert down["scenario_pnl"] == pytest.approx(seed.RATE_TOTALS[-0.0010])
+
+
+def test_rate_sweep_sorted_ascending_by_shock(
+    rate_client: TestClient, seed: ModuleType
+) -> None:
+    rate = rate_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": seed.RATE_PORTFOLIO}
+    ).json()["rate"]
+    shocks = [item["rate_shock"] for item in rate]
+    assert shocks == sorted(shocks)
+    assert shocks[0] < 0.0 < shocks[-1]
+
+
+def test_rate_sweep_excludes_non_rate_families(
+    rate_client: TestClient, seed: ModuleType
+) -> None:
+    payload = rate_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": seed.RATE_PORTFOLIO}
+    ).json()
+    assert all(item["scenario_id"].startswith("rate_") for item in payload["rate"])
+    cell_ids = {cell["scenario_id"] for cell in payload["cells"]}
+    assert "spot_-0.0500" in cell_ids
+    assert not any(item["scenario_id"] == "spot_-0.0500" for item in payload["rate"])
+
+
+def test_scenario_cells_carry_their_rate_shock(
+    named_client: TestClient, seed: ModuleType
+) -> None:
+    cells = named_client.get(
+        "/api/risk/scenarios", params={"portfolio_id": seed.SURFACE_PORTFOLIO}
+    ).json()["cells"]
+    crisis = next(cell for cell in cells if cell["scenario_id"] == "named_2008")
+    assert crisis["rate_shock"] == pytest.approx(seed.NAMED_2008_RATE)
+
+
 def test_stress_surface_reads_back_basket_cells(
     surface_client: TestClient, seed: ModuleType
 ) -> None:

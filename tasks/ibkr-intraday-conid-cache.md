@@ -9,7 +9,7 @@
 > > so re-runs / the constituent walk skip already-resolved discovery.*
 >
 > Concurrency alone *was* short (the cross-underlying march is still serial — see
-> [ibkr-capture-cross-underlying-concurrency](ibkr-capture-cross-underlying-concurrency.md)), so this
+> [ibkr-capture-cross-underlying-concurrency](archive/ibkr-capture-cross-underlying-concurrency.md)), so this
 > lever is now in scope, not optional. It attacks the cost from the other side: the cheapest
 > `/secdef/info` call is the one you never make.
 

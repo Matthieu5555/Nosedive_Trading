@@ -42,7 +42,7 @@ Two composable levers; pick the simplest that meets the window, in this order:
    for convergence. The wall-clock collapses from `M × warm-up` to ≈ `1 × warm-up + M × cheap reads`.
    Keep the existing `_WARMUP_ATTEMPTS` / convergence early-exit semantics.
 2. **Run batches through the shared capture-wide pool** (the bounded budget introduced by
-   [ibkr-capture-cross-underlying-concurrency](ibkr-capture-cross-underlying-concurrency.md)) so
+   [ibkr-capture-cross-underlying-concurrency](archive/ibkr-capture-cross-underlying-concurrency.md)) so
    independent batches' polls overlap under the same total-concurrency cap — no new unbounded pool.
 
 Also fold the per-underlying **spot warm-up** into the same scheme where it overlaps cleanly (it is
@@ -69,7 +69,7 @@ is tunable against the real gateway without a code change, rather than the two m
 - Owns `cp_rest_snapshot.py` (the snapshot engine, shared by the close capture **and** the live
   adapter — so this speeds both). Disjoint from the discovery walk and the quote-integrity gate.
 - Plugs into the shared concurrency budget from
-  [ibkr-capture-cross-underlying-concurrency](ibkr-capture-cross-underlying-concurrency.md); if that
+  [ibkr-capture-cross-underlying-concurrency](archive/ibkr-capture-cross-underlying-concurrency.md); if that
   lands first, lever 2 here is a thin wiring change. Lever 1 (prime-then-poll) stands alone with no
   dependency.
 

@@ -1,7 +1,11 @@
 # 0044 — Top-N-by-weight dispersion selector over the as-of basket
 
-- **Status:** accepted, 2026-06-14 (S1 precondition implemented under
-  `infra-sx5e-weighted-membership`).
+- **Status:** ⚠️ **PARTIALLY SUPERSEDED by [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]]
+  (2026-06-15).** The `top_n_by_weight` selector and `dispersion_top_n` config **survive as a pure
+  strategy-side selector over banked raw**; what 0051 removes is their use as a *capture* gate
+  (`constituent_top_n`) — capture returns to the blueprint scope (index options + constituent
+  prices). ~~accepted, 2026-06-14 (S1 precondition implemented under
+  `infra-sx5e-weighted-membership`).~~
 - **Date:** 2026-06-14.
 - **Implements:** TARGET §0 (universe = one enabled index + its top-N by weight, point-in-time)
   and §3 S1 (the dispersion book trades the heaviest constituents). Unblocks

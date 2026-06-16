@@ -1,7 +1,12 @@
 # 0045 — Constituent option capture: one underlying-generic basket, top-N seam stubbed
 
-- **Status:** accepted, 2026-06-14. Lands in `packages/infra-ibkr/src/algotrading/infra_ibkr/
-  collectors/cp_rest_constituent_capture.py`, generalising `cp_rest_close_capture.py`.
+- **Status:** ⛔ **SUPERSEDED by [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]]
+  (2026-06-15).** Constituent-option capture baked a strategy choice into the immutable raw layer
+  (permanent option-history loss + the serial-capture throughput crisis) for a feature the
+  blueprint computes from realized constituent vol instead. The lane is retired; ρ̄ moves to
+  realized vol. Implementation deferred until after the 2026-06-15 evening close. ~~accepted,
+  2026-06-14. Lands in `packages/infra-ibkr/src/algotrading/infra_ibkr/
+  collectors/cp_rest_constituent_capture.py`, generalising `cp_rest_close_capture.py`.~~
 - **Date:** 2026-06-14.
 - **Implements:** TARGET §0 (universe = one enabled index + its top-N by weight, point-in-time) +
   §3 S1 (dispersion) + §7.4 ("the single biggest new lane") under

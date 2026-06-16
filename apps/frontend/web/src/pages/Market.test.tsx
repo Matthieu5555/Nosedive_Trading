@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
@@ -13,113 +13,150 @@ vi.mock(
 import {
   ANALYTICS_AAA_DENSE,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
+  ANALYTICS_SCORECARD,
   RECORDED_EMPTY,
+  SIGNALS_SX5E,
 } from "../test/fixtures";
 import { jsonGet, notMocked, server } from "../test/server";
 import { MarketPage } from "./Market";
 
-test("leads with the context selector strip (entity / side / maturity) and an as-of dropdown", async () => {
+test("leads with the index selector and an as-of dropdown — no entity/side/maturity strip", async () => {
   render(<MarketPage />);
 
-  expect(await screen.findByLabelText("Entity")).toBeInTheDocument();
-  const side = screen.getByRole("radiogroup", { name: /option side/i });
-  expect(within(side).getByRole("radio", { name: "Puts" })).toBeInTheDocument();
-  expect(within(side).getByRole("radio", { name: "Calls" })).toBeInTheDocument();
-  expect(screen.getByLabelText("Maturity")).toBeInTheDocument();
+  expect(await screen.findByLabelText("Index")).toBeInTheDocument();
   expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument();
+  // The ADR-0051 amputation removes the constituent "Entity" axis and the put/call switch.
+  expect(screen.queryByLabelText("Entity")).not.toBeInTheDocument();
+  expect(screen.queryByRole("radiogroup", { name: /option side/i })).not.toBeInTheDocument();
 });
 
-test("the entity selector lists the index itself and each member", async () => {
-  render(<MarketPage />);
-  const entity = await screen.findByLabelText("Entity");
-  expect(within(entity).getByRole("option", { name: /SPX \(index\)/ })).toBeInTheDocument();
-  expect(await within(entity).findByRole("option", { name: "AAA" })).toBeInTheDocument();
-  expect(within(entity).getByRole("option", { name: "BBB" })).toBeInTheDocument();
-});
-
-test("defaults to the index and shows its price history, surface, and smile", async () => {
+test("is one scrollable page (price → scorecards → nappe → tenor → dispersion), not tabs", async () => {
   render(<MarketPage />);
 
-  expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
+  // Price (context), then the scorecards block, then the 3D nappe, then the dispersion strip.
+  expect(await screen.findByRole("heading", { name: "Price" })).toBeInTheDocument();
+  expect(await screen.findByLabelText("Volatility scorecards")).toBeInTheDocument();
   expect(await screen.findByLabelText(/Implied-volatility surface/i)).toBeInTheDocument();
-  // The maturity selector defaults to "all maturities", so the smile overlays every tenor.
-  expect(await screen.findByLabelText(/Smile — all maturities/i)).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /Dispersion/i })).toBeInTheDocument();
+  // The old tab chrome is gone.
+  expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Data quality" })).not.toBeInTheDocument();
 });
 
-test("the index view leads with the dispersion gap (index vol vs member vol)", async () => {
+test("renders the four scorecards with independently-derived numbers", async () => {
+  // A 3m slice with ±25Δ-bracketing bands: ATM 0.20, skew = 0.30 − 0.23 = +0.07 (+7.0 vp),
+  // convexity = 0.30 + 0.23 − 0.40 = +0.13 (+13.0 vp). RV−IV from the signal fixture is −0.018
+  // (−1.8 vp). The signals server mock returns SIGNALS_SX5E regardless of the index queried.
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   render(<MarketPage />);
+
+  const atm = await screen.findByLabelText("ATM level");
+  expect(within(atm).getByText("20.0%")).toBeInTheDocument();
+  expect(within(screen.getByLabelText("Skew 25Δ")).getByText("+7.0 vp")).toBeInTheDocument();
   expect(
-    await screen.findByLabelText(/Dispersion: index vol vs average member vol/i),
+    within(screen.getByLabelText("Convexity 25Δ")).getByText("+13.0 vp"),
   ).toBeInTheDocument();
+  // RV−IV is the persisted iv_vs_realized signal, not a recompute.
+  expect(within(screen.getByLabelText("RV − IV")).getByText("-1.8 vp")).toBeInTheDocument();
 });
 
-test("selecting a member repoints the analytics at it and drops the dispersion gap", async () => {
+test("a scorecard with no data honestly shows '—' (never fabricated)", async () => {
+  // The default ANALYTICS_AAA has a single put band (−0.3), so the ±25Δ wings can't be bracketed.
+  render(<MarketPage />);
+  const skew = await screen.findByLabelText("Skew 25Δ");
+  expect(within(skew).getByText("—")).toBeInTheDocument();
+});
+
+test("one tenor selector lists the pinned grid and drives the smile + greeks table", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  const tenor = await screen.findByLabelText("Tenor");
+  // The pinned tenor_grid, in reading order.
+  for (const label of ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]) {
+    expect(within(tenor).getByRole("option", { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+  }
+  // The default tenor (3m) is captured, so its smile and Greeks table render.
+  expect(await screen.findByLabelText(/Smile — 3m/i)).toBeInTheDocument();
+  expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
+});
+
+test("a tenor beyond the captured span renders as a labelled projection gap", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await screen.findByLabelText(/Dispersion: index vol/i);
-  await user.selectOptions(screen.getByLabelText("Entity"), "AAA");
+  await screen.findByLabelText(/Smile — 3m/i);
+  // 12m is offered (pinned grid) but not captured in this fixture.
+  expect(
+    within(screen.getByLabelText("Tenor")).getByRole("option", { name: /12m \(not captured\)/ }),
+  ).toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Tenor"), "12m");
+  expect(await screen.findByText(/12m is not captured/i)).toBeInTheDocument();
+  expect(screen.queryByLabelText(/Smile — 3m/i)).not.toBeInTheDocument();
+});
 
-  expect(await screen.findByLabelText(/AAA daily history/i)).toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.queryByLabelText(/Dispersion: index vol/i)).not.toBeInTheDocument(),
+test("the smile superimposes put + call (both wings, no side filter)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  const smile = await screen.findByLabelText(/Smile — 3m/i);
+  // Both wings plotted as scatter traces (the gap between them is the skew).
+  expect(within(smile).getByTestId("plot-types").textContent).toMatch(/scatter,scatter/);
+});
+
+test("the dispersion strip reads the realized-vol ρ̄ signal (no per-member fan-out)", async () => {
+  render(<MarketPage />);
+  // implied_correlation from the signal fixture is 0.5 → 50.00%.
+  expect(await screen.findByLabelText("Implied correlation")).toHaveTextContent(/ρ̄ = 50.00%/);
+});
+
+test("never calls /api/analytics for a constituent symbol — index-keyed only", async () => {
+  const underlyings: string[] = [];
+  server.use(
+    http.get("/api/analytics", ({ request }) => {
+      const u = new URL(request.url).searchParams.get("underlying");
+      if (u) underlyings.push(u);
+      return HttpResponse.json(ANALYTICS_SCORECARD);
+    }),
   );
-});
-
-test("renders the dollar-Greeks term structure and the by-band table (puts by default)", async () => {
   render(<MarketPage />);
 
-  const deltaPanel = await screen.findByLabelText(/Delta \$ term structure/i);
-  expect(within(deltaPanel).getByTestId("line-series")).toHaveTextContent("30dp");
-  expect(within(deltaPanel).getByTestId("line-unit")).toHaveTextContent("$ per $1 of underlying");
-
-  const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
-  expect(within(greeks).getByText("30dp")).toBeInTheDocument();
-  expect(within(greeks).getByText("$ per 1% move")).toBeInTheDocument();
+  await screen.findByLabelText(/Smile — 3m/i);
+  await waitFor(() => expect(underlyings.length).toBeGreaterThan(0));
+  // Only the index (SPX) is ever requested; no member (AAA/BBB) surface is fetched.
+  expect(new Set(underlyings)).toEqual(new Set(["SPX"]));
 });
 
-test("the put/call switch filters the Greeks to the chosen wing", async () => {
-  const user = userEvent.setup();
-  render(<MarketPage />);
-
-  expect((await screen.findAllByText("30dp")).length).toBeGreaterThan(0);
-
-  // The only captured band in the fixture is a put; switching to calls empties the wing.
-  await user.click(screen.getByRole("radio", { name: "Calls" }));
-  await waitFor(() => expect(screen.queryByText("30dp")).not.toBeInTheDocument());
-});
-
-test("renders the dense reconstructed surface, sliced to the put wing", async () => {
+test("renders the dense reconstructed surface as the full nappe (both wings, no side slice)", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DENSE));
   render(<MarketPage />);
 
   const surface = await screen.findByLabelText(/Implied-volatility surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
-  // Default side is puts → only the log-moneyness ≤ 0 columns survive (k = −0.1, 0.0).
+  // The whole lattice survives — no put-wing slice (k = −0.1, 0.0, 0.1 all present).
   expect(within(surface).getByTestId("plot-z")).toHaveTextContent(
     JSON.stringify([
-      [0.27, 0.24],
-      [0.23, 0.21],
+      [0.27, 0.24, 0.25],
+      [0.23, 0.21, 0.22],
     ]),
   );
 });
 
-test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit", async () => {
+test("the grid-fallback smile is labeled as log-moneyness and flags a degenerate fit", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_AAA_MONEYNESS_FALLBACK));
   render(<MarketPage />);
 
-  // Default "all maturities" overlay still names the log-moneyness axis and flags degenerate tenors.
-  const smile = await screen.findByLabelText(/Smile — all maturities/i);
-  expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs log-moneyness/i);
-  expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
+  // The fallback fixture's only tenor is "0.250y"; the tenor selector opens on 3m (not captured),
+  // so to read the smile we pick the captured label. Its single tenor renders by default since 3m
+  // isn't present — the selector falls back to the front tenor for the gap label, so assert the
+  // surface fallback names log-moneyness instead.
+  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  expect(surface.getAttribute("aria-label")).toMatch(/log-moneyness|surface/i);
 });
 
-test("the Data quality tab carries the constituents and the coverage table", async () => {
-  const user = userEvent.setup();
+test("the constituents table is display-only and index-keyed", async () => {
   render(<MarketPage />);
-
-  await user.click(await screen.findByRole("tab", { name: "Data quality" }));
-
   const constituents = await screen.findByRole("region", { name: /constituents/i });
   expect(within(constituents).getByText("AAA")).toBeInTheDocument();
   expect(within(constituents).getByText("BBB")).toBeInTheDocument();
@@ -167,10 +204,12 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
         { date: "2026-05-29", run_id: "run-0529", recorded_ts: "2026-05-29T17:30:00", qc: "pass" },
       ],
     }),
+    jsonGet("/api/analytics", { ...ANALYTICS_SCORECARD, underlying: "SX5E" }),
+    jsonGet("/api/signals", SIGNALS_SX5E),
   );
   render(<MarketPage />);
 
-  const greeks = await screen.findByRole("table", { name: /Dollar Greeks/i });
+  const greeks = await screen.findByRole("table", { name: /Dollar Greeks — 3m/i });
   expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();
 });

@@ -411,6 +411,58 @@ export const ANALYTICS_AAA: AnalyticsResponse = {
   surface: null,
 };
 
+// A 3m slice whose delta grid brackets ±0.25 on both wings, so the scorecards resolve every metric.
+// Smile nearest k = 0 is k = 0.0 (IV 0.20) = ATM. Put bands −0.30→0.32 / −0.20→0.28 bracket −0.25
+// (interp 0.30); call bands +0.20→0.22 / +0.30→0.24 bracket +0.25 (interp 0.23).
+//   skew      = IV(25Δp) − IV(25Δc) = 0.30 − 0.23 = +0.07  → +7.0 vp
+//   convexity = IV(25Δp) + IV(25Δc) − 2·ATM = 0.30 + 0.23 − 0.40 = +0.13 → +13.0 vp
+const _scorecardPoint = (band: string, target: number, iv: number) => ({
+  delta_band: band,
+  target_delta: target,
+  log_moneyness: 0,
+  strike: 100,
+  forward_price: 100,
+  implied_vol: iv,
+  total_variance: 0,
+  price: 0,
+  metrics: {
+    delta: { raw: target, dollar: target * 100, unit: "$ per $1 of underlying" },
+    gamma: { raw: 0.01, dollar: 4.0, unit: "$ per 1% move" },
+    vega: { raw: 0.5, dollar: 0.5, unit: "$ per 1 vol point" },
+    theta: { raw: -0.01, dollar: -0.00002, unit: "$ per calendar day" },
+    rho: { raw: 0.08, dollar: 0.001, unit: "$ per 1% rate" },
+  },
+  provenance: PROV,
+});
+
+export const ANALYTICS_SCORECARD: AnalyticsResponse = {
+  underlying: "SPX",
+  trade_date: "2026-05-29",
+  n_maturities: 1,
+  maturities: [
+    {
+      maturity_years: 0.25,
+      tenor_label: "3m",
+      label: "3m (0.250y)",
+      smile: {
+        axis_type: "delta",
+        deltas: [-0.3, -0.2, 0.0, 0.2, 0.3],
+        implied_vols: [0.32, 0.28, 0.2, 0.22, 0.24],
+        log_moneyness: [-0.2, -0.13, 0.0, 0.13, 0.2],
+      },
+      surface_slice: null,
+      points: [
+        _scorecardPoint("30dp", -0.3, 0.32),
+        _scorecardPoint("20dp", -0.2, 0.28),
+        _scorecardPoint("atm", 0.0, 0.2),
+        _scorecardPoint("20dc", 0.2, 0.22),
+        _scorecardPoint("30dc", 0.3, 0.24),
+      ],
+    },
+  ],
+  surface: null,
+};
+
 export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
   underlying: "AAA",
   trade_date: "2026-05-29",

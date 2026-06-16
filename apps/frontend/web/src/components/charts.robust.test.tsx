@@ -7,7 +7,7 @@ vi.mock("./LightweightLineChart", async () => await import("../test/lightweightL
 import type { AnalyticsMaturity } from "../api";
 import { IV_SANE_MAX } from "../lib/volRobust";
 import { ANALYTICS_AAA_DEGENERATE } from "../test/fixtures";
-import { GreeksTermStructure, SmileChart, VolSurface } from "./charts";
+import { SmileChart, VolSurface } from "./charts";
 
 const DEGEN = ANALYTICS_AAA_DEGENERATE;
 const DEGEN_MATURITY: AnalyticsMaturity = DEGEN.maturities[0];
@@ -31,9 +31,8 @@ describe("VolSurface dense nappe robustness", () => {
 });
 
 describe("SmileChart robustness", () => {
-  test("drops absurd/NaN/duplicate points and notes the count, plotting only the good wings", () => {
-    // Pin to the single tenor (not the all-maturities overlay) so the degenerate-fit flag and the
-    // dropped-point note ride the panel label.
+  test("drops absurd/NaN/duplicate points and notes the count, plotting both cleaned wings", () => {
+    // Pin to the single tenor; the degenerate-fit flag and the dropped-point note ride the label.
     render(<SmileChart maturities={[DEGEN_MATURITY]} maturityLabel={DEGEN_MATURITY.label} />);
     const fig = screen.getByLabelText(/Smile — 10d/i);
 
@@ -41,20 +40,9 @@ describe("SmileChart robustness", () => {
     expect(fig.getAttribute("aria-label")).toMatch(/flagged/i);
 
     // The smile is a Plotly scatter on a real log-moneyness axis; both cleaned wings (ATM shared)
-    // contribute their points.
+    // contribute their points (put + call superimposed, no side filter).
     expect(within(fig).getByTestId("plot-types").textContent).toMatch(/scatter/);
     const plotted = Number(within(fig).getByTestId("plot-points").textContent);
     expect(plotted).toBe(4);
-  });
-});
-
-describe("GreeksTermStructure robustness", () => {
-  test("excludes railed-slice points so no series carries the absurd-IV outliers", () => {
-    render(<GreeksTermStructure maturities={DEGEN.maturities} currency="€" />);
-
-    const deltaPanel = screen.getByLabelText(/Delta .* term structure/i);
-    expect(within(deltaPanel).getByTestId("line-series")).toHaveTextContent("30dp");
-    expect(within(deltaPanel).getByTestId("line-series")).not.toHaveTextContent("14dp");
-    expect(within(deltaPanel).getByTestId("line-series")).not.toHaveTextContent("12dp");
   });
 });

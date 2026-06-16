@@ -8,11 +8,12 @@ vi.mock(
   async () => await import("../test/lightweightLineMock"),
 );
 
-// A crash deep in the analytics view must be contained by the boundary around it — the selector
-// strip and tabs (the page chrome) keep rendering, so the page is never blanked.
-vi.mock("./market/AnalyticsTab", () => ({
-  AnalyticsTab: () => {
-    throw new Error("plotly choked on a degenerate vol-surface cell");
+// A crash deep in one panel of the scroll (here the scorecards) must be contained by the boundary
+// around it — the page chrome (index selector, as-of picker) keeps rendering, so the page is never
+// blanked by a single panel choking on a degenerate value.
+vi.mock("../components/Scorecards", () => ({
+  Scorecards: () => {
+    throw new Error("scorecard math choked on a degenerate vol-surface cell");
   },
 }));
 
@@ -26,12 +27,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("a crash in the analytics view is contained — the selector strip still renders", async () => {
+test("a crash in one scroll panel is contained — the page chrome still renders", async () => {
   render(<MarketPage />);
 
-  expect(await screen.findByText(/Analytics failed to render\./i)).toBeInTheDocument();
+  expect(await screen.findByText(/Scorecards failed to render\./i)).toBeInTheDocument();
 
-  // The shared context strip is page chrome, outside the analytics boundary, so it survives.
-  await waitFor(() => expect(screen.getByLabelText("Entity")).toBeInTheDocument());
-  expect(screen.getByRole("radiogroup", { name: /option side/i })).toBeInTheDocument();
+  // The index selector is page chrome, outside the panel boundary, so it survives.
+  await waitFor(() => expect(screen.getByLabelText("Index")).toBeInTheDocument());
+  expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument();
 });

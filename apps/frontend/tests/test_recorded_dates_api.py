@@ -39,11 +39,13 @@ def test_legacy_flat_data_lists_a_single_date_only_fetch(
     assert complete_2["qc"] == "pass"
 
 
-def test_each_fetch_is_listed_with_run_id_and_minute_precise_time(
+def test_a_re_fetched_date_collapses_to_one_canonical_close_latest_wins(
     tmp_path: Path, seed: ModuleType
 ) -> None:
-    # Two fetches of the SAME trade date, each its own run= partition on disk, each its own ledger
-    # entry with a distinct landing time. The picker must list both, newest-first, never collapsed.
+    # Two fetches of the SAME trade date, each its own run= partition on disk. The serving view must
+    # collapse them to ONE canonical close per trade_date — the NEWEST run (latest wins, ADR 0051 /
+    # blueprint §15) — so a same-day re-fetch shows once, not as a second peer as-of. The older run
+    # stays on disk for forensic replay, just off the default picker.
     root = tmp_path / "data"
     store = ParquetStore(root)
     ts_a = datetime(2026, 5, 29, 8, 24, tzinfo=UTC)
@@ -86,11 +88,10 @@ def test_each_fetch_is_listed_with_run_id_and_minute_precise_time(
         ).json()["available"]
 
     on_date = [e for e in available if e["date"] == seed.TRADE_DATE.isoformat()]
-    assert [e["run_id"] for e in on_date] == ["fetch-B", "fetch-A"]
-    # the timestamp carries hour and minute, not just the date
+    # One row for the day, and it is the newest run (fetch-B) with its minute-precise landing time.
+    assert [e["run_id"] for e in on_date] == ["fetch-B"]
     assert on_date[0]["recorded_ts"].startswith("2026-05-29T13:22")
-    assert on_date[1]["recorded_ts"].startswith("2026-05-29T08:24")
-    assert all(e["qc"] == "pass" for e in on_date)
+    assert on_date[0]["qc"] == "pass"
 
 
 def test_recorded_dates_empty_ledger_is_count_zero(

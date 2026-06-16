@@ -1,23 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
-
 import {
-  ALL_MATURITIES,
   type AnalyticsResponse,
   type ConstituentsResponse,
   type IndicesResponse,
-  type OptionSide,
+  type PriceHistoryResponse,
   type RecordedDatesResponse,
+  type SignalsResponse,
 } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
+import { PriceChart, VolSurface } from "../components/charts";
+import { ConstituentTable } from "../components/ConstituentTable";
+import { CoveragePanel } from "../components/CoverageTable";
+import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Scorecards } from "../components/Scorecards";
+import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
-import { AnalyticsTab } from "./market/AnalyticsTab";
-import { DataQualityTab } from "./market/DataQualityTab";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
-import { SelectorStrip } from "./market/SelectorStrip";
 
 export function MarketPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
@@ -31,66 +32,47 @@ export function MarketPage() {
     }
   }, [indexOptions, index]);
 
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  // The analytics entity: the index itself, or one of its members. Defaults to the index.
-  const [entity, setEntity] = useState<string | null>(null);
-  // Default to the downside wing: for an index the put skew is the interesting read, and it's the
-  // side the book is typically short.
-  const [side, setSide] = useState<OptionSide>("put");
-  // Default to the whole term structure — the surface's natural read — not a single tenor.
-  const [maturityLabel, setMaturityLabel] = useState<string>(ALL_MATURITIES);
+  // The chosen as-of fetch. The picker now lists ONE canonical close per trade_date (the newest run,
+  // collapsed serving-side in /api/recorded-dates), so a same-day re-fetch shows once, latest wins.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );
 
-  // The selection is ONE fetch (capture run), shared by the picker and the panels — computed once
-  // here so the header and the data on screen can never drift apart. ``available`` is one row per
-  // fetch, newest-first; the DEFAULT is the freshest fetch (available[0]), its quality announced by
-  // the QC badge. From the chosen fetch we derive its run_id (addresses that fetch's
-  // analytics/coverage — no other fetch can overwrite it) and its trade date (drives the
-  // cross-date constituents panel, which is not per-fetch).
   const available = recorded.data?.available ?? [];
-  // Match on run_id when the BFF emits one, else on trade date — legacy flat partitions have no
-  // run_id, so keying purely on it would collapse the picker and lose the date selection.
   const selectedFetch =
-    available.find((fetch) => (fetch.run_id ?? fetch.date) === selectedRunId) ??
-    available[0] ??
-    null;
-  // Only a genuine run_id addresses a specific fetch; for flat data it stays null so the analytics
-  // read isn't filtered to a non-existent run= dir (which would return an empty store).
+    available.find((fetch) => (fetch.run_id ?? fetch.date) === selectedKey) ?? available[0] ?? null;
   const effectiveRunId = selectedFetch?.run_id ?? null;
   const effectiveAsOf = selectedFetch?.date ?? null;
   const selectedFetchKey = selectedFetch ? (selectedFetch.run_id ?? selectedFetch.date) : null;
-  // The entity defaults to the index, and falls back to it whenever the index changes.
-  const effectiveEntity = entity ?? index;
-  const isIndex = effectiveEntity === index;
 
+  // The page is INDEX-KEYED ONLY (ADR 0051): every analytics/price read is the index itself; the
+  // constituent table below is display-only and never routes a member into the surface.
+  const analytics = useFetch<AnalyticsResponse>(
+    index && effectiveAsOf
+      ? `/api/analytics?underlying=${encodeURIComponent(index)}&trade_date=${encodeURIComponent(effectiveAsOf)}` +
+          (effectiveRunId ? `&run_id=${encodeURIComponent(effectiveRunId)}` : "")
+      : "",
+  );
+  const price = useFetch<PriceHistoryResponse>(
+    index && effectiveAsOf
+      ? `/api/price-history?underlying=${encodeURIComponent(index)}&end=${encodeURIComponent(effectiveAsOf)}`
+      : "",
+  );
+  // The persisted signal layer for the index, as-of: RV−IV for the scorecard and ρ̄ for the
+  // dispersion strip — both read straight off /api/signals (the BFF computed them; we never recompute).
+  const signals = useFetch<SignalsResponse>(
+    index && effectiveAsOf
+      ? `/api/signals?underlying=${encodeURIComponent(index)}&trade_date=${encodeURIComponent(effectiveAsOf)}`
+      : "",
+  );
   const constituents = useFetch<ConstituentsResponse>(
     index && effectiveAsOf
       ? `/api/constituents?index=${encodeURIComponent(index)}&as_of=${encodeURIComponent(effectiveAsOf)}`
       : "",
   );
   const constituentList = useMemo(() => constituents.data?.constituents ?? [], [constituents.data]);
-
-  const analytics = useFetch<AnalyticsResponse>(
-    effectiveEntity && effectiveAsOf
-      ? `/api/analytics?underlying=${encodeURIComponent(effectiveEntity)}&trade_date=${encodeURIComponent(effectiveAsOf)}` +
-          (effectiveRunId ? `&run_id=${encodeURIComponent(effectiveRunId)}` : "")
-      : "",
-  );
-  const maturityOptions = useMemo(
-    () => (analytics.data?.maturities ?? []).map((m) => m.label),
-    [analytics.data],
-  );
-  // Keep the chosen maturity valid as the entity/date changes; "all maturities" is always valid,
-  // and is the fallback when a once-selected tenor is no longer captured.
-  useEffect(() => {
-    if (maturityOptions.length === 0) return;
-    if (maturityLabel !== ALL_MATURITIES && !maturityOptions.includes(maturityLabel)) {
-      setMaturityLabel(ALL_MATURITIES);
-    }
-  }, [maturityOptions, maturityLabel]);
 
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
 
@@ -108,8 +90,7 @@ export function MarketPage() {
             disabled={indexOptions.length === 0}
             onChange={(event) => {
               setIndex(event.target.value);
-              setSelectedRunId(null);
-              setEntity(null);
+              setSelectedKey(null);
             }}
           >
             {indexOptions.map((item) => (
@@ -121,17 +102,13 @@ export function MarketPage() {
           <AsOfSelect
             recorded={recorded.data}
             value={selectedFetchKey}
-            onChange={(key) => {
-              setSelectedRunId(key);
-              setEntity(null);
-            }}
+            onChange={(key) => setSelectedKey(key)}
           />
         </div>
       </div>
 
-      {/* The index list gates the whole page: if it fails, no selector and no panel can render, so
-          its error must front the page rather than be dropped (which left a silent, dead screen
-          with a disabled, empty dropdown and no explanation). Indices error takes precedence; once
+      {/* The index list gates the whole page: if it fails, nothing below can render, so its error
+          must front the page rather than leave a dead screen. Indices error takes precedence; once
           the index resolves, the recorded-dates error fronts here instead. */}
       <AsyncBlock
         loading={indices.loading || recorded.loading}
@@ -148,63 +125,134 @@ export function MarketPage() {
             }
             const qc = selectedFetch?.qc ?? "unknown";
             return (
-              <Tabs defaultValue="analytics" className="market-tabs">
-                <div className="market-tabs__bar">
-                  <TabsList className="market-tabs__list">
-                    <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                    <TabsTrigger value="dataquality">Data quality</TabsTrigger>
-                  </TabsList>
+              <div className="market-scroll">
+                <div className="market-scroll__status">
                   <span className="status">
-                    as of {effectiveAsOf} <QcBadge qc={qc} />
+                    {index} · as of {effectiveAsOf} <QcBadge qc={qc} />
                   </span>
                 </div>
 
-                <TabsContent value="analytics">
-                  <div className="analytics-stack">
-                    <SelectorStrip
-                      index={index}
-                      entity={effectiveEntity}
-                      constituents={constituentList}
-                      onEntity={(symbol) => setEntity(symbol)}
-                      side={side}
-                      onSide={setSide}
-                      maturityLabel={maturityLabel}
-                      maturityOptions={maturityOptions}
-                      onMaturity={setMaturityLabel}
-                    />
-                    <ErrorBoundary label="Analytics">
-                      <AsyncBlock loading={analytics.loading} error={analytics.error}>
-                        {analytics.data && (
-                          <AnalyticsTab
-                            index={index}
-                            entity={effectiveEntity}
-                            isIndex={isIndex}
-                            asOf={effectiveAsOf}
-                            analytics={analytics.data}
-                            side={side}
-                            maturityLabel={maturityLabel}
-                            constituents={constituentList}
-                            currency={currency}
-                          />
-                        )}
-                      </AsyncBlock>
-                    </ErrorBoundary>
+                {/* 1 — Price (context). */}
+                <article className="panel" aria-label={`${index} daily history`}>
+                  <div className="panel-heading">
+                    <div>
+                      <p className="panel-kicker">{index}</p>
+                      <h2>Price</h2>
+                    </div>
+                    <span className="status">daily OHLC</span>
                   </div>
-                </TabsContent>
+                  <ErrorBoundary label="Price">
+                    <AsyncBlock loading={price.loading} error={price.error}>
+                      {price.data && <PriceChart data={price.data} />}
+                    </AsyncBlock>
+                  </ErrorBoundary>
+                </article>
 
-                <TabsContent value="dataquality">
-                  <AsyncBlock loading={constituents.loading} error={constituents.error}>
-                    <DataQualityTab
-                      index={index}
-                      asOf={effectiveAsOf}
-                      runId={effectiveRunId ?? undefined}
-                      constituents={constituentList}
-                      entity={effectiveEntity}
-                      onEntity={(symbol) => setEntity(symbol)}
-                    />
+                {/* 2 — Scorecards (the instant read). RV−IV from /api/signals; the smile-derived
+                    level/skew/convexity from the projected analytics at the reference tenor. */}
+                <article className="panel" aria-label="Volatility scorecards">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="panel-kicker">{index}</p>
+                      <h2>Scorecards</h2>
+                    </div>
+                    <span className="status">the instant read</span>
+                  </div>
+                  <ErrorBoundary label="Scorecards">
+                    <AsyncBlock loading={analytics.loading || signals.loading} error={analytics.error}>
+                      {analytics.data && (
+                        <Scorecards
+                          maturities={analytics.data.maturities}
+                          ivVsRealized={signals.data?.by_kind?.iv_vs_realized?.[0] ?? null}
+                        />
+                      )}
+                    </AsyncBlock>
+                  </ErrorBoundary>
+                </article>
+
+                {/* 3 — 3D nappe (the all-maturity gestalt), side-agnostic. */}
+                <article className="panel" aria-label="Volatility surface">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="panel-kicker">{index}</p>
+                      <h2>Volatility nappe</h2>
+                    </div>
+                    <span className="status">all maturities</span>
+                  </div>
+                  <ErrorBoundary label="3D surface">
+                    <AsyncBlock loading={analytics.loading} error={analytics.error}>
+                      {analytics.data && (
+                        <VolSurface
+                          surface={analytics.data.surface}
+                          maturities={analytics.data.maturities}
+                        />
+                      )}
+                    </AsyncBlock>
+                  </ErrorBoundary>
+                </article>
+
+                {/* 4 — ONE tenor selector → {smile + greeks table} for that tenor. */}
+                <ErrorBoundary label="Tenor view">
+                  <AsyncBlock loading={analytics.loading} error={analytics.error}>
+                    {analytics.data && (
+                      <TenorPanel maturities={analytics.data.maturities} currency={currency} />
+                    )}
                   </AsyncBlock>
-                </TabsContent>
-              </Tabs>
+                </ErrorBoundary>
+
+                {/* 5 — ρ̄ / dispersion (realized-vol implied correlation), the secondary strip. */}
+                <article className="panel" aria-label="Dispersion">
+                  <div className="panel-heading">
+                    <div>
+                      <p className="panel-kicker">{index}</p>
+                      <h2>Dispersion (ρ̄)</h2>
+                    </div>
+                    <span className="status">realized-vol diagnostic</span>
+                  </div>
+                  <ErrorBoundary label="Dispersion">
+                    <AsyncBlock loading={signals.loading} error={signals.error}>
+                      {signals.data && (
+                        <DispersionStrip
+                          index={index}
+                          signal={signals.data.by_kind?.implied_correlation?.[0] ?? null}
+                        />
+                      )}
+                    </AsyncBlock>
+                  </ErrorBoundary>
+                </article>
+
+                {/* Secondary: constituents (weights + prices) and capture coverage — display-only,
+                    index-keyed; a member row never routes into the surface (ADR 0051). */}
+                <article className="panel" aria-label="Index constituents">
+                  <div className="panel-heading">
+                    <h2>Constituents</h2>
+                    <span className="status">{constituentList.length} members</span>
+                  </div>
+                  <AsyncBlock loading={constituents.loading} error={constituents.error}>
+                    {constituentList.length === 0 ? (
+                      <p>
+                        No constituents for {index} as of {effectiveAsOf}.
+                      </p>
+                    ) : (
+                      <ConstituentTable constituents={constituentList} selected={null} onSelect={() => {}} />
+                    )}
+                  </AsyncBlock>
+                </article>
+
+                <article className="panel coverage-panel" aria-label={`Capture coverage for ${index}`}>
+                  <div className="panel-heading">
+                    <h2>Capture coverage</h2>
+                    <span className="status">data check</span>
+                  </div>
+                  <ErrorBoundary label="Capture coverage">
+                    <CoveragePanel
+                      underlying={index}
+                      tradeDate={effectiveAsOf}
+                      runId={effectiveRunId ?? undefined}
+                    />
+                  </ErrorBoundary>
+                </article>
+              </div>
             );
           })()}
       </AsyncBlock>

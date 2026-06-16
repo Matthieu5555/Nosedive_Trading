@@ -164,6 +164,12 @@ export type OptionSide = "put" | "call";
 // by-band table) interpret it; the 3D surface and the term-structure curves already span all tenors.
 export const ALL_MATURITIES = "All maturities";
 
+// The pinned tenor grid the surface is projected onto (configs/universe.yaml `tenor_grid`, ADR 0011).
+// The market page's single tenor selector lists exactly these; a grid tenor the capture didn't reach
+// renders as a labelled projection gap, never hidden (blueprint §4.5 "show the gaps"). Kept in
+// reading order (near → far). Mirrors the BFF config — keep the two in lockstep.
+export const TENOR_GRID = ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"] as const;
+
 export interface AnalyticsPoint {
   delta_band: string;
   target_delta: number;

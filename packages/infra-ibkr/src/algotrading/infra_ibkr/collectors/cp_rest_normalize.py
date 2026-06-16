@@ -56,14 +56,17 @@ def snapshot_to_events(
     sequence: int,
     exchange_ts: datetime,
     receipt_ts: datetime,
+    canonical_ts: datetime | None = None,
 ) -> tuple[RawMarketEvent, ...]:
     """One CP market-data row (snapshot or WS frame) → its fields as ``RawMarketEvent`` rows.
 
     Only recognized, present, parseable fields become events; absent or sentinel values are
     skipped (never emitted as a fake observation). ``sequence`` is the per-session ordinal that
-    makes a re-delivered row idempotent. ``exchange_ts`` is the row's update time
-    (CP ``_updated`` ms); ``receipt_ts`` is when we received it. Accepts either the raw mapping
-    or an already-validated :class:`SnapshotRow` (callers that pre-parse avoid double work).
+    makes a re-delivered row idempotent. ``exchange_ts`` is the row's broker update time
+    (CP ``_updated``); ``receipt_ts`` is when we received it; ``canonical_ts`` is the normalized
+    ordering clock (defaults to ``exchange_ts``; the close capture passes the session-close instant
+    so all marks order at the close while keeping their real broker ``exchange_ts``). Accepts either
+    the raw mapping or an already-validated :class:`SnapshotRow` (pre-parsing callers avoid rework).
     """
     parsed = row if isinstance(row, SnapshotRow) else SnapshotRow.model_validate(row)
     events: list[RawMarketEvent] = []
@@ -81,6 +84,7 @@ def snapshot_to_events(
                 sequence=sequence,
                 exchange_ts=exchange_ts,
                 receipt_ts=receipt_ts,
+                canonical_ts=canonical_ts,
             )
         )
     return tuple(events)

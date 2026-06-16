@@ -18,7 +18,7 @@ a capture that keeps zero events after that guard fails loud rather than landing
 from __future__ import annotations
 
 import math
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -275,6 +275,41 @@ def test_capture_keeps_a_post_close_settlement_print() -> None:
     assert any(e.instrument_key == settled_key for e in basket.events)
     # Every admitted event is still stamped at the close instant (not the broker update time).
     assert all(e.canonical_ts == CLOSE for e in basket.events)
+
+
+def test_broker_update_time_is_preserved_as_a_distinct_exchange_ts() -> None:
+    """The three timestamps stay distinct (blueprint 01-architecture §60): the broker's real update
+    time is preserved in ``exchange_ts`` while ``canonical_ts``/``receipt_ts`` are the normalized close.
+
+    One contract's ``_updated`` is moved one minute past the close (the settlement window). Its
+    events must carry ``exchange_ts`` = that real broker instant — NOT collapsed to the close —
+    while ``canonical_ts`` (the ordering / as-of clock) and ``receipt_ts`` stay at the close, so the
+    broker observation time is auditable yet the close ordering (and thus the derived analytics) is
+    unchanged. A contract WITHOUT an override reports the close as its own update time, so its three
+    timestamps coincide — that is correct (the broker time IS the close for it), not a collapse.
+    """
+    broker_ts = CLOSE + timedelta(minutes=1)  # independent oracle for the overridden _updated
+    settled = _conid_for(_MONTHS["JUN26"], 100.0, "C")
+    gateway = _FakeGateway(updated_override={settled: int(broker_ts.timestamp() * 1000)})
+    basket = collect_live_basket(
+        gateway, index=SPX, as_of=CLOSE, next_open=NEXT_OPEN, config=_config(),
+        selection=ChainSelection(max_expiries=2, min_strikes_per_side=3, option_exchange="CBOE"),
+    )
+    assert basket is not None
+    settled_key = next(
+        k.canonical() for k in basket.instruments
+        if k.is_option() and k.broker_contract_id == str(settled)
+    )
+    settled_events = [e for e in basket.events if e.instrument_key == settled_key]
+    assert settled_events, "the settlement-window contract must contribute events"
+    for e in settled_events:
+        assert e.exchange_ts == broker_ts  # the real broker update time, preserved (not discarded)
+        assert e.canonical_ts == CLOSE  # the normalized close ordering / as-of clock
+        assert e.receipt_ts == CLOSE  # when we captured the close
+        assert e.exchange_ts != e.canonical_ts  # the distinction the blueprint mandates
+    # A non-overridden contract reports the close as its update time → its three timestamps coincide.
+    other_events = [e for e in basket.events if e.instrument_key != settled_key]
+    assert other_events and all(e.exchange_ts == CLOSE for e in other_events)
 
 
 def test_capture_drops_a_later_session_print() -> None:

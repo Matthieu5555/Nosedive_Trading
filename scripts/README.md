@@ -15,6 +15,13 @@ the EOD runner and BFF use, defaulting to `<repo>/data`), and `load_env_file()` 
 Plotting/export tools need the `notebooks` dependency group (matplotlib/plotly/kaleido/mistune/
 nbformat): run them with `uv run --group notebooks python scripts/<tool>.py`.
 
+**Git task-branch lifecycle — `worktree.sh`.** The one sanctioned way to run a task branch's whole
+life, so agents stop hand-rolling git topology and stranding work on stale bases: `worktree.sh new
+<slug>` (fresh worktree off the *current* `main`), `worktree.sh land [-m "msg"]` (rebase onto
+`main` → fast-forward → push → delete the worktree + branch), `worktree.sh status`, `worktree.sh gc`.
+It is plain bash — not `uv run`, not an `algotrading.*` import — so the gate's Python steps skip it.
+The rule that mandates it, and the *why*, live in `AGENTS.md` §"Before you touch anything".
+
 ## Tools
 
 | Tool | What it does | Run |

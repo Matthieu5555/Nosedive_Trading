@@ -25,15 +25,27 @@ Do not search blind. The map exists so you don't have to.
    Clear it when done. This is a shared `devs`-group workspace with several
    humans and agents working at once; the board is the cheapest collision
    signal we have.
-2. **When you finish working, land it on `main` and push — every time, no
-   exceptions.** Finished work does not get to sit on a feature branch or inside a
-   worktree where no one else can see it. The moment a piece of work is done and
-   verified: commit it (surgically, by explicit path — this is a shared checkout,
-   never `git add -A`), get it onto `main`, and `git push origin main`. Pull/rebase
-   first if `main` moved under you; collisions then surface as merge conflicts
-   (visible, recoverable), never as silent overwrites. Short-lived task branches
-   are fine *while work is in flight* — the rule is that the instant it is finished,
-   it converges on `main` and is pushed.
+2. **Run a task branch's whole life through `scripts/worktree.sh` — do not
+   hand-roll git topology.** This is exactly where agents tangle: improvising
+   branch/base/rebase/merge/teardown by hand, on a base that has drifted, is how
+   work ends up stranded dozens of commits behind `main`. So:
+   - **Start** with `scripts/worktree.sh new <task-slug>` — a fresh worktree
+     branched off the *current* `main`, never an old commit, never a
+     `worktree-agent-<hash>` name.
+   - **While you work, the worktree is yours.** `git add -A && git commit` freely
+     inside it. The "surgical, never `git add -A`" rule is about the *shared*
+     `main` checkout, not your isolated worktree — do not freeze at the commit step.
+   - **Finish** with `scripts/worktree.sh land [-m "msg"]` — it rebases onto the
+     latest `main`, fast-forwards `main`, pushes, and deletes the worktree + branch.
+     One command, every time, no exceptions. A conflict or a dirty `main` checkout
+     stops it loudly; nothing is forced or silently dropped.
+
+   The instant work is done it converges on `main` and is pushed — it never sits on
+   a branch where no one else can see it. The shared `main` checkout stays clean and
+   is committed surgically, by explicit path, never `git add -A`; collisions surface
+   as merge conflicts (visible, recoverable), never silent overwrites.
+   `scripts/worktree.sh status` / `gc` keep the board legible — a worktree exists
+   only while its task is in flight.
 3. **Read `.agent/conventions.md`** before writing code. It is the distilled
    house style and it points at the deeper skills.
 

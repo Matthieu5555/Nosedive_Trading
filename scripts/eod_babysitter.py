@@ -61,6 +61,25 @@ def _log(msg: str) -> None:
     print(f"[{datetime.now(UTC):%Y-%m-%d %H:%M:%S}Z] {msg}", flush=True)
 
 
+def _alarm_to_journald(msg: str) -> None:
+    """Best-effort: route a loud ALARM to journald via ``systemd-cat`` so it is visible without a
+    terminal attached (the babysitter is not under systemd, so it has no OnFailure= of its own).
+
+    Fire-and-forget — ``check=False`` and a broad guard: if ``systemd-cat`` is absent (a dev box
+    with no systemd) the alarm still reaches stdout via :func:`_log`, and alerting must never crash
+    the keepalive loop.
+    """
+    try:
+        subprocess.run(
+            ["systemd-cat", "-t", "eod-babysitter", "-p", "err"],
+            input=msg,
+            text=True,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001 — alerting must never kill the loop
+        _log(f"(systemd-cat unavailable, alarm stayed on stdout: {exc})")
+
+
 def _heartbeat(session: CpRestSession, *, alarmed: bool) -> bool:
     """One keepalive cycle: tickle a healthy session, self-heal a lapsed one, alarm on SSO death.
 
@@ -89,10 +108,12 @@ def _heartbeat(session: CpRestSession, *, alarmed: bool) -> bool:
         if session.established():
             return False
         if not alarmed:
-            _log(
+            alarm = (
                 "ALARM: session DOWN and not revivable (SSO expired or a competing session). "
                 "Re-run scripts/ibkr_gateway_login.py for a fresh SMS login."
             )
+            _log(alarm)
+            _alarm_to_journald(alarm)
         return True
     except CpRestTransportError as exc:
         _log(f"gateway unreachable: {exc}")
@@ -122,7 +143,14 @@ def _planned_fires() -> list[tuple[str, datetime]]:
     return sorted(fires, key=lambda x: x[1])
 
 
-def _fire(index: str) -> None:
+def _fire(index: str) -> bool:
+    """Fire one index's EOD capture. Return ``True`` on a clean (exit 0) capture, else ``False``.
+
+    Never raises — a fire failure must not kill the babysitter loop — but the boolean lets the
+    caller track failures and exit non-zero, so an unattended run does not report success after a
+    failed capture (the silent-failure gap the 2026-06-15 ingestion audit flagged). A non-zero
+    ``eod_run`` exit (e.g. a QC page escalation, now surfaced as a non-zero exit) returns ``False``.
+    """
     _log(f"=== FIRING EOD capture: {index} ===")
     env = dict(os.environ, IBKR_CP_GATEWAY="1")
     try:
@@ -142,9 +170,11 @@ def _fire(index: str) -> None:
             f"exit={r.returncode}\n=STDOUT=\n{(r.stdout or '')[-4000:]}"
             f"\n=STDERR=\n{(r.stderr or '')[-2000:]}"
         )
+        return r.returncode == 0
     except Exception as e:  # noqa: BLE001 — a fire failure must not kill the babysitter loop
         _log(f"{index} FIRE EXCEPTION: {e}")
         Path(f"/tmp/eod_result_{index}.txt").write_text(f"EXCEPTION {e}")
+        return False
 
 
 def _keepalive_forever(session: CpRestSession) -> int:
@@ -169,18 +199,27 @@ def _babysit(session: CpRestSession) -> int:
     _log("babysitter up. fires: " + ", ".join(f"{n}@{t:%H:%M}Z" for n, t in fires))
     end = max(t for _, t in fires)
     done: set[str] = set()
+    failed: set[str] = set()
     alarmed = False
     while datetime.now(UTC) <= end:
         alarmed = _heartbeat(session, alarmed=alarmed)
         for name, ft in fires:
             if name not in done and datetime.now(UTC) >= ft:
-                _fire(name)
-                done.add(name)
+                if not _fire(name):
+                    failed.add(name)
+                done.add(name)  # mark fired either way so it is not re-fired this run
         if len(done) == len(fires):
             break
         time.sleep(_TICKLE_SECONDS)
-    _log("babysitter exit. captured=" + ",".join(sorted(done)))
-    return 0 if len(done) == len(fires) else 1
+    captured = sorted(done - failed)
+    _log(
+        "babysitter exit. captured="
+        + ",".join(captured)
+        + ("; FAILED=" + ",".join(sorted(failed)) if failed else "")
+    )
+    # Exit non-zero if any planned fire did not run (timed out before its slot) OR ran but failed —
+    # an unattended run must not report success when a capture was missed or errored.
+    return 0 if (len(done) == len(fires) and not failed) else 1
 
 
 def main() -> int:

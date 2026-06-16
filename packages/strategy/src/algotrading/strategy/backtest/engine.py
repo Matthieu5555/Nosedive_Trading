@@ -17,6 +17,7 @@ from ..s2_put_line import PutLineStrategy
 from ..signals import SignalSnapshot
 from ..strategy import EntryAction, MarketState, Strategy
 from .book import BacktestBook, PricedBook
+from .costs import NO_COST, TransactionCostModel
 from .data import BacktestData, HeldContract
 from .results import (
     BacktestResult,
@@ -32,6 +33,7 @@ class BacktestConfig:
     basket_id_prefix: str
     attribution: AttributionConfig
     stress_grid: tuple[Scenario, ...]
+    costs: TransactionCostModel = NO_COST
 
 
 def _book_greeks(priced: PricedBook) -> DayGreeks:
@@ -74,6 +76,7 @@ def run_backtest(
     book = BacktestBook()
     prior_priced: PricedBook | None = None
     cumulative_pnl = 0.0
+    cumulative_cost = 0.0
     day_results: list[DayResult] = []
 
     for as_of in dates:
@@ -85,7 +88,9 @@ def run_backtest(
         if realized_pnl is not None:
             cumulative_pnl += realized_pnl
 
-        entered = _run_day(strategy, data, book, as_of, config)
+        opened = _run_day(strategy, data, book, as_of, config)
+        day_cost = _entry_cost(config.costs, opened, data, as_of)
+        cumulative_cost += day_cost
 
         closed = book.price(data, as_of)
 
@@ -93,12 +98,14 @@ def run_backtest(
             DayResult(
                 as_of=as_of,
                 open_contracts=book.open_contract_count,
-                entered=entered,
+                entered=bool(opened),
                 realized_pnl=realized_pnl,
                 cumulative_pnl=cumulative_pnl,
                 greeks=_book_greeks(closed),
                 attribution=attribution,
                 stress_loss=_stress_loss(closed, config.stress_grid),
+                transaction_cost=day_cost,
+                cumulative_net_pnl=cumulative_pnl - cumulative_cost,
             )
         )
         prior_priced = closed
@@ -116,7 +123,7 @@ def _run_day(
     book: BacktestBook,
     as_of: date,
     config: BacktestConfig,
-) -> bool:
+) -> list[HeldContract]:
     signals = data.signals(as_of)
     market = MarketState(as_of=as_of, position_lines=book.price(data, as_of).lines)
 
@@ -129,16 +136,27 @@ def _run_day(
         basket_id=f"{config.basket_id_prefix}-{as_of.isoformat()}",
     )
 
-    if not _daily_entry_fires(strategy, book.open_contract_count, signals, as_of):
-        return False
+    if not daily_entry_fires(strategy, book.open_contract_count, signals, as_of):
+        return []
 
     basket = strategy.construct(as_of, basket_id=f"{config.basket_id_prefix}-{as_of.isoformat()}")
     opened = _concretize_basket(data, basket, as_of)
     book.add(opened)
-    return bool(opened)
+    return opened
 
 
-def _daily_entry_fires(
+def _entry_cost(
+    costs: TransactionCostModel,
+    opened: list[HeldContract],
+    data: BacktestData,
+    as_of: date,
+) -> float:
+    return sum(
+        costs.entry_cost(held, data.valuation(held, as_of)) for held in opened
+    )
+
+
+def daily_entry_fires(
     strategy: Strategy,
     open_contracts: float,
     signals: SignalSnapshot,

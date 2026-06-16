@@ -153,6 +153,18 @@ The BFF exposes (all under `/api` except the liveness probe):
   record for the `(portfolio, date)` is a labelled-empty `found=false` body (HTTP 200), a bad
   `trade_date` a labelled `400`. The web `AttributionWaterfall` (Plotly waterfall) renders it on
   the Basket page beside the stress surface.
+- `POST /api/backtest/run` — launch a store-backed S2 backtest over the offline store and return
+  the full result in one call (TARGET §7.8 / §5.7; F-STRAT Strategy/Backtest page consumes it). No
+  persisted backtest table — it runs on demand through the landed research engine
+  (`algotrading.strategy.backtest`) driven by `StoreBackedBacktestData`, reinventing no compute.
+  Body: `index`, `reference_tenor`, `start_date`/`end_date` (narrowed to the days actually banked
+  for the index — none banked → labelled `400 no_banked_days`), `provider`, a `put_line` config
+  block (an invalid one → `400 bad_put_line_config`), optional `costs`
+  (`commission_per_contract`/`slippage_rate`) and `stress_grid`. Response: `summary` (gross +
+  **net** P&L, **total transaction cost**, max drawdown, Sharpe, turnover, worst stress),
+  `cumulative_attribution` (the named per-Greek "which Greek paid" view), and a `days[]` array
+  (per-day open contracts, realized + net P&L, transaction cost, stress loss, exposure Greeks). An
+  inverted window is a labelled `400 bad_window`.
 - `GET /api/coverage[?underlying=&trade_date=]` — the captured option chain as a plain quality
   table (no recompute), rendered by the web `CoverageTable`/`CoveragePanel`. Three already-on-disk
   facts: **per-expiry capture** (strikes/calls/puts/span from `instrument_master`), **per-tenor

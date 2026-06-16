@@ -31,6 +31,8 @@ class DayResult:
     greeks: DayGreeks
     attribution: RealizedBookAttribution | None
     stress_loss: float
+    transaction_cost: float = 0.0
+    cumulative_net_pnl: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,8 @@ class BacktestSummary:
     sharpe: float
     turnover: int
     worst_stress_loss: float
+    total_transaction_cost: float = 0.0
+    total_net_pnl: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +95,17 @@ def summarise(days: Sequence[DayResult]) -> BacktestSummary:
     if not days:
         return BacktestSummary(
             total_pnl=0.0, max_drawdown=0.0, sharpe=0.0, turnover=0, worst_stress_loss=0.0,
+            total_transaction_cost=0.0, total_net_pnl=0.0,
         )
     realized = [day.realized_pnl for day in days if day.realized_pnl is not None]
     cumulative = [day.cumulative_pnl for day in days]
+    net_cumulative = [day.cumulative_net_pnl for day in days]
     return BacktestSummary(
         total_pnl=cumulative[-1],
         max_drawdown=maximum_drawdown(cumulative),
         sharpe=annualised_sharpe(realized),
         turnover=sum(1 for day in days if day.entered),
         worst_stress_loss=min(day.stress_loss for day in days),
+        total_transaction_cost=math.fsum(day.transaction_cost for day in days),
+        total_net_pnl=net_cumulative[-1],
     )

@@ -225,18 +225,39 @@ The pieces:
   `as_of`; the attribution's start is strictly yesterday and its end strictly today. The
   `check-lookahead-bias` skill was run against it, and `test_backtest_no_lookahead.py` proves it
   mechanically with a recording data seam.
-- **`BacktestData` / `InMemoryBacktestData` / `HeldContract` (`data.py`)** — the as-of market-state
-  seam (the look-ahead boundary): the entry `SignalSnapshot`, plus the two valuation reads that
-  pin a grid-coordinate leg to a fixed contract on its entry day (`concretize_leg`) and re-mark it
-  each later day (`valuation`). The in-memory implementor is the hand-checkable test fixture; the
-  **store-backed** implementor (the production path) composes execution's landed grid-cell
-  concretizer + the infra valuation join exactly as `StoreBackedDispersionData` composes its
-  reads — a documented follow-up, see below.
+- **`BacktestData` / `InMemoryBacktestData` / `StoreBackedBacktestData` / `HeldContract`
+  (`data.py`, `store_data.py`)** — the as-of market-state seam (the look-ahead boundary): the
+  entry `SignalSnapshot`, plus the two valuation reads that pin a grid-coordinate leg to a fixed
+  contract on its entry day (`concretize_leg`) and re-mark it each later day (`valuation`). The
+  in-memory implementor is the hand-checkable test fixture; **`StoreBackedBacktestData` is the
+  production path** — it reads the as-of `projected_option_analytics` cell for the leg's grid
+  coordinate (`underlying`/`tenor_label`/`delta_band`/`surface_side`) on each `as_of`, pins the
+  concrete contract identity (right + strike + expiry) from that row, and rebuilds the
+  `ContractValuationInput` from the same row (spot = `forward_price` since the pipeline pins
+  `carry == 0`, vol = `implied_vol`; multiplier/currency injected). It adds **no** compute, exactly
+  as `StoreBackedDispersionData`/`StoreBackedGammaData` compose their `trade_date`-narrowed grid
+  reads. The signal half reuses the landed `signal_snapshot_from_store` bridge.
+- **`TransactionCostModel` (`costs.py`)** — the explicit cost model the engine charges at entry: a
+  per-contract `commission_per_contract` plus a `slippage_rate` fraction of priced notional
+  (`|unit price| × multiplier × contracts`). `BacktestConfig.costs` defaults to `NO_COST` (gross,
+  byte-identical to before). The cost is charged on the **same** `as_of` the leg opens (no forward
+  mark), so `DayResult.transaction_cost` / `cumulative_net_pnl` and the summary's
+  `total_transaction_cost` / `total_net_pnl` are net of cost; gross P&L is unchanged so the two are
+  comparable.
+- **`reconcile_shadow` / `ShadowReport` (`shadow.py`)** — the **production-shadow** machine: it
+  drives the **same** §6 `run_strategy` step (and the same `daily_entry_fires` predicate the
+  research engine uses, capacity counted off the *booked* line) over the same dates, concretizes
+  the intended legs through the same `BacktestData` seam, and diffs net-by-contract signed quantity
+  against injected `BookedFill`s — flagging per-day drift between *what the one logic object would
+  have traded* and *what was actually booked* (paper/live). The strategy layer can't import
+  execution (it sits above), so `BookedFill` is a layer-neutral value the caller above execution
+  (the BFF / an ops script) fills from the execution fills ledger. This is the "a strategy isn't
+  real until backtest, paper, and live share one logic object" check made mechanical.
 - **`BacktestResult` / `DayResult` / `BacktestSummary` (`results.py`)** — the output. `days` is the
-  through-time table; `summary` rolls it up (total P&L, max drawdown, annualised Sharpe, turnover,
-  worst stress loss — each one pure function); `cumulative_attribution()` is the §5.7 headline
-  view: the named per-Greek P&L summed across the stretch, so *which Greek paid* is a number, not
-  a story.
+  through-time table; `summary` rolls it up (total P&L, **net P&L**, **total transaction cost**,
+  max drawdown, annualised Sharpe, turnover, worst stress loss — each one pure function);
+  `cumulative_attribution()` is the §5.7 headline view: the named per-Greek P&L summed across the
+  stretch, so *which Greek paid* is a number, not a story.
 
 **First concrete target (§7.8):** S2, the index short-put line, replayed through a banked stretch
 and an adverse (spot-down + vol-up) regime — the course's 2021-vs-2008 method industrialised. The
@@ -244,20 +265,30 @@ engine drives exactly S2's daily decision: `decide_sell` (signal ∧ capacity) f
 capacity count read off the backtest book itself (the booked line *is* the book), the rolling
 roll-off in the loop.
 
-**Scope / out of scope for v1 (research):**
+**BFF endpoint (`apps/frontend`):** `POST /api/backtest/run` launches a store-backed S2 backtest
+and returns the full serious output in one call (no persisted backtest table — it is computed on
+demand). Request: `index`, `reference_tenor`, `start_date`/`end_date` (the window is narrowed to
+the days actually banked for the index), `provider`, a `put_line` config block, optional `costs`
+and `stress_grid`. Response: `summary` (perf / net / cost / drawdown / Sharpe / turnover / worst
+stress), `cumulative_attribution` (which Greek paid), and a `days` array (per-day open contracts,
+realized + net P&L, transaction cost, stress loss, exposure Greeks). The Strategy/Backtest page
+(F-STRAT) consumes this.
 
-- **Research machine first; production shadow second.** This is "does the idea have edge?". The
-  production-shadow reconciliation ("did my live system match?") is the deliberate second build,
-  not here — but the design keeps it cheap because the strategy is invoked through the *same*
-  harness call.
-- **The store-backed `BacktestData` is the documented follow-up.** v1 ships the protocol + the
-  in-memory reference adapter (so the engine and the landed risk/attribution are tested against
-  hand-derived numbers without a store, honouring "never smoke-test against canonical `data/`").
-  The store-backed implementor wires the landed concretizer + valuation join over a
-  `trade_date`-narrowed grid read; it adds no compute, exactly like the S1/S3 store adapters.
-- **No explicit transaction-cost / slippage model in the engine.** The fill mark is the data
-  adapter's (the store-backed one uses the ADR-0043 concretizer's mark); explicit commission /
-  slippage is a follow-up, so v1's reported P&L is a gross upper bound on net.
+**Scope / out of scope:**
+
+- **Research + production-shadow both land here.** The research machine ("does the idea have
+  edge?") and the shadow ("did my live system match?") now both exist; the shadow stays cheap
+  because the strategy is invoked through the *same* harness call.
+- **The store-backed `BacktestData` lands here** (`StoreBackedBacktestData`) alongside the
+  in-memory reference adapter (still the hand-checkable fixture, honouring "never smoke-test against
+  canonical `data/`").
+- **The transaction-cost model is explicit** (`TransactionCostModel`); with `NO_COST` the reported
+  P&L is the gross upper bound exactly as before, and a configured model reports net alongside it.
+- **Open follow-ups:** the shadow reconciles *constructed-vs-booked legs* (the drift that actually
+  bit historically); a *P&L*-level shadow (live realized vs backtest realized on the same booked
+  line) is the next depth. The store adapter assumes the pipeline's `carry == 0` (forward == spot)
+  and a single multiplier/currency per index (injected) rather than a per-contract instrument-master
+  join — true for the index-only universe today.
 
 ## Testing
 
@@ -285,9 +316,11 @@ no-look-ahead guarantee by a recording-seam audit (not a claim).
   `gamma_data.py` (S3) are the concrete strategies so far. S4/S5's construction/entry/exit rules
   are still owned by their S-tasks. The research backtester (`backtest/`) replays any of them; its
   first target is S2.
-- **Backtester scope is research-only in v1** — the production-shadow machine, the store-backed
-  data adapter, and an explicit transaction-cost model are documented follow-ups (see the
-  backtester section above).
+- **Backtester now covers research *and* production-shadow** — the store-backed data adapter
+  (`StoreBackedBacktestData`), the explicit `TransactionCostModel`, the `reconcile_shadow`
+  constructed-vs-booked drift check, and the `POST /api/backtest/run` BFF endpoint all land (see the
+  backtester section above). The remaining depth is a P&L-level shadow (live realized vs backtest
+  realized on the same booked line).
 - **Signal computation is not here.** The strategy reads `SignalSnapshot`; the infra signal
   layer (`algotrading.infra.signals`) derives and persists it, and `signal_snapshot_from_store`
   bridges the two. A caller can still build a snapshot from any source (research/backtest);

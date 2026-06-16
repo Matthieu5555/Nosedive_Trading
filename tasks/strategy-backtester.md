@@ -53,3 +53,40 @@ adds no compute, mirrors the S1/S3 store adapters); the **production-shadow** ma
 **transaction-cost / slippage** model (v1 P&L is a gross upper bound on net).
 
 Gate green: ruff + mypy + lint-imports clean; `uv run pytest -q` = 2225 passed, 12 skipped.
+
+## State (2026-06-16) — follow-ups LANDED
+The three open follow-ups plus the BFF endpoint landed on the research machine, building on it
+(reinventing none of it):
+- **`StoreBackedBacktestData`** (`backtest/store_data.py`) — the production data path. Reads the
+  as-of `projected_option_analytics` cell for each leg's grid coordinate, pins the concrete
+  contract (right/strike/expiry) from that row, and rebuilds the `ContractValuationInput` from the
+  same row (spot = `forward_price`, carry == 0; vol = `implied_vol`; multiplier/currency injected).
+  Adds **no** compute, exactly like `StoreBackedDispersionData`/`StoreBackedGammaData`. Signal half
+  reuses `signal_snapshot_from_store`. Look-ahead proven by a recording-store seam test (only the
+  loop `as_of` is ever read, in order).
+- **`TransactionCostModel`** (`backtest/costs.py`) — explicit `commission_per_contract` +
+  `slippage_rate` × priced notional, charged at entry on the same `as_of`. `BacktestConfig.costs`
+  defaults to `NO_COST` (gross, byte-identical). Surfaced as `DayResult.transaction_cost` /
+  `cumulative_net_pnl` and `BacktestSummary.total_transaction_cost` / `total_net_pnl`.
+- **`reconcile_shadow` / `ShadowReport`** (`backtest/shadow.py`) — the production-shadow machine.
+  Drives the **same** `run_strategy` step + `daily_entry_fires` predicate (capacity off the booked
+  line), concretizes the intended legs through the same `BacktestData` seam, and diffs
+  net-by-contract signed qty vs injected `BookedFill`s — per-day constructed-vs-booked drift. The
+  strategy layer can't import execution (it's above), so `BookedFill` is layer-neutral and the
+  caller above execution (BFF / ops script) fills it from the execution fills ledger.
+- **BFF `POST /api/backtest/run`** (`apps/frontend/.../routers/backtest.py`, mounted additively) —
+  launches a store-backed S2 backtest and returns the full output (summary perf/net/cost/drawdown/
+  Sharpe/turnover/stress, `cumulative_attribution`, per-day `days`). F-STRAT consumes it.
+
+Four test layers: unit (`test_backtest_costs.py`, independently-derived cost numbers + the shadow
+diff), seam/contract (`test_backtest_store_data.py` — adapter reads vs seeded store, oracle reprice),
+integration (store-backed `run_backtest` end-to-end on a 2-day store; shadow match + drift;
+`test_backtest_api.py` over the BFF TestClient), no-look-ahead recording-seam proofs in both the
+store path and the shadow. `check-lookahead-bias` skill re-run — no violations.
+
+**Deferred:** a P&L-level shadow (live realized vs backtest realized on the same booked line) — the
+constructed-vs-booked drift check is the one that historically bit; the P&L-level one is the next
+depth. The store adapter assumes `carry == 0` and one multiplier/currency per index (index-only
+universe), not a per-contract instrument-master join.
+
+Gate green (2026-06-16): ruff + mypy + lint-imports clean; `uv run pytest` = 2384 passed, 12 skipped.

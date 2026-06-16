@@ -54,6 +54,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
 
     from .routers import analytics as analytics_router  # noqa: PLC0415
     from .routers import attribution as attribution_router  # noqa: PLC0415
+    from .routers import backtest as backtest_router  # noqa: PLC0415
     from .routers import basket as basket_router  # noqa: PLC0415
     from .routers import booking as booking_router  # noqa: PLC0415
     from .routers import config as config_router  # noqa: PLC0415
@@ -87,6 +88,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(attribution_router.router)
     app.include_router(signals_router.router)
     app.include_router(positions_router.router)
+    app.include_router(backtest_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

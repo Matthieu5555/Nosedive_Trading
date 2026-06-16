@@ -371,6 +371,95 @@ export const SIGNAL_CAPTIONS: Record<string, string> = {
     "Average implied correlation across the index members, −1 to +1. High means names are expected to move together, so the index looks expensive versus its parts.",
 };
 
+// --- F-POS: positions / execution blotter (the fills-based book, read-only) ----------------
+// Mirrors apps/frontend/src/algotrading/frontend/serializers.py::position_book_to_dict and the
+// fills_view ledger projection. The book is accounted FROM fills, never from intentions; the BFF
+// recomputes nothing. The HTTP shape is the seam — keep both sides in lockstep.
+
+// One append-only fill in the ledger (the §6 source of record). `signed_qty` is a string so the
+// backend Decimal survives JSON intact; `fill_ts` is the venue-stamped instant.
+export interface Fill {
+  fill_id: string;
+  booking_id: string;
+  source_basket_id: string;
+  trade_date: string;
+  underlying: string;
+  contract_key: string;
+  signed_qty: string;
+  price: number;
+  fill_ts: string;
+  mode: string;
+  broker_contract_id: string | null;
+}
+
+export interface FillsResponse {
+  trade_date: string | null;
+  underlying: string | null;
+  n_fills: number;
+  fills: Fill[];
+}
+
+// A per-leg dollar-Greek component on a position line. `raw` is the per-unit Greek, `position` is
+// the position-scaled raw (raw × signed_qty × multiplier), `dollar` is the banked dollar Greek for
+// the held quantity, each carrying its unit string (the `$` placeholder is re-currencied on render).
+export interface PositionGreek {
+  raw: number;
+  position: number;
+  dollar: number;
+  unit: string;
+}
+
+// One live contract in the booked book — the ledger folded by `contract_key` (net-zero legs are
+// closed and absent). A booked leg with no banked pricing carries zeroed Greeks and is listed in
+// `unpriced_contract_keys`, never silently dropped.
+export interface PositionLine {
+  contract_key: string;
+  underlying: string;
+  strike: number | null;
+  expiry: string | null;
+  option_right: string | null;
+  multiplier: number;
+  quantity: number;
+  broker_contract_id: string | null;
+  mark_price: number;
+  market_value: number;
+  greeks: {
+    delta: PositionGreek;
+    gamma: PositionGreek;
+    vega: PositionGreek;
+    theta: PositionGreek;
+    rho: PositionGreek;
+  };
+}
+
+// The book-additive sum of the per-leg dollar Greeks and market value across priced legs.
+export interface BookGreek {
+  dollar: number;
+  unit: string;
+}
+
+export interface BookGreeks {
+  delta: BookGreek;
+  gamma: BookGreek;
+  vega: BookGreek;
+  theta: BookGreek;
+  rho: BookGreek;
+  market_value: number;
+}
+
+export interface PositionsResponse {
+  source: string;
+  source_ts: string;
+  n_lines: number;
+  lines: PositionLine[];
+  book: BookGreeks;
+  priced_contract_keys: number;
+  unpriced_contract_keys: string[];
+}
+
+export const POSITION_GREEK_ORDER = ["delta", "gamma", "vega", "theta", "rho"] as const;
+export type PositionGreekName = (typeof POSITION_GREEK_ORDER)[number];
+
 export const FETCH_TIMEOUT_MS = 30_000;
 
 function requestSignal(signal?: AbortSignal): AbortSignal | undefined {

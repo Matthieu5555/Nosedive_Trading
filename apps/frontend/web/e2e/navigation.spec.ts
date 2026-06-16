@@ -16,7 +16,6 @@ const TABS = [
 const STUB_TABS = [
   { button: "Operations", heading: "Operations", path: "/operations" },
   { button: "Strategy", heading: "Strategy", path: "/strategy" },
-  { button: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
 test.beforeEach(async ({ page }) => {

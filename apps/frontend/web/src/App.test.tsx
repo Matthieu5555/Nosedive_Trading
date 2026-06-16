@@ -40,7 +40,6 @@ test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
 const STUB_TABS = [
   { link: "Operations", heading: "Operations", path: "/operations" },
   { link: "Strategy", heading: "Strategy", path: "/strategy" },
-  { link: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
 test("top navigation reaches the scaffold tabs, each on an empty-state stub", async () => {

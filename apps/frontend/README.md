@@ -77,7 +77,7 @@ places. The built operator pages:
 - **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
   disabled until the explicit order-gate work lands.
 
-A fourth built operator page:
+Further built operator pages:
 
 - **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted strategy signal layer (F-SIG).
   An underlying selector plus an optional trade-date pin drive `GET /api/signals[/underlyings]`; the
@@ -87,6 +87,14 @@ A fourth built operator page:
   one-line plain caption saying what the number is and how to read it. Values render through
   `lib/format` with their units; the labelled-empty partition (`n_signals == 0`) and every fetch
   error surface as their own states, never a blank.
+- **Positions** (`/positions`, `src/pages/Positions.tsx`) — the fills-based execution blotter
+  (F-POS). Reads the two read-only `/api/positions[/fills]` endpoints over an underlying + trade-date
+  selector and frames them plainly — *what I own, what it's worth, what my risk is*: a **book summary**
+  (total market value + the additive dollar Greeks), the **open-positions table** (one row per live
+  contract — qty, mark, market value, per-leg dollar Greeks), the append-only **fills ledger** (every
+  booked fill with its venue timestamp), and a labelled **booked-but-unpriced legs** notice (zeroed,
+  shown, never hidden). All analytics numbers via `lib/format.ts` (`sci`/`sciUnit`), re-currencied to
+  the index quote currency.
 
 Three further tabs are **scaffold stubs** (`frontend-tab-shell`, 2026-06-16) the fleet fills
 in — each renders its header plus a plain "No data yet" empty-state behind the shared
@@ -95,7 +103,6 @@ only that file and never `routes.ts`/`App.tsx`:
 
 - **Operations** (`/operations`, `src/pages/Operations.tsx`) — capture / run-state / connectivity.
 - **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the composed strategy book.
-- **Positions** (`/positions`, `src/pages/Positions.tsx`) — the fills-based book and reconcile.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
 `market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture

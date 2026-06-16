@@ -15,7 +15,6 @@ const TABS = [
 
 const STUB_TABS = [
   { button: "Operations", heading: "Operations", path: "/operations" },
-  { button: "Signals", heading: "Signals", path: "/signals" },
   { button: "Strategy", heading: "Strategy", path: "/strategy" },
   { button: "Positions", heading: "Positions", path: "/positions" },
 ] as const;

@@ -322,6 +322,55 @@ export interface BasketRiskResponse {
   n_gaps: number;
 }
 
+// --- F-SIG: the persisted strategy signal layer (read-only) ---------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/routers/signals.py + strategy_signal_to_dict.
+// The BFF recomputes no signal math; each row is the serialized StrategySignal plus a display
+// label/unit keyed off its kind. The HTTP shape is the seam — keep both sides in lockstep.
+export type SignalKind =
+  | "iv_rank"
+  | "iv_vs_realized"
+  | "term_structure_slope"
+  | "implied_correlation";
+
+export interface Signal {
+  signal_kind: string;
+  label: string;
+  subject: string;
+  tenor_label: string;
+  value: number;
+  unit: string | null;
+  snapshot_ts: string;
+  source_snapshot_ts: string;
+  provenance: Provenance;
+}
+
+export interface SignalsResponse {
+  underlying: string;
+  trade_date: string | null;
+  snapshot_ts: string | null;
+  n_signals: number;
+  kinds: string[];
+  by_kind: Record<string, Signal[]>;
+  signals: Signal[];
+}
+
+export interface SignalUnderlyingsResponse {
+  underlyings: string[];
+}
+
+// One plain-language sentence per kind: what the number is and how to read it. PM-legible, no
+// quant jargon — these front each per-kind panel so a reader needs no prior context.
+export const SIGNAL_CAPTIONS: Record<string, string> = {
+  iv_rank:
+    "Where today's implied vol sits in its 1-year range, 0–100%. High means options look expensive versus the past year.",
+  iv_vs_realized:
+    "Recently realized vol minus implied vol, in vol points. Positive means the market actually moved more than options were pricing.",
+  term_structure_slope:
+    "Longer-dated implied vol minus shorter-dated, in vol points. Positive (upward slope) is the calm-market norm; negative flags near-term stress.",
+  implied_correlation:
+    "Average implied correlation across the index members, −1 to +1. High means names are expected to move together, so the index looks expensive versus its parts.",
+};
+
 export const FETCH_TIMEOUT_MS = 30_000;
 
 function requestSignal(signal?: AbortSignal): AbortSignal | undefined {

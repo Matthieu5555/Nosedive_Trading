@@ -11,6 +11,8 @@ import {
   PRICE_HISTORY_BATCH_TWO,
   RECORDED_TWO_DATES,
   SCENARIOS_EMPTY,
+  SIGNAL_UNDERLYINGS,
+  SIGNALS_SX5E,
 } from "./fixtures";
 
 export function notMocked() {
@@ -36,6 +38,8 @@ export const server = setupServer(
   jsonGet("/api/risk/scenarios", SCENARIOS_EMPTY),
   jsonGet("/api/config/delta-bands", { delta_bands: DELTA_BANDS_32 }),
   jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc"] }),
+  jsonGet("/api/signals/underlyings", SIGNAL_UNDERLYINGS),
+  jsonGet("/api/signals", SIGNALS_SX5E),
 
   http.all("/api/*", notMocked),
 );

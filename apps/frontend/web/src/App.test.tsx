@@ -39,12 +39,11 @@ test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
 
 const STUB_TABS = [
   { link: "Operations", heading: "Operations", path: "/operations" },
-  { link: "Signals", heading: "Signals", path: "/signals" },
   { link: "Strategy", heading: "Strategy", path: "/strategy" },
   { link: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
-test("top navigation reaches the four scaffold tabs, each on an empty-state stub", async () => {
+test("top navigation reaches the scaffold tabs, each on an empty-state stub", async () => {
   const user = userEvent.setup();
   render(<App />);
 
@@ -56,6 +55,18 @@ test("top navigation reaches the four scaffold tabs, each on an empty-state stub
     await waitFor(() => expect(window.location.pathname).toBe(tab.path));
     expect(screen.getByText("No data yet")).toBeInTheDocument();
   }
+});
+
+test("the Signals tab is a live page rendering the persisted signal layer", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
+
+  await user.click(screen.getByRole("link", { name: "Signals" }));
+  expect(await screen.findByRole("heading", { name: "Signals", level: 1 })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/signals"));
+  expect(await screen.findByRole("heading", { name: "IV rank" })).toBeInTheDocument();
 });
 
 for (const tab of STUB_TABS) {

@@ -55,7 +55,7 @@ Two layers, both under `apps/frontend/web`:
 Seven top-level tabs over `react-router`, wrapped in the shared top-bar shell. Every tab is
 one row in `src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in `src/App.tsx`; the
 nav and the route table both render from `ROUTES`, so a tab is registered in exactly those two
-places. The three built operator pages:
+places. The built operator pages:
 
 - **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
   (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
@@ -77,13 +77,23 @@ places. The three built operator pages:
 - **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
   disabled until the explicit order-gate work lands.
 
-Four further tabs are **scaffold stubs** (`frontend-tab-shell`, 2026-06-16) the fleet fills
+A fourth built operator page:
+
+- **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted strategy signal layer (F-SIG).
+  An underlying selector plus an optional trade-date pin drive `GET /api/signals[/underlyings]`; the
+  read-only `SignalsView` groups the returned signals by kind (IV rank, Realized − implied,
+  Term-structure slope, Implied correlation ρ̄) into one compact per-kind table each, with a
+  per-name bar viz (left-anchored 0–100% for IV rank, a signed centre-line bar for the rest) and a
+  one-line plain caption saying what the number is and how to read it. Values render through
+  `lib/format` with their units; the labelled-empty partition (`n_signals == 0`) and every fetch
+  error surface as their own states, never a blank.
+
+Three further tabs are **scaffold stubs** (`frontend-tab-shell`, 2026-06-16) the fleet fills
 in — each renders its header plus a plain "No data yet" empty-state behind the shared
 `ErrorBoundary`, with no data wired yet. Each owns exactly one page file; later work edits
 only that file and never `routes.ts`/`App.tsx`:
 
 - **Operations** (`/operations`, `src/pages/Operations.tsx`) — capture / run-state / connectivity.
-- **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted strategy signal layer.
 - **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the composed strategy book.
 - **Positions** (`/positions`, `src/pages/Positions.tsx`) — the fills-based book and reconcile.
 

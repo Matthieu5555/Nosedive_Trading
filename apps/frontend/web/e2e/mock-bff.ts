@@ -13,6 +13,8 @@ import {
   PRICE_HISTORY_BATCH_TWO,
   RECORDED_TWO_DATES,
   SCENARIOS_EMPTY,
+  SIGNAL_UNDERLYINGS,
+  SIGNALS_SX5E,
 } from "../src/test/fixtures";
 
 const COVERAGE_AAA: CoverageData = {
@@ -84,6 +86,8 @@ const ROUTES: Record<string, unknown> = {
   "/api/basket/risk": BASKET_RISK_AAA,
   "/api/ticket/preview": TICKET_AAA,
   "/api/config/delta-bands": { delta_bands: DELTA_BANDS_32 },
+  "/api/signals/underlyings": SIGNAL_UNDERLYINGS,
+  "/api/signals": SIGNALS_SX5E,
 };
 
 export interface BffMock {

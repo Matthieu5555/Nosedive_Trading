@@ -8,6 +8,8 @@ import type {
   PriceHistoryResponse,
   RecordedDatesResponse,
   RiskResponse,
+  SignalsResponse,
+  SignalUnderlyingsResponse,
   SurfaceResponse,
 } from "../api";
 import type { ScenariosResponse } from "../stressApi";
@@ -205,6 +207,58 @@ export const RECORDED_EMPTY: RecordedDatesResponse = {
   count: 0,
   dates: [],
   available: [],
+};
+
+export const SIGNAL_UNDERLYINGS: SignalUnderlyingsResponse = { underlyings: ["SX5E"] };
+
+export const SIGNALS_SX5E: SignalsResponse = {
+  underlying: "SX5E",
+  trade_date: "2026-05-29",
+  snapshot_ts: "2026-05-29T17:30:00+00:00",
+  n_signals: 3,
+  kinds: ["iv_rank", "iv_vs_realized", "implied_correlation"],
+  by_kind: {
+    iv_rank: [
+      {
+        signal_kind: "iv_rank",
+        label: "IV rank",
+        subject: "SX5E",
+        tenor_label: "1m",
+        value: 0.62,
+        unit: "fraction [0,1]",
+        snapshot_ts: "2026-05-29T17:30:00+00:00",
+        source_snapshot_ts: "2026-05-29T17:30:00+00:00",
+        provenance: PROV,
+      },
+    ],
+    iv_vs_realized: [
+      {
+        signal_kind: "iv_vs_realized",
+        label: "Realized − implied",
+        subject: "SX5E",
+        tenor_label: "1m",
+        value: -0.018,
+        unit: "vol points (annualized)",
+        snapshot_ts: "2026-05-29T17:30:00+00:00",
+        source_snapshot_ts: "2026-05-29T17:30:00+00:00",
+        provenance: PROV,
+      },
+    ],
+    implied_correlation: [
+      {
+        signal_kind: "implied_correlation",
+        label: "Implied correlation ρ̄",
+        subject: "SX5E",
+        tenor_label: "3m",
+        value: 0.5,
+        unit: "correlation [-1,1]",
+        snapshot_ts: "2026-05-29T17:30:00+00:00",
+        source_snapshot_ts: "2026-05-29T17:30:00+00:00",
+        provenance: PROV,
+      },
+    ],
+  },
+  signals: [],
 };
 
 export const CONSTITUENTS_TWO: ConstituentsResponse = {

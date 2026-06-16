@@ -1123,3 +1123,94 @@ h3 {
   margin: 0;
   padding-left: 18px;
 }
+
+/* Signals page (F-SIG): a vertical stack of per-kind panels, each a compact table whose last
+   column is a tiny per-name bar. The bar track is a fixed-width strip; an iv_rank fill grows
+   from the left edge (0…100%), a signed kind grows from a centre line (negative left / positive
+   right), so a glance ranks the names without reading the numbers. */
+.signals-lede {
+  max-width: 70ch;
+  margin: 12px 0 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.signals-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.signals-asof {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.signal-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+.signal-panel th,
+.signal-panel td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.signal-panel th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.signal-subject {
+  font-variant-numeric: tabular-nums;
+}
+.signal-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.signal-caption {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+.signal-unit {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.signal-bar-cell {
+  width: 180px;
+}
+.signal-bar-track {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+.signal-bar-centre {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-strong);
+}
+.signal-bar-fill {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 2px;
+  min-width: 1px;
+}
+.signal-bar-fill[data-tone="neutral"] {
+  background: var(--amber);
+}
+.signal-bar-fill[data-tone="positive"] {
+  background: var(--positive);
+}
+.signal-bar-fill[data-tone="negative"] {
+  background: var(--negative);
+}

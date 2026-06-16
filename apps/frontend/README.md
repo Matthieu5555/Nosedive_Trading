@@ -52,7 +52,10 @@ Two layers, both under `apps/frontend/web`:
 
 ## Pages
 
-Three operator pages over `react-router`, wrapped in the shared top-bar shell:
+Seven top-level tabs over `react-router`, wrapped in the shared top-bar shell. Every tab is
+one row in `src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in `src/App.tsx`; the
+nav and the route table both render from `ROUTES`, so a tab is registered in exactly those two
+places. The three built operator pages:
 
 - **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
   (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
@@ -73,6 +76,16 @@ Three operator pages over `react-router`, wrapped in the shared top-bar shell:
   stressed live without a persisted portfolio.
 - **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
   disabled until the explicit order-gate work lands.
+
+Four further tabs are **scaffold stubs** (`frontend-tab-shell`, 2026-06-16) the fleet fills
+in — each renders its header plus a plain "No data yet" empty-state behind the shared
+`ErrorBoundary`, with no data wired yet. Each owns exactly one page file; later work edits
+only that file and never `routes.ts`/`App.tsx`:
+
+- **Operations** (`/operations`, `src/pages/Operations.tsx`) — capture / run-state / connectivity.
+- **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted strategy signal layer.
+- **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the composed strategy book.
+- **Positions** (`/positions`, `src/pages/Positions.tsx`) — the fills-based book and reconcile.
 
 The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
 `market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture

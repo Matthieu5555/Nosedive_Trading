@@ -37,6 +37,37 @@ test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
   await waitFor(() => expect(window.location.pathname).toBe("/risk"));
 });
 
+const STUB_TABS = [
+  { link: "Operations", heading: "Operations", path: "/operations" },
+  { link: "Signals", heading: "Signals", path: "/signals" },
+  { link: "Strategy", heading: "Strategy", path: "/strategy" },
+  { link: "Positions", heading: "Positions", path: "/positions" },
+] as const;
+
+test("top navigation reaches the four scaffold tabs, each on an empty-state stub", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+
+  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
+
+  for (const tab of STUB_TABS) {
+    await user.click(screen.getByRole("link", { name: tab.link }));
+    expect(await screen.findByRole("heading", { name: tab.heading, level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe(tab.path));
+    expect(screen.getByText("No data yet")).toBeInTheDocument();
+  }
+});
+
+for (const tab of STUB_TABS) {
+  test(`${tab.heading} is directly addressable and marks its nav link active`, async () => {
+    window.history.pushState({}, "", tab.path);
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: tab.heading, level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: tab.link })).toHaveAttribute("aria-current", "page");
+  });
+}
+
 test("there is no Orders nav button — the booking chain lives only on Basket", () => {
   render(<App />);
 

@@ -7,6 +7,17 @@ const TABS = [
   { button: "Market", heading: "Market", path: "/" },
   { button: "Basket", heading: "Basket Builder", path: "/basket" },
   { button: "Risk Scenarios", heading: "Risk Scenarios", path: "/risk" },
+  { button: "Operations", heading: "Operations", path: "/operations" },
+  { button: "Signals", heading: "Signals", path: "/signals" },
+  { button: "Strategy", heading: "Strategy", path: "/strategy" },
+  { button: "Positions", heading: "Positions", path: "/positions" },
+] as const;
+
+const STUB_TABS = [
+  { button: "Operations", heading: "Operations", path: "/operations" },
+  { button: "Signals", heading: "Signals", path: "/signals" },
+  { button: "Strategy", heading: "Strategy", path: "/strategy" },
+  { button: "Positions", heading: "Positions", path: "/positions" },
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -45,6 +56,15 @@ for (const tab of TABS) {
     await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
     // No uncaught exceptions (a real crash) on mount.
     expect(pageErrors, pageErrors.join("\n")).toEqual([]);
+  });
+}
+
+for (const tab of STUB_TABS) {
+  test(`"${tab.button}" is an empty-state scaffold stub`, async ({ page }) => {
+    await page.goto(tab.path);
+    await expect(page.getByRole("heading", { level: 1, name: tab.heading })).toBeVisible();
+    await expect(page.getByText("No data yet", { exact: true })).toBeVisible();
+    await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
   });
 }
 

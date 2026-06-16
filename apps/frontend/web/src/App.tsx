@@ -6,7 +6,11 @@ import { Badge } from "@/ui/badge";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
+import { OperationsPage } from "./pages/Operations";
+import { PositionsPage } from "./pages/Positions";
 import { RiskScenariosPage } from "./pages/RiskScenarios";
+import { SignalsPage } from "./pages/Signals";
+import { StrategyPage } from "./pages/Strategy";
 import { ROUTES } from "./routes";
 
 function Guarded({ label, children }: { label: string; children: ReactNode }) {
@@ -17,6 +21,10 @@ const PAGES: Record<string, ReactNode> = {
   "/": <MarketPage />,
   "/basket": <BasketPage />,
   "/risk": <RiskScenariosPage />,
+  "/operations": <OperationsPage />,
+  "/signals": <SignalsPage />,
+  "/strategy": <StrategyPage />,
+  "/positions": <PositionsPage />,
 };
 
 function AppShell() {

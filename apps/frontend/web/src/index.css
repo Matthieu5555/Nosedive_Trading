@@ -262,6 +262,18 @@ td span {
   font-size: 12px;
 }
 
+@media (min-width: 981px) and (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: minmax(120px, auto) auto minmax(72px, auto);
+    gap: 12px;
+  }
+
+  .nav-button {
+    min-width: 0;
+    padding: 0 11px;
+  }
+}
+
 .main {
   padding-top: 20px;
 }

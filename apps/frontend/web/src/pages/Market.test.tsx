@@ -42,7 +42,8 @@ test("defaults to the index and shows its price history, surface, and smile", as
 
   expect(await screen.findByLabelText(/SPX daily history/i)).toBeInTheDocument();
   expect(await screen.findByLabelText(/Implied-volatility surface/i)).toBeInTheDocument();
-  expect(await screen.findByLabelText(/Smile — 3m/i)).toBeInTheDocument();
+  // The maturity selector defaults to "all maturities", so the smile overlays every tenor.
+  expect(await screen.findByLabelText(/Smile — all maturities/i)).toBeInTheDocument();
 });
 
 test("the index view leads with the dispersion gap (index vol vs member vol)", async () => {
@@ -107,7 +108,8 @@ test("the grid-fallback smile is labeled as moneyness and flags a degenerate fit
   server.use(jsonGet("/api/analytics", ANALYTICS_AAA_MONEYNESS_FALLBACK));
   render(<MarketPage />);
 
-  const smile = await screen.findByLabelText(/Smile — 0\.250y/i);
+  // Default "all maturities" overlay still names the log-moneyness axis and flags degenerate tenors.
+  const smile = await screen.findByLabelText(/Smile — all maturities/i);
   expect(smile.getAttribute("aria-label")).toMatch(/implied vol vs log-moneyness/i);
   expect(smile.getAttribute("aria-label")).toMatch(/degenerate fit/i);
 });

@@ -32,13 +32,18 @@ describe("VolSurface dense nappe robustness", () => {
 
 describe("SmileChart robustness", () => {
   test("drops absurd/NaN/duplicate points and notes the count, plotting only the good wings", () => {
-    render(<SmileChart maturity={DEGEN_MATURITY} />);
+    // Pin to the single tenor (not the all-maturities overlay) so the degenerate-fit flag and the
+    // dropped-point note ride the panel label.
+    render(<SmileChart maturities={[DEGEN_MATURITY]} maturityLabel={DEGEN_MATURITY.label} />);
     const fig = screen.getByLabelText(/Smile — 10d/i);
 
     expect(fig.getAttribute("aria-label")).toMatch(/degenerate fit/i);
     expect(fig.getAttribute("aria-label")).toMatch(/flagged/i);
 
-    const plotted = Number(within(fig).getByTestId("line-points").textContent);
+    // The smile is a Plotly scatter on a real log-moneyness axis; both cleaned wings (ATM shared)
+    // contribute their points.
+    expect(within(fig).getByTestId("plot-types").textContent).toMatch(/scatter/);
+    const plotted = Number(within(fig).getByTestId("plot-points").textContent);
     expect(plotted).toBe(4);
   });
 });

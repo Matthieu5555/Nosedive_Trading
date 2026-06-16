@@ -1,11 +1,12 @@
 import type { Data } from "plotly.js";
 
-import type {
-  AnalyticsMaturity,
-  AnalyticsPoint,
-  OptionSide,
-  PriceHistoryResponse,
-  SurfaceDense,
+import {
+  ALL_MATURITIES,
+  type AnalyticsMaturity,
+  type AnalyticsPoint,
+  type OptionSide,
+  type PriceHistoryResponse,
+  type SurfaceDense,
 } from "../api";
 import { sci, withCurrency } from "../lib/format";
 import {
@@ -394,56 +395,136 @@ export function AtmTermStructure({
 const PUT_COLOR = CHART_COLORS.negative;
 const CALL_COLOR = CHART_COLORS.positive;
 
-// The smile is drawn in TradingView Lightweight Charts (the numeric-x yield-curve panel), not
-// Plotly: it renders with a real height like the candlestick / term-structure panels, and the
-// x-axis is log-moneyness so the curve reads as a true smile — ATM at 0, OTM puts on the left
-// (strikes below the forward, k < 0), OTM calls on the right (k > 0). The downward left→right
-// slope IS the skew. Two series — a red put wing (k ≤ 0) and a green call wing (k ≥ 0), sharing
-// the ATM point so they join. The yield-curve scale rejects negative x, so log-moneyness is
-// shifted +1.0 and scaled ×1000 into the integer axis; the tick formatter restores the real k.
-const SMILE_X_OFFSET = 1.0;
-const SMILE_X_SCALE = 1000;
-const toSmileX = (x: number): number => Math.round((x + SMILE_X_OFFSET) * SMILE_X_SCALE);
-// The x tick is the real log-moneyness k, an analytics quantity: scientific notation (the unit
-// rides the chart label, which already names log-moneyness).
-const fromSmileX = (x: number): string => sci(x / SMILE_X_SCALE - SMILE_X_OFFSET);
+// The smile is a Plotly scatter on a REAL log-moneyness axis — it can go negative natively, so ATM
+// sits at 0, OTM puts on the left (k < 0), OTM calls on the right (k > 0), and the downward
+// left→right slope IS the skew. (It used to be coerced onto a yield-curve panel, whose axis rejects
+// negatives; the +1×1000 shift that worked around it leaked through as nonsense month ticks like
+// "71Y7M" — the real axis removes the hack entirely.)
+const SMILE_HEAD = "implied vol vs log-moneyness; puts ◄ ATM ► calls";
 
-export function SmileChart({ maturity, side }: { maturity: AnalyticsMaturity; side?: OptionSide }) {
-  // A degenerate calibration (parameter railed to a bound, non-converged, or arb-breached)
-  // is shown flagged, never as a clean fit — the flag clears once real term structure lands.
+// Tenor ramp for the all-maturities overlay: near tenors read cool (blue), far tenors warm (amber),
+// so the stack of smiles carries the term structure as depth. Sampled along the same lerp as the
+// delta-band ramp below.
+const TENOR_RAMP = ["#86b9ff", "#e5c36a"] as const;
+function tenorColor(index: number, count: number): string {
+  if (count <= 1) return TENOR_RAMP[0];
+  return lerpHex(TENOR_RAMP[0], TENOR_RAMP[1], index / (count - 1));
+}
+
+const SMILE_LAYOUT = {
+  xaxis: { title: { text: "log-moneyness" }, zeroline: true, tickformat: ".2e" },
+  yaxis: { title: { text: "implied vol" }, rangemode: "tozero" as const, tickformat: ".2e" },
+  legend: { orientation: "h" as const, y: -0.22 },
+  hovermode: "closest" as const,
+};
+
+// One side-filtered wing of a cleaned smile as plottable (k, IV) arrays, sorted by k.
+function smileWing(maturity: AnalyticsMaturity, side?: OptionSide): { ks: number[]; vols: number[] } {
+  const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
+  const pairs: Array<[number, number]> = [];
+  clean.logMoneyness.forEach((k, i) => {
+    if (keepK(k, side)) pairs.push([k, clean.impliedVols[i]]);
+  });
+  pairs.sort((a, b) => a[0] - b[0]);
+  return { ks: pairs.map((p) => p[0]), vols: pairs.map((p) => p[1]) };
+}
+
+export function SmileChart({
+  maturities,
+  maturityLabel,
+  side,
+}: {
+  maturities: AnalyticsMaturity[];
+  // A specific tenor label, or "All maturities" (the default) to overlay every captured tenor.
+  maturityLabel?: string;
+  side?: OptionSide;
+}) {
+  const sorted = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years);
+  const isAll = maturityLabel === ALL_MATURITIES || maturityLabel === undefined;
+
+  if (sorted.length === 0) {
+    const label = `Smile — ${SMILE_HEAD}${sideSuffix(side)}`;
+    return (
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p>No smile to plot yet.</p>
+      </figure>
+    );
+  }
+
+  if (isAll) {
+    // Overlay every tenor's smile — the surface read as a 2D stack of slices, coloured near→far.
+    const traces: Data[] = sorted
+      .map((maturity, i): Data | null => {
+        const { ks, vols } = smileWing(maturity, side);
+        if (ks.length === 0) return null;
+        return {
+          type: "scatter",
+          mode: "lines",
+          name: maturity.tenor_label || maturity.label,
+          x: ks,
+          y: vols,
+          line: { color: tenorColor(i, sorted.length), width: 1.5 },
+        };
+      })
+      .filter((t): t is Data => t !== null);
+    // A degenerate calibration must stay visible even in the overlay — count the flagged tenors and
+    // ride the count on the label rather than silently drawing them as clean slices.
+    const nDegen = sorted.filter((m) => m.surface_slice?.degenerate).length;
+    const degenNote = nDegen > 0 ? ` ⚠ ${nDegen} degenerate fit${nDegen === 1 ? "" : "s"}` : "";
+    const label = `Smile — all maturities (${SMILE_HEAD})${degenNote}${sideSuffix(side)}`;
+    if (traces.length === 0) {
+      return (
+        <figure aria-label={label} className="plot">
+          <figcaption>{label}</figcaption>
+          <p>No smile to plot yet.</p>
+        </figure>
+      );
+    }
+    return <Plot label={label} height={360} data={traces} layout={SMILE_LAYOUT} />;
+  }
+
+  // One tenor: the put wing (k ≤ 0) red and the call wing (k ≥ 0) green, sharing the ATM point so
+  // they join; the put/call switch leaves only the chosen wing.
+  const maturity = sorted.find((m) => m.label === maturityLabel) ?? sorted[0];
   const degenerate = maturity.surface_slice?.degenerate ?? false;
-  // Robustness (render layer only): drop non-finite / absurd-IV / duplicate-k points before
-  // plotting the wings, so a railed slice's 108%/140% spikes and its duplicated 0.0 delta do not
-  // distort the curve. The served smile is untouched; we plot the good points and note the rest.
   const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
   const nDropped = clean.nDroppedNonFinite + clean.nDroppedAbsurd + clean.nDroppedDuplicate;
   const dropNote = nDropped > 0 ? ` — ${nDropped} pt${nDropped === 1 ? "" : "s"} flagged` : "";
-  const label = `Smile — ${maturity.label} (implied vol vs log-moneyness; puts ◄ ATM ► calls)${
+  const label = `Smile — ${maturity.label} (${SMILE_HEAD})${
     degenerate ? " ⚠ degenerate fit" : ""
-  }${dropNote}`;
-  const ks = clean.logMoneyness;
-  const vols = clean.impliedVols;
-  const puts: LightweightLineSeries = { label: "puts", color: PUT_COLOR, points: [] };
-  const calls: LightweightLineSeries = { label: "calls", color: CALL_COLOR, points: [] };
-  ks.forEach((k, i) => {
+  }${dropNote}${sideSuffix(side)}`;
+
+  const putPairs: Array<[number, number]> = [];
+  const callPairs: Array<[number, number]> = [];
+  clean.logMoneyness.forEach((k, i) => {
     if (!keepK(k, side)) return;
-    // The point's x-label is the real log-moneyness (analytics quantity), in scientific notation.
-    const point = { x: toSmileX(k), label: sci(k), value: vols[i] };
-    if (k <= 0) puts.points.push(point);
-    if (k >= 0) calls.points.push(point);
+    if (k <= 0) putPairs.push([k, clean.impliedVols[i]]);
+    if (k >= 0) callPairs.push([k, clean.impliedVols[i]]);
   });
-  // Only the wings that carry points (the put/call switch may leave one empty).
-  const wings = [puts, calls].filter((w) => w.points.length > 0);
-  return (
-    <LightweightLineChart
-      label={`${label}${sideSuffix(side)}`}
-      series={wings.length > 0 ? wings : [puts, calls]}
-      yUnit="IV"
-      xFormatter={fromSmileX}
-      // Implied vol is an analytics quantity: scientific notation (the "IV" unit rides yUnit).
-      valueFormatter={(value) => sci(value)}
-    />
-  );
+  putPairs.sort((a, b) => a[0] - b[0]);
+  callPairs.sort((a, b) => a[0] - b[0]);
+  const wingTrace = (name: string, color: string, pairs: Array<[number, number]>): Data => ({
+    type: "scatter",
+    mode: "lines+markers",
+    name,
+    x: pairs.map((p) => p[0]),
+    y: pairs.map((p) => p[1]),
+    line: { color, width: 2 },
+    marker: { color, size: 5 },
+  });
+  const traces: Data[] = [];
+  if (putPairs.length > 0) traces.push(wingTrace("puts", PUT_COLOR, putPairs));
+  if (callPairs.length > 0) traces.push(wingTrace("calls", CALL_COLOR, callPairs));
+  if (traces.length === 0) {
+    return (
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p>No smile points in this wing.</p>
+      </figure>
+    );
+  }
+  return <Plot label={label} height={360} data={traces} layout={SMILE_LAYOUT} />;
 }
 
 // The four dollar-Greeks graphed as a term structure — the curve view of the same
@@ -567,7 +648,17 @@ export function GreeksTermStructure({
   }
   return (
     <section aria-label={label} className="greeks-term-structure">
-      <h3>{label}</h3>
+      <div className="greeks-term-structure__heading">
+        <h3>Dollar Greeks term structure</h3>
+        {/* One shared legend for the whole grid: every panel draws one line per delta band on the
+            same put→ATM→call ramp, so a single caption with the gradient swatch replaces the tens
+            of per-band chips that used to repeat under each of the four panels. */}
+        <p className="band-ramp-key">
+          <span className="band-ramp-swatch" aria-hidden="true" />
+          delta bands: <span className="band-ramp-put">puts</span> →{" "}
+          <span className="band-ramp-atm">ATM</span> → <span className="band-ramp-call">calls</span>
+        </p>
+      </div>
       <div className="chart-grid">
         {GREEK_PANELS.map(({ name, title }) => {
           // The backend unit carries "$" as the currency placeholder; render it in the index's
@@ -580,6 +671,7 @@ export function GreeksTermStructure({
               label={`${title} term structure (${unit})`}
               series={bandSeries(sorted, name, side)}
               yUnit={unit}
+              showSeriesLegend={false}
             />
           );
         })}

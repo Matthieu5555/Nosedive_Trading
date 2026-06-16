@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 
-import type {
-  AnalyticsResponse,
-  ConstituentsResponse,
-  IndicesResponse,
-  OptionSide,
-  RecordedDatesResponse,
+import {
+  ALL_MATURITIES,
+  type AnalyticsResponse,
+  type ConstituentsResponse,
+  type IndicesResponse,
+  type OptionSide,
+  type RecordedDatesResponse,
 } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -36,7 +37,8 @@ export function MarketPage() {
   // Default to the downside wing: for an index the put skew is the interesting read, and it's the
   // side the book is typically short.
   const [side, setSide] = useState<OptionSide>("put");
-  const [maturityLabel, setMaturityLabel] = useState<string>("");
+  // Default to the whole term structure — the surface's natural read — not a single tenor.
+  const [maturityLabel, setMaturityLabel] = useState<string>(ALL_MATURITIES);
 
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
@@ -66,10 +68,13 @@ export function MarketPage() {
     () => (analytics.data?.maturities ?? []).map((m) => m.label),
     [analytics.data],
   );
-  // Keep the chosen maturity valid as the entity/date changes; default to the shortest tenor.
+  // Keep the chosen maturity valid as the entity/date changes; "all maturities" is always valid,
+  // and is the fallback when a once-selected tenor is no longer captured.
   useEffect(() => {
     if (maturityOptions.length === 0) return;
-    if (!maturityOptions.includes(maturityLabel)) setMaturityLabel(maturityOptions[0]);
+    if (maturityLabel !== ALL_MATURITIES && !maturityOptions.includes(maturityLabel)) {
+      setMaturityLabel(ALL_MATURITIES);
+    }
   }, [maturityOptions, maturityLabel]);
 
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
@@ -121,31 +126,30 @@ export function MarketPage() {
             }
             const qc = available.find((a) => a.date === effectiveAsOf)?.qc ?? "unknown";
             return (
-              <>
-                <SelectorStrip
-                  index={index}
-                  entity={effectiveEntity}
-                  constituents={constituentList}
-                  onEntity={(symbol) => setEntity(symbol)}
-                  side={side}
-                  onSide={setSide}
-                  maturityLabel={maturityLabel}
-                  maturityOptions={maturityOptions}
-                  onMaturity={setMaturityLabel}
-                />
+              <Tabs defaultValue="analytics" className="market-tabs">
+                <div className="market-tabs__bar">
+                  <TabsList className="market-tabs__list">
+                    <TabsTrigger value="analytics">Analytics</TabsTrigger>
+                    <TabsTrigger value="dataquality">Data quality</TabsTrigger>
+                  </TabsList>
+                  <span className="status">
+                    as of {effectiveAsOf} <QcBadge qc={qc} />
+                  </span>
+                </div>
 
-                <Tabs defaultValue="analytics" className="market-tabs">
-                  <div className="market-tabs__bar">
-                    <TabsList>
-                      <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                      <TabsTrigger value="dataquality">Data quality</TabsTrigger>
-                    </TabsList>
-                    <span className="status">
-                      as of {effectiveAsOf} <QcBadge qc={qc} />
-                    </span>
-                  </div>
-
-                  <TabsContent value="analytics">
+                <TabsContent value="analytics">
+                  <div className="analytics-stack">
+                    <SelectorStrip
+                      index={index}
+                      entity={effectiveEntity}
+                      constituents={constituentList}
+                      onEntity={(symbol) => setEntity(symbol)}
+                      side={side}
+                      onSide={setSide}
+                      maturityLabel={maturityLabel}
+                      maturityOptions={maturityOptions}
+                      onMaturity={setMaturityLabel}
+                    />
                     <ErrorBoundary label="Analytics">
                       <AsyncBlock loading={analytics.loading} error={analytics.error}>
                         {analytics.data && (
@@ -163,21 +167,21 @@ export function MarketPage() {
                         )}
                       </AsyncBlock>
                     </ErrorBoundary>
-                  </TabsContent>
+                  </div>
+                </TabsContent>
 
-                  <TabsContent value="dataquality">
-                    <AsyncBlock loading={constituents.loading} error={constituents.error}>
-                      <DataQualityTab
-                        index={index}
-                        asOf={effectiveAsOf}
-                        constituents={constituentList}
-                        entity={effectiveEntity}
-                        onEntity={(symbol) => setEntity(symbol)}
-                      />
-                    </AsyncBlock>
-                  </TabsContent>
-                </Tabs>
-              </>
+                <TabsContent value="dataquality">
+                  <AsyncBlock loading={constituents.loading} error={constituents.error}>
+                    <DataQualityTab
+                      index={index}
+                      asOf={effectiveAsOf}
+                      constituents={constituentList}
+                      entity={effectiveEntity}
+                      onEntity={(symbol) => setEntity(symbol)}
+                    />
+                  </AsyncBlock>
+                </TabsContent>
+              </Tabs>
             );
           })()}
       </AsyncBlock>

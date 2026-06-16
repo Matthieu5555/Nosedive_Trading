@@ -159,6 +159,11 @@ export interface DollarMetric {
 // belongs to both, so it is never filtered out.
 export type OptionSide = "put" | "call";
 
+// The maturity selector carries one tenor label, or this sentinel meaning "every captured tenor at
+// once" — the natural read of a surface. Panels that are inherently per-tenor (the fitted smile, the
+// by-band table) interpret it; the 3D surface and the term-structure curves already span all tenors.
+export const ALL_MATURITIES = "All maturities";
+
 export interface AnalyticsPoint {
   delta_band: string;
   target_delta: number;

@@ -671,6 +671,93 @@ h3 {
   margin-bottom: 6px;
 }
 
+/* The Analytics / Data quality switch. The generic unlayered `button` rule (a dark pill) outranks
+   shadcn's layered active utilities — so without these unlayered rules the active tab never changed
+   colour and both tabs read as identical outlined pills. Restore the selected-pill treatment,
+   matching the top-nav's .active state (light fill, dark text). */
+.market-tabs__list {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #121412;
+}
+.market-tabs__list [role="tab"] {
+  min-height: 34px;
+  min-width: 108px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+.market-tabs__list [role="tab"]:hover {
+  color: var(--text);
+}
+.market-tabs__list [role="tab"][data-state="active"] {
+  border-color: var(--border-strong);
+  background: var(--panel-soft);
+  color: var(--panel-soft-text);
+}
+
+/* A heading with a small muted note beside/under the title — keeps the title the largest thing in
+   the block (the old browser-default table <caption> rendered centered and LARGER than its h3). */
+.greeks-by-maturity-heading,
+.greeks-term-structure__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-bottom: 8px;
+}
+.panel-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* The shared delta-band ramp key for the four-panel term structure: a single gradient swatch +
+   put→ATM→call labels, replacing the tens of per-band chips that repeated under every panel. */
+.band-ramp-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.band-ramp-swatch {
+  width: 36px;
+  height: 9px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--negative), var(--amber), var(--positive));
+}
+.band-ramp-put {
+  color: var(--negative);
+}
+.band-ramp-atm {
+  color: var(--amber);
+}
+.band-ramp-call {
+  color: var(--positive);
+}
+
+/* Accessible-only text: present for screen readers / the a11y tree, removed from the visual flow
+   (used for table <caption>s whose visible title already lives in an adjacent heading). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .analytics-stack,
 .dataquality-stack {
   display: flex;

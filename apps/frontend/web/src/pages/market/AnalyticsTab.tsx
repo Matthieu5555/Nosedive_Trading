@@ -93,14 +93,7 @@ export function AnalyticsTab({
             <VolSurface surface={analytics.surface} maturities={maturities} side={side} />
           </ErrorBoundary>
           <ErrorBoundary label="Smile">
-            {selectedMaturity ? (
-              <SmileChart maturity={selectedMaturity} side={side} />
-            ) : (
-              <figure className="plot">
-                <figcaption>Smile</figcaption>
-                <p>No maturities captured for {entity} on this date yet.</p>
-              </figure>
-            )}
+            <SmileChart maturities={maturities} maturityLabel={maturityLabel} side={side} />
           </ErrorBoundary>
         </div>
       </article>
@@ -112,7 +105,7 @@ export function AnalyticsTab({
             <h2>Greeks</h2>
           </div>
           <span className="status">
-            {side === "put" ? "puts" : "calls"} · {selectedMaturity?.label ?? "—"}
+            {side === "put" ? "puts" : "calls"} · {maturityLabel || selectedMaturity?.label || "—"}
           </span>
         </div>
         {/* Curves show the shape across maturity; the table shows the exact euro values at the one

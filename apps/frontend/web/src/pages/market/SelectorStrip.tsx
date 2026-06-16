@@ -1,4 +1,4 @@
-import type { Constituent, OptionSide } from "../../api";
+import { ALL_MATURITIES, type Constituent, type OptionSide } from "../../api";
 
 // The persistent context for the whole analytics view: which entity (the index or one member),
 // which side of the smile, and which maturity. One pick here redraws every panel below — the fix
@@ -69,11 +69,14 @@ export function SelectorStrip({
           {maturityOptions.length === 0 ? (
             <option value="">No maturities</option>
           ) : (
-            maturityOptions.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))
+            <>
+              <option value={ALL_MATURITIES}>{ALL_MATURITIES}</option>
+              {maturityOptions.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
+            </>
           )}
         </select>
       </label>

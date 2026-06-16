@@ -27,6 +27,10 @@ export interface LightweightLineChartProps {
   yUnit: string;
   xFormatter?: (x: number) => string;
   valueFormatter?: (value: number) => string;
+  // A many-series panel (one line per delta band — tens of them) drowns under a per-series legend
+  // repeated across a grid of panels. Pass false to keep only the hovered "x · unit" read-out; the
+  // series stay told apart by their colour ramp, explained once in a shared caption beside the grid.
+  showSeriesLegend?: boolean;
 }
 
 function defaultXFormatter(x: number): string {
@@ -58,6 +62,7 @@ export function LightweightLineChart({
   yUnit,
   xFormatter = defaultXFormatter,
   valueFormatter = defaultValueFormatter,
+  showSeriesLegend = true,
 }: LightweightLineChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const legendRef = useRef<HTMLDivElement | null>(null);
@@ -116,25 +121,28 @@ export function LightweightLineChart({
     const xToken = document.createElement("span");
     xToken.className = "legend-x";
     legend.appendChild(xToken);
-    const valueNodes = rendered.map((item) => {
-      const chip = document.createElement("span");
-      chip.className = "legend-item";
-      const swatch = document.createElement("i");
-      swatch.className = "legend-swatch";
-      swatch.style.backgroundColor = item.color;
-      const name = document.createElement("span");
-      name.className = "legend-label";
-      name.textContent = item.label;
-      const value = document.createElement("span");
-      value.className = "legend-value";
-      chip.append(swatch, name, value);
-      legend.appendChild(chip);
-      return value;
-    });
+    const valueNodes = showSeriesLegend
+      ? rendered.map((item) => {
+          const chip = document.createElement("span");
+          chip.className = "legend-item";
+          const swatch = document.createElement("i");
+          swatch.className = "legend-swatch";
+          swatch.style.backgroundColor = item.color;
+          const name = document.createElement("span");
+          name.className = "legend-label";
+          name.textContent = item.label;
+          const value = document.createElement("span");
+          value.className = "legend-value";
+          chip.append(swatch, name, value);
+          legend.appendChild(chip);
+          return value;
+        })
+      : [];
 
     const renderLegend = (x: number | null): void => {
       const xValue = x === null ? (rendered[0]?.latest.time ?? 0) : x;
       xToken.textContent = `${xFormatter(xValue)} · ${yUnit}`;
+      if (!showSeriesLegend) return;
       rendered.forEach((item, index) => {
         const value = x === null ? item.latest.value : item.valueByX.get(x);
         valueNodes[index].textContent = value === undefined ? "—" : valueFormatter(value);
@@ -156,7 +164,7 @@ export function LightweightLineChart({
       chart.unsubscribeCrosshairMove(onMove);
       chart.remove();
     };
-  }, [series, xFormatter, valueFormatter, yUnit]);
+  }, [series, xFormatter, valueFormatter, yUnit, showSeriesLegend]);
 
   if (!series.some((item) => item.points.length > 0)) {
     return (

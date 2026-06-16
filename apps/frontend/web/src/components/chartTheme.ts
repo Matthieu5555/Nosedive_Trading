@@ -26,6 +26,9 @@ const PLOT_AXIS_THEME = {
   linecolor: CHART_COLORS.axis,
   tickcolor: CHART_COLORS.axis,
   color: CHART_COLORS.muted,
+  // Scientific tick labels (".2e") are wide; automargin grows the axis gutter to fit them so the
+  // axis TITLE never lands on top of the tick text (the "ATM implied vol" / "3.00e-1" collision).
+  automargin: true,
 };
 
 const PLOT_SCENE_AXIS_THEME = {
@@ -47,6 +50,13 @@ export const PLOTLY_TEMPLATE: Template = {
     xaxis: PLOT_AXIS_THEME,
     yaxis: PLOT_AXIS_THEME,
     margin: { t: 30, b: 40, l: 50, r: 30 },
+    // Plotly's default legend background is opaque WHITE — a glaring box over the dark panels.
+    // Make it transparent with muted text so it reads as part of the console, not a paste-over.
+    legend: {
+      bgcolor: CHART_COLORS.transparent,
+      bordercolor: CHART_COLORS.transparent,
+      font: { color: CHART_COLORS.muted },
+    },
     scene: {
       xaxis: PLOT_SCENE_AXIS_THEME,
       yaxis: PLOT_SCENE_AXIS_THEME,

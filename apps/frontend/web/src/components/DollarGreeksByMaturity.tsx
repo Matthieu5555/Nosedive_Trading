@@ -1,4 +1,4 @@
-import type { AnalyticsMaturity, AnalyticsPoint, OptionSide } from "../api";
+import { ALL_MATURITIES, type AnalyticsMaturity, type AnalyticsPoint, type OptionSide } from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
 
@@ -51,13 +51,19 @@ export function DollarGreeksByMaturity({
   if (maturities.length === 0) {
     return (
       <section aria-label={label} className="greeks-by-maturity">
-        <h3>{label}</h3>
+        <h3>Dollar Greeks by delta band</h3>
         <p>No projected analytics for this ticker/date yet.</p>
       </section>
     );
   }
 
-  const maturity = maturities.find((m) => m.label === maturityLabel) ?? maturities[0];
+  // The table is inherently one tenor. "All maturities" has no single column, so it reads the
+  // front (shortest) tenor and says so — the term-structure curves above already span every tenor.
+  const isAll = maturityLabel === ALL_MATURITIES || maturityLabel === undefined;
+  const frontMaturity = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years)[0];
+  const maturity = isAll
+    ? frontMaturity
+    : (maturities.find((m) => m.label === maturityLabel) ?? frontMaturity);
 
   const rows = [...maturity.points]
     .filter((p) => {
@@ -85,15 +91,24 @@ export function DollarGreeksByMaturity({
 
   return (
     <section aria-label={label} className="greeks-by-maturity">
-      <h3>{label}</h3>
+      <div className="greeks-by-maturity-heading">
+        <h3>
+          Dollar Greeks — {maturity.label}
+          {isAll ? " (front month)" : ""}
+        </h3>
+        <p className="panel-note">
+          Greeks across, delta bands down · raw and {currency} value · ATM and sign-flip rows
+          highlighted
+        </p>
+      </div>
       {rows.length === 0 ? (
         <p>No projected analytics for {maturity.label} yet.</p>
       ) : (
         <div className="greeks-by-maturity-scroll">
           <table aria-label={`Dollar Greeks — ${maturity.label}`}>
-            <caption>
-              Dollar Greeks — {maturity.label} (each Greek: raw and {currency} value; rows are delta
-              bands). The ATM row and any sign-flip row are highlighted.
+            <caption className="visually-hidden">
+              Dollar Greeks for {maturity.label}: each Greek as raw and {currency} value, one row per
+              delta band.
             </caption>
             <thead>
               <tr>

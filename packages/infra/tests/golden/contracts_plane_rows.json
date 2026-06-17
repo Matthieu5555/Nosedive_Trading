@@ -221,9 +221,12 @@
       "volga": null
     },
     "projected_option_analytics": {
+      "charm": null,
       "delta": 0.3,
       "delta_band": "30dc",
       "delta_mirror": null,
+      "dollar_charm": null,
+      "dollar_charm_unit": null,
       "dollar_delta": 5730.0,
       "dollar_delta_mirror": null,
       "dollar_delta_unit": "per $1 underlying move",
@@ -237,8 +240,12 @@
       "dollar_theta": -2.0,
       "dollar_theta_mirror": null,
       "dollar_theta_unit": "per calendar day",
+      "dollar_vanna": null,
+      "dollar_vanna_unit": null,
       "dollar_vega": 12.0,
       "dollar_vega_unit": "per 1 vol point",
+      "dollar_volga": null,
+      "dollar_volga_unit": null,
       "forward_price": 191.0,
       "gamma": 0.03,
       "implied_vol": 0.22,
@@ -267,7 +274,9 @@
       "theta_mirror": null,
       "total_variance": 0.004,
       "underlying": "AAPL",
-      "vega": 0.12
+      "vanna": null,
+      "vega": 0.12,
+      "volga": null
     },
     "qc_results": {
       "check_name": "forward_stability",

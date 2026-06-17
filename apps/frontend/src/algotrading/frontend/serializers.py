@@ -438,6 +438,9 @@ def projected_option_analytics_to_dict(
             ),
             "theta": _analytics_metric(row.theta, row.dollar_theta, row.dollar_theta_unit),
             "rho": _analytics_metric(row.rho, row.dollar_rho, row.dollar_rho_unit),
+            "vanna": _analytics_metric(row.vanna, row.dollar_vanna, row.dollar_vanna_unit),
+            "volga": _analytics_metric(row.volga, row.dollar_volga, row.dollar_volga_unit),
+            "charm": _analytics_metric(row.charm, row.dollar_charm, row.dollar_charm_unit),
         },
         "price_mirror": row.price_mirror,
         "mirror_metrics": {

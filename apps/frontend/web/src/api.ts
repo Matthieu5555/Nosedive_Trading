@@ -153,6 +153,16 @@ export interface DollarMetric {
   unit: string | null;
 }
 
+// The second-order set (vanna/volga/charm) is additive-nullable on the analytics grid: the
+// projection emits it on every freshly-projected cell, but a cell banked before the field existed
+// (an older close) serializes the keys with a null raw/dollar. So it carries a nullable raw, unlike
+// the always-present first-order DollarMetric.
+export interface NullableDollarMetric {
+  raw: number | null;
+  dollar: number | null;
+  unit: string | null;
+}
+
 // Which half of the smile the page is focused on. The persistent put/call switch in the market
 // selector strip carries this; every surface/smile/Greeks panel reads it the same way — puts are
 // the downside wing (log-moneyness ≤ 0, signed delta ≤ 0), calls the upside wing (≥ 0). ATM (k = 0)
@@ -186,6 +196,9 @@ export interface AnalyticsPoint {
     vega: DollarMetric;
     theta: DollarMetric;
     rho: DollarMetric;
+    vanna?: NullableDollarMetric;
+    volga?: NullableDollarMetric;
+    charm?: NullableDollarMetric;
   };
   provenance: Provenance;
 }

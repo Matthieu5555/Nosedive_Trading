@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -101,6 +102,44 @@ def test_quote_to_dict_never_returns_none(seed: ModuleType) -> None:
         "ask": None,
         "volume": 2.0,
     }
+
+
+# --- SEAM: analytics cell second-order Greeks (vanna/volga/charm) ----------------------------
+# The tenor panel reads point.metrics.vanna/.volga/.charm (raw + dollar + unit). The contract:
+# these keys are ALWAYS present on the metrics object; their values are nullable for a close
+# banked before the projection carried them. Same present-with-null discipline as the quote seam.
+
+
+def test_second_order_greeks_surfaced_under_metrics_when_present(seed: ModuleType) -> None:
+    row = dataclasses.replace(
+        _analytics_row(seed),
+        vanna=0.391,
+        volga=85.36,
+        charm=-0.0372,
+        dollar_vanna=11.73,
+        dollar_volga=0.008536,
+        dollar_charm=-0.0102,
+        dollar_vanna_unit="$ delta per 1 vol point",
+        dollar_volga_unit="$ vega per 1 vol point",
+        dollar_charm_unit="$ delta per calendar day",
+    )
+    metrics = projected_option_analytics_to_dict(row)["metrics"]
+    for name in ("vanna", "volga", "charm"):
+        assert name in metrics, f"metrics.{name} must be present for the tenor panel"
+        assert set(metrics[name]) == {"raw", "dollar", "unit"}
+    assert metrics["vanna"] == {"raw": 0.391, "dollar": 11.73, "unit": "$ delta per 1 vol point"}
+    assert metrics["volga"] == {"raw": 85.36, "dollar": 0.008536, "unit": "$ vega per 1 vol point"}
+    assert metrics["charm"] == {"raw": -0.0372, "dollar": -0.0102, "unit": "$ delta per calendar day"}
+
+
+def test_second_order_greeks_present_with_null_when_absent(seed: ModuleType) -> None:
+    # A cell projected before the second-order carry-through serves the keys with null values,
+    # never omits them — so the front renders an explicit gap, not a crash on a missing key.
+    metrics = projected_option_analytics_to_dict(_analytics_row(seed))["metrics"]
+    for name in ("vanna", "volga", "charm"):
+        assert metrics[name] == {"raw": None, "dollar": None, "unit": None}, (
+            f"metrics.{name} must stay present-with-null when the cell predates the field"
+        )
 
 
 # --- SEAM 2: maturities[].rate_diagnostics identity (A5) -------------------------------------

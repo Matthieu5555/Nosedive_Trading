@@ -279,7 +279,9 @@ def test_analytics_payload_uses_blueprint_field_names(
     ).json()["maturities"][0]["points"][0]
     for field in ("forward_price", "implied_vol", "log_moneyness"):
         assert field in point, f"blueprint field {field!r} must be in the analytics payload"
-    assert set(point["metrics"]) == {"delta", "gamma", "vega", "rt_vega", "theta", "rho"}
+    assert set(point["metrics"]) == {
+        "delta", "gamma", "vega", "rt_vega", "theta", "rho", "vanna", "volga", "charm"
+    }
     assert "raw" in point["metrics"]["delta"] and "dollar" in point["metrics"]["delta"]
 
 

@@ -224,6 +224,15 @@ class ProjectedOptionAnalytics:
     dollar_delta_mirror: float | None = None
     dollar_theta_mirror: float | None = None
     dollar_rho_mirror: float | None = None
+    vanna: float | None = None
+    volga: float | None = None
+    charm: float | None = None
+    dollar_vanna: float | None = None
+    dollar_volga: float | None = None
+    dollar_charm: float | None = None
+    dollar_vanna_unit: str | None = None
+    dollar_volga_unit: str | None = None
+    dollar_charm_unit: str | None = None
 
     def __post_init__(self) -> None:
         if self.surface_side not in SURFACE_SIDES:

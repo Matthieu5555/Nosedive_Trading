@@ -19,7 +19,7 @@ from algotrading.infra.contracts import (
     IvPoint,
     spec_for_table,
 )
-from algotrading.infra.pricing import UNIT_STRINGS, dollar_greeks
+from algotrading.infra.pricing import UNIT_STRINGS, dollar_greeks, from_forward, price_european
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.surfaces import (
     PINNED_TENORS,
@@ -178,6 +178,87 @@ def test_atm_straddle_is_approximately_delta_neutral_and_double_gamma() -> None:
     net_dollar_delta = atm.dollar_delta + atmp.dollar_delta
     assert abs(net_dollar_delta) < 0.30 * abs(atm.dollar_delta)
     assert (atm.dollar_gamma + atmp.dollar_gamma) == pytest.approx(2 * atm.dollar_gamma, rel=1e-6)
+
+
+def test_every_cell_carries_the_second_order_greek_set() -> None:
+    result = _project(build_synthetic_term_surface())
+    assert result.cells
+    for cell in result.cells:
+        for field_name in ("vanna", "volga", "charm",
+                           "dollar_vanna", "dollar_volga", "dollar_charm"):
+            value = getattr(cell, field_name)
+            assert value is not None, f"{cell.tenor_label}|{cell.delta_band}.{field_name}"
+            assert math.isfinite(value), f"{cell.tenor_label}|{cell.delta_band}.{field_name}"
+        assert cell.dollar_vanna_unit == UNIT_STRINGS["dollar_vanna"]
+        assert cell.dollar_volga_unit == UNIT_STRINGS["dollar_volga"]
+        # ACT/365 monetization (the default) tags charm per calendar day.
+        assert cell.dollar_charm_unit == UNIT_STRINGS["dollar_charm_365"]
+
+
+def _second_order_reprice(
+    cell: Any, *, rate: float, volatility: float, maturity_years: float, option_right: str
+) -> Any:
+    discount_factor = math.exp(-rate * maturity_years)
+    state = from_forward(
+        forward=cell.forward_price, strike=cell.strike, maturity_years=maturity_years,
+        volatility=volatility, discount_factor=discount_factor, option_right=option_right,
+        spot=cell.forward_price,
+    )
+    return price_european(state)
+
+
+def test_second_order_greeks_match_finite_difference_of_first_order() -> None:
+    # Independent check: vanna is ∂delta/∂sigma, volga is ∂vega/∂sigma, charm is -∂delta/∂T.
+    # Recompute those sensitivities by central finite difference of the (separately tested)
+    # first-order Greeks and compare to the analytic second-order values the projection banked.
+    term = build_synthetic_term_surface()
+    rate = term.rate
+    result = _project(term)
+
+    def cell_at(band: str) -> Any:
+        return next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == band)
+
+    def reprice(cell: Any, right: str, *, vol: float, maturity: float) -> Any:
+        return _second_order_reprice(
+            cell, rate=rate, volatility=vol, maturity_years=maturity, option_right=right
+        )
+
+    h_vol = 1e-5
+    h_t = 1e-5
+
+    # vanna and charm on the ATM call (volga vanishes at the money: d1*d2 -> 0).
+    atm = cell_at("atm")
+    vanna_fd = (
+        reprice(atm, "C", vol=atm.implied_vol + h_vol, maturity=atm.maturity_years).delta
+        - reprice(atm, "C", vol=atm.implied_vol - h_vol, maturity=atm.maturity_years).delta
+    ) / (2 * h_vol)
+    d_delta_d_t = (
+        reprice(atm, "C", vol=atm.implied_vol, maturity=atm.maturity_years + h_t).delta
+        - reprice(atm, "C", vol=atm.implied_vol, maturity=atm.maturity_years - h_t).delta
+    ) / (2 * h_t)
+    assert atm.vanna == pytest.approx(vanna_fd, rel=1e-4, abs=1e-8)
+    assert atm.charm == pytest.approx(-d_delta_d_t, rel=1e-4, abs=1e-8)
+
+    # volga on a put wing, where vega's vol-sensitivity is materially non-zero.
+    wing = cell_at("10dp")
+    volga_fd = (
+        reprice(wing, "P", vol=wing.implied_vol + h_vol, maturity=wing.maturity_years).vega
+        - reprice(wing, "P", vol=wing.implied_vol - h_vol, maturity=wing.maturity_years).vega
+    ) / (2 * h_vol)
+    assert volga_fd != pytest.approx(0.0, abs=1.0)
+    assert wing.volga == pytest.approx(volga_fd, rel=1e-4)
+
+
+def test_dollar_second_order_greeks_follow_the_monetization_rule() -> None:
+    # Independent re-derivation of the $-conversion from the raw Greek, matching dollar_greeks:
+    # $vanna = vanna*spot*0.01, $volga = volga*0.01*0.01, $charm = charm*spot/365 (ACT/365).
+    term = build_synthetic_term_surface()
+    result = _project(term)
+    spot = term.forward
+    wing = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "10dp")
+    assert wing.dollar_vanna == pytest.approx(wing.vanna * spot * 0.01, rel=1e-9)
+    assert wing.dollar_volga == pytest.approx(wing.volga * 0.01 * 0.01, rel=1e-9)
+    assert wing.dollar_charm == pytest.approx(wing.charm * spot / 365.0, rel=1e-9)
 
 
 def test_out_of_band_target_is_a_labeled_gap_not_a_nan() -> None:
@@ -766,3 +847,77 @@ def test_pricer_version_has_one_home_in_the_pricing_engine() -> None:
 
     assert projection_module.PRICER_VERSION is engine_version
     assert engine_version == "black76-lr-1.0.0"
+
+
+def test_second_order_greeks_are_populated_with_units_on_every_cell() -> None:
+    result = _project(build_synthetic_term_surface())
+    assert result.cells
+    for cell in result.cells:
+        for field_name in ("vanna", "volga", "charm",
+                            "dollar_vanna", "dollar_volga", "dollar_charm"):
+            value = getattr(cell, field_name)
+            assert value is not None and math.isfinite(value), f"{field_name} dropped on a cell"
+        assert cell.dollar_vanna_unit == UNIT_STRINGS["dollar_vanna"]
+        assert cell.dollar_volga_unit == UNIT_STRINGS["dollar_volga"]
+        assert cell.dollar_charm_unit == UNIT_STRINGS["dollar_charm_365"]
+
+
+def test_dollar_second_order_greeks_match_the_monetization_formulas() -> None:
+    cell = _project(build_synthetic_term_surface()).cells[0]
+    s = cell.forward_price
+    assert cell.vanna is not None and cell.volga is not None and cell.charm is not None
+    assert cell.dollar_vanna == pytest.approx(cell.vanna * s * 0.01, rel=1e-12)
+    assert cell.dollar_volga == pytest.approx(cell.volga * 0.01 * 0.01, rel=1e-12)
+    assert cell.dollar_charm == pytest.approx(cell.charm * s / 365.0, rel=1e-12)
+
+
+def _reprice(
+    *, forward: float, strike: float, vol: float, rate: float, maturity: float, right: str
+) -> Any:
+    from algotrading.infra.pricing import from_forward, price_european
+
+    return price_european(
+        from_forward(
+            forward=forward, strike=strike, maturity_years=maturity, volatility=vol,
+            discount_factor=math.exp(-rate * maturity), option_right=right, spot=forward,
+        )
+    )
+
+
+def test_second_order_greeks_match_finite_difference_of_the_public_pricer() -> None:
+    term = build_synthetic_term_surface()
+    result = _project(term)
+    cell = next(c for c in result.cells if c.tenor_label == "12m" and c.delta_band == "30dc")
+
+    fwd, strike, sigma, maturity = (
+        cell.forward_price, cell.strike, cell.implied_vol, cell.maturity_years
+    )
+    rate = term.rate
+    right = "C"
+
+    d_sigma = 1e-5
+    up_sigma = _reprice(forward=fwd, strike=strike, vol=sigma + d_sigma, rate=rate,
+                        maturity=maturity, right=right)
+    dn_sigma = _reprice(forward=fwd, strike=strike, vol=sigma - d_sigma, rate=rate,
+                        maturity=maturity, right=right)
+    fd_vanna = (up_sigma.delta - dn_sigma.delta) / (2.0 * d_sigma)
+    fd_volga = (up_sigma.vega - dn_sigma.vega) / (2.0 * d_sigma)
+
+    d_t = 1e-6
+    up_t = _reprice(forward=fwd, strike=strike, vol=sigma, rate=rate,
+                    maturity=maturity + d_t, right=right)
+    dn_t = _reprice(forward=fwd, strike=strike, vol=sigma, rate=rate,
+                    maturity=maturity - d_t, right=right)
+    fd_charm = -(up_t.delta - dn_t.delta) / (2.0 * d_t)
+
+    assert cell.vanna == pytest.approx(fd_vanna, rel=2e-5, abs=1e-9), (
+        "projected vanna must equal dDelta/dSigma by central difference, not "
+        "price_european(...).vanna (that comparison would be circular)"
+    )
+    assert cell.volga == pytest.approx(fd_volga, rel=2e-5, abs=1e-9), (
+        "projected volga must equal dVega/dSigma by central difference"
+    )
+    assert cell.charm == pytest.approx(fd_charm, rel=2e-4, abs=1e-9), (
+        "projected charm must equal -dDelta/dMaturity (decay as calendar time passes) "
+        "by central difference, holding the implied rate fixed as the analytic charm does"
+    )

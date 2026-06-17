@@ -512,6 +512,7 @@ def _build_cell(
     monetized = dollar_greeks(
         delta=greeks.delta, gamma=greeks.gamma, vega=greeks.vega, theta=greeks.theta,
         rho=greeks.rho, spot=market.spot, rt_vega=greeks.rt_vega,
+        vanna=greeks.vanna, volga=greeks.volga, charm=greeks.charm,
         multiplier=1.0, quantity=1.0, config=monetization,
     )
 
@@ -571,6 +572,15 @@ def _build_cell(
         dollar_delta_mirror=mirror_monetized.dollar_delta,
         dollar_theta_mirror=mirror_monetized.dollar_theta,
         dollar_rho_mirror=mirror_monetized.dollar_rho,
+        vanna=greeks.vanna,
+        volga=greeks.volga,
+        charm=greeks.charm,
+        dollar_vanna=monetized.dollar_vanna,
+        dollar_volga=monetized.dollar_volga,
+        dollar_charm=monetized.dollar_charm,
+        dollar_vanna_unit=UNIT_STRINGS["dollar_vanna"],
+        dollar_volga_unit=UNIT_STRINGS["dollar_volga"],
+        dollar_charm_unit=monetized.charm_unit,
     )
 
 

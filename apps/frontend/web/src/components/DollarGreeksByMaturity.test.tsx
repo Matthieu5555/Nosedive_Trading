@@ -147,4 +147,47 @@ describe("DollarGreeksByMaturity", () => {
 
     expect(within(railed).getByText(/2\.7 × 10³/)).toBeInTheDocument();
   });
+
+  const WITH_SECOND_ORDER: AnalyticsMaturity = {
+    ...CLEAN_12M,
+    points: [
+      {
+        ...CLEAN_12M.points[0],
+        metrics: {
+          ...CLEAN_12M.points[0].metrics,
+          vanna: { raw: 0.39, dollar: 11.7, unit: "$ delta per 1 vol point" },
+          volga: { raw: 85.36, dollar: 0.0085, unit: "$ vega per 1 vol point" },
+          charm: { raw: -0.037, dollar: -0.0102, unit: "$ delta per calendar day" },
+        },
+      },
+    ],
+  };
+
+  test("renders a labelled second-order table (vanna/volga/charm) when the cell carries them", () => {
+    render(
+      <DollarGreeksByMaturity
+        maturities={[WITH_SECOND_ORDER]}
+        maturityLabel="12m (1.000y)"
+        currency="€"
+      />,
+    );
+    const table = screen.getByRole("table", { name: /Second-order Greeks — 12m/ });
+    for (const greek of ["vanna", "volga", "charm"]) {
+      expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
+    }
+    expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
+    // The served dollar unit string is surfaced, currency-localised like the first-order columns
+    // ("$ ..." -> "€ ...").
+    expect(within(table).getByText("€ delta per 1 vol point")).toBeInTheDocument();
+    // A raw value is rendered in scientific notation (0.39 -> 3.9 × 10⁻¹), not dropped.
+    expect(within(table).getByText(/3\.9 × 10⁻¹/)).toBeInTheDocument();
+  });
+
+  test("shows an explicit gap note (no fabricated table) when the cell predates the second-order set", () => {
+    render(
+      <DollarGreeksByMaturity maturities={[CLEAN_12M]} maturityLabel="12m (1.000y)" currency="€" />,
+    );
+    expect(screen.queryByRole("table", { name: /Second-order Greeks — / })).not.toBeInTheDocument();
+    expect(screen.getByText(/not banked for this close/i)).toBeInTheDocument();
+  });
 });

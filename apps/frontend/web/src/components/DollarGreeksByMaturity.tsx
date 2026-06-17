@@ -2,7 +2,11 @@ import { ALL_MATURITIES, type AnalyticsMaturity, type AnalyticsPoint, type Optio
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
 
-const GREEKS: ReadonlyArray<{ name: keyof AnalyticsPoint["metrics"]; rawUnit: string }> = [
+// The always-present first-order Greeks (the second-order set below is additive-nullable and is
+// rendered by its own block, so it is deliberately excluded from this generic first-order indexing).
+type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta" | "rho";
+
+const GREEKS: ReadonlyArray<{ name: FirstOrderGreek; rawUnit: string }> = [
   { name: "delta", rawUnit: UNITS.delta },
   { name: "gamma", rawUnit: UNITS.gamma },
   { name: "vega", rawUnit: UNITS.vega },
@@ -10,9 +14,23 @@ const GREEKS: ReadonlyArray<{ name: keyof AnalyticsPoint["metrics"]; rawUnit: st
   { name: "rho", rawUnit: UNITS.rho },
 ];
 
+// The second-order set — how the first-order Greeks themselves move. Vanna (delta's vol-sensitivity),
+// Volga (vega's vol-sensitivity), Charm (delta's time-decay). Banked on the same projected cell as
+// the first-order Greeks (additive-nullable: a close projected before the field existed serves them
+// null). Charm is a display Greek only — it is deliberately absent from the attribution decomposition.
+const SECOND_ORDER: ReadonlyArray<{
+  name: "vanna" | "volga" | "charm";
+  label: string;
+  rawUnit: string;
+}> = [
+  { name: "vanna", label: "vanna", rawUnit: UNITS.vanna },
+  { name: "volga", label: "volga", rawUnit: UNITS.volga },
+  { name: "charm", label: "charm", rawUnit: UNITS.charm },
+];
+
 function currencyUnitFor(
   points: AnalyticsPoint[],
-  name: keyof AnalyticsPoint["metrics"],
+  name: FirstOrderGreek,
   currency: string,
 ): string {
   const unit = points.map((p) => p.metrics[name].unit).find((u) => u !== null && u !== undefined);
@@ -75,7 +93,7 @@ export function DollarGreeksByMaturity({
 
   // Pre-compute the sign-flip rows: walking down the sorted bands, a row flips when any Greek's
   // sign differs from the last non-zero sign seen for that Greek above it.
-  const lastSign: Partial<Record<keyof AnalyticsPoint["metrics"], -1 | 1>> = {};
+  const lastSign: Partial<Record<FirstOrderGreek, -1 | 1>> = {};
   const flipRows = new Set<string>();
   for (const point of rows) {
     let flipped = false;
@@ -169,6 +187,115 @@ export function DollarGreeksByMaturity({
           </table>
         </div>
       )}
+      {rows.length > 0 && (
+        <SecondOrderGreeks rows={rows} maturityLabel={maturity.label} currency={currency} />
+      )}
     </section>
   );
+}
+
+// The second-order Greeks (vanna/volga/charm) for the same delta bands, in their own labelled block
+// so the first-order table stays readable. A close projected before these were banked serves them
+// null, which renders as an explicit "not available for this close" note rather than a blank or a
+// fabricated value.
+function SecondOrderGreeks({
+  rows,
+  maturityLabel,
+  currency,
+}: {
+  rows: AnalyticsPoint[];
+  maturityLabel: string;
+  currency: string;
+}) {
+  const label = `Second-order Greeks — ${maturityLabel}`;
+  const anyPresent = rows.some((point) =>
+    SECOND_ORDER.some((greek) => point.metrics[greek.name]?.raw != null),
+  );
+
+  if (!anyPresent) {
+    return (
+      <section aria-label={label} className="greeks-by-maturity greeks-second-order">
+        <h3>Second-order Greeks</h3>
+        <p className="projection-gap" role="status">
+          Vanna / Volga / Charm were not banked for this close — nothing to show (older projection).
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label={label} className="greeks-by-maturity greeks-second-order">
+      <div className="greeks-by-maturity-heading">
+        <h3>Second-order Greeks — {maturityLabel}</h3>
+        <p className="panel-note">
+          How the first-order Greeks themselves move · vanna (Δ vs vol), volga (vega vs vol), charm (Δ
+          vs time) · raw and {currency} value per delta band
+        </p>
+      </div>
+      <div className="greeks-by-maturity-scroll">
+        <table aria-label={label}>
+          <caption className="visually-hidden">
+            Second-order Greeks for {maturityLabel}: vanna, volga and charm as raw and {currency}{" "}
+            value, one row per delta band.
+          </caption>
+          <thead>
+            <tr>
+              <th rowSpan={2} scope="col">
+                delta band
+              </th>
+              {SECOND_ORDER.map((greek) => (
+                <th key={greek.name} colSpan={2} scope="colgroup" className="greek-group">
+                  {greek.label}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              {SECOND_ORDER.map((greek) => [
+                <th key={`${greek.name}-raw`} scope="col">
+                  raw <span className="unit">{greek.rawUnit}</span>
+                </th>,
+                <th key={`${greek.name}-ccy`} scope="col">
+                  {currency} value
+                  <span className="unit">
+                    {secondOrderCurrencyUnit(rows, greek.name, currency)}
+                  </span>
+                </th>,
+              ])}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((point) => {
+              const atm = isAtmBand(point.delta_band);
+              return (
+                <tr key={point.delta_band} className={atm ? "greeks-row--atm" : undefined}>
+                  <th scope="row">
+                    {point.delta_band}
+                    {atm ? <span title="at-the-money"> ●</span> : null}
+                  </th>
+                  {SECOND_ORDER.map((greek) => {
+                    const metric = point.metrics[greek.name];
+                    return [
+                      <td key={`${greek.name}-raw`}>{sci(metric?.raw ?? null)}</td>,
+                      <td key={`${greek.name}-ccy`}>{sci(metric?.dollar ?? null)}</td>,
+                    ];
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function secondOrderCurrencyUnit(
+  rows: AnalyticsPoint[],
+  name: "vanna" | "volga" | "charm",
+  currency: string,
+): string {
+  const unit = rows
+    .map((point) => point.metrics[name]?.unit)
+    .find((u) => u !== null && u !== undefined);
+  return withCurrency(unit ?? null, currency) ?? "n/a";
 }

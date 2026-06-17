@@ -104,10 +104,21 @@ Two coexisting strike-selection policies sit over the *same* listed-strike shape
 policy surface, not one per broker or per script:
 
 - **%-of-spot** (`select_strikes`, the `ChainSelection` defaults) — keep strikes inside
-  `spot ± strike_window_pct` with a per-side floor, under a max-expiries cap. `plan_chain`
+  `spot ± strike_window_pct` with a per-side floor. `plan_chain`
   turns an `AvailableChain` into the concrete `(expiry, strike)` capture keys and
-  `select_capture_keys` is the key-level entry point. The window is a request-shaping
-  heuristic, so it lives in code.
+  `select_capture_keys` is the key-level entry point.
+
+The **expiry axis** is selected separately from the strike axis. When the selection is
+**tenor-targeted** (`tenor_years` + `as_of` set, `targets_tenors`) expiries bracket the
+pinned tenor grid (`select_expiries_bracketing`). Otherwise `max_expiries` governs:
+an integer keeps the nearest *N* by date, and **`None` keeps every listed maturity**
+(`select_expiries`/`_nearest_expiries` short-circuit to the full sorted set). The EOD
+capture default (`_selection_from_config`) is `max_expiries=None` — the full term
+structure, every listed expiry out to the longest LEAP, per the owner ruling that the
+clean-fetch contract is the whole chain. Nearest-*N* truncation is **not** used for the
+capture long end: a finite budget front-loads weeklies and silently drops the LEAPs once a
+chain lists more expiries than the budget (the latent SPX / weekly-heavy-SX5E regression
+`38910d9` re-armed and this change removes).
 - **delta band** (`select_strikes_delta_band`, WS 1B) — keep, **per tenor**, the contiguous
   block of listed strikes from the 30Δ put through ATM to the 30Δ call (the whole central
   smile, not three pillars). It runs per expiry because the same dollar strike is a

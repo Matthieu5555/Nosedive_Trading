@@ -630,13 +630,10 @@ def collect_live_basket(
     )
 
 
-_CAPTURE_ALL_MATURITIES_BUDGET = 64
-
-
 def _selection_from_config(config: PlatformConfig) -> ChainSelection:
     strike_selection = config.universe.strike_selection
     return ChainSelection(
-        max_expiries=_CAPTURE_ALL_MATURITIES_BUDGET,
+        max_expiries=None,
         min_strikes_per_side=strike_selection.min_strikes_per_side,
         option_exchange=config.universe.exchange,
     )

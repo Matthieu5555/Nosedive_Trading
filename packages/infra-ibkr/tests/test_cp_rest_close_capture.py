@@ -27,6 +27,7 @@ from algotrading.infra_ibkr.collectors.cp_rest_close_capture import (
     CloseCaptureError,
     DiscoveryRunawayError,
     _discover_chain,
+    _selection_from_config,
     collect_live_basket,
     target_from_index,
 )
@@ -72,6 +73,14 @@ def _config() -> PlatformConfig:
             version="scn-1", spot_shocks=(-0.05, 0.05), vol_shocks=(0.05, -0.05)
         ),
     )
+
+
+def test_selection_from_config_keeps_every_listed_maturity() -> None:
+    selection = _selection_from_config(_config())
+    assert selection.max_expiries is None
+    assert not selection.targets_tenors
+    assert selection.min_strikes_per_side == 3
+    assert selection.option_exchange == "CBOE"
 
 
 def _conid_for(expiry: date, strike: float, right: str) -> int:

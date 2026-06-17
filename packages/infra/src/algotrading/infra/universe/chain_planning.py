@@ -18,7 +18,7 @@ _BOTH_RIGHTS: tuple[str, ...] = ("C", "P")
 @dataclass(frozen=True, slots=True)
 class ChainSelection:
 
-    max_expiries: int = 8
+    max_expiries: int | None = 8
     strike_window_pct: float = 0.35
     min_strikes_per_side: int = 10
     option_exchange: str = "SMART"
@@ -31,8 +31,8 @@ class ChainSelection:
         return bool(self.tenor_years) and self.as_of is not None
 
     def __post_init__(self) -> None:
-        if self.max_expiries < 1:
-            raise ValueError(f"max_expiries must be >= 1, got {self.max_expiries}")
+        if self.max_expiries is not None and self.max_expiries < 1:
+            raise ValueError(f"max_expiries must be >= 1 or None, got {self.max_expiries}")
         for tenor in self.tenor_years:
             if not (math.isfinite(tenor) and tenor > 0.0):
                 raise ValueError(
@@ -115,8 +115,12 @@ def select_chain(
     return available[0]
 
 
-def select_expiries(expirations: Iterable[str], max_expiries: int) -> tuple[str, ...]:
+def select_expiries(
+    expirations: Iterable[str], max_expiries: int | None
+) -> tuple[str, ...]:
     unique = sorted({expiry for expiry in expirations if expiry})
+    if max_expiries is None:
+        return tuple(unique)
     return tuple(unique[:max_expiries])
 
 
@@ -425,6 +429,10 @@ def select_capture_keys(
     return (*underlying_keys, *option_keys)
 
 
-def _nearest_expiries(options: Sequence[InstrumentKey], max_expiries: int) -> list[date]:
+def _nearest_expiries(
+    options: Sequence[InstrumentKey], max_expiries: int | None
+) -> list[date]:
     expiries = sorted({key.expiry for key in options if key.expiry is not None})
+    if max_expiries is None:
+        return expiries
     return expiries[:max_expiries]

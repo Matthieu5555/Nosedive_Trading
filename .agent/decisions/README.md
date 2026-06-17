@@ -18,6 +18,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0031** — IBKR historical daily bars over CP REST, OAuth 1.0a (pycryptodome).
 - **0035** — Index registry in `universe.yaml`; per-index capture scheduled off the exchange calendar.
 - **0037** — Futures deferred: ship forward-only (gates task 1D).
+- **0053** *(Proposed)* — `FuturesPoint`: captured listed-futures term structure as a **secondary** leg + a forward-vs-futures cross-check; derived forward stays primary. Supersedes 0037's *capture* deferral only. Unblocks task 1D.
 
 ## Architecture & runtime
 - **0011** — Plan of record governs the domain, AGENTS.md governs process. (The founding blueprint was retired as out-of-date; `TARGET.md` is now that authority.)
@@ -55,6 +56,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 - **0050** — RT-Vega (running-time / annualised vega) = `vega/√T`; per strike, raw + cash, T→0 guarded to 0.
 - **0051** — Return to the blueprint: dispersion ρ̄ is a **realized-vol diagnostic** (Eq. 23 on constituent realized vols from bars), **not** a single-name-options trade. Retires constituent-option capture + the `constituent_top_n` capture gate; dissolves the throughput "emergency" and the permanent option-history loss. *(supersedes 0045, partially 0044)*
 - **0052** — QC coverage to the blueprint: interior pinned tenors are **interpolated** (Eq. 22), edge/illiquid tenors (10d, 2y/3y LEAPs) are a **labelled low-confidence/unusable fallback** (`05-math-notes`) — not a hard per-tenor floor. Coverage = ≥95% ratio over monitored maturities (`14-slos`); `calendar_sanity` pages CRITICAL only on a **gross** inversion. Kills the SX5E false-critical; no capture-path change.
+- **0054** *(Proposed)* — Per-currency risk-free **`r(T)` curve ingest** (`rates` table, as-of): the external curve is the **risk** rate Rho bumps against; the parity-implied rate stays the **pricing-consistency** rate; implied−riskfree spread = diagnostic + QC. Coherent with landed `ForwardConfig.rate` + Eq. 5 (`r` input, `q` derived). Unblocks task R1 (`infra-rates-curve-ingest`).
 
 ## Execution & booking
 - **0043** — A booked fill is a **concrete contract**, resolved at booking time (grid-cell ticket → `(strike, expiry, right)` + paper mark). *(the booking chain seam)*

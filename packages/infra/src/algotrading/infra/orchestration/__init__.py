@@ -15,6 +15,7 @@ from .alert_delivery import (
 from .alerts import (
     ALERT_COLLECTOR_DEATH,
     ALERT_COVERAGE_BREACH,
+    ALERT_DEGENERATE_CLOSE,
     ALERT_ELEVATED_FAILURE_RATE,
     ALERT_MISSING_PARTITION,
     ALERT_QC_FAIL,
@@ -24,6 +25,7 @@ from .alerts import (
     Alert,
     collector_death_alert,
     coverage_breach_alerts,
+    degenerate_close_alert,
     elevated_failure_rate_alert,
     missing_partition_alerts,
     qc_fail_alert,
@@ -92,6 +94,7 @@ from .surface_job import (
 __all__ = [
     "ALERT_COLLECTOR_DEATH",
     "ALERT_COVERAGE_BREACH",
+    "ALERT_DEGENERATE_CLOSE",
     "ALERT_ELEVATED_FAILURE_RATE",
     "ALERT_MISSING_PARTITION",
     "ALERT_QC_FAIL",
@@ -148,6 +151,7 @@ __all__ = [
     "completed_stages",
     "coverage_breach_alerts",
     "default_stages_builder",
+    "degenerate_close_alert",
     "deliver_alerts",
     "elevated_failure_rate_alert",
     "eod_run_main",

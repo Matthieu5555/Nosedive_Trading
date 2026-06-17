@@ -20,6 +20,7 @@ ALERT_MISSING_PARTITION = "missing_partition"
 ALERT_ELEVATED_FAILURE_RATE = "elevated_failure_rate"
 ALERT_QC_FAIL = "qc_fail"
 ALERT_COVERAGE_BREACH = "coverage_breach"
+ALERT_DEGENERATE_CLOSE = "degenerate_close"
 
 COLLECTOR_SILENCE_SECONDS = 120.0
 MAX_FAILURE_RATIO = 0.5
@@ -110,6 +111,38 @@ def qc_fail_alert(report: QcReport) -> Alert | None:
             detection_interval_seconds=0.0,
         )
     return None
+
+
+def degenerate_close_alert(
+    *,
+    correlation_id: str,
+    captured_indices: Sequence[str],
+    analytics_grid_cells: int,
+) -> Alert | None:
+    """Fire when a close ran but banked nothing usable — the silent-green gap.
+
+    Two degenerate shapes both reduce to "the close exited 0 with no usable data":
+    no basket was captured at all (``captured_indices`` empty — every
+    ``basket_source`` returned ``None``), or baskets were captured but produced no
+    combined-surface grid cells (``analytics_grid_cells == 0`` — e.g. a
+    market-closed / last-only snapshot below the two-sided floor). Either way the
+    operator must be paged, not see a green run.
+    """
+    if captured_indices and analytics_grid_cells > 0:
+        return None
+    if not captured_indices:
+        detail = f"no basket captured (run {correlation_id}) — close banked zero data"
+    else:
+        detail = (
+            f"baskets captured for {sorted(captured_indices)} but 0 combined-surface grid cells "
+            f"(run {correlation_id}) — degenerate close, nothing usable banked"
+        )
+    return Alert(
+        kind=ALERT_DEGENERATE_CLOSE,
+        subject=correlation_id,
+        detail=detail,
+        detection_interval_seconds=0.0,
+    )
 
 
 def coverage_breach_alerts(report: QcReport) -> list[Alert]:

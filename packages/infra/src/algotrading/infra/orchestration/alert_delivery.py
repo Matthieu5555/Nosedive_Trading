@@ -35,6 +35,7 @@ _CRITICAL_KINDS = frozenset(
         "collector_death",
         "qc_fail",
         "elevated_failure_rate",
+        "degenerate_close",
     }
 )
 

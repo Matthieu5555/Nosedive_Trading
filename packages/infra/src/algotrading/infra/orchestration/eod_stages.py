@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -8,10 +9,11 @@ import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
+from algotrading.infra.qc import ESCALATION_PAGE
 from algotrading.infra.storage import ParquetStore
 
 from .alert_delivery import AlertSink, deliver_alerts, resolve_alert_sink
-from .alerts import coverage_breach_alerts, qc_fail_alert
+from .alerts import coverage_breach_alerts, degenerate_close_alert, qc_fail_alert
 from .eod_planning import EOD_JOB_NAME, FiredIndex
 from .jobs import (
     AnalyticsResult,
@@ -341,9 +343,20 @@ def default_stages_builder(
             triage_row_count=len(triage),
             escalation=job.escalation,
         )
+        # A degenerate close — no basket captured at all, or baskets captured but zero usable
+        # combined-surface grid cells (market-closed / last-only below the two-sided floor) — is
+        # the silent-green gap: every stage exits OUTCOME_OK, run_qc has nothing to fail on, and
+        # the run reads as "done" with no data banked. Detect it, alert it through the same C4
+        # delivery seam, and force the escalation to PAGE so eod_runner returns non-zero (engaging
+        # systemd OnFailure=) instead of exit 0.
+        degenerate = degenerate_close_alert(
+            correlation_id=correlation_id,
+            captured_indices=sorted(baskets),
+            analytics_grid_cells=sum(len(cells) for cells in grid_cells.values()),
+        )
         results = deliver_alerts(
             sink,
-            (qc_fail_alert(job.report), *coverage_breach_alerts(job.report)),
+            (qc_fail_alert(job.report), *coverage_breach_alerts(job.report), degenerate),
             {"correlation_id": correlation_id, "trade_date": trade_date.isoformat()},
         )
         for result in results:
@@ -355,6 +368,14 @@ def default_stages_builder(
                 degraded=result.degraded,
                 detail=result.detail,
             )
+        if degenerate is not None and job.escalation != ESCALATION_PAGE:
+            log.error(
+                "orchestration.eod_run.degenerate_close_escalated",
+                subject=degenerate.subject,
+                detail=degenerate.detail,
+                prior_escalation=job.escalation,
+            )
+            return replace(job, escalation=ESCALATION_PAGE)
         return job
 
     return EodStages(

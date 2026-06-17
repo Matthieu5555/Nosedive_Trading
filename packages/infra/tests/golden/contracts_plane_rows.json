@@ -311,6 +311,36 @@
       "underlying": "AAPL",
       "value": 190.5
     },
+    "residual_observations": {
+      "approx_pnl": 100.0,
+      "as_of_date": {
+        "$date": "2026-05-29"
+      },
+      "attribution_version": "attr-1",
+      "delta_pnl": 40.0,
+      "diagnosis_version": "residual-diagnosis-1",
+      "gamma_pnl": 20.0,
+      "level": "book",
+      "liquidity_proxy": null,
+      "portfolio_id": "pf-1",
+      "provenance": "{\"as_of\":null,\"calc_ts\":\"2026-05-29T15:30:05+00:00\",\"code_version\":\"0.1.0-fixture\",\"config_hashes\":{\"cfg\":\"cfg-hash-0\"},\"source_records\":[{\"primary_key\":[\"sess-1\",\"evt-1\"],\"table\":\"raw_market_events\"},{\"primary_key\":[\"sess-1\",\"evt-2\"],\"table\":\"raw_market_events\"}],\"source_timestamps\":[\"2026-05-29T15:30:00+00:00\"],\"stamp_hash\":\"edd6dbb050c3bb75a5434ab511c621e9ce9bdcd0f7da5e95a7156d1ada9122ac\"}",
+      "realized_pnl": 110.0,
+      "regime_proxy": 0.55,
+      "residual": 10.0,
+      "rho_pnl": 5.0,
+      "skew_proxy": -0.3,
+      "slippage_proxy": null,
+      "source_snapshot_ts": {
+        "$datetime": "2026-05-29T15:30:00+00:00"
+      },
+      "theta_pnl": 10.0,
+      "underlying": "SX5E",
+      "vanna_pnl": 3.0,
+      "vanna_proxy": null,
+      "vega_pnl": 20.0,
+      "vol_of_vol_proxy": 0.12,
+      "volga_pnl": 2.0
+    },
     "risk_aggregates": {
       "group_key": "AAPL",
       "net_delta": 5.0,

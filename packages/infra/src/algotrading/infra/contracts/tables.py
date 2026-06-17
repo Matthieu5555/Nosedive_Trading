@@ -313,6 +313,67 @@ class ScenarioAttribution:
     volga_pnl: float | None = None
 
 
+RESIDUAL_LEVELS = ("book", "strategy")
+
+
+@dataclass(frozen=True, slots=True)
+class ResidualObservation:
+    """One as-of row of the realized-attribution residual time series.
+
+    The residual is the part of realized day-over-day P&L that the deterministic
+    Taylor decomposition (delta..volga) cannot name. This record banks that residual
+    per book/strategy alongside (a) the named terms it is the remainder of and
+    (b) the candidate *unmodeled-exposure* covariates that were observable as-of
+    ``as_of_date``. It is the raw material the residual-diagnosis regression
+    consumes once enough days are banked.
+
+    Every covariate is ``float | None``: an exposure that could not be observed
+    as-of is recorded as ``None`` (honestly absent), never as a fabricated zero.
+    """
+
+    as_of_date: date
+    portfolio_id: str
+    underlying: str
+    level: str
+    # The realized day-over-day attribution this residual is the remainder of.
+    realized_pnl: float
+    approx_pnl: float
+    residual: float
+    # The named Taylor terms (the part the Greek model *can* name).
+    delta_pnl: float
+    gamma_pnl: float
+    vega_pnl: float
+    theta_pnl: float
+    rho_pnl: float
+    vanna_pnl: float
+    volga_pnl: float
+    attribution_version: str
+    diagnosis_version: str
+    source_snapshot_ts: datetime
+    provenance: ProvenanceStamp
+    # Candidate unmodeled-exposure covariates, observed as-of (None if unavailable).
+    # Skew / vanna proxies from the per-side surfaces.
+    skew_proxy: float | None = None
+    vanna_proxy: float | None = None
+    # Regime / vol-of-vol from the signal layer.
+    regime_proxy: float | None = None
+    vol_of_vol_proxy: float | None = None
+    # Liquidity / execution-slippage proxies.
+    liquidity_proxy: float | None = None
+    slippage_proxy: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.level not in RESIDUAL_LEVELS:
+            raise ContractValidationError(
+                "residual_observations", "level", self.level,
+                f"must be one of {RESIDUAL_LEVELS}",
+            )
+        if not self.portfolio_id.strip():
+            raise ContractValidationError(
+                "residual_observations", "portfolio_id", self.portfolio_id, "must be non-empty",
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class BookGreeks:
 

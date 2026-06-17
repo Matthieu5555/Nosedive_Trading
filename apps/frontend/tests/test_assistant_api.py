@@ -282,6 +282,116 @@ def test_validator_allows_coverage_counts_and_facts(ctx: AppContext) -> None:
     assert ungrounded_numbers(answer, grounding) == []
 
 
+# A number the facts block never carried, expressed three ways the model might reach for. 0.30
+# (the ATM is 0.184) is absent in every form: an ASCII percent, the house sci-notation idiom with a
+# Unicode-superscript exponent, and spelled out in French and English.
+_FABRICATED_FORMS = {
+    "ascii_percent": "L'ATM est à 30.0%.",
+    "ascii_decimal": "La vol implicite vaut 0.30.",
+    "sci_superscript": "La vol implicite vaut 3 × 10⁻¹ Vol.",
+    "sci_wrong_exponent": "La vol à la monnaie est 1.84 × 10⁻⁹ Vol.",
+    "spelled_fr": "La vol implicite est de trente pour cent.",
+    "spelled_en": "Implied vol is thirty percent.",
+}
+
+
+@pytest.mark.parametrize("form", sorted(_FABRICATED_FORMS))
+def test_validator_catches_a_fabricated_number_in_every_form(
+    ctx: AppContext, form: str
+) -> None:
+    grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
+    answer = _FABRICATED_FORMS[form]
+    assert not is_grounded(answer, grounding), form
+    assert ungrounded_numbers(answer, grounding), form
+
+
+@pytest.mark.parametrize("form", sorted(_FABRICATED_FORMS))
+def test_post_refuses_a_fabricated_number_in_every_form(ctx: AppContext, form: str) -> None:
+    fake = FakeOpenRouterClient(_FABRICATED_FORMS[form])
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant",
+            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    body = resp.json()
+    assert body["grounded"] is False, form
+    assert body["answer"] == honest_gap_answer(), form
+    assert body["answer"] != fake.answer, form
+    assert body["citations"] == [], form  # no fabricated number may ride along in a citation
+
+
+@pytest.mark.parametrize("form", sorted(_FABRICATED_FORMS))
+def test_stream_refuses_a_fabricated_number_in_every_form(ctx: AppContext, form: str) -> None:
+    # Split the fabricated answer into tokens so the stub mimics a real token stream; the router
+    # must buffer-and-validate before emitting, so the client never sees the fabricated number.
+    fabricated = _FABRICATED_FORMS[form]
+    tokens = [fabricated[i : i + 4] for i in range(0, len(fabricated), 4)]
+    fake = FakeOpenRouterClient("ignored", stream_tokens=tokens)
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant/stream",
+            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    assert resp.status_code == 200
+    assert resp.text == honest_gap_answer(), form
+    assert resp.text != fabricated, form
+
+
+def test_stream_passes_a_grounded_answer_through(ctx: AppContext) -> None:
+    grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
+    atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
+    grounded = f"L'ATM à la monnaie est {atm_text}."
+    tokens = [grounded[i : i + 4] for i in range(0, len(grounded), 4)]
+    fake = FakeOpenRouterClient("ignored", stream_tokens=tokens)
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant/stream",
+            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    assert resp.text == grounded
+
+
+def test_contract_frame_carries_run_id_close_instant_and_coverage_label(
+    ctx: AppContext,
+) -> None:
+    fake = FakeOpenRouterClient("Vous regardez la nappe SX5E.")
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant",
+            json={"question": "Qu'est-ce que je regarde ?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat(), "run_id": "run-0616"},
+        )
+    frame = resp.json()["frame"]
+    # The fields the front's AssistantFrame declares (assistantApi.ts) are all present and live.
+    assert frame["run_id"] == "run-0616"
+    assert frame["close_instant"] is not None and "T15:30" in frame["close_instant"]
+    assert frame["coverage_label"] == (
+        f"{EXPECTED_TWO_SIDED}/{EXPECTED_OPTION_ROWS} cotations"
+    )
+
+
+def test_contract_citation_has_id_label_value_source(ctx: AppContext) -> None:
+    grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
+    atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
+    fake = FakeOpenRouterClient(f"L'ATM est {atm_text}.")
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant",
+            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    citations = resp.json()["citations"]
+    assert citations
+    atm = next(c for c in citations if c["id"] == "atm_level")
+    # The shape the front's AssistantCitation declares: {id, label, value, source}.
+    assert set(atm) == {"id", "label", "value", "source"}
+    assert atm["value"] == atm_text
+    assert atm["source"].startswith("signal enregistré")
+
+
 # --- Strict / indicative honesty -----------------------------------------------------------
 
 def test_indicative_mode_tags_the_frame(ctx: AppContext) -> None:

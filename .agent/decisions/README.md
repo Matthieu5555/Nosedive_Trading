@@ -72,6 +72,7 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 
 ## Frontend
 - **0030** — Visualization/UI stack: Plotly.js charts; shadcn/ui + TanStack Table.
+- **0058** — Grounded-assistant guarantee hardened so it is real, not a backstop: the **streaming** endpoint buffers-and-validates like the non-streaming one (no uncited number reaches the client on either transport); the number extractor parses **values** across ASCII / `M × 10ⁿ` sci-notation (Unicode-superscript exponents) / `%` / spelled-out FR+EN, so a fabricated number in any form is caught; the front/back contract is reconciled (frame carries `run_id`/`close_instant`/`coverage_label`, citations `{id,label,value,source}`, `grounded=false` ⇒ empty citations). The competing **bff-grounding** branch (stale base, deleted ~6.8k lines of landed fleet work) was **dropped, not grafted**; its JSON claims-with-`fact_id` contract is the recorded future option if a richer surface needs it. A vitest+e2e assertion pins `OPENROUTER_API_KEY`/the model host out of the bundle and the browser to `/api/assistant` only.
 
 ---
 **Removed (git history; clauses live on elsewhere):** 0022 (M5 vendored slice — reversed by 0023/0042),

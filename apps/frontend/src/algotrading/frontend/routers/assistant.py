@@ -25,6 +25,7 @@ class AssistantRequest(BaseModel):
     question: str
     underlying: str | None = None
     trade_date: str | None = None
+    run_id: str | None = None
     mode: str | None = None
     element_id: str | None = None
     gloss: bool = False
@@ -55,10 +56,14 @@ def _resolve_trade_date(trade_date: str | None) -> date | None:
 def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JSONResponse:
     resolved_date = _resolve_trade_date(body.trade_date)
     grounding = build_grounding_context(
-        ctx, body.underlying, resolved_date, mode=_resolve_mode(body.mode)
+        ctx,
+        body.underlying,
+        resolved_date,
+        mode=_resolve_mode(body.mode),
+        run_id=body.run_id,
     )
     frame = grounding.frame.to_dict()
-    citations = [fact.to_dict() for fact in grounding.facts]
+    citations = grounding.citations()
     messages = build_messages(grounding, body.question)
 
     try:
@@ -81,7 +86,7 @@ def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JS
             "answer": answer,
             "grounded": grounded,
             "rejected_numbers": ungrounded_numbers(raw_answer, grounding),
-            "citations": citations,
+            "citations": citations if grounded else [],
             "frame": frame,
         }
     )
@@ -98,9 +103,17 @@ def post_assistant_stream(
     messages = build_messages(grounding, body.question)
 
     def _events() -> Iterator[str]:
+        buffer: list[str] = []
         try:
-            yield from client.stream(messages, gloss=body.gloss)
+            for token in client.stream(messages, gloss=body.gloss):
+                buffer.append(token)
         except OpenRouterError as exc:
             yield f"\n[assistant_unavailable] {exc.detail}"
+            return
+        raw_answer = "".join(buffer)
+        if is_grounded(raw_answer, grounding):
+            yield raw_answer
+        else:
+            yield honest_gap_answer()
 
     return StreamingResponse(_events(), media_type="text/plain")

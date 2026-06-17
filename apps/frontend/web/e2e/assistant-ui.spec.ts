@@ -142,6 +142,28 @@ test("a grounded answer carries its citation WITH a unit and the provenance fram
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
 
+test("the browser only ever calls the BFF's /api/assistant — never OpenRouter directly", async ({
+  page,
+}) => {
+  const errors = collectPageErrors(page);
+  // Record every request the page makes during a full assistant interaction. The OpenRouter key
+  // lives only in the BFF's environment; if the browser ever reached openrouter.ai directly, the
+  // server-side grounding validator would be bypassed and the key would have to ship to the client.
+  const requested: string[] = [];
+  page.on("request", (req) => requested.push(req.url()));
+  await gotoMarket(page);
+  await mockAssistant(page, GROUNDED);
+  await openAssistant(page);
+  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
+
+  // No request ever touches the model host; the assistant call goes to the BFF's own endpoint.
+  expect(requested.filter((u) => /openrouter\.ai|\/chat\/completions/.test(u))).toEqual([]);
+  expect(requested.some((u) => /\/api\/assistant\b/.test(u))).toBe(true);
+
+  expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
+});
+
 test("the assistant REFUSES an uncited number: grounded=false renders the honest gap, no number", async ({
   page,
 }) => {

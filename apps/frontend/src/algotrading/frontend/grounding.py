@@ -77,15 +77,23 @@ class Frame:
     close_instant: str | None
     mode: str
     coverage: Coverage
+    run_id: str | None = None
+
+    def coverage_label(self) -> str | None:
+        if self.coverage.option_rows <= 0:
+            return None
+        return f"{self.coverage.two_sided}/{self.coverage.option_rows} cotations"
 
     def to_dict(self) -> dict[str, object]:
         return {
             "underlying": self.underlying,
             "trade_date": self.trade_date.isoformat() if self.trade_date else None,
+            "run_id": self.run_id,
             "close_instant": self.close_instant,
             "mode": self.mode,
             "indicative": self.mode == MODE_INDICATIVE,
             "coverage": self.coverage.to_dict(),
+            "coverage_label": self.coverage_label(),
         }
 
 
@@ -98,6 +106,23 @@ class GroundingContext:
 
     def fact_values(self) -> list[str]:
         return [f.value_text for f in self.facts]
+
+    def citations(self) -> list[dict[str, object]]:
+        mode_word = (
+            "signal indicatif"
+            if self.frame.mode == MODE_INDICATIVE
+            else "signal enregistré"
+        )
+        source = f"{mode_word} · {self.tenor_label}" if self.tenor_label else mode_word
+        return [
+            {
+                "id": fact.fact_id,
+                "label": fact.label,
+                "value": fact.value_text,
+                "source": source,
+            }
+            for fact in self.facts
+        ]
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -283,6 +308,7 @@ def build_grounding_context(
     trade_date: date | None,
     *,
     mode: str = MODE_STRICT,
+    run_id: str | None = None,
 ) -> GroundingContext:
     resolved_underlying = underlying or ctx.default_underlying
     resolved_mode = MODE_INDICATIVE if mode == MODE_INDICATIVE else MODE_STRICT
@@ -302,6 +328,7 @@ def build_grounding_context(
         close_instant=close_instant,
         mode=resolved_mode,
         coverage=coverage,
+        run_id=run_id,
     )
 
     slice_cells = _reference_maturity(cells)

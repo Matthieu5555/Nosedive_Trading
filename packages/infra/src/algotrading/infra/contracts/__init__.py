@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from .broker import content_event_id
-from .bundles import ForwardDiagnostics, IvDiagnostics, SurfaceFitDiagnostics
+from .bundles import (
+    ForwardDiagnostics,
+    IvDiagnostics,
+    RatesDiagnostics,
+    SurfaceFitDiagnostics,
+)
 from .errors import ContractError, ContractValidationError, UnknownTableError
 from .instrument_key import (
     EVENT_TIMESTAMP_FIELDS,
@@ -41,6 +46,7 @@ from .tables import (
     RawMarketEvent,
     ResidualObservation,
     RiskAggregate,
+    RiskFreeRatePoint,
     ScenarioAttribution,
     ScenarioResult,
     StrategySignal,
@@ -79,9 +85,11 @@ __all__ = [
     "ProjectedOptionAnalytics",
     "QcResult",
     "StrategySignal",
+    "RatesDiagnostics",
     "RawMarketEvent",
     "ResidualObservation",
     "RiskAggregate",
+    "RiskFreeRatePoint",
     "ScenarioAttribution",
     "ScenarioResult",
     "StorageRepository",

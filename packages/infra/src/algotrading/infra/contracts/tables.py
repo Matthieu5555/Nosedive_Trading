@@ -6,7 +6,12 @@ from datetime import date, datetime
 
 from algotrading.core.provenance import ProvenanceStamp
 
-from .bundles import ForwardDiagnostics, IvDiagnostics, SurfaceFitDiagnostics
+from .bundles import (
+    ForwardDiagnostics,
+    IvDiagnostics,
+    RatesDiagnostics,
+    SurfaceFitDiagnostics,
+)
 from .errors import ContractValidationError
 from .instrument_key import InstrumentKey
 
@@ -69,6 +74,44 @@ class ForwardCurvePoint:
     implied_rate: float | None = None
     implied_carry: float | None = None
     implied_dividend: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RiskFreeRatePoint:
+    """One pillar of an ingested per-currency risk-free curve, as-of dated (ADR 0054 / R1).
+
+    Contract `rates(currency, pillar_tenor, rate, as_of)`. The canonical `rate` is **continuous
+    compounding under ACT-365** (consistent with `maturity_years`); a source publishing simple or
+    money-market (ACT/360) rates is converted on ingest (the source convention is recorded on
+    `diagnostics`). `as_of` is the publication date — a reconstruction for past day D reads only the
+    curve published as-of D (no look-ahead). `maturity_years` is the pillar's tenor as a year
+    fraction so the curve evaluator interpolates in the same units an option's `maturity_years` uses.
+    """
+
+    as_of: date
+    currency: str
+    pillar_tenor: str
+    maturity_years: float
+    rate: float
+    day_count: str
+    diagnostics: RatesDiagnostics
+    source_snapshot_ts: datetime
+    provenance: ProvenanceStamp
+
+    def __post_init__(self) -> None:
+        table = "rates"
+        if not self.currency.strip():
+            raise ContractValidationError(table, "currency", self.currency, "must be non-empty")
+        if not self.pillar_tenor.strip():
+            raise ContractValidationError(
+                table, "pillar_tenor", self.pillar_tenor, "must be non-empty"
+            )
+        if not (math.isfinite(self.maturity_years) and self.maturity_years > 0.0):
+            raise ContractValidationError(
+                table, "maturity_years", self.maturity_years, "must be a finite positive year fraction"
+            )
+        if not math.isfinite(self.rate):
+            raise ContractValidationError(table, "rate", self.rate, "must be a finite number")
 
 
 @dataclass(frozen=True, slots=True)

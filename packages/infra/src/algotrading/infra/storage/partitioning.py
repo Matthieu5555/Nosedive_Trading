@@ -9,11 +9,13 @@ from .errors import StorageError
 
 _TRADE_DATE_TIMESTAMPS = ("snapshot_ts", "valuation_ts", "canonical_ts", "run_ts", "as_of_ts")
 
-_TRADE_DATE_DATES = ("effective_add_date", "as_of_date")
+_TRADE_DATE_DATES = ("effective_add_date", "as_of_date", "as_of")
 
 _UNDERLYING_KEY_FIELDS = ("instrument_key", "contract_key")
 
-_UNDERLYING_FALLBACK_FIELDS = ("index",)
+# `currency` keeps each currency's rate curve in its own partition (the `rates` table, ADR 0054);
+# `index` is the index-constituents fallback. Both stand in for `underlying` in the layout only.
+_UNDERLYING_FALLBACK_FIELDS = ("index", "currency")
 
 
 def trade_date_of(record: object) -> date:

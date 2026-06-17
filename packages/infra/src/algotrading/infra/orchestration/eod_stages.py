@@ -9,7 +9,7 @@ import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
-from algotrading.infra.qc import ESCALATION_PAGE
+from algotrading.infra.qc import ESCALATION_NONE, ESCALATION_PAGE, build_report
 from algotrading.infra.storage import ParquetStore
 
 from .alert_delivery import AlertSink, deliver_alerts, resolve_alert_sink
@@ -205,6 +205,15 @@ def default_stages_builder(
     trade_date = fired[0].as_of.date() if fired else clock.now().date()
     thresholds = thresholds_from_config(config.qc_threshold)
     qc_ts = clock.now()
+    # A fire is "intraday" when it runs before the session has closed — the manual early-run path,
+    # a human firing eod_run before the close to eyeball provisional data. The production systemd
+    # timer fires at/after the close, so it is never intraday and its QC is untouched. Intraday
+    # captures are legitimately thin (one-sided wings, sparse front-week), so the QC plane would
+    # flag expected midday artifacts as failures; on an intraday fire we skip QC entirely rather
+    # than raise noise on data that is not the real close. `any` is conservative: if even one fired
+    # index has not closed, the run as a whole is provisional. Decided here, not inside a check —
+    # the checks stay pure and clock-free (qc/README.md).
+    intraday = any(qc_ts < fired_index.as_of for fired_index in fired)
 
     baskets: dict[str, tuple[FiredIndex, IndexBasket]] = {}
     for fired_index in fired:
@@ -347,6 +356,21 @@ def default_stages_builder(
         )
 
     def _qc() -> QcJobResult:
+        if intraday:
+            latest_close = max((f.as_of for f in fired), default=qc_ts)
+            log.info(
+                "orchestration.eod_run.qc_skipped_intraday",
+                captured_indices=sorted(baskets),
+                qc_ts=qc_ts.isoformat(),
+                latest_close=latest_close.isoformat(),
+                reason="fired before session close; QC skipped on provisional intraday data",
+            )
+            return QcJobResult(
+                correlation_id=correlation_id,
+                trade_date=trade_date,
+                report=build_report((), run_id=correlation_id, run_ts=qc_ts),
+                escalation=ESCALATION_NONE,
+            )
         job = run_qc(
             store=store,
             thresholds=thresholds,

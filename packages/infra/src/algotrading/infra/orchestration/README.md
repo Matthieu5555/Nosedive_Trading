@@ -80,7 +80,12 @@ so a session resolves to the jobs it fed.
     `strategy_signals` lands every banked day; its params come from `config.universe.signals`
     (`signal_config_for`). The 1C seam is the *basket source*: until the broker→raw-event bridge
     lands, `_empty_basket_source` returns `None` — a narrow, labeled no-capture gap (clean exit 0),
-    not a raise; a credentialed caller injects a live `collect_live`-backed source.
+    not a raise; a credentialed caller injects a live `collect_live`-backed source. The QC stage is
+    **skipped wholesale on an intraday fire** (`clock.now() < as_of` for any fired index — the
+    manual early-run path): the capture is provisional and legitimately thin, so QC writes no
+    `qc_results`/triage, fires no alerts, and returns an empty `none`-escalation report
+    (`qc_skipped_intraday`). The production timer fires at/after the close, so it is never intraday
+    and its QC — including the degenerate-close page — is untouched.
   - **eod_manifest** — freezes the per-run lineage manifest (config snapshot + hashes + code
     identity), recorded for both a clean and a failed fire so each is reproducible from its record.
 

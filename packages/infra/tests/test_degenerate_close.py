@@ -130,3 +130,55 @@ def test_degenerate_close_alerts_and_escalates_to_page_through_the_seam(tmp_path
     assert ALERT_DEGENERATE_CLOSE in kinds
     degenerate = next(a for a in sink.delivered if a.kind == ALERT_DEGENERATE_CLOSE)
     assert degenerate.subject == "corr-degenerate"
+
+
+# --- intraday: a fire before the close skips QC entirely ------------------------------
+
+
+def test_intraday_fire_skips_qc_entirely(tmp_path: Path) -> None:
+    # A manual fire BEFORE the session close (clock < as_of) is intraday: the capture is
+    # provisional and legitimately thin, so the _qc stage is skipped wholesale — no qc_results
+    # rows, no triage, no alerts, escalation 'none', and the qc stage commits OK (empty report
+    # is 'pass'). This is the deliberate contrast to the degenerate-close test above: the SAME
+    # zero-grid-cell capture pages AT/AFTER the close but must stay silent intraday. The
+    # production systemd timer fires at/after the close, so it is never intraday and is untouched.
+    from algotrading.infra.connectivity import ManualClock
+    from algotrading.infra.orchestration.eod_runner import FiredIndex
+    from algotrading.infra.universe import parse_index_registry
+
+    entry = parse_index_registry(
+        {
+            "SX5E": {
+                "name": "EURO STOXX 50",
+                "calendar": "XEUR",
+                "currency": "EUR",
+                "ibkr": {"conid": 1, "secType": "IND", "exchange": "EUREX"},
+                "enabled": True,
+            }
+        }
+    ).get("SX5E")
+    before_close = datetime(2026, 5, 29, 12, 0, tzinfo=UTC)  # _AS_OF is 15:30 -> still intraday
+    fired = (FiredIndex(entry=entry, as_of=_AS_OF, next_open=_AS_OF),)
+
+    store = ParquetStore(tmp_path)
+    sink = _RecordingSink()
+    stages = default_stages_builder(
+        store,
+        _config(),
+        _CONFIG_HASH,
+        ManualClock(start=before_close),
+        "corr-intraday",
+        fired,
+        alert_sink=sink,
+    )
+    stages.universe_refresh()
+    stages.collection()
+    stages.analytics()
+    job = stages.qc()
+
+    assert job.escalation == "none"
+    assert job.report.overall_status == "pass"
+    assert job.report.total == 0
+    assert sink.delivered == []  # no QC, coverage, or degenerate alert fires intraday
+    assert store.read("qc_results") == []
+    assert store.read("triage_records") == []

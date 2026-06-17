@@ -8,11 +8,17 @@ export interface AppRoute {
   readonly end?: boolean;
 }
 
-// The three top-level onglets (frontend-3onglets-target-ux): Données → Risque → Ordres. Data first,
-// the rest follows. Operations is a secondary utility (still addressable at /operations) and is NOT
-// a top-level tab; Signals is dropped (its content lives in the Données scorecards + ρ̄ strip).
+// The seven top-level tabs, in workflow order: read the market, build a basket, read its signals,
+// backtest the line, shock the book, check positions, watch the system. All English. The earlier
+// 3-tab consolidation (Données/Risque/Ordres) is retired; the richer Market and Basket pages it
+// produced are kept, and Orders' content folds back into Strategy (backtest) + Risk Scenarios
+// (reconciliation), which already carry it.
 export const ROUTES: readonly AppRoute[] = [
-  { path: "/", label: "Données", heading: "Données", end: true },
-  { path: "/risque", label: "Risque", heading: "Risque" },
-  { path: "/ordres", label: "Ordres", heading: "Ordres" },
+  { path: "/", label: "Market", heading: "Market", end: true },
+  { path: "/basket", label: "Basket", heading: "Basket Builder" },
+  { path: "/signals", label: "Signals", heading: "Signals" },
+  { path: "/strategy", label: "Strategy", heading: "Strategy" },
+  { path: "/risk", label: "Risk Scenarios", heading: "Risk Scenarios" },
+  { path: "/positions", label: "Positions", heading: "Positions" },
+  { path: "/operations", label: "Operations", heading: "Operations" },
 ] as const;

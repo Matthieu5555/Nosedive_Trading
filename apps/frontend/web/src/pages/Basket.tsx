@@ -173,13 +173,13 @@ export function BasketPage() {
       <div className="page-header">
         <div>
           <p className="eyebrow">Compose a book, then shock it</p>
-          <h1>Risque</h1>
+          <h1>Basket Builder</h1>
         </div>
       </div>
       <p>
-        Compose a book — legs and layered sub-strategies — read it, shock it across spot/vol/rate and
-        the named crises, then explain its P&amp;L by Greek. The underlying and date below are shared
-        across every block.
+        Compose a book — legs and layered sub-strategies — read it, shock it across spot/vol/rate
+        and the named crises, then explain its P&amp;L by Greek. The underlying and date below are
+        shared across every block.
       </p>
 
       {indices.error !== null && (

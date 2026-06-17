@@ -2,16 +2,16 @@ import { useMemo, useState } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
-import type { BacktestResult, BacktestRunRequest, IndicesResponse } from "../../api";
-import { runBacktest } from "../../api";
-import { AsyncBlock } from "../../components/AsyncBlock";
-import { BacktestForm } from "../../components/BacktestForm";
-import { BacktestResults } from "../../components/BacktestResults";
-import { ErrorBoundary } from "../../components/ErrorBoundary";
-import { useFetch } from "../../hooks/useFetch";
-import { currencySymbol } from "../../lib/format";
+import type { BacktestResult, BacktestRunRequest, IndicesResponse } from "../api";
+import { runBacktest } from "../api";
+import { AsyncBlock } from "../components/AsyncBlock";
+import { BacktestForm } from "../components/BacktestForm";
+import { BacktestResults } from "../components/BacktestResults";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { useFetch } from "../hooks/useFetch";
+import { currencySymbol } from "../lib/format";
 
-export function BacktestSection() {
+export function StrategyPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
 
@@ -38,12 +38,19 @@ export function BacktestSection() {
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === ranIndex)?.currency);
 
   return (
-    <section aria-label="Backtest">
+    <section className="page">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">Test a strategy on the days you have captured</p>
+          <h1>Strategy</h1>
+        </div>
+      </div>
+
       <p>
         Backtest the short index put line over the offline store and read, at a glance,{" "}
-        <strong>where the return came from</strong>. Set the window and the line&apos;s rules, run it,
-        and the page shows the cumulative P&amp;L (before and after costs), the headline scorecard,
-        the by-Greek attribution, and how the risk exposure moved day by day.
+        <strong>where the return came from</strong>. Set the window and the line&apos;s rules, run
+        it, and the page shows the cumulative P&amp;L (before and after costs), the headline
+        scorecard, the by-Greek attribution, and how the risk exposure moved day by day.
       </p>
 
       {indices.error !== null && (

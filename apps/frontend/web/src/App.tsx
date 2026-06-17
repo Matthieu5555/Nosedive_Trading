@@ -4,11 +4,13 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-do
 import { Badge } from "@/ui/badge";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { BookProvider } from "./hooks/bookContext";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { OperationsPage } from "./pages/Operations";
-import { OrdresPage } from "./pages/Ordres";
+import { PositionsPage } from "./pages/Positions";
+import { RiskScenariosPage } from "./pages/RiskScenarios";
+import { SignalsPage } from "./pages/Signals";
+import { StrategyPage } from "./pages/Strategy";
 import { ROUTES } from "./routes";
 
 function Guarded({ label, children }: { label: string; children: ReactNode }) {
@@ -17,8 +19,12 @@ function Guarded({ label, children }: { label: string; children: ReactNode }) {
 
 const PAGES: Record<string, ReactNode> = {
   "/": <MarketPage />,
-  "/risque": <BasketPage />,
-  "/ordres": <OrdresPage />,
+  "/basket": <BasketPage />,
+  "/signals": <SignalsPage />,
+  "/strategy": <StrategyPage />,
+  "/risk": <RiskScenariosPage />,
+  "/positions": <PositionsPage />,
+  "/operations": <OperationsPage />,
 };
 
 function AppShell() {
@@ -41,17 +47,7 @@ function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="topbar-utility">
-          {/* Operations is a secondary utility (backend observability), not a product onglet — a
-              quiet link, kept addressable, deliberately outside the three top-level tabs. */}
-          <NavLink
-            to="/operations"
-            className={({ isActive }) => (isActive ? "nav-utility active" : "nav-utility")}
-          >
-            Operations
-          </NavLink>
-          <Badge className="session-pill">Paper</Badge>
-        </div>
+        <Badge className="session-pill">Paper</Badge>
       </header>
       <main className="main">
         <Routes>
@@ -62,19 +58,12 @@ function AppShell() {
               element={<Guarded label={item.label}>{PAGES[item.path]}</Guarded>}
             />
           ))}
-          <Route
-            path="/operations"
-            element={<Guarded label="Operations">{<OperationsPage />}</Guarded>}
-          />
-          {/* Legacy paths from the 7-tab era. Risque absorbs Basket + Risk Scenarios + Positions;
-              Ordres absorbs Orders + Strategy; Signals is dropped (its content lives in Données). */}
+          {/* The short-lived 3-tab consolidation used French paths; forward them to their 7-tab
+              homes so any open bookmark still lands somewhere sensible. Orders folded into Strategy. */}
+          <Route path="/risque" element={<Navigate to="/basket" replace />} />
+          <Route path="/ordres" element={<Navigate to="/strategy" replace />} />
+          <Route path="/orders" element={<Navigate to="/strategy" replace />} />
           <Route path="/market" element={<Navigate to="/" replace />} />
-          <Route path="/basket" element={<Navigate to="/risque" replace />} />
-          <Route path="/risk" element={<Navigate to="/risque" replace />} />
-          <Route path="/positions" element={<Navigate to="/risque" replace />} />
-          <Route path="/orders" element={<Navigate to="/ordres" replace />} />
-          <Route path="/strategy" element={<Navigate to="/ordres" replace />} />
-          <Route path="/signals" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -85,12 +74,7 @@ function AppShell() {
 export function App() {
   return (
     <BrowserRouter>
-      {/* The shared book (underlying / date / legs) lives above the routes so it carries across the
-          tabs — composed on Risk, sent on Orders — without remounting on navigation. Inert until the
-          pages consume it (next slice). */}
-      <BookProvider>
-        <AppShell />
-      </BookProvider>
+      <AppShell />
     </BrowserRouter>
   );
 }

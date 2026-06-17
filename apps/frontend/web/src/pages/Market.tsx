@@ -70,7 +70,7 @@ export function MarketPage() {
       <div className="page-header">
         <div>
           <p className="eyebrow">Form a view on what the market is pricing</p>
-          <h1>Données</h1>
+          <h1>Market</h1>
         </div>
         <div className="control-row">
           <select

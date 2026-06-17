@@ -54,7 +54,6 @@ def get_signals(
     ctx: CtxDep,
     trade_date: TradeDateDep,
     underlying: str | None = None,
-    run_id: str | None = None,
 ) -> JSONResponse:
     resolved_underlying = underlying or ctx.default_underlying
 
@@ -67,7 +66,7 @@ def get_signals(
     rows = [
         row
         for row in ctx.store.read(
-            _TABLE, trade_date=resolved_date, underlying=resolved_underlying, run_id=run_id
+            _TABLE, trade_date=resolved_date, underlying=resolved_underlying
         )
         if row.underlying == resolved_underlying
     ]

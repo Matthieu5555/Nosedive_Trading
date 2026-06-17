@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from algotrading.infra.orchestration import backlog_stages, read_stage_runs
@@ -10,19 +9,6 @@ from fastapi.responses import JSONResponse
 from ..deps import CtxDep
 
 router = APIRouter(prefix="/api/recorded-dates", tags=["recorded-dates"])
-
-# The fetch's analytics live here; its ``run=`` partitions are what make a fetch addressable, so
-# this is the table we ask "which runs actually have data on disk for this date".
-_ANALYTICS_TABLE = "projected_option_analytics"
-
-
-@dataclass
-class _RunLedger:
-    """A single fire's stage outcomes and when it landed, gathered from the run-state ledger."""
-
-    trade_date: date
-    stages: dict[str, str] = field(default_factory=dict)
-    recorded_ts: datetime | None = None
 
 
 def _qc_verdict(stages: dict[str, str]) -> str:
@@ -38,60 +24,36 @@ def _qc_verdict(stages: dict[str, str]) -> str:
 def get_recorded_dates(ctx: CtxDep, index: str | None = None) -> JSONResponse:
     resolved_index = index or ctx.default_underlying
     root = ctx.store_root
-    store = ctx.store
 
     stage_runs = read_stage_runs(root)
 
-    # Date-level view (unchanged contract): which trade dates fully completed every stage, used for
-    # ``dates``/``count`` and as the QC verdict for legacy flat data with no per-run handle.
+    # ONE canonical close per ``trade_date`` (ADR 0051 / blueprint §15 / 01-arch:17): the serving
+    # view shows one settled close per day. Overwrite-last-wins means a same-day re-fetch replaces
+    # the day's slot — there is no per-fetch ``run=`` selector. ``recorded_ts`` is the latest stage
+    # timestamp banked for the date; the QC verdict is the date-level outcome.
     stages_by_date: dict[date, dict[str, str]] = {}
+    recorded_by_date: dict[date, datetime] = {}
     for run in stage_runs:
         stages_by_date.setdefault(run.trade_date, {})[run.stage] = run.outcome
+        if run.recorded_ts is not None:
+            current = recorded_by_date.get(run.trade_date)
+            if current is None or run.recorded_ts > current:
+                recorded_by_date[run.trade_date] = run.recorded_ts
     all_dates = sorted(stages_by_date, reverse=True)
     complete = [d for d in all_dates if not backlog_stages(root, d)]
 
-    # Per-run view: each fire (run_id) carries its own stage outcomes and the wall-clock time it
-    # landed (the latest stage timestamp). This is how one trade date can hold several fetches.
-    runs: dict[str, _RunLedger] = {}
-    for run in stage_runs:
-        ledger = runs.setdefault(run.run_id, _RunLedger(trade_date=run.trade_date))
-        ledger.stages[run.stage] = run.outcome
-        if ledger.recorded_ts is None or run.recorded_ts > ledger.recorded_ts:
-            ledger.recorded_ts = run.recorded_ts
-
-    # ``available`` is ONE canonical close per ``trade_date`` (ADR 0051 / blueprint §15: the serving
-    # view shows one settled close per day, not every intraday fetch as a peer as-of). For a
-    # run-partitioned date we emit only the NEWEST ``run=`` partition — exactly what a default read
-    # already returns — so a same-day re-fetch shows once, latest wins; older runs stay on disk for
-    # forensic replay behind an explicit ``version=``/run_id affordance, off the default picker.
-    # ``runs_for`` returns runs newest-first, so the first is the canonical one. Legacy flat data
-    # has no ``run=`` partition to address, so it's a single date-only entry (run_id null).
     available: list[dict[str, object]] = []
     for d in all_dates:
         if stages_by_date[d].get("analytics") != "ok":
             continue
-        on_disk = store.runs_for(_ANALYTICS_TABLE, d)
-        if on_disk:
-            newest_run_id = on_disk[0]
-            run_ledger = runs.get(newest_run_id)
-            recorded_ts = run_ledger.recorded_ts if run_ledger else None
-            available.append(
-                {
-                    "date": d.isoformat(),
-                    "run_id": newest_run_id,
-                    "recorded_ts": recorded_ts.isoformat() if recorded_ts else None,
-                    "qc": _qc_verdict(run_ledger.stages) if run_ledger else "unknown",
-                }
-            )
-        else:
-            available.append(
-                {
-                    "date": d.isoformat(),
-                    "run_id": None,
-                    "recorded_ts": None,
-                    "qc": _qc_verdict(stages_by_date[d]),
-                }
-            )
+        recorded_ts = recorded_by_date.get(d)
+        available.append(
+            {
+                "date": d.isoformat(),
+                "recorded_ts": recorded_ts.isoformat() if recorded_ts else None,
+                "qc": _qc_verdict(stages_by_date[d]),
+            }
+        )
 
     return JSONResponse(
         {

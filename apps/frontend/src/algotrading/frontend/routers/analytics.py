@@ -207,38 +207,31 @@ def get_analytics(
     ctx: CtxDep,
     trade_date: TradeDateDep,
     underlying: str | None = None,
-    run_id: str | None = None,
 ) -> JSONResponse:
-    # ``run_id`` selects one fetch (capture run) of this trade date; absent, the read resolves the
-    # newest fetch, exactly as before run-partitioning existed.
     resolved_underlying = underlying or ctx.default_underlying
     cells: list[ProjectedOptionAnalytics] = read_for_underlying(
         ctx.store,
         "projected_option_analytics",
         resolved_underlying,
         trade_date=trade_date,
-        run_id=run_id,
     )
     slices: list[SurfaceParameters] = read_for_underlying(
         ctx.store,
         "surface_parameters",
         resolved_underlying,
         trade_date=trade_date,
-        run_id=run_id,
     )
     snapshots: list[MarketStateSnapshot] = read_for_underlying(
         ctx.store,
         "market_state_snapshots",
         resolved_underlying,
         trade_date=trade_date,
-        run_id=run_id,
     )
     forwards: list[ForwardCurvePoint] = read_for_underlying(
         ctx.store,
         "forward_curve",
         resolved_underlying,
         trade_date=trade_date,
-        run_id=run_id,
     )
     maturities = _group_by_maturity(cells, slices, snapshots, forwards)
     source = "projected_option_analytics"
@@ -248,7 +241,6 @@ def get_analytics(
             "surface_grid",
             resolved_underlying,
             trade_date=trade_date,
-            run_id=run_id,
         )
         maturities = _maturities_from_surface_grid(grid, slices)
         if maturities:
@@ -258,7 +250,6 @@ def get_analytics(
         {
             "underlying": resolved_underlying,
             "trade_date": trade_date.isoformat() if trade_date else None,
-            "run_id": run_id,
             "n_maturities": len(maturities),
             "source": source,
             "maturities": maturities,

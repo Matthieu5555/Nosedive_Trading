@@ -192,7 +192,7 @@ def _deps(
     )
 
 
-def _no_basket(fired: FiredIndex, trade_date: date, correlation_id: str) -> IndexBasket | None:
+def _no_basket(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
     return None
 
 
@@ -204,7 +204,7 @@ def _degenerate_grid_cell_count(store: ParquetStore) -> int:
     ("label", "basket_source", "expect_captured_index"),
     [
         ("no_basket_captured", _no_basket, False),
-        ("last_only_zero_grid", lambda f, _d, _c: _last_only_basket(f.entry.symbol, f.as_of), True),
+        ("last_only_zero_grid", lambda f, _d: _last_only_basket(f.entry.symbol, f.as_of), True),
     ],
 )
 def test_degenerate_close_delivers_alert_and_escalates_to_page(
@@ -250,7 +250,7 @@ def test_degenerate_close_delivers_alert_and_escalates_to_page(
     ("label", "basket_source"),
     [
         ("no_basket_captured", _no_basket),
-        ("last_only_zero_grid", lambda f, _d, _c: _last_only_basket(f.entry.symbol, f.as_of)),
+        ("last_only_zero_grid", lambda f, _d: _last_only_basket(f.entry.symbol, f.as_of)),
     ],
 )
 def test_degenerate_close_runner_exits_nonzero(
@@ -282,7 +282,7 @@ def test_healthy_close_is_not_flagged_degenerate_and_exits_zero(tmp_path: Path) 
     sink = _RecordingSink()
     deps = _deps(
         tmp_path,
-        basket_source=lambda f, _d, _c: _grid_basket(f.entry.symbol, f.as_of),
+        basket_source=lambda f, _d: _grid_basket(f.entry.symbol, f.as_of),
         sink=sink,
     )
 

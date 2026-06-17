@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import time
 from pathlib import Path
 from types import ModuleType
 
@@ -105,47 +104,6 @@ def _analytics_store_with_quotes(
 def _points_by_band(payload: dict) -> dict[str, dict]:
     points = payload["maturities"][0]["points"]
     return {point["delta_band"]: point for point in points}
-
-
-def test_run_id_selects_a_specific_fetch_of_the_same_trade_date(
-    tmp_path: Path, seed: ModuleType
-) -> None:
-    # Two fetches of one trade date, distinguished by implied vol. With no run_id the read resolves
-    # the newest fetch; an explicit run_id pins the analytics read to exactly that fetch's data.
-    root = tmp_path / "data"
-    store = ParquetStore(root)
-    iv_a, iv_b = 0.2000, 0.3500
-
-    def cell(iv: float) -> tables.ProjectedOptionAnalytics:
-        return seed.analytics_cell(
-            delta_band="30dp",
-            target_delta=seed.AN_PUT_DELTA,
-            log_moneyness=seed.AN_PUT_LOGM,
-            implied_vol=iv,
-            delta=seed.AN_PUT_DELTA,
-            dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
-        )
-
-    store.write("projected_option_analytics", [cell(iv_a)], run_id="fetch-A")
-    time.sleep(0.01)  # distinct run-dir mtimes so "newest" is unambiguous
-    store.write("projected_option_analytics", [cell(iv_b)], run_id="fetch-B")
-
-    ctx = AppContext(
-        store_root=root,
-        configs_dir=tmp_path / "configs",
-        store=ParquetStore(root),
-        default_underlying=seed.MEMBER_AAA,
-    )
-
-    def implied_vol(params: dict[str, str]) -> float:
-        payload = client.get("/api/analytics", params=params).json()
-        return payload["maturities"][0]["smile"]["implied_vols"][0]
-
-    base = {"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()}
-    with TestClient(create_app(ctx)) as client:
-        assert implied_vol(base) == pytest.approx(iv_b)  # newest fetch by default
-        assert implied_vol({**base, "run_id": "fetch-A"}) == pytest.approx(iv_a)
-        assert implied_vol({**base, "run_id": "fetch-B"}) == pytest.approx(iv_b)
 
 
 def test_analytics_reads_back_surface_and_dollar_greeks(

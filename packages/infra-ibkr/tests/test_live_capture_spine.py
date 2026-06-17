@@ -323,7 +323,7 @@ def test_a_store_backs_the_cache_without_widening_scope(tmp_path: Path) -> None:
         store=ParquetStore(tmp_path / "data"),
     )
     assert source is not None
-    basket = source(fired, TRADE_DATE, "test-corr")
+    basket = source(fired, TRADE_DATE)
     assert basket is not None
     assert {key.underlying_symbol for key in basket.instruments} == {"SPX"}
 

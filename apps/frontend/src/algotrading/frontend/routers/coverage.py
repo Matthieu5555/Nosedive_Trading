@@ -145,11 +145,7 @@ def get_coverage(
     ctx: CtxDep,
     trade_date: TradeDateDep,
     underlying: str | None = None,
-    run_id: str | None = None,
 ) -> JSONResponse:
-    # ``run_id`` pins coverage to the selected fetch; run-partitioned reads (snapshots, qc)
-    # resolve that fetch's ``run=`` partition, while non-run-partitioned reads (instrument_master)
-    # ignore it. Absent, every read resolves the newest fetch as before.
     resolved_underlying = underlying or ctx.default_underlying
 
     resolved_date = trade_date or latest_partition_date(
@@ -172,12 +168,11 @@ def get_coverage(
     masters = ctx.store.read(
         "instrument_master", trade_date=resolved_date, underlying=resolved_underlying
     )
-    qc_rows = ctx.store.read("qc_results", trade_date=resolved_date, run_id=run_id)
+    qc_rows = ctx.store.read("qc_results", trade_date=resolved_date)
     snapshots = ctx.store.read(
         "market_state_snapshots",
         trade_date=resolved_date,
         underlying=resolved_underlying,
-        run_id=run_id,
     )
 
     targets = _tenor_targets(resolved_date)

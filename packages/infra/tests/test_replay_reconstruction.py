@@ -368,6 +368,173 @@ def test_reconstruct_threads_provider_and_eod_session_to_run_analytics(
     assert captured.get("session_open") is False, "reconstruct must run in the EOD (closed) session"
 
 
+_RECON_INDEX = "SX5E"
+_RECON_PROVIDER = "IBKR"
+_AAA_CLOSES = [100.0, 101.0, 100.5, 101.0]
+_BBB_CLOSES = [50.0, 50.7, 50.3, 50.6]
+_INDEX_3M_IV = 0.10
+
+
+def _annualized_realized_vol(closes: list[float]) -> float:
+    import math
+    import statistics
+
+    log_returns = [math.log(b / a) for a, b in zip(closes, closes[1:], strict=False)]
+    return statistics.stdev(log_returns) * math.sqrt(252.0)
+
+
+def _projecting_outputs(snapshot_ts: datetime):
+    from fixtures.records import make_record
+
+    def _cell(underlying: str, tenor: str, iv: float):
+        return make_record(
+            "projected_option_analytics",
+            provider=_RECON_PROVIDER,
+            underlying=underlying,
+            snapshot_ts=snapshot_ts,
+            source_snapshot_ts=snapshot_ts,
+            tenor_label=tenor,
+            delta_band="atm",
+            target_delta=0.5,
+            delta=0.5,
+            surface_side="combined",
+            implied_vol=iv,
+        )
+
+    cells = (
+        _cell(_RECON_INDEX, "1m", 0.24),
+        _cell(_RECON_INDEX, "3m", _INDEX_3M_IV),
+        _cell(_RECON_INDEX, "6m", 0.27),
+        _cell("AAA", "1m", 0.22),
+        _cell("AAA", "3m", 0.20),
+        _cell("AAA", "6m", 0.25),
+        _cell("BBB", "1m", 0.28),
+        _cell("BBB", "3m", 0.30),
+        _cell("BBB", "6m", 0.31),
+    )
+    from algotrading.infra.actor import ActorOutputs
+
+    return ActorOutputs(projected_analytics=cells)
+
+
+def _seed_signal_support(store: ParquetStore, trade_date: date) -> None:
+    from algotrading.infra.universe import MembershipChange, ingest_membership_changes
+    from fixtures.records import make_record
+
+    known = date(2020, 1, 1)
+    ingest_membership_changes(
+        store,
+        (
+            MembershipChange(_RECON_INDEX, "AAA", known, None, known, "test-vendor", 0.5),
+            MembershipChange(_RECON_INDEX, "BBB", known, None, known, "test-vendor", 0.3),
+        ),
+    )
+    bar_days = [trade_date - timedelta(days=offset) for offset in (3, 2, 1, 0)]
+
+    def _bar(underlying: str, day: date, close: float):
+        return make_record(
+            "daily_bar",
+            provider=_RECON_PROVIDER,
+            underlying=underlying,
+            trade_date=day,
+            open=close,
+            high=close,
+            low=close,
+            close=close,
+        )
+
+    store.write(
+        "daily_bar",
+        [_bar("AAA", day, close) for day, close in zip(bar_days, _AAA_CLOSES, strict=True)]
+        + [_bar("BBB", day, close) for day, close in zip(bar_days, _BBB_CLOSES, strict=True)],
+    )
+
+
+def test_reconstruct_regenerates_signals_and_qc_from_raw(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import algotrading.infra.orchestration.reconstruction.batch as batch
+
+    chain = get_fixture("synthetic_known_answer")
+    store = ParquetStore(tmp_path / "store")
+    trade_date = date(2026, 3, 2)
+    _seed_raw(store, chain, trade_date)
+    _seed_signal_support(store, trade_date)
+    instruments, masters = _instruments_and_masters(chain, trade_date)
+    as_of, calc_ts = _as_of(trade_date), _calc_ts(trade_date)
+
+    outputs = _projecting_outputs(as_of)
+    monkeypatch.setattr(batch, "run_analytics", lambda *args, **kwargs: outputs)
+
+    outcome = reconstruct_day(
+        store, trade_date, [], instruments=instruments, masters=masters,
+        config=_config(), config_hashes={"cfg": "cfg"}, as_of=as_of, calc_ts=calc_ts,
+    )
+    assert outcome.status == RECONSTRUCTED
+
+    projected = store.read("projected_option_analytics", trade_date=trade_date)
+    assert len(projected) == len(outputs.projected_analytics)
+    assert len(projected) > 0
+
+    signals = store.read(
+        "strategy_signals", trade_date=trade_date, underlying=_RECON_INDEX, provider=_RECON_PROVIDER
+    )
+    rho = {
+        signal.value
+        for signal in signals
+        if signal.signal_kind == "implied_correlation"
+        and signal.subject == _RECON_INDEX
+        and signal.tenor_label == "3m"
+    }
+    assert rho, "recompute-from-raw must regenerate rho-bar (strategy_signals)"
+
+    realized_aaa = _annualized_realized_vol(_AAA_CLOSES)
+    realized_bbb = _annualized_realized_vol(_BBB_CLOSES)
+    w_aaa, w_bbb = 0.5, 0.3
+    own = (w_aaa * realized_aaa) ** 2 + (w_bbb * realized_bbb) ** 2
+    cross = (w_aaa * realized_aaa + w_bbb * realized_bbb) ** 2 - own
+    expected_rho = (_INDEX_3M_IV**2 - own) / cross
+    assert next(iter(rho)) == pytest.approx(expected_rho)
+
+    qc_results = store.read("qc_results", trade_date=trade_date)
+    assert qc_results, "recompute-from-raw must regenerate qc_results"
+    triage = store.read("triage_records", trade_date=trade_date)
+    assert triage, "a thin reconstructed grid must surface triage_records"
+
+
+def test_reconstruct_dry_run_and_versioned_restate_skip_signals_and_qc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import algotrading.infra.orchestration.reconstruction.batch as batch
+
+    chain = get_fixture("synthetic_known_answer")
+    store = ParquetStore(tmp_path / "store")
+    trade_date = date(2026, 3, 2)
+    _seed_raw(store, chain, trade_date)
+    _seed_signal_support(store, trade_date)
+    instruments, masters = _instruments_and_masters(chain, trade_date)
+    as_of, calc_ts = _as_of(trade_date), _calc_ts(trade_date)
+
+    outputs = _projecting_outputs(as_of)
+    monkeypatch.setattr(batch, "run_analytics", lambda *args, **kwargs: outputs)
+
+    reconstruct_day(
+        store, trade_date, [], instruments=instruments, masters=masters,
+        config=_config(), config_hashes={"cfg": "cfg"}, as_of=as_of, calc_ts=calc_ts,
+        persist=False,
+    )
+    assert store.read("strategy_signals", trade_date=trade_date) == []
+    assert store.read("qc_results", trade_date=trade_date) == []
+
+    reconstruct_day(
+        store, trade_date, [], instruments=instruments, masters=masters,
+        config=_config(), config_hashes={"cfg": "cfg"}, as_of=as_of, calc_ts=calc_ts,
+        version="restate-1",
+    )
+    assert store.read("strategy_signals", trade_date=trade_date) == []
+    assert store.read("qc_results", trade_date=trade_date) == []
+
+
 def test_an_inverted_date_range_is_refused(tmp_path: Path) -> None:
     chain = get_fixture("synthetic_known_answer")
     store = ParquetStore(tmp_path / "store")

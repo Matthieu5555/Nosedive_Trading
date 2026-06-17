@@ -10,6 +10,7 @@ from algotrading.infra.actor.basket import DEFAULT_PROVIDER
 from algotrading.infra.actor.valuation_join import default_exercise_style
 from algotrading.infra.collectors import replay_day
 from algotrading.infra.contracts import (
+    SURFACE_SIDE_COMBINED,
     ForwardCurvePoint,
     InstrumentKey,
     InstrumentMaster,
@@ -24,8 +25,12 @@ from algotrading.infra.contracts import (
     SurfaceParameters,
     table_for_contract,
 )
+from algotrading.infra.qc import thresholds_from_config
+from algotrading.infra.signals import persist_signal_set, signal_config_for
 from algotrading.infra.storage import ParquetStore
 
+from ..eod_stages import persist_triage
+from ..qc_job import run_qc
 from .report import (
     EMPTY,
     MISSING,
@@ -122,6 +127,18 @@ def reconstruct_day(
     if persist:
         _persist_outputs(store, outputs, version=version)
         log.info("reconstruction.day.persisted", record_count=count)
+        if version is None:
+            _persist_signals_and_qc(
+                store,
+                outputs,
+                trade_date=trade_date,
+                config=config,
+                config_hashes=config_hashes,
+                calc_ts=calc_ts,
+                provider=provider,
+                correlation_id=correlation_id,
+                log=log,
+            )
 
     log.info("reconstruction.day.reconstructed", record_count=count)
     return DayReconstruction(
@@ -192,6 +209,61 @@ def reconstruct_range(
         missing=len(report.missing_dates),
     )
     return report
+
+
+def _persist_signals_and_qc(
+    store: ParquetStore,
+    outputs: ActorOutputs,
+    *,
+    trade_date: date,
+    config: PlatformConfig,
+    config_hashes: Mapping[str, str],
+    calc_ts: datetime,
+    provider: str,
+    correlation_id: str,
+    log: structlog.BoundLogger,
+) -> None:
+    grid_cells: dict[str, list[ProjectedOptionAnalytics]] = {}
+    for cell in outputs.projected_analytics:
+        if cell.surface_side != SURFACE_SIDE_COMBINED:
+            continue
+        grid_cells.setdefault(cell.underlying, []).append(cell)
+
+    signal_rows_written = 0
+    for underlying in sorted(grid_cells):
+        persisted = persist_signal_set(
+            store,
+            signal_config_for(config.universe.signals, index=underlying, provider=provider),
+            trade_date,
+            calc_ts=calc_ts,
+            config_hashes=config_hashes,
+        )
+        signal_rows_written += len(persisted)
+    log.info(
+        "reconstruction.day.signals_persisted",
+        underlyings=sorted(grid_cells),
+        signal_row_count=signal_rows_written,
+    )
+
+    thresholds = thresholds_from_config(config.qc_threshold)
+    job = run_qc(
+        store=store,
+        thresholds=thresholds,
+        collector_summary=None,
+        trade_date=trade_date,
+        run_id=correlation_id,
+        run_ts=calc_ts,
+        correlation_id=correlation_id,
+        grid_points=dict(grid_cells) or None,
+        tenor_grid=config.universe.tenor_grid,
+    )
+    triage = persist_triage(store, job.report, correlation_id=correlation_id)
+    log.info(
+        "reconstruction.day.qc_persisted",
+        triage_row_count=len(triage),
+        escalation=job.escalation,
+        overall_status=job.report.overall_status,
+    )
 
 
 def _persist_outputs(

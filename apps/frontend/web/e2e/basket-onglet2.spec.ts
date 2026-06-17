@@ -193,8 +193,8 @@ test("Onglet-2: compose a 2-layer book, shock it (spot/vol + rate), read the att
 }) => {
   const { pageErrors } = collectPageErrors(page);
   await routeOnglet2(page);
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
+  await page.goto("/risque");
+  await expect(page.getByRole("heading", { level: 1, name: "Risque" })).toBeVisible();
 
   // ── ① Composer: build a 2-layer book ───────────────────────────────────────────────────
   // Two legs in the shared composer (a straddle template seeds two legs → "can stress").

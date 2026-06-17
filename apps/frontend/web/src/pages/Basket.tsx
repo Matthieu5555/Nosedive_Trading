@@ -173,7 +173,7 @@ export function BasketPage() {
       <div className="page-header">
         <div>
           <p className="eyebrow">Compose a book, then shock it</p>
-          <h1>Basket Builder</h1>
+          <h1>Risque</h1>
         </div>
       </div>
       <p>

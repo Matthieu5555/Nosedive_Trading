@@ -52,84 +52,29 @@ Two layers, both under `apps/frontend/web`:
 
 ## Pages
 
-Seven top-level tabs over `react-router`, wrapped in the shared top-bar shell. Every tab is
-one row in `src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in `src/App.tsx`; the
-nav and the route table both render from `ROUTES`, so a tab is registered in exactly those two
-places. The built operator pages:
+Three top-level onglets over `react-router`, wrapped in the shared top-bar shell: **Données →
+Risque → Ordres** (`frontend-3onglets-target-ux.md`, owner-locked). Each onglet is one row in
+`src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in `src/App.tsx`; the nav and the route
+table both render from `ROUTES`. **Operations** is a secondary utility (a quiet topbar link to
+`/operations`), not a top-level onglet. The 7-tab era collapsed here: Risque absorbs Basket + Risk
+Scenarios + Positions; Ordres absorbs Orders + Strategy; Signals was dropped (its content lives in
+the Données scorecards + ρ̄ strip). Legacy paths (`/market`, `/basket`, `/risk`, `/positions`,
+`/orders`, `/strategy`, `/signals`) redirect to their new home.
 
-- **Home** — the index-analytics front page (WS 1I): pick an index, pick a recorded date
-  (the "N days recorded" counter + dropdown over completed gap-free runs), scroll the
-  point-in-time, price-first constituent list (TanStack Table), preload the daily OHLC history for
-  **every constituent** through `/api/price-history/batch`, then select a ticker to see its
-  **price-first** detail — the daily **candlestick** (TradingView Lightweight Charts), the **3D IV
-  surface** with the flat **nappe heatmap** stacked below it (same Plasma scale, pinned so a colour
-  means the same IV in both — CDC §3.4), the **ATM term structure** (at-the-money IV vs maturity —
-  CDC §3.5), and a **per-maturity accordion** (shadcn/Radix) of the **2D smile** and the
-  **dollar Greeks**, each tagged with its P0.2 unit string. TradingView Lightweight Charts
-  renders the daily candlesticks and dollar-Greek term-structure line charts; Plotly remains
-  the 3D/heatmap/non-line chart path (ADR 0030). Every panel self-labels. Picking a past date
-  re-resolves the basket and analytics as-of that date (never today-defaulted).
-- **Risk Scenarios** — the full-reprice stress surface over spot and vol shocks, read from
-  `/api/risk/scenarios`, with the portfolio selector from `/api/risk/portfolios`. The same
-  surface rendering (the shared `StressSurface` component) also backs the Basket Builder's
-  on-demand **Stress basket** action (`POST /api/basket/scenarios`), so a composed basket can be
-  stressed live without a persisted portfolio. The page is meaningful on first load: it also
-  shows the **named historical scenarios** (2008 / COVID-2020 …, the `named` rows on
-  `/api/risk/scenarios`) ranked worst-loss-first (`NamedScenarios`), the **book-level P&L
-  attribution** waterfall (`/api/attribution?level=book`, the shared `AttributionWaterfall`), and
-  the **broker reconciliation** (`/api/reconciliation`, the `Reconciliation` panel) framed plainly
-  as *does the broker agree with our book?* — per-status counts (match / break / broker-only /
-  book-only) and the break lines, with a broker-account selector. A no-broker-account `400` is a
-  labelled empty state, not an error.
-- **Orders** — the read-only Phase-3 execution sketch. The ticket is browser-local and submit is
-  disabled until the explicit order-gate work lands.
-
-Further built operator pages:
-
-- **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted strategy signal layer (F-SIG).
-  An underlying selector plus an optional trade-date pin drive `GET /api/signals[/underlyings]`; the
-  read-only `SignalsView` groups the returned signals by kind (IV rank, Realized − implied,
-  Term-structure slope, Implied correlation ρ̄) into one compact per-kind table each, with a
-  per-name bar viz (left-anchored 0–100% for IV rank, a signed centre-line bar for the rest) and a
-  one-line plain caption saying what the number is and how to read it. Values render through
-  `lib/format` with their units; the labelled-empty partition (`n_signals == 0`) and every fetch
-  error surface as their own states, never a blank.
-- **Positions** (`/positions`, `src/pages/Positions.tsx`) — the fills-based execution blotter
-  (F-POS). Reads the two read-only `/api/positions[/fills]` endpoints over an underlying + trade-date
-  selector and frames them plainly — *what I own, what it's worth, what my risk is*: a **book summary**
-  (total market value + the additive dollar Greeks), the **open-positions table** (one row per live
-  contract — qty, mark, market value, per-leg dollar Greeks), the append-only **fills ledger** (every
-  booked fill with its venue timestamp), and a labelled **booked-but-unpriced legs** notice (zeroed,
-  shown, never hidden). All analytics numbers via `lib/format.ts` (`sci`/`sciUnit`), re-currencied to
-  the index quote currency.
-- **Operations** (`/operations`, `src/pages/Operations.tsx`) — the operator dashboard, three
-  stacked layers answering "is the system healthy, is today's data in, when did we last compute
-  risk" at a glance. **Layer 1 — system health** reads `/api/health`: a green/red headline plus
-  per-stage status pills (data flowing, surfaces building, quality control, stress scenarios), the
-  stored-event count and the backlog of stages still to compute. **Run control** reads
-  `/api/providers` + `/api/run/underlyings`, launches a capture run via `POST /api/run`, and polls
-  `/api/jobs` to track each run from queued → done in a job table (an unavailable provider, e.g.
-  live IBKR, is offered disabled, never silently runnable). **Layer 3 — freshness** reads
-  `/api/recorded-dates` per index: when risk/analytics last computed, the latest snapshot's QC
-  badge, the clean gap-free day count, and a recent-fetches table. Read-only over the BFF —
-  launching a SAMPLE run replays the latest committed day into a throwaway store, never `data/`.
-- **Strategy / Backtest** (`/strategy`, `src/pages/Strategy.tsx`) — the F-STRAT backtest page over
-  `POST /api/backtest/run`. A config form (index, window, the short-put-line rules, optional costs +
-  crash-stress grid) with sensible defaults drives one on-demand run; the results read, in plain PM
-  framing, *where the return came from*: a cumulative-P&L equity line (gross vs net, the cost drag is
-  the gap), the headline scorecard (net/gross P&L, transaction cost, max drawdown, Sharpe, turnover,
-  worst stress loss), a by-Greek "which Greek paid" bar view over `cumulative_attribution`, and the
-  exposure Greeks day by day. Every fetch/run error surfaces as an alert. Components:
-  `BacktestForm` / `BacktestResults` / `EquityCurve` / `WhichGreekPaid` / `GreeksOverTime`.
-
-The `frontend-tab-shell` scaffold (2026-06-16) seeded the four newer tabs as empty-state stubs;
-each has since been filled in by its owning slice, so no "No data yet" stub tabs remain. Each page
-owns exactly one page file; later work edits only that file and never `routes.ts`/`App.tsx`.
-
-The earlier Codex `Market` / `Risk Scenarios` / `Orders` paper-trading pages and their
-`market`/`orders` BFF routers were dropped in C4: they synthesized ~700 lines of fixture
-data with no equivalent in the canonical stack, and are superseded by the store-backed
-surfaces/risk routes. No live broker orders were ever sent.
+- **Données** (`/`, `src/pages/Market.tsx`) — the index-analytics reading page, INDEX-KEYED (ADR
+  0051): a scorecard strip (ATM · skew · convexity · RV−IV), the price block (index candlestick +
+  the master-detail constituents — weighted list + the selected member's candlestick), the 3D vol
+  nappe, one tenor selector driving the put/call smile + the per-strike price structure
+  (bid/ask/volume) + the Greeks (profile curves + magnitude table), and the ρ̄ dispersion strip.
+- **Risque** (`/risque`, `src/pages/Basket.tsx`) — compose → see → shock → explain, over a shared
+  composer and four sub-tabs: **① Composer**, **② Le book** (the booked book folded in from the
+  former Positions page), **③ Choquer** (on-demand stress + the named historical / persisted
+  scenarios folded in from Risk Scenarios), **④ Attribution** (by-Greek waterfall).
+- **Ordres** (`/ordres`, `src/pages/Ordres.tsx`) — the order home: the ticket (gated; live transmit
+  is 3B-gated, the send button disarmed, commit paper-only behind the password barrier), the broker
+  reconciliation (moved here from Risk), and the folded backtest (the former Strategy page).
+- **Operations** (`/operations`, `src/pages/Operations.tsx`) — the operator dashboard (system
+  health, run control, freshness), kept as a secondary utility rather than a product onglet.
 
 ## API
 

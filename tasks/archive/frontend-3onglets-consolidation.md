@@ -50,3 +50,7 @@ Per `…target-ux.md` §Onglet 3 (ticket → gated paper send → recon → back
 - The app shows exactly **3 top-level tabs** (Données / Risque / Ordres); Signals gone, Operations
   secondary. Each tab matches its locked reading model in `…target-ux.md`. No constituent-as-option
   -underlying anywhere (ADR 0051). Full web gate + e2e green at land.
+
+---
+
+**✅ LANDED 2026-06-17** — shell flip completed the consolidation on top of the fleet's Onglet content. App shows exactly 3 onglets (Données / Risque / Ordres); Operations secondary, Signals dropped. Full web gate + 31 e2e green.

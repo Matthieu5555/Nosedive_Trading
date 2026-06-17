@@ -8,12 +8,11 @@ export interface AppRoute {
   readonly end?: boolean;
 }
 
+// The three top-level onglets (frontend-3onglets-target-ux): Données → Risque → Ordres. Data first,
+// the rest follows. Operations is a secondary utility (still addressable at /operations) and is NOT
+// a top-level tab; Signals is dropped (its content lives in the Données scorecards + ρ̄ strip).
 export const ROUTES: readonly AppRoute[] = [
-  { path: "/", label: "Market", heading: "Market", end: true },
-  { path: "/basket", label: "Basket", heading: "Basket Builder" },
-  { path: "/risk", label: "Risk Scenarios", heading: "Risk Scenarios" },
-  { path: "/operations", label: "Operations", heading: "Operations" },
-  { path: "/signals", label: "Signals", heading: "Signals" },
-  { path: "/strategy", label: "Strategy", heading: "Strategy" },
-  { path: "/positions", label: "Positions", heading: "Positions" },
+  { path: "/", label: "Données", heading: "Données", end: true },
+  { path: "/risque", label: "Risque", heading: "Risque" },
+  { path: "/ordres", label: "Ordres", heading: "Ordres" },
 ] as const;

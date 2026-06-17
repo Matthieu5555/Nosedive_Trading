@@ -6,14 +6,13 @@ test.beforeEach(async ({ page }) => {
   await mockBff(page);
 });
 
-test("Market: index and as-of selectors are present and switchable", async ({ page }) => {
+test("Données: index and as-of selectors are present and switchable", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Données" })).toBeVisible();
 
   const index = page.getByLabel("Index", { exact: true });
   await expect(index).toBeVisible();
   await expect(index).toBeEnabled();
-
   expect(await index.locator("option").count()).toBeGreaterThan(0);
 
   await expect(page.getByLabel("As-of fetch")).toBeVisible();
@@ -23,35 +22,50 @@ test("Market: index and as-of selectors are present and switchable", async ({ pa
     .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
   if (values.length > 1) {
     await index.selectOption(values[1]);
-    await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Données" })).toBeVisible();
   }
   await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
 });
 
-test("Risk Scenarios: portfolio selector lists portfolios and is selectable", async ({ page }) => {
-  await page.goto("/risk");
-  await expect(page.getByRole("heading", { level: 1, name: "Risk Scenarios" })).toBeVisible();
+test("Risque: the compose→book→shock→explain tabs over a shared composer", async ({ page }) => {
+  await page.goto("/risque");
+  await expect(page.getByRole("heading", { level: 1, name: "Risque" })).toBeVisible();
 
-  const portfolio = page.getByLabel("Portfolio");
-  await expect(portfolio).toBeVisible();
-  await expect(portfolio.getByRole("option", { name: "All portfolios" })).toBeAttached();
-  await expect(portfolio.getByRole("option", { name: "CORE-INDEX-OPTIONS" })).toBeAttached();
+  for (const name of [/Composer/, /Le book/, /Choquer/, /Attribution/]) {
+    await expect(page.getByRole("tab", { name })).toBeVisible();
+  }
 
-  await portfolio.selectOption("CORE-INDEX-OPTIONS");
-  await expect(portfolio).toHaveValue("CORE-INDEX-OPTIONS");
-  await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
+  // The shared composer is above the tabs.
+  await expect(page.getByLabel("underlying", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("trade date", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("tenor", { exact: true })).toBeVisible();
+
+  const price = page.getByRole("button", { name: "Price basket" });
+  await expect(price).toBeDisabled();
+
+  await page.getByRole("button", { name: "template straddle" }).click();
+  const legGrid = page.getByRole("table", { name: "composed legs" });
+  await expect(legGrid.locator("tbody tr")).toHaveCount(2);
+  await expect(price).toBeEnabled();
+
+  await page.getByRole("tab", { name: /Choquer/ }).click();
+  await expect(page.getByRole("button", { name: "Stress basket" })).toBeVisible();
 });
 
-test("Basket booking home: the real ticket builds and Sign & send stays 3B-gated", async ({
-  page,
-}) => {
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
+test("Risque › Le book folds in the booked book (the former Positions page)", async ({ page }) => {
+  await page.goto("/risque");
+  await page.getByRole("tab", { name: /Le book/ }).click();
+  await expect(page.getByText("Book summary", { exact: true })).toBeVisible();
+  await expect(page.getByText("Fills ledger", { exact: true })).toBeVisible();
+});
+
+test("Ordres: ticket builds, send stays 3B-gated, recon + backtest folded in", async ({ page }) => {
+  await page.goto("/ordres");
+  await expect(page.getByRole("heading", { level: 1, name: "Ordres" })).toBeVisible();
 
   await page.getByRole("button", { name: "template straddle" }).click();
   const ticket = page.getByRole("region", { name: /order ticket/i });
   await expect(ticket).toBeVisible();
-
   await expect(ticket.getByText(/preview only/i)).toBeVisible();
 
   await ticket.getByRole("button", { name: "Build ticket" }).click();
@@ -60,56 +74,17 @@ test("Basket booking home: the real ticket builds and Sign & send stays 3B-gated
   await expect(send).toBeVisible();
   await expect(send).toBeDisabled();
   await expect(ticket.getByText(/3B — gated/)).toBeVisible();
+
+  // Reconciliation (moved here from Risk) and the folded backtest both render on the page.
+  await expect(page.getByLabel("Broker account")).toBeVisible();
+  await expect(page.getByText("Backtest setup", { exact: true })).toBeVisible();
 });
 
-test("Basket: a template button composes legs and enables pricing", async ({ page }) => {
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
-
-  await expect(page.getByLabel("underlying", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("trade date", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("tenor", { exact: true })).toBeVisible();
-
-  const price = page.getByRole("button", { name: "Price basket" });
-  await expect(price).toBeDisabled();
-
-  const legGrid = page.getByRole("table", { name: "composed legs" });
-  await expect(page.getByText("No legs yet", { exact: false })).toBeVisible();
-
-  await page.getByRole("button", { name: "template straddle" }).click();
-
-  await expect(page.getByText("No legs yet", { exact: false })).toHaveCount(0);
-
-  await expect(legGrid.locator("tbody tr")).toHaveCount(2);
-
-  await expect(price).toBeEnabled();
-});
-
-test("Basket: the four Onglet-2 tabs (Composer / Le book / Choquer / Attribution) over a shared composer", async ({
+test("Risque: the Attribution tab carries the by-Greek waterfall over a portfolio input", async ({
   page,
 }) => {
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
-
-  // The landed Onglet-2 layout: ① Composer / ② Le book / ③ Choquer / ④ Attribution, with the
-  // price action living on the Composer tab and the stress / attribution actions on theirs.
-  const composerTab = page.getByRole("tab", { name: /composer/i });
-  const stressTab = page.getByRole("tab", { name: /choquer/i });
-  const attributionTab = page.getByRole("tab", { name: /attribution/i });
-  await expect(composerTab).toBeVisible();
-  await expect(page.getByRole("tab", { name: /le book/i })).toBeVisible();
-  await expect(stressTab).toBeVisible();
-  await expect(attributionTab).toBeVisible();
-
-  await expect(page.getByRole("button", { name: "Price basket" })).toBeVisible();
-
-  await stressTab.click();
-  await expect(page.getByRole("button", { name: "Stress basket" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Price basket" })).toHaveCount(0);
-
-  await attributionTab.click();
+  await page.goto("/risque");
+  await page.getByRole("tab", { name: /Attribution/ }).click();
   await expect(page.getByRole("button", { name: "P&L attribution" })).toBeVisible();
   await expect(page.getByLabel("portfolio", { exact: true })).toBeVisible();
-
-  await expect(page.getByLabel("underlying", { exact: true })).toBeVisible();
 });

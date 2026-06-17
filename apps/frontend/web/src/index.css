@@ -262,6 +262,41 @@ td span {
   font-size: 12px;
 }
 
+/* The secondary-utility cluster in the third topbar column: the quiet Operations link + the session
+   pill. Operations is deliberately NOT a top-level onglet — a low-emphasis link, not a nav tab. */
+.topbar-utility {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.nav-utility {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+.nav-utility:hover {
+  color: var(--text);
+}
+.nav-utility.active {
+  color: var(--panel-soft-text);
+  background: var(--panel-soft);
+}
+
+/* The Risque/Ordres sub-tab pill bar: with four triggers the inline-flex list is wider than a
+   390px phone viewport, so cap it and let it scroll sideways rather than push the whole page into
+   horizontal overflow (same policy as the top nav below its breakpoint). */
+.market-tabs__list {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
 @media (min-width: 981px) and (max-width: 1180px) {
   .topbar {
     grid-template-columns: minmax(120px, auto) auto minmax(72px, auto);

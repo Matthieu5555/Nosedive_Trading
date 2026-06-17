@@ -7,10 +7,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { OperationsPage } from "./pages/Operations";
-import { PositionsPage } from "./pages/Positions";
-import { RiskScenariosPage } from "./pages/RiskScenarios";
-import { SignalsPage } from "./pages/Signals";
-import { StrategyPage } from "./pages/Strategy";
+import { OrdresPage } from "./pages/Ordres";
 import { ROUTES } from "./routes";
 
 function Guarded({ label, children }: { label: string; children: ReactNode }) {
@@ -19,12 +16,8 @@ function Guarded({ label, children }: { label: string; children: ReactNode }) {
 
 const PAGES: Record<string, ReactNode> = {
   "/": <MarketPage />,
-  "/basket": <BasketPage />,
-  "/risk": <RiskScenariosPage />,
-  "/operations": <OperationsPage />,
-  "/signals": <SignalsPage />,
-  "/strategy": <StrategyPage />,
-  "/positions": <PositionsPage />,
+  "/risque": <BasketPage />,
+  "/ordres": <OrdresPage />,
 };
 
 function AppShell() {
@@ -47,7 +40,17 @@ function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <Badge className="session-pill">Paper</Badge>
+        <div className="topbar-utility">
+          {/* Operations is a secondary utility (backend observability), not a product onglet — a
+              quiet link, kept addressable, deliberately outside the three top-level tabs. */}
+          <NavLink
+            to="/operations"
+            className={({ isActive }) => (isActive ? "nav-utility active" : "nav-utility")}
+          >
+            Operations
+          </NavLink>
+          <Badge className="session-pill">Paper</Badge>
+        </div>
       </header>
       <main className="main">
         <Routes>
@@ -58,9 +61,19 @@ function AppShell() {
               element={<Guarded label={item.label}>{PAGES[item.path]}</Guarded>}
             />
           ))}
+          <Route
+            path="/operations"
+            element={<Guarded label="Operations">{<OperationsPage />}</Guarded>}
+          />
+          {/* Legacy paths from the 7-tab era. Risque absorbs Basket + Risk Scenarios + Positions;
+              Ordres absorbs Orders + Strategy; Signals is dropped (its content lives in Données). */}
           <Route path="/market" element={<Navigate to="/" replace />} />
-          {}
-          <Route path="/orders" element={<Navigate to="/basket" replace />} />
+          <Route path="/basket" element={<Navigate to="/risque" replace />} />
+          <Route path="/risk" element={<Navigate to="/risque" replace />} />
+          <Route path="/positions" element={<Navigate to="/risque" replace />} />
+          <Route path="/orders" element={<Navigate to="/ordres" replace />} />
+          <Route path="/strategy" element={<Navigate to="/ordres" replace />} />
+          <Route path="/signals" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

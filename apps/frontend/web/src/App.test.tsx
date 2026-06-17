@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -22,85 +22,86 @@ afterEach(() => {
   window.history.pushState({}, "", "/");
 });
 
-test("top navigation reaches Market, Basket, and Risk Scenarios", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
-
-  await user.click(screen.getByRole("link", { name: "Basket" }));
-  expect(await screen.findByRole("heading", { name: "Basket Builder" })).toBeInTheDocument();
-  await waitFor(() => expect(window.location.pathname).toBe("/basket"));
-
-  await user.click(screen.getByRole("link", { name: "Risk Scenarios" }));
-  expect(await screen.findByRole("heading", { name: "Risk Scenarios" })).toBeInTheDocument();
-  await waitFor(() => expect(window.location.pathname).toBe("/risk"));
-});
-
-// Every newly-added top tab — all now built out (see each page's own test) — is directly
-// addressable and marks its nav link active.
-const ALL_NEW_TABS = [
-  { link: "Operations", heading: "Operations", path: "/operations" },
-  { link: "Signals", heading: "Signals", path: "/signals" },
-  { link: "Strategy", heading: "Strategy", path: "/strategy" },
-  { link: "Positions", heading: "Positions", path: "/positions" },
-] as const;
-
-test("the Signals tab is a live page rendering the persisted signal layer", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
-
-  await user.click(screen.getByRole("link", { name: "Signals" }));
-  expect(await screen.findByRole("heading", { name: "Signals", level: 1 })).toBeInTheDocument();
-  await waitFor(() => expect(window.location.pathname).toBe("/signals"));
-  expect(await screen.findByRole("heading", { name: "IV rank" })).toBeInTheDocument();
-});
-
-test("top navigation reaches the Strategy backtest page (now a real page, not a stub)", async () => {
-  const user = userEvent.setup();
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Market" })).toBeInTheDocument();
-
-  await user.click(screen.getByRole("link", { name: "Strategy" }));
-  expect(await screen.findByRole("heading", { name: "Strategy", level: 1 })).toBeInTheDocument();
-  await waitFor(() => expect(window.location.pathname).toBe("/strategy"));
-  expect(await screen.findByRole("button", { name: /run backtest/i })).toBeInTheDocument();
-});
-
-for (const tab of ALL_NEW_TABS) {
-  test(`${tab.heading} is directly addressable and marks its nav link active`, async () => {
-    window.history.pushState({}, "", tab.path);
-    render(<App />);
-
-    expect(await screen.findByRole("heading", { name: tab.heading, level: 1 })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: tab.link })).toHaveAttribute("aria-current", "page");
-  });
+function mainNav() {
+  return screen.getByRole("navigation", { name: "Main" });
 }
 
-test("there is no Orders nav button — the booking chain lives only on Basket", () => {
+test("the top nav is exactly the three onglets — Données, Risque, Ordres — Données active on load", async () => {
   render(<App />);
 
-  expect(screen.queryByRole("link", { name: "Orders" })).not.toBeInTheDocument();
-});
+  expect(await screen.findByRole("heading", { name: "Données", level: 1 })).toBeInTheDocument();
 
-test("the retired /orders path redirects to the Basket booking home", async () => {
-  window.history.pushState({}, "", "/orders");
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Basket Builder" })).toBeInTheDocument();
-  await waitFor(() => expect(window.location.pathname).toBe("/basket"));
-});
-
-test("risk scenarios is directly addressable", async () => {
-  window.history.pushState({}, "", "/risk");
-  render(<App />);
-
-  expect(await screen.findByRole("heading", { name: "Risk Scenarios" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Risk Scenarios" })).toHaveAttribute(
+  const links = within(mainNav())
+    .getAllByRole("link")
+    .map((link) => link.textContent);
+  expect(links).toEqual(["Données", "Risque", "Ordres"]);
+  expect(within(mainNav()).getByRole("link", { name: "Données" })).toHaveAttribute(
     "aria-current",
     "page",
   );
+});
+
+test("the dropped 7-tab labels are gone from the main nav", () => {
+  render(<App />);
+  for (const gone of ["Market", "Basket", "Risk Scenarios", "Signals", "Strategy", "Positions"]) {
+    expect(within(mainNav()).queryByRole("link", { name: gone })).not.toBeInTheDocument();
+  }
+});
+
+test("Risque routes to /risque and shows its heading", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Données", level: 1 });
+
+  await user.click(within(mainNav()).getByRole("link", { name: "Risque" }));
+  expect(await screen.findByRole("heading", { name: "Risque", level: 1 })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/risque"));
+});
+
+test("Ordres routes to /ordres and shows its heading", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await screen.findByRole("heading", { name: "Données", level: 1 });
+
+  await user.click(within(mainNav()).getByRole("link", { name: "Ordres" }));
+  expect(await screen.findByRole("heading", { name: "Ordres", level: 1 })).toBeInTheDocument();
+  await waitFor(() => expect(window.location.pathname).toBe("/ordres"));
+});
+
+test("Operations is a secondary utility — addressable, but NOT a top-level onglet", async () => {
+  render(<App />);
+  // Not in the main nav…
+  expect(within(mainNav()).queryByRole("link", { name: "Operations" })).not.toBeInTheDocument();
+  // …but still a reachable utility link.
+  expect(screen.getByRole("link", { name: "Operations" })).toBeInTheDocument();
+
+  window.history.pushState({}, "", "/operations");
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Operations", level: 1 })).toBeInTheDocument();
+});
+
+const REDIRECTS = [
+  { from: "/market", to: "/", heading: "Données" },
+  { from: "/basket", to: "/risque", heading: "Risque" },
+  { from: "/risk", to: "/risque", heading: "Risque" },
+  { from: "/positions", to: "/risque", heading: "Risque" },
+  { from: "/orders", to: "/ordres", heading: "Ordres" },
+  { from: "/strategy", to: "/ordres", heading: "Ordres" },
+  { from: "/signals", to: "/", heading: "Données" },
+  { from: "/does-not-exist", to: "/", heading: "Données" },
+] as const;
+
+for (const r of REDIRECTS) {
+  test(`legacy ${r.from} redirects to ${r.to}`, async () => {
+    window.history.pushState({}, "", r.from);
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: r.heading, level: 1 })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe(r.to));
+  });
+}
+
+test("there is no Orders nav button in the main nav", () => {
+  render(<App />);
+  expect(within(mainNav()).queryByRole("link", { name: "Orders" })).not.toBeInTheDocument();
 });

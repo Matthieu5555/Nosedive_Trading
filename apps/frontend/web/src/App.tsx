@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-do
 import { Badge } from "@/ui/badge";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { BookProvider } from "./hooks/bookContext";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { OperationsPage } from "./pages/Operations";
@@ -84,7 +85,12 @@ function AppShell() {
 export function App() {
   return (
     <BrowserRouter>
-      <AppShell />
+      {/* The shared book (underlying / date / legs) lives above the routes so it carries across the
+          tabs — composed on Risk, sent on Orders — without remounting on navigation. Inert until the
+          pages consume it (next slice). */}
+      <BookProvider>
+        <AppShell />
+      </BookProvider>
     </BrowserRouter>
   );
 }

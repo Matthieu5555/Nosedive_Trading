@@ -1,6 +1,24 @@
 # T-clean-ingestion-2026-06-16 — purge the constituent-option junk + full recompute-from-raw (06-15 & 06-16), re-capture 06-17 live
 
-**Status:** open — **P1 data cleanup, BLOCKED on a prerequisite bug** (see §0). **Lane:** `platform-` (data ops).
+> ## ✅ RESOLVED 2026-06-17 — by PRUNING, not recompute (do NOT recompute these days)
+> **Root cause (the "recompute degenerates" bug is NOT in the code):** the run-partition casse
+> accumulated 37–42 close fires — each with a **different option chain** — under one `session_id`.
+> The raw is the **union** of those chains (06-15: 976 option instruments vs the 724 of the real
+> close), so recompute-from-raw feeds the SVI fit an **incoherent superset** → fit fails → 0
+> projected (06-15). The fire boundaries are lost: **recompute-from-raw cannot reproduce a single
+> clean close for these damaged days.** (The replay pipeline itself is correct — validated on clean
+> input; see [ADR 0057](../../.agent/decisions/0057-replay-reuses-the-live-pipeline-one-path.md).)
+>
+> **The clean close already existed** as the `underlying=SX5E` partition (written live by ONE fire):
+> 06-15 proj=435, 06-16 proj=522. `store.read` was inflating to 20,283 by **summing SX5E + the 48
+> constituent partitions** (scope junk), not the `run=` dirs. **Fix = prune:** keep `underlying=SX5E`,
+> drop every `run=` dir + every constituent `underlying=` partition + the retired
+> `constituent_capture_outcomes` table, across raw + all computed layers. `daily_bar` (50 constituent
+> price series = the realized-vol input) untouched. Result: front reads clean 435 / 522, faithful
+> original values, zero recompute. Backups retained under `data/_provisional_archive/` until owner
+> sign-off. **06-17** is left to tonight's close cron (C1.2 overwrite ⇒ one clean slot).
+
+**Status:** ✅ resolved (pruning) 2026-06-17 — archived. **Lane:** `platform-` (data ops).
 **Owner ruling (2026-06-17, Vincent):** *"clean the raw of everything that isn't Stoxx50 options or daily bars, EMPTY all the computed layer, recompute from the cleaned raw, and re-capture today's live end-to-end."*
 **Depends on:** the recompute-from-raw bug in §0 being fixed FIRST. **Relates:** [ADR 0051](../.agent/decisions/0051-return-to-blueprint-dispersion-realized-vol-diagnostic.md) (index options only; constituent option capture retired), blueprint Part XV (raw Tier-1, all derived recomputable from raw), [T-restore-overwrite-last-wins](T-restore-overwrite-last-wins.md) (the C1/C2/C1.2 overwrite fix — **landed** `5a5abf4`).
 

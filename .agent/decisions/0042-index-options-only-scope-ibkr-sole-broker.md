@@ -14,6 +14,8 @@
   [[0022-m5-vendored-broker-slice]], [[0023-nautilus-runtime-spine-and-library-leverage]],
   [[0025-nautilus-host-catalog-topology]], [[0026-orchestration-observability-reconciliation]],
   [[0027-collection-seam-push-canonical]], [[0035-index-registry-and-per-index-capture-schedule]].
+  Codified by [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]] (the universe model — see
+  decision 3).
 
 ## Context
 
@@ -46,9 +48,15 @@ product does not ship, presented at the same "accepted" weight as load-bearing o
 2. **SX5E (EuroStoxx 50) is the single live index; SPX is parked.** `SPX.enabled: false` in
    `universe.yaml` — kept in the registry as the cheapest multi-index proof, re-enabled by flipping
    one flag. The live EOD spine exercises SX5E (calendar XEUR) end to end.
-3. **Single names are index *constituents*, never option underlyings.** `UniverseConfig.underlyings`
-   was removed; the index registry is the single universe source. `data/reference/index_constituents/`
-   is kept (constituents back the membership/weights and the per-component candlestick charts).
+3. **Single names are index *constituents*, captured as prices only — never option underlyings in the
+   default scope.** `UniverseConfig.underlyings` was removed; the index registry is the single
+   universe source. The **index** carries the option chain (the only options captured); the
+   **constituents** are captured as **prices only** (daily bars, full membership), backing
+   membership/weights, the per-component candlestick charts, and the **realized**-vol input to the
+   implied-correlation ρ̄ diagnostic (not single-name options). `data/reference/index_constituents/`
+   is kept. Trading single-name option straddles is a deferred, separately-ruled re-opening of
+   constituent-option capture, not the default scope. This is the universe model of
+   [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]].
 4. **The decision lives here, in the ADR ledger** — not only in a task file and memory — because it
    is the most consequential scope call of the week and reverses a standing ADR. Task files get
    archived; this record does not.

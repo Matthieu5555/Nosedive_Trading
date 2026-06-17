@@ -6,8 +6,9 @@ they live in **`TARGET.md`** (repo root, the domain + strategy authority). ADRs 
 **process/architecture/operational** choices that TARGET deliberately leaves to the build.
 
 > **Scope today (ADR 0042):** index-options-only, **IBKR the sole live broker**, **SX5E** live, SPX
-> parked, single names are index *constituents* (and dispersion-phase underlyings — registry-driven,
-> never hand-set). Removed/superseded ADRs are not kept in-tree — **git history is the archive**.
+> parked, single names are index *constituents* (captured **prices only**; **not** option underlyings
+> in the default scope — ADR 0051). Removed/superseded ADRs are not kept in-tree — **git history is
+> the archive**.
 
 ## Scope & brokers
 - **0042** — Index-options-only; IBKR sole broker; SX5E first, SPX parked. *(the scope record)*

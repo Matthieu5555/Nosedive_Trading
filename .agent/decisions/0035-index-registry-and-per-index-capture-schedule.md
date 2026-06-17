@@ -6,6 +6,15 @@
 > could rejoin. SPX is now parked (`enabled:false`); SX5E is the single live index. See ADR 0023's
 > amendment.
 
+> **AMENDED 2026-06-15 (ADR 0051).** Universe model the registry serves: one enabled index (SX5E) +
+> its constituents, all from this registry. The **index** carries the **option chain** — the only
+> options captured. The **constituents** are captured as **prices only** (daily bars, full
+> membership) and are **not** option underlyings in the default scope; the implied-correlation ρ̄
+> diagnostic is computed from **realized** constituent vol, not single-name options. `dispersion_top_n`
+> is a pure strategy-side selector over banked raw, never a capture gate. Single-name option capture is
+> a deferred, separately-ruled re-opening. See [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]]
+> and [[0042-index-options-only-scope-ibkr-sole-broker]].
+
 - **Status:** accepted, 2026-06-07 (owner-ruled the two forks in design review).
 - **Date:** 2026-06-07.
 - **Implements:** blueprint **Part VII** (configuration) — this refines, and stays inside,
@@ -15,7 +24,9 @@
 - **Relates to:** [[0028-configuration-and-reproducibility-standard]] (hashed vs operational config,
   per-bundle `config_hashes`), [[0031-ibkr-historical-data-cp-rest-oauth1a]] (the IBKR contract the
   registry points at), [[0032-unattended-scheduling-via-systemd-timers]] (the timer this schedules),
-  [[0034-data-retention-compaction-and-backend-disposition]] (membership/storage), [[0011-blueprint-as-plan-of-record]].
+  [[0034-data-retention-compaction-and-backend-disposition]] (membership/storage), [[0011-blueprint-as-plan-of-record]],
+  [[0042-index-options-only-scope-ibkr-sole-broker]] (the index-only scope this registry serves),
+  [[0051-return-to-blueprint-dispersion-realized-vol-diagnostic]] (the universe model — constituents prices-only).
   Resolves **OQ-8** and **OQ-9** in [`open-questions.md`](../open-questions.md).
 
 ## Context

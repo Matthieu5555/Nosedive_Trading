@@ -25,7 +25,7 @@ export function BrokerReconciliation() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>③ Broker reconciliation</CardTitle>
+        <CardTitle>Broker reconciliation</CardTitle>
         <CardDescription>
           After the orders are placed, does the broker&apos;s account agree with our fills-based
           book? Per-status counts (match / break / broker-only / book-only) and the break lines.

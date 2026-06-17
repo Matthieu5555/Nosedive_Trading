@@ -70,10 +70,10 @@ test("Ordres: ticket builds, send stays 3B-gated, recon + backtest folded in", a
 
   await ticket.getByRole("button", { name: "Build ticket" }).click();
   await expect(ticket.getByRole("table", { name: /order ticket legs/i })).toBeVisible();
-  const send = ticket.getByRole("button", { name: "Sign and send order" });
+  const send = ticket.getByRole("button", { name: "Send order to broker" });
   await expect(send).toBeVisible();
   await expect(send).toBeDisabled();
-  await expect(ticket.getByText(/3B — gated/)).toBeVisible();
+  await expect(ticket.getByText(/Live sending is off/)).toBeVisible();
 
   // Reconciliation (moved here from Risk) and the folded backtest both render on the page.
   await expect(page.getByLabel("Broker account")).toBeVisible();

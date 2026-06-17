@@ -51,9 +51,8 @@ export function OrdresPage() {
       </div>
       <p>
         Turn the composed book into an order ticket, see where it would be sent (paper only —
-        live transmit is gated), reconcile the booked fills against the broker, and backtest the
-        line that drives it. Top to bottom: <strong>ticket → passage → réconciliation →
-        backtest</strong>.
+        live sending is off), reconcile the booked fills against the broker, and backtest the line
+        that drives it. Top to bottom: <strong>ticket → send → reconcile → backtest</strong>.
       </p>
 
       {indices.error !== null && (
@@ -69,7 +68,7 @@ export function OrdresPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>① Ticket d&apos;ordre</CardTitle>
+          <CardTitle>Order ticket</CardTitle>
           <CardDescription>
             Compose the legs of the book, then preview the order ticket. The ticket is the object a
             live send would sign — nothing is transmitted here.
@@ -142,26 +141,20 @@ export function OrdresPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>② Passage / état des ordres</CardTitle>
+          <CardTitle>Send &amp; status</CardTitle>
           <CardDescription>
-            Sending orders to a live broker is not wired and is gated by the security work (M2: the
-            booking audit must be write-ahead before any live transmit). Today this is paper /
-            read-only.
+            Sending orders to a live broker is turned off. Tickets you book here go to the paper
+            book only — nothing reaches a broker.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <article className="panel" aria-label="Order transmission">
             <p>
-              Live transmit is <strong>disarmed</strong>. The send control below is intentionally
-              disabled — booking a ticket above writes only to the <strong>paper</strong> book; it
-              never reaches a broker.
+              Live sending is <strong>off</strong>. Booking a ticket above writes only to the{" "}
+              <strong>paper</strong> book — it never reaches a broker; the “Send to broker” control
+              on the ticket stays disabled by design.
             </p>
-            <div className="ticket-gate" role="note" aria-label="transmission gate">
-              <button type="button" disabled aria-label="Transmit orders to broker">
-                Transmit orders
-              </button>
-              <span className="status">paper · gated (3B / security M2)</span>
-            </div>
+            <span className="status">Paper only · live sending is off</span>
           </article>
         </CardContent>
       </Card>
@@ -170,7 +163,7 @@ export function OrdresPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>④ Backtest</CardTitle>
+          <CardTitle>Backtest</CardTitle>
           <CardDescription>
             Validate the line over the days you have captured — cumulative P&amp;L and the by-Greek
             attribution.

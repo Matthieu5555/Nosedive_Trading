@@ -123,7 +123,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
       </div>
       <p>
         Build an order ticket from the composed basket above. <strong>Preview only</strong> — the
-        ticket is the object 3B will sign and send; nothing is transmitted here.
+        ticket is the object a live send would sign; nothing is transmitted here.
       </p>
 
       <div className="ticket-controls">
@@ -250,10 +250,10 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
           </div>
 
           <div className="ticket-gate" role="note" aria-label="transmission gate">
-            <button type="button" disabled aria-label="Sign and send order">
-              Sign &amp; send
+            <button type="button" disabled aria-label="Send order to broker">
+              Send to broker
             </button>
-            <span>3B — gated: {ticket.gated.reason}</span>
+            <span>Live sending is off — {ticket.gated.reason}</span>
           </div>
         </>
       )}

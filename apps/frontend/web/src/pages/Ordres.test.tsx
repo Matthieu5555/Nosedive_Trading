@@ -90,10 +90,10 @@ test("the page renders the four locked Onglet-3 sections top to bottom", async (
   renderWithClient(<OrdresPage />);
 
   expect(await screen.findByRole("heading", { name: /Ordres/i, level: 1 })).toBeInTheDocument();
-  expect(screen.getByText(/① Ticket d'ordre/)).toBeInTheDocument();
-  expect(screen.getByText(/② Passage \/ état des ordres/)).toBeInTheDocument();
-  expect(screen.getByText(/③ Broker reconciliation/)).toBeInTheDocument();
-  expect(screen.getByText(/④ Backtest/)).toBeInTheDocument();
+  expect(screen.getByText("Order ticket")).toBeInTheDocument();
+  expect(screen.getByText("Send & status")).toBeInTheDocument();
+  expect(screen.getByText("Broker reconciliation")).toBeInTheDocument();
+  expect(screen.getByText("Backtest", { exact: true })).toBeInTheDocument();
 });
 
 test("① the ticket section builds the real ticket from composed legs, preview-only", async () => {
@@ -110,16 +110,15 @@ test("① the ticket section builds the real ticket from composed legs, preview-
   expect(within(legsTable).getAllByText("BUY").length).toBeGreaterThanOrEqual(1);
 });
 
-test("② the passage send control is DISARMED — disabled and labelled paper/gated", async () => {
+test("the send-&-status section states it is paper-only with live sending off", async () => {
   renderWithClient(<OrdresPage />);
 
-  const transmit = await screen.findByRole("button", { name: /transmit orders to broker/i });
-  expect(transmit).toBeDisabled();
-  expect(screen.getByText(/paper · gated/i)).toBeInTheDocument();
-  expect(screen.getByText(/disarmed/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Paper only · live sending is off/i)).toBeInTheDocument();
+  // There is no separate transmit button — the one (disabled) send control lives on the ticket.
+  expect(screen.queryByRole("button", { name: /transmit/i })).not.toBeInTheDocument();
 });
 
-test("② the ticket's own sign-and-send affordance is also disabled and 3B-gated", async () => {
+test("the ticket's single send affordance is disabled and labelled live-sending-off", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/ticket/preview", TICKET));
   renderWithClient(<OrdresPage />);
@@ -128,9 +127,10 @@ test("② the ticket's own sign-and-send affordance is also disabled and 3B-gate
   await user.click(screen.getByRole("button", { name: "Build ticket" }));
   await screen.findByRole("table", { name: /order ticket legs/i });
 
-  const send = screen.getByRole("button", { name: /sign and send order/i });
+  const ticketPanel = screen.getByRole("region", { name: /order ticket/i });
+  const send = within(ticketPanel).getByRole("button", { name: /send order to broker/i });
   expect(send).toBeDisabled();
-  expect(screen.getByText(/3B — gated/)).toBeInTheDocument();
+  expect(within(ticketPanel).getByText(/Live sending is off/i)).toBeInTheDocument();
 });
 
 test("③ the broker reconciliation renders its match/break counts (does the broker agree?)", async () => {

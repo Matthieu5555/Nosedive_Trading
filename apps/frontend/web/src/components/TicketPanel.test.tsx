@@ -73,16 +73,16 @@ test("builds a ticket and renders the mapped legs (long->BUY, short->SELL, magni
   expect(within(rows[1]).getByText("AAA (stock)")).toBeInTheDocument();
 });
 
-test("the send affordance is disabled and labelled 3B-gated; nothing can transmit", async () => {
+test("the send affordance is disabled and labelled live-sending-off; nothing can transmit", async () => {
   server.use(jsonPost("/api/ticket/preview", TICKET));
   renderPanel();
 
   await userEvent.click(screen.getByRole("button", { name: "Build ticket" }));
   await screen.findByRole("table", { name: "order ticket legs" });
 
-  const send = screen.getByRole("button", { name: "Sign and send order" });
+  const send = screen.getByRole("button", { name: "Send order to broker" });
   expect(send).toBeDisabled();
-  expect(screen.getByText(/3B — gated/)).toBeInTheDocument();
+  expect(screen.getByText(/Live sending is off/)).toBeInTheDocument();
 });
 
 test("a malformed-ticket 400 surfaces the labelled detail, not a blank panel", async () => {

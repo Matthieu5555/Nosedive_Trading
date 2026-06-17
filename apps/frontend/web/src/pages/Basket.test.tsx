@@ -207,9 +207,9 @@ test("the booking home's send affordance is disabled and 3B-gated; nothing can t
   await user.click(screen.getByRole("button", { name: "Build ticket" }));
   await screen.findByRole("table", { name: /order ticket legs/i });
 
-  const send = screen.getByRole("button", { name: /sign and send order/i });
+  const send = screen.getByRole("button", { name: /send order to broker/i });
   expect(send).toBeDisabled();
-  expect(screen.getByText(/3B — gated/)).toBeInTheDocument();
+  expect(screen.getByText(/Live sending is off/)).toBeInTheDocument();
 });
 
 test("the retired Orders sketch renders nowhere — no hardcoded strike 5350, no Submit (sketch)", async () => {

@@ -2,6 +2,22 @@
 
 **Owner:** Matthieu · **Lane:** `platform-` · **Priority:** P0 (before trusting the unattended week)
 
+> **⚠️ STATUS UPDATE (2026-06-17 board audit) — the premise below is now PARTLY STALE.** Commit
+> `3788d34` landed most of the wiring this spec asked for:
+> - `qc_fail_alert` now **has a production caller** — `infra/orchestration/eod_stages.py:347` calls
+>   `qc_fail_alert(job.report)` (the "no production caller exists" claim is no longer true).
+> - A QC `critical` page now **exits non-zero** — `eod_runner.py:152-154` maps `ESCALATION_PAGE` to
+>   `return 1`, engaging systemd `OnFailure=` (no more silent exit-0).
+> - A closed-market / zero-options close no longer silently banks — `cp_rest_close_capture.py:586-685`
+>   lands rows / raises `CloseCaptureError` (a true `result is None` no-op still exits 0 by design).
+>
+> **Two acceptance items REMAIN OPEN** (this is what the spec is now scoped to):
+> 1. **No real delivery channel.** `qc_fail_alert` output still only goes to `log.error`
+>    (`eod_stages.py:349-354`); the systemd `*-alert.service` units `systemd-cat` into journald with a
+>    "swap for a real channel" TODO. No Telegram/email/webhook delivery exists anywhere.
+> 2. **No pre-close (~18:00) readiness check** (gateway-authed + two-sided fraction healthy *before*
+>    the close). Still absent.
+
 ## Why (audited 2026-06-15)
 
 The capture chain has loud *detection* but no *routing*: several real failure modes leave the run

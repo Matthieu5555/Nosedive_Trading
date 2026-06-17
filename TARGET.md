@@ -218,7 +218,8 @@ rate. Contract: a `rates` table (currency, pillar tenor, rate, as-of); config na
 source per currency.
 
 **R2 — Two vol surfaces: puts and calls fitted separately.** *(Infra core landed 2026-06-14,
-ADR 0048; BFF/front toggle pending — frontend-per-side-surfaces-toggle.)* Today one surface is fitted
+ADR 0048; front put/call **toggle retired 2026-06-17** — the smiles are now superimposed
+side-agnostically, so the put−call gap shows without a switch.)* Today one surface is fitted
 per underlying per day. Ruling: fit **three** — put-side, call-side, and the combined
 reference surface — and carry `surface_side ∈ {put, call, combined}` through the surface
 contract, projection, BFF, and front (side toggle on the 3D surface and smiles). Why this
@@ -410,7 +411,8 @@ Each row is roughly one spec.
 6. **Per-side surfaces (R2):** put/call/combined fit + `surface_side` through contract →
    BFF → front; put−call spread QC + signal. **Infra core landed 2026-06-14 (ADR 0048):**
    per-side fit, `surface_side` in the grid PK (combined = the legacy surface), put−call IV
-   spread signal + QC. Remaining: the BFF/front `surface_side` toggle (frontend-per-side-surfaces-toggle).
+   spread signal + QC. Front `surface_side` toggle **retired 2026-06-17** (superseded by the
+   side-agnostic smile overlay; raw per-side payload could be a fresh narrow BFF slice if ever wanted).
 7. **Signal layer:** implied correlation (R3), IV rank/percentile per name, realized-vs-
    implied spread, term slope — persisted daily, the strategy entry inputs (§1's chain).
    **Compute + daily persistence landed** (infra-signal-layer → `strategy_signals`); **BFF read

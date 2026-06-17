@@ -94,5 +94,7 @@ Deferred, by the owner ruling on scope:
   `resolve_cell_side`). A requested wing with no curve is a labelled `surface_side_unavailable`
   gap, never a silent combined fall-back. Booking (`concretization`) stays combined as decided in
   point 4 — it solves the strike off combined (§3) and marks off the real listed quote, so a
-  booked fill is already side-correct. The web toggle that *sets* a leg's side stays in
-  [`frontend-per-side-surfaces-toggle`](../../tasks/frontend-per-side-surfaces-toggle.md).
+  booked fill is already side-correct. *(The web put/call **toggle** was retired 2026-06-17 — the
+  front now superimposes put/call smiles side-agnostically (`charts.tsx`), so the put−call gap is
+  shown without a switch; the infra core here is unchanged. See
+  [`archive/frontend-per-side-surfaces-toggle`](../../tasks/archive/frontend-per-side-surfaces-toggle.md).)*

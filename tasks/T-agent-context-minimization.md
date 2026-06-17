@@ -9,6 +9,15 @@
 > **Git history is the archive: superseded/merge-only ADRs are UNTRACKED (`git rm`), not kept in an
 > in-tree `archive/` folder ("au pire on remonte dans git").**
 
+> **STATUS UPDATE (2026-06-17 board audit) — PART A IS DONE; only one Part-B item remains.**
+> `.agent/decisions/` is trimmed to 41 live ADRs (dead set untracked), `decisions/README.md` index
+> exists with the "git history is the archive" footer, and `glossary.md`/`open-questions.md`/`map.md`
+> are all trimmed as described. **The one open item** is Part-B #1 — the stale broker default still
+> in code: `provider: str = "DERIBIT"` at `collectors/normalize.py:22` and `storage/events.py:29`
+> (line numbers shifted from the `:60`/`:53` recorded below). This same fix also closes
+> intent-vs-delivery F6 and ingestion-audit #14 — one one-line change clears all three. Once it lands,
+> reduce this file to that fix or archive it.
+
 ## Why (the diagnosis)
 
 `.agent/` is **433 lines of root files + 3606 lines across 42 ADRs (~4040 lines total)**. The bulk

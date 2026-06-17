@@ -1,5 +1,16 @@
 # frontend-per-side-surfaces-toggle — surface_side toggle on the 3D surface + smiles (R2 front half)
 
+> **🗄️ RETIRED (2026-06-17 board audit) — the toggle deliverable was superseded by a shipped design
+> decision.** The web no longer has (and deliberately rejects) a put/call switch: `charts.tsx:200-205`
+> superimposes the put and call smiles side-agnostically ("the page no longer has a put/call switch —
+> the asymmetry is the point"), so the **put−call gap is already visible as the wing spread** without a
+> toggle. The infra core (per-side fit, `surface_side` grid PK, put−call IV spread + QC, ADR 0048)
+> remains landed and correct; only this *front toggle* framing is dead. The BFF still serves combined
+> only (`analytics.py:37` filters `surface_side != combined`). **If** the owner later wants the raw
+> per-side / IV-spread *payload* exposed (distinct from the visual overlay already shipped), open a
+> fresh, narrower spec for that BFF slice — do not resurrect the toggle. Archived alongside the landed
+> [infra-per-side-surfaces](infra-per-side-surfaces.md).
+
 > **Source:** TARGET §4 **R2** + §7 #6; the front half of [infra-per-side-surfaces](archive/infra-per-side-surfaces.md),
 > which landed the infra core (per-side fit, `surface_side` in the grid contract, put−call IV
 > spread signal + QC, ADR 0048) 2026-06-14. Split out the way the second-order-greeks front work

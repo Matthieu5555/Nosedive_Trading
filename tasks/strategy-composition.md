@@ -1,5 +1,23 @@
 # 2D — Strategy composition: combine decorrelated sub-strategies into one book
 
+> **⚠️ STATUS UPDATE (2026-06-17 board audit) — the INFRA layer has LANDED; only the seams remain.**
+> Steps 1–3 of "What to do" are done and tested on `main`:
+> - `infra/risk/book.py` — `BookLayerInput` (:25), `build_book_greeks` (:139, layer + union "book"
+>   rows, reuses `aggregate_by_desk`), `book_stress_surface` (:179, full-reprice the union over
+>   `ScenarioConfig`), `COMPOSITION_VERSION` (:18); exported in `risk/__init__.py`.
+> - `BookGreeks` contract — `contracts/tables.py:305`, registered `contracts/registry.py:298`
+>   (PK `(valuation_ts, book_id, level, layer_label)`).
+> - Tests — `infra/tests/test_book.py` covers sum-of-layers, flat-union, additive (Hypothesis),
+>   reorder-invariant, PnL-surface-is-sum-of-layers, full-reprice-not-Taylor, no-optimiser, roundtrip,
+>   and the empty/single/zero-position edges.
+>
+> **REMAINING (this spec is now scoped to the front/BFF seams):** step 5 — the BFF compose/book
+> router (no compose router in `apps/frontend/.../routers/`; `build_book_greeks` is referenced
+> nowhere in `apps/frontend/src`); step 6 — the web compose + combined-view UI (the Basket.tsx
+> "compose" is single multi-leg basket composition, **not** a book-of-sub-strategies view); and the
+> two not-yet-present tests `test_book_config_hash_cross_process` + `test_diversification_diagnostic_is_read_only`,
+> plus the BFF readback + Vitest combined-view tests. Front home is Onglet 2 (Risque) ② Le book / ④ Attribution.
+
 > **Phase 2, the leaf of Tab 2.** 2D is the last of the four Tab-2 workstreams: it takes the
 > positions 2A builds, the stress grid 2B reprices over, and the attribution 2C decomposes, and lays
 > them into a single **book** — a layered set of sub-strategies whose Greeks are the additive sum and

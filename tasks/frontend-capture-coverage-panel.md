@@ -10,6 +10,13 @@
 > `Market.tsx` mount moved when `c4ce734` rebuilt page 1 — re-confirm placement against the locked
 > [frontend-3onglets-target-ux](frontend-3onglets-target-ux.md) before the phase-2 quote-completeness
 > add (the consolidation may host it as a secondary utility, not a primary block).
+>
+> **⚠️ STATUS CORRECTION (2026-06-17 board audit):** the component is **built but ORPHANED, not
+> mounted**. `CoverageTable.tsx` + `CoveragePanel` (line 133) + the `/api/coverage` BFF router exist,
+> but the `c4ce734` Market.tsx rebuild **removed the mount and never re-placed it** — the only
+> `coverage` reference in `Market.tsx:224` is now a *comment* noting the per-tenor ratios "were
+> dropped here." So before the phase-2 quote-completeness add, step 0 is to **re-mount the existing
+> panel** onto Onglet 1. (Earlier board copy said "landed & mounted" — the mount is gone.)
 
 ## Why this is cheap
 

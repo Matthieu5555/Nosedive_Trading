@@ -3,6 +3,16 @@
 **Owner:** Matthieu · **Lane:** `infra-`/`core-` (capture call params + computing params) · **Priority:** P1
 (blocks a trustworthy front; surfaced by the 2026-06-15 live SX5E validation run)
 
+> **STATUS UPDATE (2026-06-17 board audit) — lane-1 groundwork PARTLY LANDED via `f1a6205` (ADR-0052).**
+> Typed quote-QC floors now exist: `max_spread_pct` (`platform_config.py:245`, `qc.yaml:9`=0.05),
+> `max_quote_age_seconds` (`:246`, `qc.yaml:10`=30.0); `min_points_per_slice` is typed config
+> (`platform_config.py:301`, default 5, `ge=5`) with routing tests; `check_put_call_iv_spread` exists.
+> The flag-not-reject `fit_slice` behaviour is confirmed correct (blueprint-prescribed) and lane-3
+> (owner-gated reroute) correctly stays NOT done. **Still open:** the ρ-bound decision (still the
+> aggressive `[-0.999, 0.999]` in `pricing.yaml:26` — relax/justify), the duplicated-`0.0`-delta-axis
+> de-dup + the 108%/140% IV-point fix, and the required **settled-close re-validation findings doc**
+> confirming `surface_fit_error` critical clears. Lane 2 (front robustness) re-homes onto the reading model.
+
 > **3-onglets home (2026-06-17):** the "Market-tab" surface is now **Onglet 1 (Données) › ② NAPPE 3D
 > + ③ Panneau Ténor** ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md)); lane 2 (front
 > robustness to degenerate slices) re-homes onto that reading model, not the retired term-structure panels.

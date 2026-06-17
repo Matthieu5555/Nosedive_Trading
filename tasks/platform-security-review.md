@@ -21,7 +21,20 @@
 - **Blocks:** any real (non-paper) order transmission in **3B**. Paper/read-only operation is not
   blocked. The gate is: this report's HIGH/CRITICAL findings are closed (or owner-accepted) before
   the 3B owner flag can flip to live.
-- **State going in (audited 2026-06-07):** the dangerous path is **not built yet**, which is why this
+> **⚠️ BASELINE REFRESH (2026-06-17 board audit) — the "audited 2026-06-07" state below is STALE.**
+> Since then: the paper booking chain landed (`packages/execution/.../booking/commit.py` is full
+> book/concretize/audit/fills code, **not** one docstring line); the OAuth 1.0a module landed
+> (`cp_rest_lst.py`/`cp_rest_oauth.py`); pycryptodome is now in `packages/infra-ibkr/pyproject.toml`;
+> and a secret-scan CI exists (`.pre-commit-config.yaml` + `scan.yml`). The **3B live-transmit path
+> still does not exist** (transmit grep clean), so this review's core purpose remains live.
+> **The one gating MEDIUM is still UNFIXED:** the booking audit must be write-ahead of the fill write,
+> but `commit.py:206` appends fills *before* `commit.py:216` appends the audit (the block path is
+> correctly audited-first; only the commit path inverts). Carry M2 forward as the live gate against
+> [execution-order-sign-and-send](execution-order-sign-and-send.md) (3B). See
+> [platform-security-review-report.md](archive/platform-security-review-report.md) (archived as the
+> finished verdict record).
+
+- **State going in (audited 2026-06-07 — see baseline refresh above):** the dangerous path is **not built yet**, which is why this
   runs ahead of it. `packages/execution` is one docstring line; no `place_order`/`transmit`/`reply`
   call exists anywhere under `packages` or `apps` (grep clean). The IBKR read-only invariant is real
   and tested (`packages/infra-ibkr/tests/test_cp_rest_adapter.py::test_snapshot_is_read_only`). The

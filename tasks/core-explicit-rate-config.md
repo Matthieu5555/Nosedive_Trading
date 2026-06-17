@@ -1,8 +1,15 @@
 # T-explicit-rate-parameter — make the interest rate an explicit, displayed, modifiable input
 
-**Status:** specced. **The blueprint settles the design** (no owner decision needed) — see
-citations. Folds with the queued **T-scenario-rate-axis** (rate *shocks* are the scenario
-form of the same parameter).
+**Status:** specced; **step 1 LANDED** (verified 2026-06-17). **The blueprint settles the design**
+(no owner decision needed) — see citations. Folds with the queued **T-scenario-rate-axis** (rate
+*shocks* are the scenario form of the same parameter).
+
+> **STATUS UPDATE (2026-06-17 board audit):** step 1 is real — `ForwardConfig.rate: float | None`
+> (`platform_config.py:362`), shipped `rate: null` (`configs/pricing.yaml:51`), consumed by
+> `_carry_and_dividend` (`estimate.py:111-123`). **Still open:** the persisted `forward_curve` contract
+> (`ForwardCurvePoint`/`ForwardDiagnostics`) drops `implied_rate`/`implied_carry`/`implied_dividend` at
+> serialization (`bundles.py:6-12`), so the rate/carry/dividend diagnostic is not surfaced to BFF/front;
+> and the `r(T)` curve form + value-changing display default remain unbuilt.
 
 ## The ask (owner, 2026-06-13)
 

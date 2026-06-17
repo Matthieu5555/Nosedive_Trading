@@ -56,7 +56,6 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 | C5 stream-C | `packages/execution/.../booking/commit.py` (M2 fix) + security-review report | 2026-06-17 | close M2 (audit write-ahead of fills) + review §1/3/4/5 |
 | C6 stream-C | `packages/execution/.../execution/` — sign-and-send PAPER path | 2026-06-17 | SignedTicket/decision/audit; transmit gated OFF by default |
 | D2 stream-D | `infra/orchestration/alerts.py` + `eod_stages.py` (alert-sink seam) + new readiness check (`infra_ibkr`) | 2026-06-17 | AlertSink seam (D owns call sites, C4 owns transport) + pre-close readiness check; no concrete channel forked |
-| A6 stream-A | `apps/frontend/web/.../pages/Market.tsx`, `pages/market/*`, `components/charts.tsx`, `Scorecards.tsx` (+ Onglet-1 blocks) | 2026-06-17 | Onglet-1 (Données) integrator; builds page content only — does NOT flip `routes.ts`/`App.tsx` (Stream A tech-lead's last step) |
 | A-docs stream-A | `.agent/decisions/0053-*` + `0054-*` (DOCS-ONLY) — blueprint amendment text proposed inside each ADR | 2026-06-17 | FuturesPoint ADR (1D) + rates-curve `r(T)` ingest ADR (R1), both **status=Proposed**; no code/config touched |
 | D4 stream-D | `collectors/normalize.py` + `storage/events.py` — broker default `"DERIBIT"`→`"IBKR"` | 2026-06-17 | Part-B #1 of T-agent-context-minimization (also F6 + ingestion-audit #14); surgical one-liner + test/fixture default repoint |
 

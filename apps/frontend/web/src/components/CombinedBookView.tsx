@@ -205,6 +205,7 @@ export function CombinedBookView({
             <AttributionWaterfall
               attribution={attribution}
               kicker={`${book.layers[drill]?.layer_label ?? "layer"} ${tradeDate || "latest"}`}
+              embedded
             />
           )}
         </article>

@@ -1,6 +1,7 @@
 import { type Signal, SIGNAL_CAPTIONS, type SignalsResponse } from "../api";
 import { sciUnit } from "../lib/format";
-import { Scroll, Stack } from "./layout";
+import { InfoDot } from "./InfoDot";
+import { Cluster, Scroll, Stack } from "./layout";
 
 interface BarSpec {
   leftPct: number;
@@ -80,22 +81,45 @@ function SignalRow({ signal, scale }: { signal: Signal; scale: number }) {
   );
 }
 
+// The per-tenor implied-correlation rows sit within this much of each other before we treat them as
+// one read worth a single headline row (with the full per-tenor detail still one hover away).
+const CORRELATION_FLAT_BAND = 0.02;
+
+function isFlatCorrelation(kind: string, rows: Signal[]): boolean {
+  if (!isFixedSymmetric(kind) || rows.length < 2) return false;
+  const values = rows.map((row) => row.value);
+  return Math.max(...values) - Math.min(...values) <= CORRELATION_FLAT_BAND;
+}
+
 function KindPanel({ kind, rows }: { kind: string; rows: Signal[] }) {
   const label = rows[0]?.label ?? kind;
   const unit = rows[0]?.unit ?? null;
   const caption = SIGNAL_CAPTIONS[kind];
   const scale = panelScale(kind, rows);
+
+  // When the per-tenor implied-correlation reads are all but identical, the table degenerates into
+  // ~6 near-duplicate rows. Collapse to one headline row and tuck the full per-tenor breakdown
+  // behind the heading's ⓘ, so nothing is lost, only de-cluttered.
+  const flat = isFlatCorrelation(kind, rows);
+  const shownRows = flat ? rows.slice(0, 1) : rows;
+  const tenorDetail = flat ? (
+    <span>
+      Near-identical across tenors ({rows.map((r) => r.tenor_label).join(", ")}):{" "}
+      {rows.map((r) => `${r.tenor_label} ${formatValue(r)}`).join(" · ")}.
+    </span>
+  ) : null;
+
   return (
     <article className="panel signal-panel">
       <Stack gap="md">
         <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">{kind.replaceAll("_", " ")}</p>
+          <Cluster gap="2xs" align="center">
             <h2>{label}</h2>
-          </div>
+            {caption && <InfoDot label={`${label}, how to read it`} body={caption} />}
+            {tenorDetail && <InfoDot label={`${label}, per-tenor detail`} body={tenorDetail} />}
+          </Cluster>
           {unit && <span className="signal-unit">{unit}</span>}
         </div>
-        {caption && <p className="panel-note signal-caption">{caption}</p>}
         <Scroll label={`${label} signals`}>
           <table role="table" aria-label={`${label} signals`}>
             <thead>
@@ -109,7 +133,7 @@ function KindPanel({ kind, rows }: { kind: string; rows: Signal[] }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((signal) => (
+              {shownRows.map((signal) => (
                 <SignalRow
                   key={`${signal.subject}-${signal.tenor_label}`}
                   signal={signal}

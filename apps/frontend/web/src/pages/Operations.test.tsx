@@ -106,8 +106,12 @@ test("system health shows a healthy headline and per-stage statuses", async () =
 
   expect(await screen.findByText("Healthy")).toBeInTheDocument();
   expect(screen.getByText("As of trade date 2026-06-01")).toBeInTheDocument();
-  // 81234 events rendered with a thousands separator and the unit label.
-  expect(screen.getByText("81,234 events")).toBeInTheDocument();
+  // The raw event count is secondary plumbing, tucked behind the headline InfoDot rather than shown
+  // as its own metric tile. Hovering the dot surfaces the count (thousands separator + unit label).
+  await userEvent.hover(
+    screen.getByRole("button", { name: /System health, the underlying detail/i }),
+  );
+  expect(screen.getByRole("tooltip")).toHaveTextContent(/81,234 events/);
   expect(screen.getAllByText("Ok").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText("Current")).toBeInTheDocument();
 });
@@ -167,7 +171,10 @@ test("freshness reports when risk last computed and the clean-day count", async 
   await waitFor(() => expect(screen.getByText("Risk last computed for")).toBeInTheDocument());
   const metric = screen.getByText("Risk last computed for").closest(".metric") as HTMLElement;
   expect(within(metric).getByText("2026-05-29")).toBeInTheDocument();
-  expect(screen.getByText("7 days")).toBeInTheDocument();
+  // The clean-day count + fetch time are secondary plumbing, tucked into the metric's InfoDot hint
+  // rather than shown as their own tiles. Hovering the dot surfaces the count.
+  await userEvent.hover(within(metric).getByRole("button", { name: /Risk last computed for/i }));
+  expect(screen.getByRole("tooltip")).toHaveTextContent(/7 clean, gap-free days recorded/);
 });
 
 test("a health fetch error renders through AsyncBlock, not a blank panel", async () => {

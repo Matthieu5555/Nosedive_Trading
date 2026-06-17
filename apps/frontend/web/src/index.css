@@ -1190,9 +1190,22 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  /* Below the tablet breakpoint the seven tabs are wider than the grid cell, so cap the strip
+     and let it scroll sideways instead of clipping the trailing tabs off-screen (same policy as
+     .market-tabs__list). justify-content:start so the first tab rests flush left and every tab is
+     reachable by scrolling; snap + inline padding keep the active pill from resting half-clipped. */
   .nav {
     justify-content: start;
+    max-width: 100%;
     overflow-x: auto;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 8px;
+  }
+
+  .nav-button {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
   }
 
   .underlying-data-summary {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   asOfClose,
+  count,
   coverageHeadline,
   coveragePercent,
   currencySymbol,
@@ -67,6 +68,27 @@ describe("sciUnit", () => {
   it("falls back to the bare number when no unit is supplied", () => {
     expect(sciUnit(12.5, null)).toBe("1.25 × 10¹");
     expect(sciUnit(12.5, undefined)).toBe("1.25 × 10¹");
+  });
+});
+
+describe("count", () => {
+  it("renders a cardinality or signed quantity as a plain grouped integer, never sci", () => {
+    expect(count(0)).toBe("0");
+    expect(count(5)).toBe("5");
+    expect(count(-3)).toBe("-3");
+    expect(count(1234)).toBe("1,234");
+    expect(count(2.0)).toBe("2");
+  });
+
+  it("rounds a stray fractional quantity to the nearest whole lot", () => {
+    expect(count(2.4)).toBe("2");
+    expect(count(-2.6)).toBe("-3");
+  });
+
+  it("labels a missing count rather than emitting a bare blank", () => {
+    expect(count(null)).toBe("-");
+    expect(count(undefined)).toBe("-");
+    expect(count(Number.NaN)).toBe("-");
   });
 });
 

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Label } from "@/ui/label";
 
 import type { IndicesResponse } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { InfoDot } from "../components/InfoDot";
 import { Cluster, Stack } from "../components/layout";
 import { FreshnessPanel } from "../components/operations/FreshnessPanel";
 import { IbkrConnectionPanel } from "../components/operations/IbkrConnectionPanel";
@@ -42,11 +43,13 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>System health</CardTitle>
-          <CardDescription>
-            One glance: are services up, is market data flowing, and did the surfaces, quality
-            control and stress scenarios all complete for the latest day?
-          </CardDescription>
+          <Cluster gap="2xs" align="center">
+            <CardTitle>System health</CardTitle>
+            <InfoDot
+              label="System health, what it covers"
+              body="One glance: are services up, is market data flowing, and did the surfaces, quality control and stress scenarios all complete for the latest day?"
+            />
+          </Cluster>
         </CardHeader>
         <CardContent>
           <ErrorBoundary label="System health">
@@ -62,11 +65,13 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Run control</CardTitle>
-          <CardDescription>
-            Launch a capture run and watch it land. Pick a provider and underlying, launch, and the
-            job list below tracks each run from queued to done.
-          </CardDescription>
+          <Cluster gap="2xs" align="center">
+            <CardTitle>Run control</CardTitle>
+            <InfoDot
+              label="Run control, how it works"
+              body="Launch a capture run and watch it land. Pick a provider and underlying, launch, and the job list below tracks each run from queued to done."
+            />
+          </Cluster>
         </CardHeader>
         <CardContent>
           <ErrorBoundary label="Run control">
@@ -77,12 +82,13 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>IBKR connection</CardTitle>
-          <CardDescription>
-            The live IBKR Client-Portal session behind a real run. See the honest gateway state,
-            open the brokerage session once authenticated, and refresh on demand. Logging in itself
-            runs from a shell, not the web app.
-          </CardDescription>
+          <Cluster gap="2xs" align="center">
+            <CardTitle>IBKR connection</CardTitle>
+            <InfoDot
+              label="IBKR connection, what it shows"
+              body="The live IBKR Client-Portal session behind a real run. See the honest gateway state, open the brokerage session once authenticated, and refresh on demand. Logging in itself runs from a shell, not the web app."
+            />
+          </Cluster>
         </CardHeader>
         <CardContent>
           <ErrorBoundary label="IBKR connection">
@@ -93,10 +99,13 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Risk &amp; analytics freshness</CardTitle>
-          <CardDescription>
-            When risk and analytics last computed, and how many clean days are on record.
-          </CardDescription>
+          <Cluster gap="2xs" align="center">
+            <CardTitle>Risk &amp; analytics freshness</CardTitle>
+            <InfoDot
+              label="Freshness, what it reports"
+              body="When risk and analytics last computed, and how many clean days are on record."
+            />
+          </Cluster>
           <Cluster gap="sm" align="end">
             <div className="control-field">
               <Label htmlFor="ops-index">Index</Label>

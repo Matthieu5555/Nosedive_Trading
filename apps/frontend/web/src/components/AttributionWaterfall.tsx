@@ -10,20 +10,27 @@ export function AttributionWaterfall({
   attribution,
   kicker,
   emptyMessage = "No P&L attribution for this selection yet.",
+  embedded = false,
 }: {
   attribution: AttributionResponse;
   kicker: string;
   emptyMessage?: string;
+  // When this component is dropped inside an already-titled card (e.g. RiskScenarios' "Where the
+  // P&L came from"), its own <h2> + kicker would double the title. `embedded` suppresses that inner
+  // heading. Default false keeps the standalone heading for callers that wrap it in a bare div.
+  embedded?: boolean;
 }) {
   if (!attribution.found || attribution.terms.length === 0) {
     return (
       <article className="panel" aria-label="P&L attribution (empty)">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">{kicker}</p>
-            <h2>P&amp;L attribution</h2>
+        {!embedded && (
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">{kicker}</p>
+              <h2>P&amp;L attribution</h2>
+            </div>
           </div>
-        </div>
+        )}
         <p role="status">{emptyMessage}</p>
       </article>
     );
@@ -63,10 +70,12 @@ export function AttributionWaterfall({
   return (
     <article className="panel attribution-panel" aria-label="P&L attribution">
       <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">{kicker}</p>
-          <h2>P&amp;L attribution</h2>
-        </div>
+        {!embedded && (
+          <div>
+            <p className="panel-kicker">{kicker}</p>
+            <h2>P&amp;L attribution</h2>
+          </div>
+        )}
         {within !== undefined && (
           <span className={within ? "status" : "status negative"}>
             {within ? "within tolerance" : "residual exceeds tolerance"}

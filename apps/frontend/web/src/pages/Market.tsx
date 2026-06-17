@@ -19,6 +19,7 @@ import {
 import { CoveragePanel } from "../components/CoverageTable";
 import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { InfoDot } from "../components/InfoDot";
 import { Cluster, Scroll, Stack } from "../components/layout";
 import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
@@ -217,10 +218,7 @@ export function MarketPage() {
                 <article className="panel" aria-label={`${index} daily history`}>
                   <Stack gap="md">
                     <div className="panel-heading">
-                      <div>
-                        <p className="panel-kicker">{index}</p>
-                        <h2>Daily price, {index}</h2>
-                      </div>
+                      <h2>Daily price, {index}</h2>
                       <span className="status">{descriptor.asOfPhrase} · OHLC</span>
                     </div>
                     <ErrorBoundary label="Price">
@@ -253,7 +251,6 @@ export function MarketPage() {
                   <Stack gap="md">
                     <div className="panel-heading">
                       <div>
-                        <p className="panel-kicker">{index}</p>
                         <h2>
                           {descriptor.subjectHeading}
                           {surfaceMode === "indicative" && (
@@ -326,10 +323,13 @@ export function MarketPage() {
                 <article className="panel" aria-label="Dispersion">
                   <Stack gap="md">
                     <div className="panel-heading">
-                      <div>
-                        <p className="panel-kicker">{index}</p>
+                      <Cluster gap="2xs" align="center">
                         <h2>Dispersion (ρ̄), {index}</h2>
-                      </div>
+                        <InfoDot
+                          label="Dispersion, how to read it"
+                          body={`How tightly the ${index} members are expected to move together. A high average correlation (ρ̄ near 1) means the index moves as one block, so index vol is dear relative to its members; a low ρ̄ means the members move independently, the case for a dispersion trade. Today a realized-vol diagnostic until constituent implied vols land.`}
+                        />
+                      </Cluster>
                       <span className="status">
                         {descriptor.asOfPhrase} · realized-vol diagnostic
                       </span>
@@ -350,10 +350,7 @@ export function MarketPage() {
                 <article className="panel" aria-label="Capture coverage">
                   <Stack gap="md">
                     <div className="panel-heading">
-                      <div>
-                        <p className="panel-kicker">{index}</p>
-                        <h2>Capture coverage</h2>
-                      </div>
+                      <h2>Capture coverage</h2>
                       <button
                         type="button"
                         aria-expanded={coverageOpen}

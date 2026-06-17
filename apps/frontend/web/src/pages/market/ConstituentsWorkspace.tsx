@@ -89,10 +89,7 @@ export function ConstituentsWorkspace({
       >
         <Stack gap="md">
           <div className="panel-heading">
-            <div>
-              <p className="panel-kicker">{index}</p>
-              <h2>{selected ?? "Pick a ticker"}</h2>
-            </div>
+            <h2>{selected ?? "Pick a ticker"}</h2>
             <span className="status">selected member · daily OHLC</span>
           </div>
           {selected === null ? (

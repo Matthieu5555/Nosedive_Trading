@@ -1,0 +1,20 @@
+{
+  "providers": [
+    {
+      "provider": "IBKR",
+      "asset_class": "equity",
+      "auth_required": false,
+      "data_latency": "delayed",
+      "status": "unavailable",
+      "note": "Live IBKR rides the Client-Portal REST adapter (packages/infra-ibkr); needs an authenticated CP gateway."
+    },
+    {
+      "provider": "SAMPLE",
+      "asset_class": "equity",
+      "auth_required": false,
+      "data_latency": "offline",
+      "status": "ready",
+      "note": "Offline synthetic chain fixture; runs the full actor pipeline with no network."
+    }
+  ]
+}

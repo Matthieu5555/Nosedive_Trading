@@ -1,0 +1,59 @@
+{
+  "underlying": "SX5E",
+  "trade_date": "2026-06-17",
+  "n_expiries": 3,
+  "expiries": [
+    {
+      "expiry": "2026-06-15",
+      "tenor": "10d",
+      "n_strikes": 44,
+      "n_calls": 44,
+      "n_puts": 44,
+      "strike_min": 6125.0,
+      "strike_max": 6340.0,
+      "total_volume": null
+    },
+    {
+      "expiry": "2026-06-16",
+      "tenor": "10d",
+      "n_strikes": 44,
+      "n_calls": 44,
+      "n_puts": 44,
+      "strike_min": 6125.0,
+      "strike_max": 6340.0,
+      "total_volume": null
+    },
+    {
+      "expiry": "2026-06-17",
+      "tenor": "10d",
+      "n_strikes": 44,
+      "n_calls": 44,
+      "n_puts": 44,
+      "strike_min": 6125.0,
+      "strike_max": 6340.0,
+      "total_volume": 2306.0
+    }
+  ],
+  "tenors": [
+    {
+      "tenor": "10d",
+      "measured": null,
+      "floor": null,
+      "status": "pass"
+    },
+    {
+      "tenor": "1m",
+      "measured": null,
+      "floor": null,
+      "status": "pass"
+    },
+    {
+      "tenor": "3m",
+      "measured": null,
+      "floor": null,
+      "status": "pass"
+    }
+  ],
+  "qc_status": "fail",
+  "delta_band_status": "pass"
+}

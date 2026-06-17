@@ -30,7 +30,7 @@ function envelope(over: Partial<SignalsResponse> = {}): SignalsResponse {
           provenance: {
             calc_ts: "2026-06-15T17:30:00+00:00",
             code_version: "t",
-            config_hash: "c",
+            config_hashes: { pricing: "c" },
             stamp_hash: "s",
             n_sources: 1,
           },
@@ -49,7 +49,7 @@ function envelope(over: Partial<SignalsResponse> = {}): SignalsResponse {
           provenance: {
             calc_ts: "2026-06-15T17:30:00+00:00",
             code_version: "t",
-            config_hash: "c",
+            config_hashes: { pricing: "c" },
             stamp_hash: "s",
             n_sources: 1,
           },

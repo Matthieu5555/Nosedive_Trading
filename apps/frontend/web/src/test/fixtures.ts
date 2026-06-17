@@ -19,7 +19,7 @@ import type { ScenariosResponse } from "../stressApi";
 const PROV = {
   calc_ts: "2026-05-29T15:31:00+00:00",
   code_version: "abc123",
-  config_hash: "cfg-9",
+  config_hashes: { pricing: "cfg-9", qc: "cfg-9", scenarios: "cfg-9", universe: "cfg-9" },
   stamp_hash: "stamp-x",
   n_sources: 4,
 };
@@ -48,7 +48,7 @@ export const SURFACE_TWO_SLICES: SurfaceResponse = {
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
         code_version: "abc123",
-        config_hash: "cfg-9",
+        config_hashes: { pricing: "cfg-9" },
         stamp_hash: "stamp-1",
         n_sources: 11,
       },
@@ -72,7 +72,7 @@ export const SURFACE_TWO_SLICES: SurfaceResponse = {
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
         code_version: "abc123",
-        config_hash: "cfg-9",
+        config_hashes: { pricing: "cfg-9" },
         stamp_hash: "stamp-2",
         n_sources: 9,
       },
@@ -103,7 +103,7 @@ export const RISK_TWO_GROUPS: RiskResponse = {
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
         code_version: "abc123",
-        config_hash: "cfg-9",
+        config_hashes: { pricing: "cfg-9" },
         stamp_hash: "stamp-r1",
         n_sources: 4,
       },
@@ -120,7 +120,7 @@ export const RISK_TWO_GROUPS: RiskResponse = {
       provenance: {
         calc_ts: "2026-06-01T13:31:00+00:00",
         code_version: "abc123",
-        config_hash: "cfg-9",
+        config_hashes: { pricing: "cfg-9" },
         stamp_hash: "stamp-r2",
         n_sources: 3,
       },

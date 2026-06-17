@@ -34,7 +34,7 @@ test("PositionsTable shows one row per contract with qty, mark, market value and
 
   expect(within(table).getByText("SX5E P 4.2 × 10³ 2026-09-18")).toBeInTheDocument();
 
-  expect(within(table).getByText("2 × 10⁰")).toBeInTheDocument();
+  expect(within(table).getByText("2")).toBeInTheDocument();
 
   expect(within(table).getByText("4.25 × 10⁰ $")).toBeInTheDocument();
   expect(within(table).getByText("8.5 × 10¹ $")).toBeInTheDocument();

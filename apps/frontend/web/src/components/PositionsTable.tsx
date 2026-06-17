@@ -1,6 +1,6 @@
 import type { PositionLine } from "../api";
 import { POSITION_GREEK_ORDER } from "../api";
-import { sci, sciUnit, withCurrency } from "../lib/format";
+import { count, sci, sciUnit, withCurrency } from "../lib/format";
 import { Scroll } from "./layout";
 
 function contractLabel(line: PositionLine): string {
@@ -45,7 +45,7 @@ export function PositionsTable({
           {lines.map((line) => (
             <tr key={line.contract_key} aria-label={contractLabel(line)}>
               <td>{contractLabel(line)}</td>
-              <td>{sci(line.quantity)}</td>
+              <td>{count(line.quantity)}</td>
               <td>{sciUnit(line.mark_price, withCurrency("$", currency))}</td>
               <td>{sciUnit(line.market_value, withCurrency("$", currency))}</td>
               {POSITION_GREEK_ORDER.map((name) => {

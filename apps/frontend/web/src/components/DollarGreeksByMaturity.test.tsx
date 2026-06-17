@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import type { AnalyticsMaturity } from "../api";
@@ -8,7 +8,7 @@ import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
 const PROV = {
   calc_ts: "2026-05-29T15:31:00+00:00",
   code_version: "abc123",
-  config_hash: "cfg-9",
+  config_hashes: { pricing: "cfg-9" },
   stamp_hash: "stamp-x",
   n_sources: 4,
 };
@@ -47,20 +47,31 @@ const CLEAN_12M: AnalyticsMaturity = {
 };
 
 describe("DollarGreeksByMaturity", () => {
-  test("lays Greeks as columns and delta bands as rows, with raw + currency pairs", () => {
+  test("the Primary group opens on four Greeks (delta/gamma/vega/theta), rho hidden until Full first-order", () => {
     render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />);
-    const table = screen.getByRole("table", { name: /Dollar Greeks, / });
+    const primaryTable = screen.getByRole("table", { name: /Dollar Greeks, / });
 
-    for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
-      expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
+    // Default = Primary: the four read-first Greeks, no rho, no second-order table.
+    for (const greek of ["delta", "gamma", "vega", "theta"]) {
+      expect(within(primaryTable).getByRole("columnheader", { name: greek })).toBeInTheDocument();
     }
+    expect(
+      within(primaryTable).queryByRole("columnheader", { name: "rho" }),
+    ).not.toBeInTheDocument();
+    expect(within(primaryTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(4);
+    expect(within(primaryTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(4);
 
-    expect(within(table).getAllByRole("columnheader", { name: /^raw / }).length).toBe(5);
-    expect(within(table).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(5);
+    // Switching to Full first-order mounts rho (five Greeks, five raw + currency pairs).
+    fireEvent.click(screen.getByRole("button", { name: "Full first-order" }));
+    const fullTable = screen.getByRole("table", { name: /Dollar Greeks, / });
+    for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
+      expect(within(fullTable).getByRole("columnheader", { name: greek })).toBeInTheDocument();
+    }
+    expect(within(fullTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(5);
+    expect(within(fullTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(5);
 
-    expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
-
-    expect(within(table).getByText("€ per 1% move")).toBeInTheDocument();
+    expect(within(fullTable).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
+    expect(within(fullTable).getByText("€ per 1% move")).toBeInTheDocument();
   });
 
   test("the maturity in view is driven by the maturityLabel prop (the shared selector)", () => {
@@ -171,6 +182,8 @@ describe("DollarGreeksByMaturity", () => {
         currency="€"
       />,
     );
+    // The higher-order Greeks live behind the "Higher-order" group of the segmented control now.
+    fireEvent.click(screen.getByRole("button", { name: "Higher-order" }));
     const table = screen.getByRole("table", { name: /Second-order Greeks, 12m/ });
     for (const greek of ["vanna", "volga", "charm"]) {
       expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
@@ -187,6 +200,8 @@ describe("DollarGreeksByMaturity", () => {
     render(
       <DollarGreeksByMaturity maturities={[CLEAN_12M]} maturityLabel="12m (1.000y)" currency="€" />,
     );
+    // Open the Higher-order group: the empty state is preserved (no fabricated table).
+    fireEvent.click(screen.getByRole("button", { name: "Higher-order" }));
     expect(screen.queryByRole("table", { name: /Second-order Greeks, / })).not.toBeInTheDocument();
     expect(screen.getByText(/not banked for this close/i)).toBeInTheDocument();
   });

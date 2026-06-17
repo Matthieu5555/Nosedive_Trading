@@ -1,5 +1,5 @@
 import type { Fill } from "../api";
-import { sci, sciUnit, withCurrency } from "../lib/format";
+import { count, sciUnit, withCurrency } from "../lib/format";
 import { Scroll } from "./layout";
 
 function contractLabel(fill: Fill): string {
@@ -39,7 +39,7 @@ export function FillsLedger({ fills, currency = "$" }: { fills: Fill[]; currency
             <tr key={fill.fill_id} aria-label={`fill ${fill.fill_id}`}>
               <td>{fill.fill_ts}</td>
               <td>{contractLabel(fill)}</td>
-              <td>{sci(Number(fill.signed_qty))}</td>
+              <td>{count(Number(fill.signed_qty))}</td>
               <td>{sciUnit(fill.price, withCurrency("$", currency))}</td>
               <td>{fill.mode}</td>
               <td>{fill.booking_id}</td>

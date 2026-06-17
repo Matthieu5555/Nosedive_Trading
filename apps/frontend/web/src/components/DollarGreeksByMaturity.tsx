@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   ALL_MATURITIES,
   type AnalyticsMaturity,
@@ -6,19 +8,42 @@ import {
 } from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
+import { InfoDot } from "./InfoDot";
 import { Scroll, Stack } from "./layout";
 
 // The always-present first-order Greeks (the second-order set below is additive-nullable and is
 // rendered by its own block, so it is deliberately excluded from this generic first-order indexing).
 type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta" | "rho";
 
-const GREEKS: ReadonlyArray<{ name: FirstOrderGreek; rawUnit: string }> = [
+type GreekColumn = { name: FirstOrderGreek; rawUnit: string };
+
+const GREEKS: ReadonlyArray<GreekColumn> = [
   { name: "delta", rawUnit: UNITS.delta },
   { name: "gamma", rawUnit: UNITS.gamma },
   { name: "vega", rawUnit: UNITS.vega },
   { name: "theta", rawUnit: UNITS.theta },
   { name: "rho", rawUnit: UNITS.rho },
 ];
+
+// "Primary" drops rho so the page opens on the four Greeks an operator reads first; "Full first-order"
+// adds rho back. The segmented control gates which set is mounted so the table never shows everything
+// at once. This is purely presentational column gating — no value, metric or data path changes.
+const PRIMARY_GREEKS: ReadonlyArray<GreekColumn> = GREEKS.filter((g) => g.name !== "rho");
+
+// The Greek group the segmented control selects. "higher-order" swaps the first-order table for the
+// vanna/volga/charm block below (the existing additive-nullable SecondOrderGreeks, with its
+// "not banked for this close" empty state preserved).
+type GreekGroup = "primary" | "first-order" | "higher-order";
+
+const DEFAULT_GROUP: GreekGroup = "primary";
+
+// The explanatory prose for the higher-order Greeks, lifted out of a permanent panel-note and into
+// the InfoDot beside the toggle so it stops taking vertical space.
+const HIGHER_ORDER_INFO =
+  "How the first-order Greeks themselves move: vanna (delta vs vol), volga (vega vs vol), charm " +
+  "(delta vs time). Banked on the same projected cell as the first-order Greeks; a close projected " +
+  "before the field existed serves them as a gap, not a value. Each shown raw and as currency value " +
+  "per delta band.";
 
 // The second-order set — how the first-order Greeks themselves move. Vanna (delta's vol-sensitivity),
 // Volga (vega's vol-sensitivity), Charm (delta's time-decay). Banked on the same projected cell as
@@ -72,6 +97,10 @@ export function DollarGreeksByMaturity({
 }) {
   const label = "Dollar Greeks by delta band (Greeks as columns, delta bands as rows)";
 
+  // Local group selection, mirroring TenorPanel's `tenor` useState pattern. Opens on "primary"
+  // (four Greeks), so the view never mounts all ~16 columns at once.
+  const [group, setGroup] = useState<GreekGroup>(DEFAULT_GROUP);
+
   if (maturities.length === 0) {
     return (
       <Stack as="section" aria-label={label} className="greeks-by-maturity" gap="sm">
@@ -97,13 +126,17 @@ export function DollarGreeksByMaturity({
     })
     .sort((a, b) => a.target_delta - b.target_delta);
 
-  // Pre-compute the sign-flip rows: walking down the sorted bands, a row flips when any Greek's
-  // sign differs from the last non-zero sign seen for that Greek above it.
+  // The first-order column set in view: "primary" drops rho, "first-order" shows the full set.
+  const firstOrderColumns = group === "first-order" ? GREEKS : PRIMARY_GREEKS;
+  const showHigherOrder = group === "higher-order";
+
+  // Pre-compute the sign-flip rows: walking down the sorted bands, a row flips when any displayed
+  // Greek's sign differs from the last non-zero sign seen for that Greek above it.
   const lastSign: Partial<Record<FirstOrderGreek, -1 | 1>> = {};
   const flipRows = new Set<string>();
   for (const point of rows) {
     let flipped = false;
-    for (const { name } of GREEKS) {
+    for (const { name } of firstOrderColumns) {
       const sign = rawSign(point.metrics[name].raw);
       if (sign === 0) continue;
       const prev = lastSign[name];
@@ -120,33 +153,66 @@ export function DollarGreeksByMaturity({
           Dollar Greeks, {maturity.label}
           {isAll ? " (front month)" : ""}
         </h3>
-        <p className="panel-note">
-          Greeks across, delta bands down · raw and {currency} value · ATM and sign-flip rows
-          highlighted
-        </p>
+        <div
+          className="panel-heading__controls"
+          style={{ flexDirection: "row", alignItems: "center", gap: "6px" }}
+        >
+          <div className="mode-toggle" role="group" aria-label="Greek group">
+            <button
+              type="button"
+              className="mode-toggle__option"
+              aria-pressed={group === "primary"}
+              title="Delta, gamma, vega, theta, the four read first"
+              onClick={() => setGroup("primary")}
+            >
+              Primary
+            </button>
+            <button
+              type="button"
+              className="mode-toggle__option"
+              aria-pressed={group === "first-order"}
+              title="Adds rho to the primary four"
+              onClick={() => setGroup("first-order")}
+            >
+              Full first-order
+            </button>
+            <button
+              type="button"
+              className="mode-toggle__option"
+              aria-pressed={group === "higher-order"}
+              title="Vanna, volga, charm, how the first-order Greeks themselves move"
+              onClick={() => setGroup("higher-order")}
+            >
+              Higher-order
+            </button>
+          </div>
+          <InfoDot label="About higher-order Greeks" body={HIGHER_ORDER_INFO} />
+        </div>
       </div>
       {rows.length === 0 ? (
         <p>No projected analytics for {maturity.label} yet.</p>
+      ) : showHigherOrder ? (
+        <SecondOrderGreeks rows={rows} maturityLabel={maturity.label} currency={currency} />
       ) : (
         <Scroll className="greeks-by-maturity-scroll" label={`Dollar Greeks, ${maturity.label}`}>
           <table aria-label={`Dollar Greeks, ${maturity.label}`}>
             <caption className="visually-hidden">
               Dollar Greeks for {maturity.label}: each Greek as raw and {currency} value, one row
-              per delta band.
+              per delta band. ATM and sign-flip rows highlighted.
             </caption>
             <thead>
               <tr>
                 <th rowSpan={2} scope="col">
                   delta band
                 </th>
-                {GREEKS.map((greek) => (
+                {firstOrderColumns.map((greek) => (
                   <th key={greek.name} colSpan={2} scope="colgroup" className="greek-group">
                     {greek.name}
                   </th>
                 ))}
               </tr>
               <tr>
-                {GREEKS.map((greek) => [
+                {firstOrderColumns.map((greek) => [
                   <th key={`${greek.name}-raw`} scope="col">
                     raw <span className="unit">{withCurrency(greek.rawUnit, currency)}</span>
                   </th>,
@@ -179,7 +245,7 @@ export function DollarGreeksByMaturity({
                       {flip ? <span title="sign flip"> ±</span> : null}
                       {flagged ? <span title="railed slice, IV outside sane band"> ⚠</span> : null}
                     </th>
-                    {GREEKS.map((greek) => {
+                    {firstOrderColumns.map((greek) => {
                       const metric = point.metrics[greek.name];
                       return [
                         <td key={`${greek.name}-raw`}>{sci(metric.raw)}</td>,
@@ -192,9 +258,6 @@ export function DollarGreeksByMaturity({
             </tbody>
           </table>
         </Scroll>
-      )}
-      {rows.length > 0 && (
-        <SecondOrderGreeks rows={rows} maturityLabel={maturity.label} currency={currency} />
       )}
     </Stack>
   );
@@ -241,13 +304,6 @@ function SecondOrderGreeks({
       className="greeks-by-maturity greeks-second-order"
       gap="sm"
     >
-      <div className="greeks-by-maturity-heading">
-        <h3>Second-order Greeks, {maturityLabel}</h3>
-        <p className="panel-note">
-          How the first-order Greeks themselves move · vanna (Δ vs vol), volga (vega vs vol), charm
-          (Δ vs time) · raw and {currency} value per delta band
-        </p>
-      </div>
       <Scroll className="greeks-by-maturity-scroll" label={label}>
         <table aria-label={label}>
           <caption className="visually-hidden">

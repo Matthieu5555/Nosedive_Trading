@@ -1,0 +1,13 @@
+{
+  "trade_date": "2026-06-17",
+  "data_flowing": "ok",
+  "surfaces_building": "ok",
+  "qc_status": "failing",
+  "scenarios_current": "stale",
+  "events_total": 0.0,
+  "last_healthy_trade_date": "2026-06-15",
+  "backlog": [
+    "qc"
+  ],
+  "is_healthy": false
+}

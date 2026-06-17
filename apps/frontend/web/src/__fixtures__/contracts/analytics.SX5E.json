@@ -1,0 +1,803 @@
+{
+  "underlying": "SX5E",
+  "trade_date": null,
+  "close_instant": null,
+  "n_maturities": 2,
+  "source": "projected_option_analytics",
+  "maturities": [
+    {
+      "maturity_years": 0.0273972602739726,
+      "tenor_label": "10d",
+      "label": "10d (0.027y)",
+      "smile": {
+        "axis_type": "delta",
+        "deltas": [
+          -0.3,
+          -0.28,
+          -0.26,
+          -0.24
+        ],
+        "implied_vols": [
+          0.1426659528359935,
+          0.14405769576924013,
+          0.14559903617877193,
+          0.1473258156230371
+        ],
+        "log_moneyness": [
+          -0.012104501718258876,
+          -0.013613339823425268,
+          -0.015214048301867553,
+          -0.016926243824364046
+        ]
+      },
+      "surface_slice": {
+        "snapshot_ts": "2026-06-16T15:30:00+00:00",
+        "underlying": "SX5E",
+        "maturity_years": 0.0273972602739726,
+        "model_version": "svi-1.0.0",
+        "svi_a": 1.35763638519379e-09,
+        "svi_b": 0.08137330595837382,
+        "svi_rho": -0.9889727141290732,
+        "svi_m": -0.06947450182331745,
+        "svi_sigma": 0.02742964820546614,
+        "expiry_date": "2026-06-26",
+        "day_count": "ACT/365",
+        "diagnostics": {
+          "rmse": 3.7052926686933803e-06,
+          "n_points": 9,
+          "arb_free": false,
+          "bound_hits": [
+            "a_lower"
+          ],
+          "converged": false
+        },
+        "degenerate": true,
+        "degenerate_reasons": [
+          "not_converged",
+          "butterfly_arbitrage"
+        ],
+        "source_snapshot_ts": "2026-06-16T15:30:00+00:00",
+        "provenance": {
+          "calc_ts": "2026-06-16T15:30:00+00:00",
+          "code_version": "svi-1.0.0",
+          "config_hashes": {
+            "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+            "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+            "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+            "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+          },
+          "stamp_hash": "68b543f2ff8a522f31d2a9e2a634b02e7f072b2a0255d0d10a08aae9f5b086a7",
+          "n_sources": 18
+        }
+      },
+      "rate_diagnostics": {
+        "forward_price": 6275.681739634548,
+        "implied_rate": 0.12309065362223949,
+        "implied_carry": 0.027705271969344747,
+        "implied_dividend": 0.09538538165289474,
+        "rate_unit": "/yr (annualized, continuous)"
+      },
+      "rate_curve": null,
+      "points": [
+        {
+          "snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "10d",
+          "maturity_years": 0.0273972602739726,
+          "delta_band": "30dp",
+          "target_delta": -0.3,
+          "log_moneyness": -0.012104501718258876,
+          "strike": 6195.471194404561,
+          "forward_price": 6270.92,
+          "implied_vol": 0.1426659528359935,
+          "total_variance": 0.0005576321670849842,
+          "price": 28.448636291697834,
+          "metrics": {
+            "delta": {
+              "raw": -0.29898999916955826,
+              "dollar": -1874.9423655923663,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.002340053053478569,
+              "dollar": 920.2127039078592,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 359.6795129172622,
+              "dollar": 3.5967951291726217,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2173.0120451696907,
+              "dollar": 21.73012045169691,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -932.9791115497994,
+              "dollar": -2.5561071549309573,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -0.7794146929232283,
+              "dollar": -0.007794146929232283,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.2163623045158505,
+              "dollar": -76.27710702634538,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 662.0806426009013,
+              "dollar": 0.06620806426009014,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 3.1301832665139635,
+              "dollar": 53.778435204514366,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 103.64343090666424,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.697643334142099,
+              "dollar": 4374.865536938371,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -923.7233351645176,
+              "dollar": -2.530748863464432,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -2.839546052237376,
+              "dollar": -0.028395460522373763,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": 27.5,
+            "ask": 29.5,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-16T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "2453df163cf30ef9d333e3bb89f86f0eb3a77af69877564749cfd6bbdc844829",
+            "n_sources": 1675
+          }
+        },
+        {
+          "snapshot_ts": "2026-06-17T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "10d",
+          "maturity_years": 0.0273972602739726,
+          "delta_band": "30dp",
+          "target_delta": -0.3,
+          "log_moneyness": -0.012288012994450963,
+          "strike": 6223.128356083724,
+          "forward_price": 6300.07,
+          "implied_vol": 0.1448806582853495,
+          "total_variance": 0.0005750795930190742,
+          "price": 29.09149360361397,
+          "metrics": {
+            "delta": {
+              "raw": -0.29962121269660674,
+              "dollar": -1887.634613473511,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.0022984624569458933,
+              "dollar": 912.2800217133199,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 362.114329003832,
+              "dollar": 3.62114329003832,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2187.7220425253263,
+              "dollar": 21.877220425253263,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -956.1148096046467,
+              "dollar": -2.6194926290538265,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -0.7970272220168211,
+              "dollar": -0.00797027222016821,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.199418518943928,
+              "dollar": -75.56420628643072,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 655.8927026618311,
+              "dollar": 0.06558927026618311,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 3.157531914169716,
+              "dollar": 54.50047146987178,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 105.9359889869801,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.6991161611367968,
+              "dollar": 4404.480753293099,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -952.5711276828104,
+              "dollar": -2.6097839114597545,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -2.902355862656989,
+              "dollar": -0.02902355862656989,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": 34.5,
+            "ask": 37.0,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-17T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-17T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "rates": "36cd489915d8fa542c337a6f0d2522fc8ecad68b13e9767f3b1eda01bf1ccc5c",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "809ea8e2d6df62a80547b832172afa2b1a55e2d3d11414b9f6906655d45f7704",
+            "n_sources": 924
+          }
+        },
+        {
+          "snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "10d",
+          "maturity_years": 0.0273972602739726,
+          "delta_band": "28dp",
+          "target_delta": -0.28,
+          "log_moneyness": -0.013613339823425268,
+          "strike": 6186.130280122807,
+          "forward_price": 6270.92,
+          "implied_vol": 0.14405769576924013,
+          "total_variance": 0.0005685649235710396,
+          "price": 26.166268469686038,
+          "metrics": {
+            "delta": {
+              "raw": -0.2790573334163077,
+              "dollar": -1749.9462132669921,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.002243666727616709,
+              "dollar": 882.3093232946562,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 348.2286248480704,
+              "dollar": 3.4822862484807042,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2103.831241680426,
+              "dollar": 21.03831241680426,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -912.2906695838487,
+              "dollar": -2.4994264920105445,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -0.7168840676626311,
+              "dollar": -0.0071688406766263115,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.3018249211844442,
+              "dollar": -81.63639934753955,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 787.5676733536853,
+              "dollar": 0.07875676733536854,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 3.388217297098337,
+              "dollar": 58.2116153773148,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 110.67052962145478,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.7175759998953496,
+              "dollar": 4499.861689263746,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -901.8889848817462,
+              "dollar": -2.470928725703414,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -3.0320693046973908,
+              "dollar": -0.03032069304697391,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": 22.0,
+            "ask": 23.8,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-16T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "2453df163cf30ef9d333e3bb89f86f0eb3a77af69877564749cfd6bbdc844829",
+            "n_sources": 1675
+          }
+        }
+      ]
+    },
+    {
+      "maturity_years": 0.08333333333333333,
+      "tenor_label": "1m",
+      "label": "1m (0.083y)",
+      "smile": {
+        "axis_type": "delta",
+        "deltas": [
+          -0.3,
+          -0.28,
+          -0.26,
+          -0.24
+        ],
+        "implied_vols": [
+          0.15753274469285322,
+          0.15967848262847406,
+          0.16199223397052046,
+          0.1645009279071608
+        ],
+        "log_moneyness": [
+          -0.022813502043207007,
+          -0.025803816160807902,
+          -0.028991449672948137,
+          -0.03241289795377082
+        ]
+      },
+      "surface_slice": null,
+      "rate_diagnostics": null,
+      "rate_curve": null,
+      "points": [
+        {
+          "snapshot_ts": "2026-06-15T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "1m",
+          "maturity_years": 0.08333333333333333,
+          "delta_band": "30dp",
+          "target_delta": -0.3,
+          "log_moneyness": -0.022813502043207007,
+          "strike": 6088.923700236598,
+          "forward_price": 6229.43,
+          "implied_vol": 0.15753274469285322,
+          "total_variance": 0.0020680471375386393,
+          "price": 55.1257627367487,
+          "metrics": {
+            "delta": {
+              "raw": -0.2993412255750635,
+              "dollar": -1864.7252108340679,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.0012246506465213628,
+              "dollar": 475.23545762436277,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 623.8762167910834,
+              "dollar": 6.238762167910834,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2161.170610232024,
+              "dollar": 21.61170610232024,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -588.2313812552791,
+              "dollar": -1.611592825356929,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -4.5938135613957245,
+              "dollar": -0.045938135613957244,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.0547199539915293,
+              "dollar": -65.70304122993453,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 994.6217604286267,
+              "dollar": 0.09946217604286267,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 0.9890209658130708,
+              "dollar": 16.879553082369636,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 195.32352254530008,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.6984628589722472,
+              "dollar": 4351.025487567486,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -584.5329699418573,
+              "dollar": -1.601460191621527,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -16.27696021210834,
+              "dollar": -0.16276960212108338,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": null,
+            "ask": null,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-15T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-15T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "fc7f08b8e8768184875b256cb5d1bb9ccdd6769192b2f6ac096fc6191dce0864",
+            "n_sources": 724
+          }
+        },
+        {
+          "snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "1m",
+          "maturity_years": 0.08333333333333333,
+          "delta_band": "30dp",
+          "target_delta": -0.3,
+          "log_moneyness": -0.022489333523564997,
+          "strike": 6131.46518912059,
+          "forward_price": 6270.92,
+          "implied_vol": 0.15518966160203607,
+          "total_variance": 0.0020069859223462057,
+          "price": 54.644115786525596,
+          "metrics": {
+            "delta": {
+              "raw": -0.2993213103511833,
+              "dollar": -1877.0199915074425,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.0012348335625962659,
+              "dollar": 485.59135435998826,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 627.9896496666746,
+              "dollar": 6.279896496666746,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2175.41995970012,
+              "dollar": 21.754199597001204,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -583.2598712408525,
+              "dollar": -1.5979722499749383,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -4.553676315543799,
+              "dollar": -0.045536763155438,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.0720850699039213,
+              "dollar": -67.22959706561899,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 1017.7309765335046,
+              "dollar": 0.10177309765335046,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 0.9901240603820994,
+              "dollar": 17.010928144469357,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 193.7834382716693,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.6984163912578368,
+              "dollar": 4379.713316266594,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -579.4782961159632,
+              "dollar": -1.587611770180721,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -16.14861985597244,
+              "dollar": -0.16148619855972443,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": null,
+            "ask": null,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-16T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-16T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "2453df163cf30ef9d333e3bb89f86f0eb3a77af69877564749cfd6bbdc844829",
+            "n_sources": 1675
+          }
+        },
+        {
+          "snapshot_ts": "2026-06-17T15:30:00+00:00",
+          "provider": "IBKR",
+          "underlying": "SX5E",
+          "tenor_label": "1m",
+          "maturity_years": 0.08333333333333333,
+          "delta_band": "30dp",
+          "target_delta": -0.3,
+          "log_moneyness": -0.02280878471909581,
+          "strike": 6157.999447168443,
+          "forward_price": 6300.07,
+          "implied_vol": 0.157498624331892,
+          "total_variance": 0.00206715138886987,
+          "price": 55.758406936754675,
+          "metrics": {
+            "delta": {
+              "raw": -0.29944811092907503,
+              "dollar": -1886.5440602209376,
+              "unit": "$ per $1 of underlying"
+            },
+            "gamma": {
+              "raw": 0.001211613967879611,
+              "dollar": 480.9002703459833,
+              "unit": "$ per 1% move"
+            },
+            "vega": {
+              "raw": 631.176091836061,
+              "dollar": 6.31176091836061,
+              "unit": "$ per 1 vol point"
+            },
+            "rt_vega": {
+              "raw": 2186.458119165635,
+              "dollar": 21.86458119165635,
+              "unit": "$ per 1 vol point"
+            },
+            "theta": {
+              "raw": -595.2241645908111,
+              "dollar": -1.630751135865236,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -4.646533911396222,
+              "dollar": -0.04646533911396222,
+              "unit": "$ per 1% rate"
+            },
+            "vanna": {
+              "raw": -1.0553468399765449,
+              "dollar": -66.48758966131031,
+              "unit": "$ delta per 1 vol point"
+            },
+            "volga": {
+              "raw": 1006.4983630532616,
+              "dollar": 0.10064983630532616,
+              "unit": "$ vega per 1 vol point"
+            },
+            "charm": {
+              "raw": 0.9906774759312457,
+              "dollar": 17.099554646000446,
+              "unit": "$ delta per calendar day"
+            }
+          },
+          "price_mirror": 197.5676023445723,
+          "mirror_metrics": {
+            "delta": {
+              "raw": 0.6987122578557953,
+              "dollar": 4401.93613434956,
+              "unit": "$ per $1 of underlying"
+            },
+            "theta": {
+              "raw": -592.0907620842083,
+              "dollar": -1.6221664714635844,
+              "unit": "$ per calendar day"
+            },
+            "rho": {
+              "raw": -16.46396686204769,
+              "dollar": -0.1646396686204769,
+              "unit": "$ per 1% rate"
+            }
+          },
+          "model_version": "svi-1.0.0",
+          "pricer_version": "black76-lr-1.0.0",
+          "quote": {
+            "bid": null,
+            "ask": null,
+            "volume": null
+          },
+          "source_snapshot_ts": "2026-06-17T15:30:00+00:00",
+          "provenance": {
+            "calc_ts": "2026-06-17T15:30:00+00:00",
+            "code_version": "projection-1.1.0",
+            "config_hashes": {
+              "pricing": "75c31795a01f703c2f33985de24d9d5a42741988894f79a963bee5d01875ffc3",
+              "projection": "ca4a5938c1cc2d83b0af304d88ffe5a777fa106b5af23e776de39c6739010b9e",
+              "qc": "6c64e234cd3a684ea92307604893b610044b407f68e3ce0ef3d9a4b4bff5b598",
+              "rates": "36cd489915d8fa542c337a6f0d2522fc8ecad68b13e9767f3b1eda01bf1ccc5c",
+              "scenarios": "0a4a16246e636c3e5b811aadda32abe00796f8584bdba22cbc5c0cbae2ad4abe",
+              "universe": "3af145b07c92c154a6bd4d407f4bfaf16082825de7af95247c8ac95f8e9ec106"
+            },
+            "stamp_hash": "809ea8e2d6df62a80547b832172afa2b1a55e2d3d11414b9f6906655d45f7704",
+            "n_sources": 924
+          }
+        }
+      ]
+    }
+  ],
+  "surface": {
+    "log_moneyness": [
+      -0.25,
+      -0.2375,
+      -0.225,
+      -0.2125
+    ],
+    "maturity_years": [
+      0.0027397260273972603,
+      0.04769933263083948
+    ],
+    "implied_vol": [
+      [
+        0.878790263538728,
+        0.8559730903107285,
+        0.8325334159733223,
+        0.8084175996888567
+      ],
+      [
+        0.35873381859447695,
+        0.3497575723539648,
+        0.3405611607904782,
+        0.33112910109238936
+      ]
+    ],
+    "model_version": "svi-1.0.0",
+    "degenerate_maturity_years": [
+      0.0027397260273972603,
+      0.005479452054794521,
+      0.00821917808219178,
+      0.0136986301369863,
+      0.01643835616438356,
+      0.019178082191780823,
+      0.024657534246575342,
+      0.0273972602739726,
+      0.03561643835616438,
+      0.038356164383561646,
+      0.04657534246575343,
+      0.06301369863013699,
+      0.06575342465753424,
+      0.0684931506849315,
+      0.0821917808219178,
+      0.08493150684931507,
+      0.08767123287671233,
+      0.10136986301369863,
+      0.10410958904109589,
+      0.1232876712328767,
+      0.14246575342465753,
+      0.1780821917808219,
+      0.18082191780821918,
+      0.2054794520547945,
+      0.20821917808219179,
+      0.21095890410958903,
+      0.2547945205479452,
+      0.25753424657534246,
+      0.2602739726027397,
+      0.4273972602739726,
+      0.4301369863013699,
+      0.4328767123287671,
+      0.5041095890410959,
+      0.5068493150684932,
+      0.5095890410958904,
+      1.0027397260273974,
+      1.0054794520547945,
+      1.0082191780821919,
+      1.5013698630136987,
+      1.5041095890410958,
+      1.7506849315068493,
+      1.7534246575342465,
+      1.7561643835616438
+    ]
+  },
+  "coverage": {
+    "option_rows": 4224,
+    "two_sided": 3732,
+    "excluded": 492,
+    "two_sided_fraction": 0.8835227272727273
+  },
+  "rate_curve": null
+}

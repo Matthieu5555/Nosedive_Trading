@@ -6,7 +6,10 @@ export type RunRequest = components["schemas"]["RunRequest"];
 export interface Provenance {
   calc_ts: string;
   code_version: string;
-  config_hash: string;
+  // The BFF serializes a per-domain map of config digests (pricing/qc/scenarios/universe -> sha),
+  // not a single string; see provenance_to_dict in serializers.py. Mirror that exact shape so
+  // `provenance.config_hashes` is never silently undefined.
+  config_hashes: Record<string, string>;
   stamp_hash: string;
   n_sources: number;
 }

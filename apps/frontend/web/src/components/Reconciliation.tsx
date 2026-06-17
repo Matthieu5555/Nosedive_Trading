@@ -5,7 +5,7 @@ import type {
   ReconFillLine,
   ReconPositionLine,
 } from "../api";
-import { sci } from "../lib/format";
+import { count } from "../lib/format";
 import { Scroll, Stack } from "./layout";
 import { Metric } from "./Metric";
 
@@ -19,16 +19,16 @@ const STATUS_LABEL: Record<string, string> = {
 function CountStrip({ counts }: { counts: ReconCounts }) {
   return (
     <div className="quote-strip">
-      <Metric label="Match" value={sci(counts.match)} />
-      <Metric label="Break" value={sci(counts.break)} />
-      <Metric label="Broker only" value={sci(counts.broker_only)} />
-      <Metric label="Book only" value={sci(counts.book_only)} />
+      <Metric label="Match" value={count(counts.match)} />
+      <Metric label="Break" value={count(counts.break)} />
+      <Metric label="Broker only" value={count(counts.broker_only)} />
+      <Metric label="Book only" value={count(counts.book_only)} />
     </div>
   );
 }
 
 function qty(value: number | null): string {
-  return value === null ? "-" : sci(value);
+  return count(value);
 }
 
 export function Reconciliation({ report }: { report: ReconciliationResponse }) {

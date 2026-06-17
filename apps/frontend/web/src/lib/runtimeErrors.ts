@@ -7,13 +7,13 @@
 //   - a background TanStack query failure whose component forgot to read `isError`.
 // Each of those would otherwise vanish — the app just stops working with no explanation, which is
 // exactly the dead, silent page this module exists to make impossible. It is a tiny pub-sub the
-// GlobalErrorBanner (mounted once at the app root) subscribes to, fed by the window listeners
+// ErrorModal (mounted once at the app root in main.tsx) subscribes to, fed by the window listeners
 // installed in main.tsx and by the query client's cache-level onError.
 
 export interface RuntimeError {
-  /** Monotonic id so the banner can key and individually dismiss each notice. */
+  /** Monotonic id so the modal can key and individually dismiss each notice. */
   readonly id: number;
-  /** The human-readable message shown in the banner. */
+  /** The human-readable message shown in the modal. */
   readonly message: string;
 }
 
@@ -63,7 +63,7 @@ export function describeError(reason: unknown): string {
 let installed = false;
 
 /** Install the window-level catch-alls exactly once. An uncaught error or unhandled rejection now
- *  raises a banner instead of dying in the console where an operator never looks. */
+ *  raises the error modal instead of dying in the console where an operator never looks. */
 export function installGlobalErrorListeners(target: Window = window): void {
   if (installed) return;
   installed = true;

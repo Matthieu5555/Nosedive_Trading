@@ -33,7 +33,7 @@ function levelPercent(value: number | null): string {
 // when negative, neutral when zero/absent — the same grammar every signed number on the page obeys.
 // `null` (no value) returns no class so a missing read stays muted, never miscoloured.
 type SignColor = "positive" | "negative" | null;
-function signColor(value: number | null | undefined): SignColor {
+export function signColor(value: number | null | undefined): SignColor {
   if (value === null || value === undefined || !Number.isFinite(value) || value === 0) return null;
   return value > 0 ? "positive" : "negative";
 }

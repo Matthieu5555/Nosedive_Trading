@@ -69,8 +69,10 @@ test("a break is flagged and only the breaking line is tabled", () => {
   // Only the one breaking position (qty 5 vs 3), the matched put is excluded.
   expect(dataRows).toHaveLength(1);
   expect(within(dataRows[0]).getByRole("rowheader")).toHaveTextContent("SX5E-CALL");
-  // quantity_diff = 2 rendered in scientific notation (2 × 10⁰).
-  expect(within(dataRows[0]).getByText("2 × 10⁰")).toBeInTheDocument();
+  // broker_quantity 5, book_quantity 3, quantity_diff 2 are counts, plain integers (not sci).
+  expect(within(dataRows[0]).getByText("5")).toBeInTheDocument();
+  expect(within(dataRows[0]).getByText("3")).toBeInTheDocument();
+  expect(within(dataRows[0]).getByText("2")).toBeInTheDocument();
 });
 
 test("cash is framed as broker-only and never claims to reconcile", () => {

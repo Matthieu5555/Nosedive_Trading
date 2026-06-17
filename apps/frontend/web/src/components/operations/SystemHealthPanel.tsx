@@ -1,7 +1,7 @@
 import type { HealthResponse } from "../../api";
 import { number, statusLabel } from "../../lib/format";
+import { InfoDot } from "../InfoDot";
 import { Stack } from "../layout";
-import { Metric } from "../Metric";
 
 type Tone = "ok" | "warn" | "bad";
 
@@ -44,7 +44,13 @@ export function SystemHealthPanel({ health }: { health: HealthResponse }) {
       <div className="ops-health__headline">
         <span className={`ops-light ops-light--${headlineTone}`} aria-hidden="true" />
         <div>
-          <p className="ops-headline-status">{headline}</p>
+          <p className="ops-headline-status">
+            {headline}
+            <InfoDot
+              label="System health, the underlying detail"
+              body={`Market events stored: ${number(health.events_total, 0)} events. This is the raw count of captured market events behind today's health checks, secondary plumbing the status pills already summarise.`}
+            />
+          </p>
           <p className="panel-note">
             As of trade date {health.trade_date}
             {health.last_healthy_trade_date && health.last_healthy_trade_date !== health.trade_date
@@ -59,7 +65,6 @@ export function SystemHealthPanel({ health }: { health: HealthResponse }) {
         <StatusMetric label="Surfaces building" value={health.surfaces_building} />
         <StatusMetric label="Quality control" value={health.qc_status} />
         <StatusMetric label="Stress scenarios" value={health.scenarios_current} />
-        <Metric label="Market events stored" value={`${number(health.events_total, 0)} events`} />
       </div>
 
       {health.backlog.length > 0 && (

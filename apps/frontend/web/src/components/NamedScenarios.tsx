@@ -1,5 +1,5 @@
 import { Scroll, Stack } from "../components/layout";
-import { percent, sci, sciUnit, withCurrency } from "../lib/format";
+import { count, percent, sciUnit, withCurrency } from "../lib/format";
 import type { NamedScenario } from "../stressApi";
 
 const SHOCK_UNIT = "(frac)";
@@ -71,7 +71,7 @@ export function NamedScenarios({
                     <td className={scenario.scenario_pnl < 0 ? "negative" : ""}>
                       {sciUnit(scenario.scenario_pnl, unit)}
                     </td>
-                    <td>{sci(scenario.n_legs)}</td>
+                    <td>{count(scenario.n_legs)}</td>
                   </tr>
                 );
               })}

@@ -46,9 +46,14 @@ export function FreshnessPanel({ recorded }: { recorded: RecordedDatesResponse }
   return (
     <Stack className="ops-freshness" gap="md">
       <div className="metric-grid">
-        <Metric label="Risk last computed for" value={latest.date} />
-        <Metric label="Latest fetch landed at" value={fetchTime(latest.recorded_ts)} />
-        <Metric label="Clean, gap-free days recorded" value={`${number(recorded.count, 0)} days`} />
+        <Metric
+          label="Risk last computed for"
+          value={latest.date}
+          hint={`Latest fetch landed at ${fetchTime(latest.recorded_ts)}. ${number(
+            recorded.count,
+            0,
+          )} clean, gap-free days recorded for this index. These are secondary plumbing details behind the freshness headline.`}
+        />
       </div>
       <p className="panel-note">
         Latest snapshot quality: <QcBadge qc={latest.qc} />, a failing badge means the day landed

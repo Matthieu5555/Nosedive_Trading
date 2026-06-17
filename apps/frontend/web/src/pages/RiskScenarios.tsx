@@ -27,7 +27,10 @@ export function RiskScenariosPage() {
   const attribution = useBookAttribution(portfolio);
   const reconciliation = useReconciliation(account);
 
-  const kicker = portfolio || "All portfolios";
+  // The selection that scopes the attribution. The card's title ("Where the P&L came from") already
+  // titles the section, so we pass the bare selection as the waterfall's kicker rather than letting
+  // it restate a heading, keeping one title per panel.
+  const attributionScope = portfolio || "All portfolios";
 
   return (
     <Stack as="section" className="page" gap="md">
@@ -102,9 +105,11 @@ export function RiskScenariosPage() {
           <AsyncBlock
             loading={attribution.isPending}
             error={attribution.isError ? attribution.error.message : null}
+            height={180}
+            subject="the P&L attribution"
           >
             {attribution.data && (
-              <AttributionWaterfall attribution={attribution.data} kicker={kicker} />
+              <AttributionWaterfall attribution={attribution.data} kicker={attributionScope} embedded />
             )}
           </AsyncBlock>
         </CardContent>

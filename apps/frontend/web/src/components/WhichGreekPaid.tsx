@@ -2,6 +2,7 @@ import type { Data, Layout } from "plotly.js";
 
 import type { BacktestAttribution } from "../api";
 import { sci, sciUnit, withCurrency } from "../lib/format";
+import { token } from "../lib/tokens";
 import { Plot } from "./Plot";
 
 const GREEKS = [
@@ -25,6 +26,12 @@ export function WhichGreekPaid({
 }) {
   const unit = withCurrency("$", currency) ?? "$";
 
+  // Sign-color law: positive P&L reads green, negative reads coral, off the shared design tokens
+  // (the same --positive / --negative that Scorecards' signColor uses) so the bars match every
+  // other signed number on the page instead of a one-off accent pair.
+  const positive = token("positive");
+  const negative = token("negative");
+
   const terms = GREEKS.map((greek) => ({
     label: greek.label,
     dollars: attribution[greek.key],
@@ -42,7 +49,7 @@ export function WhichGreekPaid({
     text: terms.map((term) => `${sci(term.dollars)} (${unit})`),
     textposition: "outside",
     marker: {
-      color: terms.map((term) => (term.dollars < 0 ? "#c0392b" : "#1e7e4f")),
+      color: terms.map((term) => (term.dollars < 0 ? negative : positive)),
     },
     name: "by-Greek P&L",
   } as unknown as Data;
@@ -65,7 +72,7 @@ export function WhichGreekPaid({
       </div>
       <p>
         Each bar is one Greek&apos;s share of the whole backtest&apos;s P&amp;L, the plain-English
-        answer to <em>where did the return come from</em>. Green paid, red cost. The largest bar is
+        answer to <em>where did the return come from</em>. Green paid, coral cost. The largest bar is
         what drove the result; for a short-put line that is normally <strong>theta</strong> (carry
         earned) against <strong>gamma</strong>/<strong>vega</strong> (the tail paid for it). P&amp;L
         unit: <strong>{unit}</strong>.

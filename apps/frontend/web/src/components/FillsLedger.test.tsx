@@ -25,7 +25,7 @@ test("FillsLedger shows each fill with its venue timestamp, signed qty and price
   expect(within(table).getByText("2026-06-15T17:30:01+00:00")).toBeInTheDocument();
   expect(within(table).getByText("SX5E P 4200 2026-09-18")).toBeInTheDocument();
 
-  expect(within(table).getByText("-3 × 10⁰")).toBeInTheDocument();
+  expect(within(table).getByText("-3")).toBeInTheDocument();
   expect(within(table).getByText("4.5 × 10⁰ $")).toBeInTheDocument();
   expect(within(table).getByText("paper")).toBeInTheDocument();
   expect(within(table).getByText("bk-9")).toBeInTheDocument();

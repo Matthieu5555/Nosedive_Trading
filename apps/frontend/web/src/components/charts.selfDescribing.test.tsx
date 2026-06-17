@@ -100,7 +100,7 @@ const SX5E_MATURITY: AnalyticsMaturity = {
       provenance: {
         calc_ts: "2026-06-17T15:30:00+00:00",
         code_version: "v",
-        config_hash: "c",
+        config_hashes: { pricing: "c" },
         stamp_hash: "s",
         n_sources: 1,
       },
@@ -126,7 +126,7 @@ const SX5E_MATURITY: AnalyticsMaturity = {
       provenance: {
         calc_ts: "2026-06-17T15:30:00+00:00",
         code_version: "v",
-        config_hash: "c",
+        config_hashes: { pricing: "c" },
         stamp_hash: "s",
         n_sources: 1,
       },

@@ -6,7 +6,7 @@ import { atmIv, computeScorecards, ivAtDelta, referenceMaturity } from "./scorec
 const PROV = {
   calc_ts: "2026-05-29T15:31:00+00:00",
   code_version: "abc",
-  config_hash: "cfg",
+  config_hashes: { pricing: "cfg" },
   stamp_hash: "stamp",
   n_sources: 1,
 };

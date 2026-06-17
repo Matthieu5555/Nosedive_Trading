@@ -1,7 +1,7 @@
 import type { Data } from "plotly.js";
 
 import { Scroll, Stack } from "../components/layout";
-import { sci, sciUnit, withCurrency } from "../lib/format";
+import { count, sci, sciUnit, withCurrency } from "../lib/format";
 import type { RateScenario, StressSurfaceData } from "../stressApi";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
@@ -189,7 +189,7 @@ export function RateSweep({
                     <td className={rate.scenario_pnl < 0 ? "negative" : ""}>
                       {sciUnit(rate.scenario_pnl, rowUnit)}
                     </td>
-                    <td>{sci(rate.n_legs)}</td>
+                    <td>{count(rate.n_legs)}</td>
                   </tr>
                 );
               })}

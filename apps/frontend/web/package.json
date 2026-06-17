@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "gen:api": "openapi-typescript openapi.json -o src/api/schema.d.ts",
+    "gen:contract-fixtures": "node scripts/gen-contract-fixtures.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"e2e/**/*.ts\" \"*.{ts,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"e2e/**/*.ts\" \"*.{ts,js,json}\"",
     "preview": "vite preview --host 127.0.0.1",

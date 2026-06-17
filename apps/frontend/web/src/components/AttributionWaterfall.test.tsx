@@ -84,6 +84,31 @@ test("an empty payload renders a labelled empty state, not a waterfall", () => {
   expect(screen.queryByTestId("plot-types")).not.toBeInTheDocument();
 });
 
+test("standalone (default): renders its own 'P&L attribution' heading + kicker", () => {
+  render(<AttributionWaterfall attribution={POPULATED} kicker="pf-attribution 2026-05-29" />);
+  expect(screen.getByRole("heading", { name: /P&L attribution/i })).toBeInTheDocument();
+  expect(screen.getByText("pf-attribution 2026-05-29")).toBeInTheDocument();
+});
+
+test("embedded: suppresses the inner heading + kicker so a titled card never doubles the title", () => {
+  // RiskScenarios / CombinedBookView drop this inside an already-titled card. `embedded` removes the
+  // panel's own <h2> + kicker; the chart, legend, and verdict still render.
+  render(
+    <AttributionWaterfall attribution={POPULATED} kicker="pf-attribution 2026-05-29" embedded />,
+  );
+  expect(screen.queryByRole("heading", { name: /P&L attribution/i })).not.toBeInTheDocument();
+  expect(screen.queryByText("pf-attribution 2026-05-29")).not.toBeInTheDocument();
+  // The substance is intact.
+  expect(screen.getByLabelText(/P&L attribution waterfall/i)).toBeInTheDocument();
+  expect(screen.getByText(/residual exceeds tolerance/i)).toBeInTheDocument();
+});
+
+test("embedded empty state also drops the inner heading, keeps the empty message", () => {
+  render(<AttributionWaterfall attribution={EMPTY} kicker="nope 2026-05-29" embedded />);
+  expect(screen.queryByRole("heading", { name: /P&L attribution/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/No P&L attribution for this selection/i)).toBeInTheDocument();
+});
+
 import { BasketPage } from "../pages/Basket";
 
 test("a fetch error renders a labelled alert on the page, not a blank page", async () => {

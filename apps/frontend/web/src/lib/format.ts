@@ -137,6 +137,17 @@ export function enInteger(value: number): string {
   return Math.round(value).toLocaleString("en-US");
 }
 
+/**
+ * A cardinality or signed lot quantity (number of fills, match/break counts, contracts held,
+ * a reconciliation diff): a plain grouped integer with its sign kept, never the 6-sig-fig
+ * scientific form analytics values get. These numbers do not span orders of magnitude, so
+ * "5 × 10⁰" is noise; "5" (or "-2" for a short) is the honest read. Null/undefined → "-".
+ */
+export function count(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  return Math.round(value).toLocaleString("en-US");
+}
+
 export interface CoverageCounts {
   twoSided: number;
   total: number;

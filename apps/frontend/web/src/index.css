@@ -1733,6 +1733,20 @@ h3 {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
+.hotspot {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+}
+
+.pulse-hint {
+  display: inline-flex;
+  border-radius: var(--radius);
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  animation: var(--animate-pulse);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chart-skeleton {
     animation: none;
@@ -1742,5 +1756,11 @@ h3 {
     animation: none;
     width: 100%;
     opacity: 0.5;
+  }
+
+  .pulse-hint {
+    animation: none;
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
   }
 }

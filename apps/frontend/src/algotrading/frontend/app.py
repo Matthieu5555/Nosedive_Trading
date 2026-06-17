@@ -12,18 +12,28 @@ from fastapi.responses import JSONResponse
 
 from .context import AppContext
 from .deps import BadRequestError
+from .openrouter import OpenRouterClient, OpenRouterConfig
 from .runner import PipelineRunner
 
 _DEFAULT_FRONTEND_ORIGIN = "http://localhost:5173"
 
 
-def create_app(ctx: AppContext | None = None) -> FastAPI:
+def create_app(
+    ctx: AppContext | None = None,
+    *,
+    openrouter: OpenRouterClient | None = None,
+) -> FastAPI:
     if ctx is None:
         ctx = AppContext.build()
 
     configure_logging()
 
     runner = PipelineRunner()
+    assistant_client = (
+        openrouter
+        if openrouter is not None
+        else OpenRouterClient(OpenRouterConfig.from_env())
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -33,6 +43,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app = FastAPI(title="AlgoTrading Dashboard (BFF)", version="0.1.0", lifespan=lifespan)
     app.state.ctx = ctx
     app.state.runner = runner
+    app.state.openrouter = assistant_client
 
     frontend_origin = os.getenv("FRONTEND_BASE_URL", _DEFAULT_FRONTEND_ORIGIN)
     app.add_middleware(
@@ -53,6 +64,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
         return JSONResponse({"error": "bad_basket", "detail": str(exc)}, status_code=400)
 
     from .routers import analytics as analytics_router  # noqa: PLC0415
+    from .routers import assistant as assistant_router  # noqa: PLC0415
     from .routers import attribution as attribution_router  # noqa: PLC0415
     from .routers import backtest as backtest_router  # noqa: PLC0415
     from .routers import basket as basket_router  # noqa: PLC0415
@@ -93,6 +105,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(backtest_router.router)
     app.include_router(reconciliation_router.router)
     app.include_router(compose_router.router)
+    app.include_router(assistant_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

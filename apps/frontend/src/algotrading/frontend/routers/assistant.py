@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import date
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
+
+from ..assistant_prompt import (
+    build_messages,
+    honest_gap_answer,
+    is_grounded,
+    ungrounded_numbers,
+)
+from ..deps import CtxDep
+from ..grounding import MODE_INDICATIVE, MODE_STRICT, build_grounding_context
+from ..openrouter import OpenRouterClient, OpenRouterError
+
+router = APIRouter(prefix="/api/assistant", tags=["assistant"])
+
+
+class AssistantRequest(BaseModel):
+    question: str
+    underlying: str | None = None
+    trade_date: str | None = None
+    mode: str | None = None
+    element_id: str | None = None
+    gloss: bool = False
+
+
+def _openrouter_client(request: Request) -> OpenRouterClient:
+    client: OpenRouterClient = request.app.state.openrouter
+    return client
+
+
+ClientDep = Annotated[OpenRouterClient, Depends(_openrouter_client)]
+
+
+def _resolve_mode(mode: str | None) -> str:
+    return MODE_INDICATIVE if mode == MODE_INDICATIVE else MODE_STRICT
+
+
+def _resolve_trade_date(trade_date: str | None) -> date | None:
+    if trade_date is None:
+        return None
+    try:
+        return date.fromisoformat(trade_date)
+    except ValueError:
+        return None
+
+
+@router.post("")
+def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JSONResponse:
+    resolved_date = _resolve_trade_date(body.trade_date)
+    grounding = build_grounding_context(
+        ctx, body.underlying, resolved_date, mode=_resolve_mode(body.mode)
+    )
+    frame = grounding.frame.to_dict()
+    citations = [fact.to_dict() for fact in grounding.facts]
+    messages = build_messages(grounding, body.question)
+
+    try:
+        raw_answer = client.complete(messages, gloss=body.gloss)
+    except OpenRouterError as exc:
+        return JSONResponse(
+            {
+                "error": "assistant_unavailable",
+                "detail": exc.detail,
+                "frame": frame,
+            },
+            status_code=502,
+        )
+
+    grounded = is_grounded(raw_answer, grounding)
+    answer = raw_answer if grounded else honest_gap_answer()
+
+    return JSONResponse(
+        {
+            "answer": answer,
+            "grounded": grounded,
+            "rejected_numbers": ungrounded_numbers(raw_answer, grounding),
+            "citations": citations,
+            "frame": frame,
+        }
+    )
+
+
+@router.post("/stream")
+def post_assistant_stream(
+    ctx: CtxDep, client: ClientDep, body: AssistantRequest
+) -> StreamingResponse:
+    resolved_date = _resolve_trade_date(body.trade_date)
+    grounding = build_grounding_context(
+        ctx, body.underlying, resolved_date, mode=_resolve_mode(body.mode)
+    )
+    messages = build_messages(grounding, body.question)
+
+    def _events() -> Iterator[str]:
+        try:
+            yield from client.stream(messages, gloss=body.gloss)
+        except OpenRouterError as exc:
+            yield f"\n[assistant_unavailable] {exc.detail}"
+
+    return StreamingResponse(_events(), media_type="text/plain")

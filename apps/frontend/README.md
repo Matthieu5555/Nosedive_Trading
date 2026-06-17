@@ -236,10 +236,40 @@ The BFF exposes (all under `/api` except the liveness probe):
   deferred follow-ups — not wired by this endpoint.
 - `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
   `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
+- `POST /api/assistant` — the **grounded screen-aware assistant** (P6 / MAT-LEGIBILITY-assistant).
+  Body: `{question, underlying?, trade_date?, mode?, element_id?, gloss?}`. The BFF builds a typed
+  **grounding context** from the *same* store reads `/api/analytics` and the coverage notion serve
+  (`projected_option_analytics` for the reference-tenor smile → ATM / 25Δ skew / convexity, mirroring
+  the front's `computeScorecards`; `market_state_snapshots` for the coverage count via the canonical
+  `is_valid_two_sided`), formats every number through a **server-side mirror of `sci`/`sciUnit`/`UNITS`**
+  (`sci_format.py`, byte-identical to `web/src/lib/format.ts`), resolves the **close instant via the
+  calendar resolver** (SX5E = 17:30 CET / OESX settlement, never 22:00), and tags the frame `INDICATIF`
+  when `mode=indicative`. It composes a system+user prompt whose only citable numbers are that facts
+  block, calls **OpenRouter** (never the browser), then **validates the answer's numbers against the
+  facts block**: any number not in the block flags `grounded=false` and the answer is replaced with the
+  honest-gap copy — the model **cannot** state a number the screen never showed. Returns
+  `{answer, grounded, rejected_numbers, citations[], frame}`. A model/OpenRouter failure is a labelled
+  non-500 (`502 assistant_unavailable` carrying the frame), never a bare 500. `gloss=true` routes a
+  one-line element gloss to the cheaper model; the default reasoning route is `claude-opus-4-8`.
+  `POST /api/assistant/stream` relays the model's tokens as `text/plain` for a typing UI.
 
 The OAuth flow's verifiable half (single-use CSRF state, authorize-URL construction,
 replay/forgery rejection) is real; the token exchange fails closed with a typed `501`
 until `packages/infra-saxo` lands.
+
+## Assistant configuration (OpenRouter)
+
+The assistant calls OpenRouter (OpenAI-compatible base `https://openrouter.ai/api/v1`) from the BFF.
+Config is read from the environment / gitignored `.env` — the key **never** ships to the browser and
+is **never** committed:
+
+- `OPENROUTER_API_KEY` — required for live answers. Absent → the client raises before any network call
+  and `/api/assistant` returns a labelled `502` (the page renders a loud unavailable banner, never a
+  fabricated answer). Tests always stub OpenRouter; the key is never needed in CI.
+- `ASSISTANT_MODEL` — the grounded-reasoning model slug (default `anthropic/claude-opus-4-8`).
+- `ASSISTANT_GLOSS_MODEL` — the cheaper model for one-line element glosses
+  (default `anthropic/claude-haiku-4-5`).
+- `OPENROUTER_HTTP_REFERER` / `OPENROUTER_APP_TITLE` — optional OpenRouter attribution headers.
 
 ## The live-run build path (SAMPLE)
 

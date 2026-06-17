@@ -216,9 +216,26 @@ def surface_parameters(
     )
 
 
-def degeneracy_reasons(diagnostics: SurfaceFitDiagnostics) -> tuple[str, ...]:
+A_FLOOR_BOUND_HIT = "a_lower"
+
+
+def is_benign_a_floor(bound_hit: str, *, minimum_total_variance: float | None) -> bool:
+    return (
+        bound_hit == A_FLOOR_BOUND_HIT
+        and minimum_total_variance is not None
+        and minimum_total_variance > 0.0
+    )
+
+
+def degeneracy_reasons(
+    diagnostics: SurfaceFitDiagnostics,
+    *,
+    minimum_total_variance: float | None = None,
+) -> tuple[str, ...]:
     reasons: list[str] = []
     for name in diagnostics.bound_hits or ():
+        if is_benign_a_floor(name, minimum_total_variance=minimum_total_variance):
+            continue
         reasons.append(f"param_at_bound:{name}")
     if diagnostics.converged is False:
         reasons.append("not_converged")

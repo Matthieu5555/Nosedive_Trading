@@ -50,12 +50,23 @@ a usable surface.
 - **Degeneracy:** the optimizer's `bound_hits` (every SVI parameter pinned against a
   calibration bound, e.g. `rho_lower`) and `converged` verdict travel onto
   `SurfaceFitDiagnostics` too (additive-nullable: pre-existing rows read back `None` —
-  unknown, not clean). `degeneracy_reasons(diagnostics)` is the one policy home for
-  "is this calibration trustworthy": a railed parameter, a non-converged fit, or an
-  arb breach each yields a machine-readable reason. The policy is **flag, never
-  reject and never silently serve as clean** (T-vol-surface-correctness) — railing is
-  expected on ultra-short truncated captures and clears on its own once real term
-  structure is captured.
+  unknown, not clean). `degeneracy_reasons(diagnostics, minimum_total_variance=…)` is the
+  one policy home for "is this calibration trustworthy": a railed parameter, a
+  non-converged fit, or an arb breach each yields a machine-readable reason. The policy
+  is **flag, never reject and never silently serve as clean**
+  (T-vol-surface-correctness).
+  - **Benign `a_lower` (the one calibrated exception, 2026-06-17).** `svi_a`'s lower bound
+    is `0.0`, the parametrization's natural sink: on a low-variance slice the optimizer
+    drives `a→0` and carries the level in the `b·σ·√(1−ρ²)` wing-vertex term, leaving the
+    curve unchanged. `SviParams.minimum_total_variance()` is that vertex value `w_min`; an
+    `a_lower` bound-hit with `w_min>0` is a well-formed fit, not a degeneracy.
+    `is_benign_a_floor` filters it out of `degeneracy_reasons` (it stays *logged* — the
+    bound hit is still reported — but does not make the slice degenerate). On the
+    2026-06-16 settled close this was 523/630 SX5E slices; without the filter QC failed
+    93 % of the surface on a false positive. See
+    `tasks/infra-surface-fit-quality-findings.md`.
+  - Genuine railing (a `rho`/`b`/`σ` rail, an arb breach, non-convergence) is still
+    expected on ultra-short truncated captures and is correctly flagged.
 
 ## Cross-maturity interpolation (Eq 22)
 

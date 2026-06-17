@@ -10,6 +10,7 @@ from algotrading.core.provenance import source_ref, stamp
 from algotrading.infra.contracts import (
     IvDiagnostics,
     IvPoint,
+    SurfaceFitDiagnostics,
     SurfaceGrid,
     SurfaceParameters,
     table_for_contract,
@@ -25,9 +26,11 @@ from algotrading.infra.surfaces import (
     butterfly_g,
     butterfly_violations,
     calendar_violations,
+    degeneracy_reasons,
     fit_slice,
     fit_svi,
     interpolate_total_variance,
+    is_benign_a_floor,
     slice_plot_series,
     surface_grid_cells,
     surface_parameters,
@@ -473,9 +476,6 @@ def test_surface_parameters_carry_bound_hits_and_converged() -> None:
 
 
 def test_degeneracy_reasons_flag_railed_and_arb_breached_fits_not_clean_ones() -> None:
-    from algotrading.infra.contracts import SurfaceFitDiagnostics
-    from algotrading.infra.surfaces import degeneracy_reasons
-
     clean = SurfaceFitDiagnostics(
         rmse=1e-6, n_points=9, arb_free=True, bound_hits=(), converged=True
     )
@@ -490,6 +490,35 @@ def test_degeneracy_reasons_flag_railed_and_arb_breached_fits_not_clean_ones() -
 
     legacy = SurfaceFitDiagnostics(rmse=1e-6, n_points=9, arb_free=True)
     assert degeneracy_reasons(legacy) == ()
+
+
+def test_minimum_total_variance_matches_the_svi_vertex_value() -> None:
+    params = SviParams(a=0.04, b=0.10, rho=-0.30, m=0.7, sigma=0.20)
+    k_grid = tuple(params.m + 0.001 * i for i in range(-2000, 2000))
+    sampled_min = min(params.total_variance(k) for k in k_grid)
+    assert params.minimum_total_variance() == pytest.approx(sampled_min, rel=1e-6)
+
+
+def test_a_floor_is_benign_only_when_minimum_total_variance_is_positive() -> None:
+    assert is_benign_a_floor("a_lower", minimum_total_variance=5e-5) is True
+    assert is_benign_a_floor("a_lower", minimum_total_variance=0.0) is False
+    assert is_benign_a_floor("a_lower", minimum_total_variance=None) is False
+    assert is_benign_a_floor("rho_lower", minimum_total_variance=5e-5) is False
+
+
+def test_ultra_short_a_floor_is_not_a_degeneracy_when_the_curve_is_well_formed() -> None:
+    benign = SurfaceFitDiagnostics(
+        rmse=1e-6, n_points=44, arb_free=True, bound_hits=("a_lower",), converged=True
+    )
+    assert degeneracy_reasons(benign, minimum_total_variance=5e-5) == ()
+    assert degeneracy_reasons(benign) == ("param_at_bound:a_lower",)
+
+    arb_breached = SurfaceFitDiagnostics(
+        rmse=1e-6, n_points=44, arb_free=False, bound_hits=("a_lower",), converged=True
+    )
+    assert degeneracy_reasons(arb_breached, minimum_total_variance=5e-5) == (
+        "butterfly_arbitrage",
+    )
 
 
 def test_legacy_surface_parameters_row_reads_back_with_null_degeneracy_fields() -> None:

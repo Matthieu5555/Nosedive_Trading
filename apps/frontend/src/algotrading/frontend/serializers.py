@@ -20,7 +20,12 @@ from algotrading.infra.contracts import (
 from algotrading.infra.orders import Limit, OrderTicket
 from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.risk import BasketRisk, LegRisk
-from algotrading.infra.surfaces import DenseSurface, SlicePlotSeries, degeneracy_reasons
+from algotrading.infra.surfaces import (
+    DenseSurface,
+    SlicePlotSeries,
+    SviParams,
+    degeneracy_reasons,
+)
 
 from .basket_scenarios import BasketStressResult
 from .positions_read import GreekComponent, PositionBook, PositionLine
@@ -44,7 +49,12 @@ def provenance_to_dict(stamp: ProvenanceStamp) -> dict[str, object]:
 
 
 def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
-    reasons = degeneracy_reasons(row.diagnostics)
+    minimum_total_variance = SviParams(
+        a=row.svi_a, b=row.svi_b, rho=row.svi_rho, m=row.svi_m, sigma=row.svi_sigma
+    ).minimum_total_variance()
+    reasons = degeneracy_reasons(
+        row.diagnostics, minimum_total_variance=minimum_total_variance
+    )
     return {
         "snapshot_ts": _iso(row.snapshot_ts),
         "underlying": row.underlying,

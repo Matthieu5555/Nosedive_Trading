@@ -12,6 +12,18 @@
 > aggressive `[-0.999, 0.999]` in `pricing.yaml:26` — relax/justify), the duplicated-`0.0`-delta-axis
 > de-dup + the 108%/140% IV-point fix, and the required **settled-close re-validation findings doc**
 > confirming `surface_fit_error` critical clears. Lane 2 (front robustness) re-homes onto the reading model.
+>
+> **LANE 1 + 3-DIAGNOSIS LANDED (2026-06-17, A2).** Findings + evidence in
+> [infra-surface-fit-quality-findings](infra-surface-fit-quality-findings.md). Root cause: the dominant
+> QC failure was a **benign `a_lower` false positive** (svi_a→0 with positive w_min on low-variance
+> slices), NOT a bad fit — reproduces on the settled close, not an intraday confound. Fix (config-first):
+> `check_surface_fit_error` treats `a_lower` as benign when the SVI minimum total variance is positive
+> (still logged, no longer FAILs); served `0.0`-delta axis de-duped at the BFF (`atm`/`atmp` straddle
+> pillars), `atmp` retained in `points`; ρ-bound KEPT `[-0.999, 0.999]` with an evidence note in
+> `pricing.yaml`; `min_points_per_slice` deliberately left at 5 (rail is maturity-driven, not point-count
+> driven). Settled-close SX5E `surface_fit_error` fail rate **93 % → 26 %**, residual concentrated in the
+> genuinely-thin ultra-short front. The 105 %/82 % IV spikes are the 10d-wing extrapolation → **lane 2
+> (front, A6)**.
 
 > **3-onglets home (2026-06-17):** the "Market-tab" surface is now **Onglet 1 (Données) › ② NAPPE 3D
 > + ③ Panneau Ténor** ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md)); lane 2 (front

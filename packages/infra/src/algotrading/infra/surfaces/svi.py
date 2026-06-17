@@ -38,6 +38,9 @@ class SviParams:
         x = k - self.m
         return self.a + self.b * (self.rho * x + math.sqrt(x * x + self.sigma * self.sigma))
 
+    def minimum_total_variance(self) -> float:
+        return self.a + self.b * self.sigma * math.sqrt(1.0 - self.rho * self.rho)
+
     def first_derivative(self, k: float) -> float:
         x = k - self.m
         r = math.sqrt(x * x + self.sigma * self.sigma)

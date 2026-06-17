@@ -21,9 +21,27 @@ solver:                        # IV inversion (SolverConfig)
 
 surface:                       # SVI calibration (SurfaceConfig)
   version: "2026.05.31"
-  svi_a_bounds: [0.0, 10.0]          # level (total variance)
+  svi_a_bounds: [0.0, 10.0]          # level (total variance). The 0.0 floor is the parametrization's
+                                     # natural sink: on a low-variance (ultra-short) slice the optimizer
+                                     # drives a→0 and carries the level in the b·σ·√(1−ρ²) wing-vertex
+                                     # term, producing an identical, well-formed curve (tiny RMSE, sane
+                                     # ATM vol). The 2026-06-16 settled-close SX5E had a→0 on 523/630
+                                     # slices, all with a POSITIVE minimum total variance — a benign
+                                     # parametrization artifact, not a degenerate fit. Kept at 0.0 (the
+                                     # math floor); the QC `surface_fit_error` check now treats an
+                                     # `a_lower` bound-hit as benign when w_min>0 (it stays LOGGED per
+                                     # blueprint 12:70, but does not FAIL QC). See
+                                     # tasks/infra-surface-fit-quality-findings.md.
   svi_b_bounds: [1.0e-8, 10.0]       # wing slope, strictly > 0
-  svi_rho_bounds: [-0.999, 0.999]    # skew, strictly inside (-1, 1)
+  svi_rho_bounds: [-0.999, 0.999]    # skew, strictly inside (-1, 1). KEPT (decision 2026-06-17,
+                                     # evidence-based): ρ cannot be relaxed past (−1, 1) — the SVI is
+                                     # ill-defined at |ρ|=1. The 2026-06-16 settled-close ρ→−0.999 rails
+                                     # were NOT the nappe defect: they concentrate at the ultra-short end
+                                     # (T<0.038y, ~2wk), where the few that also breach butterfly arb are
+                                     # correctly FAILED by `surface_fit_error` (arb), and the arb-free
+                                     # extreme-skew rails are a real, logged boundary hit. The liquid
+                                     # core (T>0.25y) does NOT rail ρ. Widening ρ is neither possible nor
+                                     # the lever; the lever is the upstream ultra-short handling.
   svi_m_bounds: [-5.0, 5.0]          # shift (log-moneyness)
   svi_sigma_bounds: [1.0e-8, 10.0]   # curvature, strictly > 0
   svi_bound_hit_tol: 1.0e-5          # "at the bound" detection, relative to each range

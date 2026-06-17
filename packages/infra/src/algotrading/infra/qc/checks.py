@@ -17,6 +17,7 @@ from algotrading.infra.surfaces import (
     CalendarViolation,
     SliceFit,
     classify_tenor_provenance,
+    is_benign_a_floor,
     tenor_years,
 )
 from algotrading.infra.utils import robust_zscore_vs_baseline
@@ -360,11 +361,20 @@ def check_surface_fit_error(
     run_ts: datetime,
 ) -> QcResult:
     rmse_ok = fit.rmse <= thresholds.fit_tolerance.max_surface_rmse
+    minimum_total_variance = (
+        fit.svi.minimum_total_variance() if fit.svi is not None else None
+    )
+    benign_bound_hits = [
+        name
+        for name in fit.bound_hits
+        if is_benign_a_floor(name, minimum_total_variance=minimum_total_variance)
+    ]
+    genuine_bound_hits = [name for name in fit.bound_hits if name not in benign_bound_hits]
     degeneracy_reasons: list[str] = []
     if not fit.arb_free:
         degeneracy_reasons.append("arb_violation")
-    if fit.bound_hits:
-        degeneracy_reasons.append(f"bound_hit:{','.join(fit.bound_hits)}")
+    if genuine_bound_hits:
+        degeneracy_reasons.append(f"bound_hit:{','.join(genuine_bound_hits)}")
     if fit.converged is False:
         degeneracy_reasons.append("not_converged")
     status = STATUS_PASS if (rmse_ok and not degeneracy_reasons) else STATUS_FAIL
@@ -378,6 +388,8 @@ def check_surface_fit_error(
         "max_surface_rmse": thresholds.fit_tolerance.max_surface_rmse,
         "arb_free": fit.arb_free,
         "bound_hits": list(fit.bound_hits),
+        "benign_bound_hits": benign_bound_hits,
+        "minimum_total_variance": minimum_total_variance,
         "converged": fit.converged,
         "degeneracy_reasons": degeneracy_reasons,
     }

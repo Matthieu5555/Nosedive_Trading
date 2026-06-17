@@ -507,3 +507,37 @@ def test_one_sided_or_unmatched_quote_omits_cleanly(
     assert by_band["30dp"]["quote"]["ask"] == pytest.approx(0.0)
     assert by_band["30dp"]["quote"]["volume"] is None
     assert by_band["30dc"]["quote"] == {"bid": None, "ask": None, "volume": None}
+
+
+def test_smile_axis_dedups_the_atm_put_pillar_but_keeps_it_in_points(
+    seed: ModuleType,
+) -> None:
+    from algotrading.frontend.routers.analytics import _group_by_maturity
+
+    cells = [
+        seed.analytics_cell(
+            delta_band="02dp", target_delta=-0.02, log_moneyness=-0.04,
+            implied_vol=0.22, delta=-0.02, dollar_delta=-1.0,
+        ),
+        seed.analytics_cell(
+            delta_band="atm", target_delta=0.0, log_moneyness=0.0,
+            implied_vol=0.20, delta=0.50, dollar_delta=10.0,
+        ),
+        seed.analytics_cell(
+            delta_band="atmp", target_delta=0.0, log_moneyness=0.0,
+            implied_vol=0.20, delta=-0.50, dollar_delta=-10.0,
+        ),
+        seed.analytics_cell(
+            delta_band="02dc", target_delta=0.02, log_moneyness=0.04,
+            implied_vol=0.21, delta=0.02, dollar_delta=1.0,
+        ),
+    ]
+    entry = _group_by_maturity(cells, [], [], [])[0]
+    assert entry["smile"]["deltas"] == [
+        pytest.approx(-0.02), pytest.approx(0.0), pytest.approx(0.02)
+    ]
+    assert entry["smile"]["implied_vols"] == [
+        pytest.approx(0.22), pytest.approx(0.20), pytest.approx(0.21)
+    ]
+    assert len(entry["points"]) == 4
+    assert {p["delta_band"] for p in entry["points"]} == {"02dp", "atm", "atmp", "02dc"}

@@ -7,6 +7,7 @@ from .arbitrage import (
     calendar_violations,
 )
 from .fit import (
+    A_FLOOR_BOUND_HIT,
     METHOD_INSUFFICIENT,
     METHOD_NONPARAMETRIC,
     METHOD_SVI,
@@ -16,6 +17,7 @@ from .fit import (
     degeneracy_reasons,
     fit_slice,
     interpolate_total_variance,
+    is_benign_a_floor,
     project_surface_fit,
     slice_plot_series,
     surface_grid_cells,
@@ -86,9 +88,11 @@ __all__ = [
     "butterfly_g",
     "butterfly_violations",
     "calendar_violations",
+    "A_FLOOR_BOUND_HIT",
     "degeneracy_reasons",
     "fit_slice",
     "fit_svi",
+    "is_benign_a_floor",
     "interpolate_total_variance",
     "merged_config_hashes",
     "project_grid",

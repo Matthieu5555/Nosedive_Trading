@@ -48,7 +48,7 @@ from algotrading.infra.risk import (
     position_risk,
 )
 from algotrading.infra.snapshots import AssessedSnapshot, QuoteAssessment, SnapshotBatch
-from algotrading.infra.surfaces import CalendarViolation, SliceFit
+from algotrading.infra.surfaces import CalendarViolation, SliceFit, SviParams
 from fixtures.positions import CALL_100, PUT_100
 from fixtures.records import make_record
 
@@ -695,6 +695,34 @@ def test_surface_fit_fails_bound_railed_slice_despite_tiny_rmse() -> None:
         result, check_name="surface_fit_error", status=STATUS_FAIL, severity=SEVERITY_WARNING
     )
     assert "bound_hit:rho" in context["degeneracy_reasons"]
+
+
+def test_surface_fit_passes_benign_a_floor_when_minimum_variance_is_positive() -> None:
+    svi = SviParams(a=1e-30, b=0.02, rho=-0.4, m=0.0, sigma=0.08)
+    assert svi.minimum_total_variance() > 0.0
+    benign = dataclasses.replace(
+        _slice_fit(rmse=6e-6), svi=svi, bound_hits=("a_lower",)
+    )
+    result = check_surface_fit_error(benign, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = _assert_full_shape(
+        result, check_name="surface_fit_error", status=STATUS_PASS, severity=SEVERITY_WARNING
+    )
+    assert context["degeneracy_reasons"] == []
+    assert context["benign_bound_hits"] == ["a_lower"]
+    assert context["bound_hits"] == ["a_lower"]
+
+
+def test_surface_fit_still_fails_a_floor_with_a_genuine_rho_rail() -> None:
+    svi = SviParams(a=1e-30, b=0.02, rho=-0.4, m=0.0, sigma=0.08)
+    railed = dataclasses.replace(
+        _slice_fit(rmse=6e-6), svi=svi, bound_hits=("a_lower", "rho_lower")
+    )
+    result = check_surface_fit_error(railed, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = _assert_full_shape(
+        result, check_name="surface_fit_error", status=STATUS_FAIL, severity=SEVERITY_WARNING
+    )
+    assert "bound_hit:rho_lower" in context["degeneracy_reasons"]
+    assert context["benign_bound_hits"] == ["a_lower"]
 
 
 def test_surface_fit_non_svi_converged_none_is_not_penalised() -> None:

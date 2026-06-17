@@ -89,6 +89,19 @@ def _quote_for_cell(
     return _nearest_quote(index.get((expiry, right), []), cell.strike)
 
 
+def _smile_axis_cells(
+    maturity_cells: list[ProjectedOptionAnalytics],
+) -> list[ProjectedOptionAnalytics]:
+    deduped: list[ProjectedOptionAnalytics] = []
+    seen: set[float] = set()
+    for cell in maturity_cells:
+        if cell.target_delta in seen:
+            continue
+        seen.add(cell.target_delta)
+        deduped.append(cell)
+    return deduped
+
+
 def _group_by_maturity(
     cells: list[ProjectedOptionAnalytics],
     slices: list[SurfaceParameters],
@@ -117,6 +130,7 @@ def _group_by_maturity(
             for cell in maturity_cells
         ]
         forward = forward_by_maturity.get(key)
+        smile_cells = _smile_axis_cells(maturity_cells)
         entries.append(
             {
                 "maturity_years": maturity_cells[0].maturity_years,
@@ -124,9 +138,9 @@ def _group_by_maturity(
                 "label": f"{tenor_label} ({maturity_cells[0].maturity_years:.3f}y)",
                 "smile": {
                     "axis_type": "delta",
-                    "deltas": [cell.target_delta for cell in maturity_cells],
-                    "implied_vols": [cell.implied_vol for cell in maturity_cells],
-                    "log_moneyness": [cell.log_moneyness for cell in maturity_cells],
+                    "deltas": [cell.target_delta for cell in smile_cells],
+                    "implied_vols": [cell.implied_vol for cell in smile_cells],
+                    "log_moneyness": [cell.log_moneyness for cell in smile_cells],
                 },
                 "surface_slice": (
                     surface_parameters_to_dict(fitted) if fitted is not None else None

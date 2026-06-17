@@ -3,13 +3,13 @@ import "./assistant.css";
 import { type FormEvent, useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../../api";
+import { EXPLAIN, explainEntry } from "../../lib/explain";
 import {
   askAssistant,
   type AssistantFrame,
   type AssistantMode,
   type AssistantResponse,
 } from "./assistantApi";
-import { ASSISTANT_COPY, explainEntry } from "./assistantCopy";
 
 interface AssistantPanelProps {
   underlying: string;
@@ -21,9 +21,7 @@ interface AssistantPanelProps {
   focusedElementId?: string | null;
 }
 
-type Turn =
-  | { kind: "question"; text: string }
-  | { kind: "answer"; response: AssistantResponse };
+type Turn = { kind: "question"; text: string } | { kind: "answer"; response: AssistantResponse };
 
 function frameCaption(frame: AssistantFrame): string {
   const parts = [frame.underlying];
@@ -106,8 +104,7 @@ export function AssistantPanel({
         setTurns((prev) => [...prev, { kind: "answer", response }]);
       } catch (err) {
         if (controller.signal.aborted) return;
-        const detail =
-          err instanceof ApiError ? err.detail : "L'assistant est indisponible.";
+        const detail = err instanceof ApiError ? err.detail : "L'assistant est indisponible.";
         setError(`Assistant indisponible — ${detail}`);
       } finally {
         if (!controller.signal.aborted) setThinking(false);
@@ -230,4 +227,6 @@ export function AssistantPanel({
   );
 }
 
-export { ASSISTANT_COPY };
+// Re-exported under the historical name so existing importers keep working; the single source is
+// the canonical lib/explain.ts copy map.
+export { EXPLAIN as ASSISTANT_COPY };

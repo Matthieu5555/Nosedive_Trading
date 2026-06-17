@@ -60,6 +60,12 @@ export type SurfaceTone = "full" | "partial" | "degenerate";
 
 export interface SurfaceDescriptor {
   subject: string;
+  // The panel heading ("Nappe de volatilité — SX5E"): subject prefixed with the shared noun.
+  subjectHeading: string;
+  // The caption tail ("clôture 2026-06-17 17:30 CET · strict · 1 706/2 412 cotations"): everything
+  // after the heading. The panel renders `<h2>{subjectHeading}</h2>` + `<span>{caption}</span>`;
+  // the figure caption renders the full `title`. All three are assembled here, once.
+  caption: string;
   title: string;
   asOfPhrase: string;
   modeWord: SurfaceMode;
@@ -120,7 +126,9 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
       ? `INDICATIF · ${coveragePhrase}`
       : `strict · ${coveragePhrase}`;
 
-  const title = `${SURFACE_SUBJECT} — ${subject} · ${asOfPhrase} · ${modeClause}`;
+  const subjectHeading = `${SURFACE_SUBJECT} — ${subject}`;
+  const caption = `${asOfPhrase} · ${modeClause}`;
+  const title = `${subjectHeading} · ${caption}`;
 
   // Empty/error copy names its subject and as-of off the SAME descriptor as the populated state.
   const emptyCopy = degenerate
@@ -129,6 +137,8 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
 
   return {
     subject,
+    subjectHeading,
+    caption,
     title,
     asOfPhrase,
     modeWord: mode,

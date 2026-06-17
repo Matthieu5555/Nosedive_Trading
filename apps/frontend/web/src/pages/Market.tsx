@@ -9,100 +9,22 @@ import {
 } from "../api";
 import { AssistantPanel } from "../components/Assistant/AssistantPanel";
 import { AsyncBlock } from "../components/AsyncBlock";
-import { PriceChart, VolSurface } from "../components/charts";
+import {
+  describeSurface,
+  PriceChart,
+  type SurfaceCoverage,
+  type SurfaceMode,
+  VolSurface,
+} from "../components/charts";
 import { CoveragePanel } from "../components/CoverageTable";
 import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
-import { currencySymbol } from "../lib/format";
+import { closeInstant, currencySymbol } from "../lib/format";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
-
-type SurfaceTone = "full" | "partial" | "degenerate";
-type SurfaceMode = "strict" | "indicative";
-
-interface CoverageFacts {
-  rested: number;
-  captured: number;
-  indicative: number;
-}
-
-interface SurfaceDescriptor {
-  subject: string;
-  asOfPhrase: string;
-  modeWord: string;
-  coveragePhrase: string;
-  tone: SurfaceTone;
-  caption: string;
-  emptyCopy: string;
-}
-
-const CLOSE_INSTANTS: Record<string, string> = {
-  SX5E: "17:30 CET",
-};
-
-function closeInstant(symbol: string): string | null {
-  return CLOSE_INSTANTS[symbol] ?? null;
-}
-
-function describeAsOf(asOf: string, instant: string | null): string {
-  return instant ? `clôture ${asOf} ${instant}` : `clôture ${asOf}`;
-}
-
-function describeCoverage(coverage: CoverageFacts | null, mode: SurfaceMode): string {
-  if (coverage === null) return "couverture indisponible";
-  const { rested, captured, indicative } = coverage;
-  if (mode === "indicative") {
-    return `${rested}/${captured} (${indicative} marques indicatives)`;
-  }
-  return `${rested}/${captured} cotations`;
-}
-
-function describeSurface(state: {
-  underlying: string;
-  asOf: string;
-  instant: string | null;
-  mode: SurfaceMode;
-  coverage: CoverageFacts | null;
-  degenerate: boolean;
-}): SurfaceDescriptor {
-  const { underlying, asOf, instant, mode, coverage, degenerate } = state;
-  const subject = `Nappe de volatilité — ${underlying}`;
-  const phrase = describeAsOf(asOf, instant);
-  const emptyCopy = `Aucune cotation deux-faces pour ${underlying} au ${asOf} — marché probablement fermé.`;
-
-  if (degenerate) {
-    const caption = `${phrase} · indicative — marché probablement fermé`;
-    return {
-      subject,
-      asOfPhrase: phrase,
-      modeWord: "indicative",
-      coveragePhrase: "marché probablement fermé",
-      tone: "degenerate",
-      caption,
-      emptyCopy,
-    };
-  }
-
-  const modeWord = mode === "indicative" ? "INDICATIF" : "strict";
-  const coveragePhrase = describeCoverage(coverage, mode);
-  const caption = `${phrase} · ${modeWord} · ${coveragePhrase}`;
-  const tone: SurfaceTone =
-    mode === "indicative" || (coverage !== null && coverage.rested < coverage.captured)
-      ? "partial"
-      : "full";
-  return {
-    subject,
-    asOfPhrase: phrase,
-    modeWord,
-    coveragePhrase,
-    tone,
-    caption,
-    emptyCopy,
-  };
-}
 
 export function MarketPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
@@ -205,12 +127,19 @@ export function MarketPage() {
             const instant = closeInstant(index);
             const surfaceMissing =
               analytics.data !== null && analytics.data.maturities.length === 0;
+            // The mode and coverage that drive BOTH the descriptor sentence and the chart captions
+            // are resolved once here and threaded down, so the panel heading, the caption and the
+            // figure caption can never disagree. Coverage is not yet carried on the analytics
+            // payload, so it degrades to "couverture indisponible"; mode is strict until the
+            // indicative toggle is wired. Both are the SurfaceIdentityProps the charts consume.
+            const surfaceMode: SurfaceMode = "strict";
+            const surfaceCoverage: SurfaceCoverage | null = null;
             const descriptor = describeSurface({
-              underlying: index,
+              subject: index,
               asOf: effectiveAsOf,
-              instant,
-              mode: "strict",
-              coverage: null,
+              closeInstant: instant,
+              mode: surfaceMode,
+              coverage: surfaceCoverage,
               degenerate: surfaceMissing,
             });
             return (
@@ -219,11 +148,7 @@ export function MarketPage() {
                   <span className="status">
                     {index} · {descriptor.asOfPhrase} <QcBadge qc={qc} />
                   </span>
-                  <AssistantPanel
-                    underlying={index}
-                    asOf={effectiveAsOf}
-                    runId={effectiveRunId}
-                  />
+                  <AssistantPanel underlying={index} asOf={effectiveAsOf} runId={effectiveRunId} />
                 </div>
 
                 <ErrorBoundary label="Scorecards">
@@ -269,11 +194,11 @@ export function MarketPage() {
                   />
                 </ErrorBoundary>
 
-                <article className="panel" aria-label={descriptor.subject}>
+                <article className="panel" aria-label={descriptor.subjectHeading}>
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>{descriptor.subject}</h2>
+                      <h2>{descriptor.subjectHeading}</h2>
                     </div>
                     <span className="status" data-tone={descriptor.tone}>
                       {descriptor.caption}
@@ -290,6 +215,11 @@ export function MarketPage() {
                           <VolSurface
                             surface={analytics.data.surface}
                             maturities={analytics.data.maturities}
+                            subject={index}
+                            asOf={effectiveAsOf}
+                            closeInstant={instant}
+                            mode={surfaceMode}
+                            coverage={surfaceCoverage}
                           />
                         ))}
                     </AsyncBlock>
@@ -299,7 +229,15 @@ export function MarketPage() {
                 <ErrorBoundary label="Tenor view">
                   <AsyncBlock loading={analytics.loading} error={analytics.error}>
                     {analytics.data && (
-                      <TenorPanel maturities={analytics.data.maturities} currency={currency} />
+                      <TenorPanel
+                        maturities={analytics.data.maturities}
+                        currency={currency}
+                        subject={index}
+                        asOf={effectiveAsOf}
+                        closeInstant={instant}
+                        mode={surfaceMode}
+                        coverage={surfaceCoverage}
+                      />
                     )}
                   </AsyncBlock>
                 </ErrorBoundary>

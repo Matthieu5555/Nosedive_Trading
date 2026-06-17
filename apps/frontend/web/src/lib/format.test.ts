@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { currencySymbol, sci, sciUnit, UNITS, withCurrency } from "./format";
+import {
+  asOfClose,
+  closeInstant,
+  coverageHeadline,
+  coveragePercent,
+  currencySymbol,
+  sci,
+  sciUnit,
+  UNITS,
+  withCurrency,
+} from "./format";
+
+const NBSP = " ";
 
 describe("sci", () => {
   it("renders the owner's worked example at 6 sig figs with trailing zeros stripped", () => {
@@ -90,5 +102,50 @@ describe("withCurrency", () => {
   it("passes null/undefined units through unchanged", () => {
     expect(withCurrency(null, "€")).toBeNull();
     expect(withCurrency(undefined, "€")).toBeUndefined();
+  });
+});
+
+describe("coveragePercent", () => {
+  it("reports the two-sided fraction in PM register (fr-FR, comma decimal)", () => {
+    expect(coveragePercent({ twoSided: 1706, total: 2412 })).toBe(`70,7${NBSP}%`);
+    expect(coveragePercent({ twoSided: 2412, total: 2412 })).toBe(`100,0${NBSP}%`);
+  });
+
+  it("labels an empty chain n/a rather than dividing by zero", () => {
+    expect(coveragePercent({ twoSided: 0, total: 0 })).toBe("n/a");
+  });
+});
+
+describe("coverageHeadline", () => {
+  it("names the captured-chain fraction and the excluded one-sided count", () => {
+    expect(coverageHeadline({ twoSided: 1706, total: 2412 })).toBe(
+      `1${NBSP}706 / 2${NBSP}412 cotations · 70,7${NBSP}% deux-faces · 706 à une face exclues`,
+    );
+  });
+
+  it("recedes to couverture complète when nothing is excluded", () => {
+    expect(coverageHeadline({ twoSided: 2412, total: 2412 })).toBe(
+      `2${NBSP}412 / 2${NBSP}412 cotations · 100,0${NBSP}% deux-faces · couverture complète`,
+    );
+  });
+});
+
+describe("closeInstant / asOfClose", () => {
+  it("knows the SX5E close instant is 17:30 CET (OESX settlement), not 22:00", () => {
+    expect(closeInstant("SX5E")).toBe("17:30 CET");
+    expect(closeInstant("UNKNOWN")).toBeNull();
+    expect(closeInstant(null)).toBeNull();
+  });
+
+  it("renders the as-of with its close instant for SX5E", () => {
+    expect(asOfClose("2026-06-17", "SX5E")).toBe("clôture 2026-06-17 17:30 CET");
+  });
+
+  it("falls back to a bare close date for an underlying without a known instant", () => {
+    expect(asOfClose("2026-06-17", "UNKNOWN")).toBe("clôture 2026-06-17");
+  });
+
+  it("never invents a date — an absent as-of is labelled, not blank", () => {
+    expect(asOfClose(null, "SX5E")).toBe("date non résolue");
   });
 });

@@ -126,6 +126,52 @@ export function withCurrency(
   return unit.replaceAll("$", symbol);
 }
 
+export function frFraction(value: number, digits = 1): string {
+  return value.toLocaleString("fr-FR", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+export function frInteger(value: number): string {
+  return Math.round(value).toLocaleString("fr-FR");
+}
+
+export interface CoverageCounts {
+  twoSided: number;
+  total: number;
+}
+
+export function coveragePercent(coverage: CoverageCounts, digits = 1): string {
+  if (coverage.total <= 0) return "n/a";
+  return `${frFraction((coverage.twoSided / coverage.total) * 100, digits)}\u202f%`;
+}
+
+export function coverageHeadline(coverage: CoverageCounts): string {
+  const excluded = Math.max(coverage.total - coverage.twoSided, 0);
+  const base = `${frInteger(coverage.twoSided)} / ${frInteger(coverage.total)} cotations · ${coveragePercent(coverage)} deux-faces`;
+  if (excluded <= 0) return `${base} · couverture complète`;
+  return `${base} · ${frInteger(excluded)} à une face exclues`;
+}
+
+const CLOSE_INSTANT: Record<string, string> = {
+  SX5E: "17:30 CET",
+};
+
+export function closeInstant(underlying: string | null | undefined): string | null {
+  if (!underlying) return null;
+  return CLOSE_INSTANT[underlying] ?? null;
+}
+
+export function asOfClose(
+  asOf: string | null | undefined,
+  underlying: string | null | undefined,
+): string {
+  if (!asOf) return "date non résolue";
+  const instant = closeInstant(underlying);
+  return instant ? `clôture ${asOf} ${instant}` : `clôture ${asOf}`;
+}
+
 export function number(value: number, digits = 2): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { type AnalyticsMaturity, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
-import { GreeksShapeCurves, SmileChart } from "./charts";
+import { GreeksShapeCurves, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
 import { PriceStructure } from "./PriceStructure";
 import { RateDiagnosticsPanel } from "./RateDiagnostics";
@@ -43,10 +43,15 @@ const DEFAULT_TENOR = "3m";
 export function TenorPanel({
   maturities,
   currency,
+  subject,
+  asOf,
+  closeInstant,
+  mode,
+  coverage,
 }: {
   maturities: AnalyticsMaturity[];
   currency: string;
-}) {
+} & SurfaceIdentityProps) {
   // Which grid tenors actually have a captured maturity, by tenor_label.
   const capturedByTenor = useMemo(() => {
     const map = new Map<string, AnalyticsMaturity>();
@@ -92,7 +97,15 @@ export function TenorPanel({
       ) : (
         <div className="tenor-panel__body">
           <div className="tenor-panel__smile">
-            <SmileChart maturities={maturities} maturityLabel={selected.label} />
+            <SmileChart
+              maturities={maturities}
+              maturityLabel={selected.label}
+              subject={subject}
+              asOf={asOf}
+              closeInstant={closeInstant}
+              mode={mode}
+              coverage={coverage}
+            />
             <ConvexityReadout maturity={selected} />
           </div>
           <PriceStructure
@@ -111,7 +124,16 @@ export function TenorPanel({
               maturityLabel={selected.label}
               currency={currency}
             />
-            <GreeksShapeCurves maturities={maturities} maturityLabel={selected.label} />
+            <GreeksShapeCurves
+              maturities={maturities}
+              maturityLabel={selected.label}
+              subject={subject}
+              asOf={asOf}
+              closeInstant={closeInstant}
+              mode={mode}
+              coverage={coverage}
+              currency={currency}
+            />
           </div>
         </div>
       )}

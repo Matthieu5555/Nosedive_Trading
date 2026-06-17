@@ -15,6 +15,7 @@ the Greeks or the PnL surface.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
@@ -34,6 +35,10 @@ from algotrading.infra.risk.book import (
     COMPOSITION_VERSION,
     book_stress_surface,
     build_book_greeks,
+)
+from algotrading.infra.risk.decorrelation import (
+    DecorrelationDiagnostics,
+    compute_decorrelation_diagnostics,
 )
 from algotrading.infra.risk.grid_versioning import short_construction_hash
 from algotrading.infra.risk.multileg import (
@@ -260,6 +265,48 @@ def _greeks_to_dict(row: BookGreeks) -> dict[str, object]:
     }
 
 
+def _json_safe_float(value: float) -> float | None:
+    return None if not math.isfinite(value) else value
+
+
+def _json_safe_matrix(
+    matrix: tuple[tuple[float, ...], ...],
+) -> list[list[float | None]]:
+    return [[_json_safe_float(value) for value in row] for row in matrix]
+
+
+def _layer_greek_vector(row: BookGreeks) -> tuple[float, float, float, float, float]:
+    return (
+        row.dollar_delta,
+        row.dollar_gamma,
+        row.dollar_vega,
+        row.dollar_theta,
+        row.dollar_rho,
+    )
+
+
+def _decorrelation_to_dict(diagnostics: DecorrelationDiagnostics) -> dict[str, object]:
+    return {
+        "version": diagnostics.version,
+        "layer_labels": list(diagnostics.layer_labels),
+        "stressed_pnl_correlation": _json_safe_matrix(
+            diagnostics.stressed_pnl_correlation
+        ),
+        "shared_tail_overlap": _json_safe_matrix(diagnostics.shared_tail_overlap),
+        "factor_overlap": _json_safe_matrix(diagnostics.factor_overlap),
+        "marginal_risk_contribution": [
+            _json_safe_float(value)
+            for value in diagnostics.marginal_risk_contribution
+        ],
+        "realized_correlation_unavailable_reason": (
+            diagnostics.realized_correlation_unavailable_reason
+        ),
+        "marginal_sharpe_unavailable_reason": (
+            diagnostics.marginal_sharpe_unavailable_reason
+        ),
+    }
+
+
 def _diversification_ratio(layer_rows: list[BookGreeks]) -> float | None:
     # Read-only diagnostic: the realised diversification of the operator's selection, shown
     # over the per-layer net vegas under their decorrelated *intent* (avg_correlation=0). It
@@ -317,6 +364,16 @@ async def compose_book(ctx: CtxDep, request: Request) -> JSONResponse:
     combined = next(row for row in rows if row.level == _BOOK_LEVEL)
     layer_rows = [row for row in rows if row.level == _LAYER_LEVEL]
 
+    layer_surfaces = [
+        book_stress_surface([book_input], config=config) for book_input in book_inputs
+    ]
+    decorrelation = compute_decorrelation_diagnostics(
+        layer_labels=[row.layer_label for row in layer_rows],
+        layer_surfaces=layer_surfaces,
+        layer_greek_vectors=[_layer_greek_vector(row) for row in layer_rows],
+        realized_series=None,
+    )
+
     return JSONResponse(
         {
             "book_id": parsed.book_id,
@@ -339,5 +396,6 @@ async def compose_book(ctx: CtxDep, request: Request) -> JSONResponse:
                 "vol_axis": list(surface.vol_axis),
                 "pnl_grid": [list(row) for row in surface.pnl_grid],
             },
+            "decorrelation": _decorrelation_to_dict(decorrelation),
         }
     )

@@ -75,6 +75,17 @@ from .concentration import (
     concentration_report,
 )
 from .config import DEFAULT_GROUPING_KEYS, AttributionConfig, RiskParams
+from .decorrelation import (
+    DECORRELATION_VERSION,
+    DEFAULT_TAIL_FRACTION,
+    DecorrelationDiagnostics,
+    DecorrelationInputError,
+    compute_decorrelation_diagnostics,
+    factor_overlap_matrix,
+    marginal_risk_contributions,
+    shared_tail_overlap_matrix,
+    stressed_pnl_correlation_matrix,
+)
 from .greeks import (
     LotConsistencyError,
     PositionRisk,
@@ -189,6 +200,15 @@ __all__ = [
     "COMPOSITION_VERSION",
     "book_stress_surface",
     "build_book_greeks",
+    "DECORRELATION_VERSION",
+    "DEFAULT_TAIL_FRACTION",
+    "DecorrelationDiagnostics",
+    "DecorrelationInputError",
+    "compute_decorrelation_diagnostics",
+    "factor_overlap_matrix",
+    "marginal_risk_contributions",
+    "shared_tail_overlap_matrix",
+    "stressed_pnl_correlation_matrix",
     "ContractValuationInput",
     "ValuationError",
     "pricing_state_for",

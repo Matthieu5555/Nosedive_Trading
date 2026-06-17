@@ -65,6 +65,14 @@ not by routine versioning.
 - **`version=` stays ONLY as the blueprint's deliberate-replay escape hatch** (re-derive with new
   code/config — `15-gov:18`, adapter `version=`/`list_versions`). It is **never** on the close-capture
   routine path. (Owner ruling: we overwrite with the most recent; we do not version the close.)
+- **🔒 OVERWRITE IS CONDITIONAL ON VALIDITY (the critical safety — owner-required).** A capture replaces
+  the canonical slot **only if it passes the validity gate**: non-empty **+** quote-integrity (the landed
+  `EMERGENCY-quote-integrity-gate` / `assess_quote`, `cp_rest_close_capture.py:13`) **+** completeness ≥
+  threshold. A **failing/empty/corrupt fire is REJECTED — the prior good close stays.** Last-wins must
+  never mean "the worst fire wins." Blueprint-grounded (the 2026-06-15 canary: do not bank junk; QC).
+  The ledger marks the canonical as *validated*; a new fire replaces only if it clears the gate.
+  *(Owner choice — minimal: overwrite if valid; strict: overwrite if valid AND completeness ≥ the
+  existing close's. Default to **strict** unless owner rules minimal.)*
 
 ### C2 — Derived: retire the run-partitioning (pure revert to `b10ed3d^` = `c665614`)
 `run_partitioned` **did not exist before `b10ed3d`** (`registry.py` pre-`b10ed3d` count = 0) — the

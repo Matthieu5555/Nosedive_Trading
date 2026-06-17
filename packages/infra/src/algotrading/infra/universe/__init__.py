@@ -3,11 +3,13 @@ from __future__ import annotations
 from .calendar_resolver import CalendarResolver
 from .chain_planning import (
     AvailableChain,
+    BandReach,
     ChainPlan,
     ChainSelection,
     DeltaBandMarket,
     TenorMarket,
     bracket_dates,
+    delta_band_window_pct,
     discovery_delta_bound,
     plan_chain,
     select_capture_keys,
@@ -36,6 +38,7 @@ from .errors import (
     MembershipError,
     MembershipRankingError,
     StrikeSelectionError,
+    StrikeWindowClipError,
     UniverseError,
     UnknownContractError,
     UnknownInstrumentError,
@@ -80,6 +83,7 @@ from .service import (
 
 __all__ = [
     "AvailableChain",
+    "BandReach",
     "BasketMember",
     "CalendarResolutionError",
     "CalendarResolver",
@@ -104,6 +108,7 @@ __all__ = [
     "Right",
     "SP500DatasetsSource",
     "StrikeSelectionError",
+    "StrikeWindowClipError",
     "TenorMarket",
     "Underlying",
     "UniverseError",
@@ -134,6 +139,7 @@ __all__ = [
     "plan_chain",
     "resolve_chain",
     "resolve_contract_row",
+    "delta_band_window_pct",
     "discovery_delta_bound",
     "select_capture_keys",
     "select_chain",

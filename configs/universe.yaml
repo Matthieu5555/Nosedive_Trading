@@ -40,6 +40,14 @@ exchange: SMART
 #     changes how fast the SAME calls are made, never which calls (the strike window is untouched).
 #     Kept small (the CP Gateway is one paced session; the transport's 429/503 backoff is the real
 #     valve — a flood the backoff serialises back to sequential is a net loss). 1 = sequential.
+#   - strike_window_pct: the symmetric +/-%-of-spot half-width of the FALLBACK strike window
+#     (`select_strikes`), used only where the economic delta band can't run (no band markets, or an
+#     expiry with no finite forward). It is request-shaping, not the economic selector — but it must
+#     stay a guaranteed SUPERSET of the 30Δ band so the fallback never silently clips it. When the
+#     fallback has a tenor in hand, `select_strikes` derives the band's %-of-forward reach from
+#     `discovery_working_vol` + `delta_bound` at that maturity and FAILS LOUD (StrikeWindowClipError)
+#     if this window can't cover it, rather than trimming the band. Now typed/hashed here (ADR 0028 /
+#     C7) instead of a `.py` literal so the capture-window policy has one home.
 strike_selection:
   version: "2026.06.15"
   delta_bound: 0.30
@@ -47,6 +55,7 @@ strike_selection:
   min_strikes_per_side: 2
   discovery_working_vol: 0.40
   discovery_pool_size: 6
+  strike_window_pct: 0.35
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
 # the surface/Greeks onto. Authoritative copy is the blueprint Part IX data dictionary

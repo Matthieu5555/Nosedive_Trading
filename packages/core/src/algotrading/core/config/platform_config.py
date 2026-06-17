@@ -75,6 +75,7 @@ class StrikeSelectionConfig(_ConfigModel):
     min_strikes_per_side: int = Field(default=2, ge=1)
     discovery_working_vol: float = Field(default=0.40, gt=0.0)
     discovery_pool_size: int = Field(default=6, ge=1)
+    strike_window_pct: float = Field(default=0.35, gt=0.0, le=1.0)
 
 
 class SignalEntryConfig(_ConfigModel):

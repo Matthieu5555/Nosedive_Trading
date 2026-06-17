@@ -29,6 +29,27 @@ class StrikeSelectionError(UniverseError):
         super().__init__(f"delta-band strike selection: {field} = {value!r} is invalid: {reason}")
 
 
+class StrikeWindowClipError(UniverseError):
+
+    def __init__(
+        self,
+        *,
+        configured_window_pct: float,
+        required_window_pct: float,
+        maturity_years: float,
+        working_vol: float,
+    ) -> None:
+        self.configured_window_pct = configured_window_pct
+        self.required_window_pct = required_window_pct
+        self.maturity_years = maturity_years
+        self.working_vol = working_vol
+        super().__init__(
+            f"%-of-spot fallback window strike_window_pct={configured_window_pct!r} would clip the "
+            f"{required_window_pct:.4f}-of-forward reach of the delta band at maturity_years="
+            f"{maturity_years!r}, working_vol={working_vol!r} — refusing to silently trim the band"
+        )
+
+
 class MembershipError(UniverseError):
 
     def __init__(self, index: str, field: str, value: object, reason: str) -> None:

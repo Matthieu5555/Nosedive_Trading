@@ -5,12 +5,13 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from statistics import NormalDist
 
 from algotrading.core.config import StrikeSelectionConfig
 from algotrading.infra.contracts import InstrumentKey
 from algotrading.infra.pricing import from_forward, price_european
 
-from .errors import StrikeSelectionError
+from .errors import StrikeSelectionError, StrikeWindowClipError
 
 _BOTH_RIGHTS: tuple[str, ...] = ("C", "P")
 
@@ -77,6 +78,14 @@ class DeltaBandMarket:
 
     selection: StrikeSelectionConfig
     markets: Mapping[str, TenorMarket]
+
+
+@dataclass(frozen=True, slots=True)
+class BandReach:
+
+    delta_bound: float
+    maturity_years: float
+    working_vol: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +179,11 @@ def select_expiries_bracketing(
 
 
 def select_strikes(
-    strikes: Iterable[float], spot: float | None, selection: ChainSelection
+    strikes: Iterable[float],
+    spot: float | None,
+    selection: ChainSelection,
+    *,
+    band_reach: BandReach | None = None,
 ) -> tuple[float, ...]:
     positive = sorted({float(strike) for strike in strikes if float(strike) > 0.0})
     if not positive:
@@ -180,6 +193,20 @@ def select_strikes(
         lo = max(0, mid - selection.min_strikes_per_side)
         hi = mid + selection.min_strikes_per_side
         return tuple(positive[lo:hi])
+
+    if band_reach is not None:
+        required = delta_band_window_pct(
+            delta_bound=band_reach.delta_bound,
+            maturity_years=band_reach.maturity_years,
+            working_vol=band_reach.working_vol,
+        )
+        if selection.strike_window_pct < required:
+            raise StrikeWindowClipError(
+                configured_window_pct=selection.strike_window_pct,
+                required_window_pct=required,
+                maturity_years=band_reach.maturity_years,
+                working_vol=band_reach.working_vol,
+            )
 
     low = spot * (1.0 - selection.strike_window_pct)
     high = spot * (1.0 + selection.strike_window_pct)
@@ -208,6 +235,24 @@ def _call_nd1_undiscounted(*, forward: float, strike: float, maturity_years: flo
         spot=None,
     )
     return price_european(state).delta / discount_factor
+
+
+def delta_band_window_pct(
+    *, delta_bound: float, maturity_years: float, working_vol: float
+) -> float:
+    if not (math.isfinite(delta_bound) and 0.0 < delta_bound < 1.0):
+        raise StrikeSelectionError("delta_bound", delta_bound, "must lie in (0, 1)")
+    if not (math.isfinite(maturity_years) and maturity_years > 0.0):
+        raise StrikeSelectionError("maturity_years", maturity_years, "must be finite and > 0")
+    if not (math.isfinite(working_vol) and working_vol > 0.0):
+        raise StrikeSelectionError("working_vol", working_vol, "must be finite and > 0")
+    sigma_root_t = working_vol * math.sqrt(maturity_years)
+    half_variance = 0.5 * working_vol * working_vol * maturity_years
+    call_d1 = NormalDist().inv_cdf(delta_bound)
+    put_d1 = NormalDist().inv_cdf(1.0 - delta_bound)
+    call_strike_over_forward = math.exp(half_variance - call_d1 * sigma_root_t)
+    put_strike_over_forward = math.exp(half_variance - put_d1 * sigma_root_t)
+    return max(abs(call_strike_over_forward - 1.0), abs(1.0 - put_strike_over_forward))
 
 
 def select_strikes_delta_band(
@@ -308,6 +353,25 @@ def select_discovery_strikes(
     )
 
 
+def _band_reach_for_market(
+    market: TenorMarket | None, selection: StrikeSelectionConfig
+) -> BandReach | None:
+    if market is None:
+        return None
+    if not (math.isfinite(market.maturity_years) and market.maturity_years > 0.0):
+        return None
+    working_vol = (
+        market.volatility
+        if math.isfinite(market.volatility) and market.volatility > 0.0
+        else selection.discovery_working_vol
+    )
+    return BandReach(
+        delta_bound=selection.delta_bound,
+        maturity_years=market.maturity_years,
+        working_vol=working_vol,
+    )
+
+
 def _plan_strikes(
     *,
     chosen: AvailableChain,
@@ -323,7 +387,8 @@ def _plan_strikes(
     for expiry in expiries:
         market = band.markets.get(expiry)
         if market is None or not (math.isfinite(market.forward) and market.forward > 0.0):
-            kept.update(select_strikes(chosen.strikes, spot, selection))
+            reach = _band_reach_for_market(market, band.selection)
+            kept.update(select_strikes(chosen.strikes, spot, selection, band_reach=reach))
             continue
         kept.update(
             select_strikes_delta_band(

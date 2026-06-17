@@ -636,4 +636,5 @@ def _selection_from_config(config: PlatformConfig) -> ChainSelection:
         max_expiries=None,
         min_strikes_per_side=strike_selection.min_strikes_per_side,
         option_exchange=config.universe.exchange,
+        strike_window_pct=strike_selection.strike_window_pct,
     )

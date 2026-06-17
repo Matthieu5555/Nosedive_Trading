@@ -106,7 +106,17 @@ policy surface, not one per broker or per script:
 - **%-of-spot** (`select_strikes`, the `ChainSelection` defaults) — keep strikes inside
   `spot ± strike_window_pct` with a per-side floor. `plan_chain`
   turns an `AvailableChain` into the concrete `(expiry, strike)` capture keys and
-  `select_capture_keys` is the key-level entry point.
+  `select_capture_keys` is the key-level entry point. This is only the **fallback** (no
+  band markets, or an expiry with no finite forward); `strike_window_pct` is typed/hashed
+  config (`StrikeSelectionConfig`, ADR 0028 / C7), not a `.py` literal — one home for the
+  capture-window policy. It must stay a **guaranteed superset** of the 30Δ band: when the
+  fallback has a tenor in hand, `select_strikes` derives the band's %-of-forward reach from
+  `discovery_working_vol` + `delta_bound` at that maturity (`delta_band_window_pct`, the
+  same Black inversion the band edges use, taken at `DF == 1` so it is conservative for
+  either delta convention) and raises `StrikeWindowClipError` if the window can't cover it —
+  it **never silently trims** the band. The reach grows with σ·√T, so the default 0.35
+  window covers short tenors but not a long-tenor / high-vol regime; that is exactly when it
+  fails loud rather than clip.
 
 The **expiry axis** is selected separately from the strike axis. When the selection is
 **tenor-targeted** (`tenor_years` + `as_of` set, `targets_tenors`) expiries bracket the

@@ -105,3 +105,71 @@ This makes the whole op reversible up to the final owner sign-off; no annoying i
   `constituent_capture_outcomes` table gone.
 - 06-17 re-captured live end-to-end, one clean slot (overwrite-last-wins, no accumulation).
 - Provisional archives + rebuild backups deleted after owner sign-off.
+
+---
+
+## 6. VALIDATE-ONLY run — measured results (2026-06-17, data-ops, temp sandbox, zero canonical touch)
+
+Executed §4 ①–⑤ against a full TEMP copy of the store at `/tmp/c3_cleanup_20260617-161244/data`
+(rsync from canonical, excluding `_provisional_archive` + `_rebuild_backups`). **⑥–⑨ deliberately NOT
+done — owner-gated.** Canonical proven untouched after the run: 06-16 still 49 underlyings, 06-15 still
+9, 1052 `run=` dirs intact, `constituent_capture_outcomes` still present, raw 06-15+06-16 sha256
+byte-identical before/after.
+
+**Purge (temp only):** raw → SX5E only for both days; `instrument_master`/`discovery_conid_cache`
+non-SX5E underlyings dropped; `constituent_capture_outcomes` removed wholesale; all computed wiped;
+`daily_bar` kept (228,111 parquet files intact). Result: 0 `run=` dirs and 0 computed partitions for
+06-15/06-16; 06-12/06-17 untouched.
+
+**Recompute — TWO defects found in the recompute-from-raw path (the §0 fix alone is NOT sufficient):**
+
+1. **`DuplicateKeyInBatch` on BOTH days via `rebuild_from_raw.py`.** `rebuild_day` (line 220) calls
+   `store.read("instrument_master")` with **no `trade_date` filter** → pulls all four stored days'
+   masters → **7,380 masters / only 2,637 distinct keys (2,413 dup keys)** → `build_snapshots` writes
+   two snapshot rows per duplicated key → `DuplicateKeyInBatch`. The live EOD path never hits this
+   because `_analytics` scopes masters to the *single captured day's* `basket.masters`. **Fix:** dedup
+   masters by `instrument_key` before reconstruct (last-wins). Verified: with a deduped-masters driver,
+   both days reconstruct clean, no dup error. *This is a real bug in the recompute path, not staged.*
+
+2. **The original "20,283" SX5E projected rows were themselves accumulation-inflated.** Canonical 06-16
+   SX5E `projected_option_analytics` = 20,283 rows = only **177 distinct (tenor, delta_band) cells**,
+   each duplicated 9–43× at the same `snapshot_ts`/`model_version`. The deduplicated recompute yields
+   **501 rows (167 combined + 167 put + 167 call), SX5E only** — the *correct* nappe. The "20,283"
+   acceptance figure was the junk this cleanup removes, NOT a target. **Acceptance "non-zero projected"
+   is MET; front nappe will read the 167-cell combined surface.**
+
+**Measured TEMP results after deduped recompute:**
+
+| metric | 2026-06-16 (load-bearing) | 2026-06-15 (thin/messy day) |
+|---|---|---|
+| `market_state_snapshots` | 2,369 (SX5E only; matches canonical SX5E-slice) | 976 (OPT only — see below) |
+| `projected_option_analytics` | **501** (167 comb + 167 put + 167 call), SX5E | **0** ⚠ |
+| `strategy_signals` (ρ̄) | **8 rows, SX5E** | 0 (no projected → no signal) |
+| `qc_results` / `triage_records` | 2 / 2 (verdict **fail**: 1m interior delta-band gap — honest QC, not a crash) | 0 / 0 |
+| `DuplicateKeyInBatch` | none (after dedup) | none (after dedup) |
+
+3. **06-15 recompute produces ZERO projected nappe — a raw data-quality deficiency, day-specific.**
+   The 06-15 SX5E *index* (`SX5E|IND`) has only **2 raw events all day** (one `last`, one `volume`,
+   split across a 15:30 close instant **and a second 20:00 fire** — the pre-fix accumulation). No
+   two-sided book → index snapshot raises `InsufficientSnapshotData` → skipped → no usable spot →
+   projection short-circuits → 0 cells → 0 signals. Canonical 06-15 had a (145-distinct-cell)
+   projection from its original capture context. **This is sparse 06-15 index raw, not a cleanup flaw;
+   06-16 is unaffected.** Owner should decide whether 06-15 is worth keeping at all (it is thin and the
+   index quote is degenerate) before promote.
+
+**Verdict:** the 06-16 staged+recomputed temp day is **clean and valid** (junk-free, non-zero deduped
+nappe, ρ̄ present, real QC verdict, no dup error). 06-15 is junk-free but yields an empty nappe due to
+a degenerate index quote in its raw. Promote /
+re-capture-06-17 / owner-front-validation / archive-deletion (⑥–⑨) remain **owner-gated and were not
+performed.** Temp store retained at `/tmp/c3_cleanup_20260617-161244/data` for inspection.
+
+**Defect 1 FIXED (`6aec3cf`, 2026-06-17):** `rebuild_from_raw.py` now dedups `instrument_master` by
+key (`_distinct_masters`, latest `as_of_date` wins) before reconstruct, so the production recompute
+path runs end-to-end without `DuplicateKeyInBatch`. The promote is no longer blocked on a code bug.
+
+### Remaining owner decisions before promote (⑥)
+1. **Go/no-go on the destructive promote of 06-16** (purge canonical junk + swap in the recomputed
+   day). The recompute path is now proven correct on temp; the swap mutates non-git-recoverable
+   canonical `data/`, so it wants an explicit owner go.
+2. **What to do with 06-15** — its SX5E index raw is degenerate (2 events, sparse), so a clean recompute
+   yields an empty nappe. Keep it junk-purged-but-thin, or drop the day. Owner call.

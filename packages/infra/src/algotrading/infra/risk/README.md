@@ -362,6 +362,34 @@ builder and enter the stamp `config_hashes`; defaults reproduce the blueprint Eq
 waterfall). A book record carries the `__book__` sentinel in `contract_key` so it never
 collides with a per-line record. See ADR 0038.
 
+## Tail risk: VaR / Expected Shortfall (§5.9)
+
+`tail_risk.py` reads the **full-reprice scenario distribution** — never a delta-normal
+approximation — and reports Value-at-Risk and Expected Shortfall (CVaR) at parameterized
+confidence levels (default 95% / 99%). It is a **pure derived metric** off the same
+`ScenarioLinePnl` cells `worst_case`/`build_scenario_report` read; it adds **no storage
+contract** (VaR/ES is derivable from the persisted `scenario_results`, so per the prefer-
+derived rule and ADR-0011 it stays a computed report rather than a new persisted table).
+
+The distribution is the **per-scenario portfolio total**: `scenario_pnl_distribution` reuses
+`scenario_totals` to collapse the `(scenario, line)` grid into one P&L per scenario, which is
+the empirical sample VaR/ES screen. Conventions, asserted by tests:
+
+- **Sign:** VaR and ES are reported as **positive losses**. An all-gains distribution reports
+  a *negative* VaR (a profit floor), so the sign law is "loss-positive", never "P&L-signed".
+- **VaR(c):** the loss at the worst `ceil((1−c)·N)`-th observation — the standard upper
+  empirical quantile of the loss distribution. ES(c) is the **mean of that same tail window**
+  (the worst `ceil((1−c)·N)` losses), so `ES ≥ VaR` always holds at the same confidence — ES
+  is the headline for an options book with a fat short-put left tail (S2's motivating case).
+- Confidence outside the open interval `(0, 1)`, or a metric over an empty distribution, is a
+  loud `TailRiskError`, never a silent zero.
+
+`tail_risk_from_cells(cells, confidence_levels=…)` is the engine-facing surface (cells →
+`TailRiskReport` with one `TailRiskMetric` per level, plus `worst_loss` and `sample_size`);
+`value_at_risk` / `expected_shortfall` / `tail_risk_metric` take a raw P&L sample for direct
+use. Concentration and liquidity (the other two §5.9 screens) are **not** in this module yet —
+they are separate follow-ups in `infra-tail-risk-var-es`.
+
 ## One bump source, determinism, and versioning
 
 Every finite-difference perturbation lives in one versioned `BumpSpec`, `DEFAULT_BUMPS`

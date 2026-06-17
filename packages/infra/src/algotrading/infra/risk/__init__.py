@@ -134,6 +134,19 @@ from .snapshot import (
     RiskSnapshot,
     build_risk_snapshot,
 )
+from .tail_risk import (
+    DEFAULT_CONFIDENCE_LEVELS,
+    TAIL_RISK_VERSION,
+    TailRiskError,
+    TailRiskMetric,
+    TailRiskReport,
+    expected_shortfall,
+    scenario_pnl_distribution,
+    tail_risk_from_cells,
+    tail_risk_metric,
+    tail_risk_report,
+    value_at_risk,
+)
 from .valuation import (
     CONFIDENCE_LABELS,
     CONFIDENCE_LOW,
@@ -272,4 +285,15 @@ __all__ = [
     "GroupedRisk",
     "build_risk_snapshot",
     "MissingValuationError",
+    "TAIL_RISK_VERSION",
+    "DEFAULT_CONFIDENCE_LEVELS",
+    "TailRiskError",
+    "TailRiskMetric",
+    "TailRiskReport",
+    "value_at_risk",
+    "expected_shortfall",
+    "tail_risk_metric",
+    "tail_risk_report",
+    "scenario_pnl_distribution",
+    "tail_risk_from_cells",
 ]

@@ -84,7 +84,7 @@ class Frame:
     def coverage_label(self) -> str | None:
         if self.coverage.option_rows <= 0:
             return None
-        return f"{self.coverage.two_sided}/{self.coverage.option_rows} cotations"
+        return f"{self.coverage.two_sided}/{self.coverage.option_rows} quotes"
 
     def to_dict(self) -> dict[str, object]:
         return {

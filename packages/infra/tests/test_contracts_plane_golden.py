@@ -396,12 +396,12 @@ def test_collector_events_round_trip_with_exact_decimals() -> None:
     assert restored[2].field_value == "open"
 
 
-def test_collector_event_row_without_provider_defaults_to_deribit() -> None:
+def test_collector_event_row_without_provider_defaults_to_ibkr() -> None:
     rows = json.loads(events_to_json(_collector_events()))
     for row in rows:
         row.pop("provider", None)
     restored = events_from_json(json.dumps(rows))
-    assert {event.provider for event in restored} == {"DERIBIT"}
+    assert {event.provider for event in restored} == {"IBKR"}
 
 
 def test_unexpected_encoded_field_value_is_refused() -> None:

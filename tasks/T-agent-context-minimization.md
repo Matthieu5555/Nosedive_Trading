@@ -9,14 +9,20 @@
 > **Git history is the archive: superseded/merge-only ADRs are UNTRACKED (`git rm`), not kept in an
 > in-tree `archive/` folder ("au pire on remonte dans git").**
 
-> **STATUS UPDATE (2026-06-17 board audit) — PART A IS DONE; only one Part-B item remains.**
+> **STATUS UPDATE (2026-06-17 board audit) — PART A IS DONE; Part-B #1 NOW LANDED.**
 > `.agent/decisions/` is trimmed to 41 live ADRs (dead set untracked), `decisions/README.md` index
 > exists with the "git history is the archive" footer, and `glossary.md`/`open-questions.md`/`map.md`
-> are all trimmed as described. **The one open item** is Part-B #1 — the stale broker default still
-> in code: `provider: str = "DERIBIT"` at `collectors/normalize.py:22` and `storage/events.py:29`
-> (line numbers shifted from the `:60`/`:53` recorded below). This same fix also closes
-> intent-vs-delivery F6 and ingestion-audit #14 — one one-line change clears all three. Once it lands,
-> reduce this file to that fix or archive it.
+> are all trimmed as described.
+>
+> **Part-B #1 — DONE (2026-06-17, worker D4).** The stale broker default
+> `provider: str = "DERIBIT"` → `"IBKR"` at `collectors/normalize.py:22` and `storage/events.py:29`;
+> this also closed intent-vs-delivery F6 and ingestion-audit #14. `orchestration/provider_flow.py`
+> carried NO stale default/list (provider is a required field — nothing to change there). Test +
+> golden-fixture default assertions repointed to `"IBKR"`. Remaining Part-B items: **#2** (stale
+> `demo_pipeline_{saxo,deribit,deribit_v2}.ipynb`) — already removed (files absent, no refs); **#3**
+> (`infra-saxo`/`infra-deribit` docstring paths in `packages/infra/src`) — no occurrences remain;
+> **#4** (universe-model encoding in ADR 0035/0042 per ADR 0051) — DEFERRED (ADR lane, lower priority).
+> With #1–#3 closed and #4 deferred, this file can be archived once #4 lands.
 
 ## Why (the diagnosis)
 

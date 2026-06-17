@@ -33,7 +33,7 @@
     "field_name": "market_state",
     "field_value": "open",
     "instrument_key": "AAPL|STK|SMART|USD|1|u-AAPL|||",
-    "provider": "DERIBIT",
+    "provider": "IBKR",
     "receipt_ts": "2026-05-29T15:30:02+00:00",
     "underlying": "AAPL"
   }

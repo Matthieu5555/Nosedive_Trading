@@ -26,7 +26,7 @@ class CollectorEvent:
     field_name: str
     field_value: Decimal | str | None
     underlying: str
-    provider: str = "DERIBIT"
+    provider: str = "IBKR"
     exchange_ts: datetime | None = None
     contract_id_broker: str | None = None
 

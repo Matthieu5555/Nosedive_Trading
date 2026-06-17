@@ -19,7 +19,7 @@ class BrokerTick:
     value: float | str | None
     underlying: str
     sequence: int = 0
-    provider: str = "DERIBIT"
+    provider: str = "IBKR"
     exchange_ts: datetime | None = None
     contract_id_broker: str | None = None
 

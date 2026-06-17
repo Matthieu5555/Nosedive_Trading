@@ -131,8 +131,11 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
   const title = `${subjectHeading} · ${caption}`;
 
   // Empty/error copy names its subject and as-of off the SAME descriptor as the populated state.
+  // The degenerate (market-probably-closed) copy is the normative §2b sentence: it names the missing
+  // thing in PM register ("aucune cotation deux-faces") + the loud market-closed cause — the exact
+  // canary the legibility theme exists to surface.
   const emptyCopy = degenerate
-    ? `Aucune nappe pour ${subject} au ${date} — marché probablement fermé.`
+    ? `Aucune cotation deux-faces pour ${subject} au ${date} — marché probablement fermé.`
     : `Aucune nappe pour ${subject} au ${date}.`;
 
   return {

@@ -154,22 +154,12 @@ export function coverageHeadline(coverage: CoverageCounts): string {
   return `${base} · ${frInteger(excluded)} à une face exclues`;
 }
 
-const CLOSE_INSTANT: Record<string, string> = {
-  SX5E: "17:30 CET",
-};
-
-export function closeInstant(underlying: string | null | undefined): string | null {
-  if (!underlying) return null;
-  return CLOSE_INSTANT[underlying] ?? null;
-}
-
-export function asOfClose(
-  asOf: string | null | undefined,
-  underlying: string | null | undefined,
-): string {
+// The close instant is never a front-side constant: it is resolved server-side from the index
+// registry (the BFF /api/analytics `close_instant`, venue time-of-day + zone) and threaded in. A
+// caller that has it passes it; absent → a date-only as-of, never a guessed instant.
+export function asOfClose(asOf: string | null | undefined, closeInstant?: string | null): string {
   if (!asOf) return "date non résolue";
-  const instant = closeInstant(underlying);
-  return instant ? `clôture ${asOf} ${instant}` : `clôture ${asOf}`;
+  return closeInstant ? `clôture ${asOf} ${closeInstant}` : `clôture ${asOf}`;
 }
 
 export function number(value: number, digits = 2): string {

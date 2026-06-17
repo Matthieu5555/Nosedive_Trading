@@ -148,8 +148,15 @@ The BFF exposes (all under `/api` except the liveness probe):
   values are never relabelled as deltas. Each `surface_slice` carries the full fit
   diagnostics (`bound_hits`/`converged` beside `rmse`/`n_points`/`arb_free`) plus the
   derived `degenerate`/`degenerate_reasons` flag, so a railed SVI calibration renders
-  flagged, never as clean. The stress surface (`GET /api/risk/scenarios`) labels missing
-  `(spot, vol)` cells as `null` holes with `has_holes`/`n_holes` (F-BFF-03), never `0.0`.
+  flagged, never as clean. It also carries two additive-nullable fields the legibility theme
+  needs: `close_instant` — the option settlement close as a PM-legible venue time-of-day + zone
+  (`"17:30 CEST"`, resolved from the index registry's calendar + `option_settlement_close`, honest
+  per-date, never a hard-coded `"CET"`; null off-registry), and `coverage` — the one shared
+  `{option_rows, two_sided, excluded, two_sided_fraction}` block (computed once in
+  `grounding.coverage_from_snapshots`, shared with the assistant frame; null when no option rows),
+  so the nappe caption can state *built-on / captured* without re-deriving the metric. The stress
+  surface (`GET /api/risk/scenarios`) labels missing `(spot, vol)` cells as `null` holes with
+  `has_holes`/`n_holes` (F-BFF-03), never `0.0`.
 - `GET /api/recorded-dates[?index=]` — from the 1G run-state ledger. Returns `dates`/`count`
   (the **qc-clean, gap-free** days — the operator coverage figure) **and** `available`: every
   **viewable** day (whose `analytics` stage produced a surface, **including qc-failing ones**),
@@ -245,7 +252,10 @@ The BFF exposes (all under `/api` except the liveness probe):
   the front's `computeScorecards`; `market_state_snapshots` for the coverage count via the canonical
   `is_valid_two_sided`), formats every number through a **server-side mirror of `sci`/`sciUnit`/`UNITS`**
   (`sci_format.py`, byte-identical to `web/src/lib/format.ts`), resolves the **close instant via the
-  calendar resolver** (SX5E = 17:30 CET / OESX settlement, never 22:00), and tags the frame `INDICATIF`
+  shared `grounding.resolve_close_instant`** (registry calendar + `option_settlement_close` → the
+  venue time-of-day + zone, e.g. SX5E OESX settlement `17:30 CEST` in summer / `17:30 CET` in winter,
+  never the 22:00 XEUR futures close — the same helper `/api/analytics` uses, one source), and tags
+  the frame `INDICATIF`
   when `mode=indicative`. It composes a system+user prompt whose only citable numbers are that facts
   block, calls **OpenRouter** (never the browser), then **validates the answer's numbers against the
   facts block**: any number not in the block flags `grounded=false` and the answer is replaced with the

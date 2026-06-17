@@ -13,7 +13,7 @@ const FRAME = {
   trade_date: "2026-06-17",
   run_id: "run-1",
   mode: "strict" as const,
-  close_instant: "2026-06-17 17:30 CET",
+  close_instant: "17:30 CET",
   coverage_label: "1 706/2 412 cotations",
 };
 

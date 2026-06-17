@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import zoneinfo
 from dataclasses import dataclass, field
 from datetime import date
 
+import exchange_calendars as xcals
 from algotrading.core.config import ConfigError
 from algotrading.infra.contracts import (
     SURFACE_SIDE_COMBINED,
@@ -133,17 +135,31 @@ class GroundingContext:
         }
 
 
-def _resolve_close_instant(
+def resolve_close_instant(
     ctx: AppContext, underlying: str, trade_date: date | None
 ) -> str | None:
+    """The option settlement close as a PM-legible local time-of-day, e.g. "17:30 CEST".
+
+    The single source of truth for the close instant the whole front renders: the calendar code and
+    the option_settlement_close time-of-day come from the index registry (configs/universe.yaml),
+    the venue zone and its winter/summer abbreviation come from that calendar — never a hard-coded
+    "17:30 CET" constant. Per-date so the abbreviation is honest (CET in winter, CEST in summer).
+    The date already travels separately (the front's as-of), so this is the time-of-day + zone only.
+    Returns None when the registry, calendar, or session is unavailable (additive-nullable; the
+    front degrades to a date-only as-of, never a guessed instant).
+    """
     if trade_date is None:
         return None
     try:
         registry = load_index_registry(ctx.configs_dir)
         resolver = CalendarResolver(registry, as_of=trade_date)
-        return resolver.session_close(underlying, trade_date).isoformat()
+        close_utc = resolver.session_close(underlying, trade_date)
+        calendar_code = registry.get(underlying).calendar
+        venue_zone = zoneinfo.ZoneInfo(str(xcals.get_calendar(calendar_code).tz))
     except (ConfigError, IndexRegistryError, CalendarResolutionError, KeyError):
         return None
+    local_close = close_utc.astimezone(venue_zone)
+    return f"{local_close.strftime('%H:%M')} {local_close.tzname()}"
 
 
 def _is_option_snapshot(snapshot: MarketStateSnapshot) -> bool:
@@ -153,7 +169,7 @@ def _is_option_snapshot(snapshot: MarketStateSnapshot) -> bool:
     return fields[_RIGHT_SLOT] in ("C", "P")
 
 
-def _coverage_from_snapshots(snapshots: list[MarketStateSnapshot]) -> Coverage:
+def coverage_from_snapshots(snapshots: list[MarketStateSnapshot]) -> Coverage:
     options = [s for s in snapshots if _is_option_snapshot(s)]
     option_rows = len(options)
     two_sided = sum(1 for s in options if is_valid_two_sided(s.bid, s.ask))
@@ -320,8 +336,8 @@ def build_grounding_context(
         ctx.store, "market_state_snapshots", resolved_underlying, trade_date=trade_date
     )
 
-    coverage = _coverage_from_snapshots(snapshots)
-    close_instant = _resolve_close_instant(ctx, resolved_underlying, trade_date)
+    coverage = coverage_from_snapshots(snapshots)
+    close_instant = resolve_close_instant(ctx, resolved_underlying, trade_date)
     frame = Frame(
         underlying=resolved_underlying,
         trade_date=trade_date,

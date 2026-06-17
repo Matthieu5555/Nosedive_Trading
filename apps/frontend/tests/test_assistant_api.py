@@ -223,20 +223,15 @@ def test_facts_block_carries_the_screen_numbers(ctx: AppContext) -> None:
     )
 
 
-def test_close_instant_is_1730_cet_not_2200(ctx: AppContext) -> None:
-    from algotrading.infra.universe import CalendarResolver, load_index_registry
-
+def test_close_instant_is_1730_local_not_2200(ctx: AppContext) -> None:
+    # The close instant is the PM-legible venue time-of-day + zone resolved from the registry
+    # (OESX settlement 17:30 in the XEUR venue zone), NOT the 22:00 XEUR futures close. June is
+    # summer in Berlin → CEST; the abbreviation is honest per-date, never a hard-coded "CET".
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
-    expected = (
-        CalendarResolver(load_index_registry(CONFIGS_DIR), as_of=TRADE_DATE)
-        .session_close(UNDERLYING, TRADE_DATE)
-        .isoformat()
-    )
-    assert grounding.frame.close_instant == expected
-    # 17:30 CEST is 15:30Z; 22:00 CEST (XEUR futures) would be 20:00Z. Assert it's the former.
+    assert grounding.frame.close_instant == "17:30 CEST"
     assert grounding.frame.close_instant is not None
-    assert "T15:30" in grounding.frame.close_instant
-    assert "T20:00" not in grounding.frame.close_instant
+    assert "17:30" in grounding.frame.close_instant
+    assert "22:00" not in grounding.frame.close_instant
 
 
 # --- Never-invents: the guardrail test -----------------------------------------------------
@@ -367,7 +362,7 @@ def test_contract_frame_carries_run_id_close_instant_and_coverage_label(
     frame = resp.json()["frame"]
     # The fields the front's AssistantFrame declares (assistantApi.ts) are all present and live.
     assert frame["run_id"] == "run-0616"
-    assert frame["close_instant"] is not None and "T15:30" in frame["close_instant"]
+    assert frame["close_instant"] is not None and "17:30" in frame["close_instant"]
     assert frame["coverage_label"] == (
         f"{EXPECTED_TWO_SIDED}/{EXPECTED_OPTION_ROWS} cotations"
     )

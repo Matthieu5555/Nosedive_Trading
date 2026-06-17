@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   asOfClose,
-  closeInstant,
   coverageHeadline,
   coveragePercent,
   currencySymbol,
@@ -130,22 +129,17 @@ describe("coverageHeadline", () => {
   });
 });
 
-describe("closeInstant / asOfClose", () => {
-  it("knows the SX5E close instant is 17:30 CET (OESX settlement), not 22:00", () => {
-    expect(closeInstant("SX5E")).toBe("17:30 CET");
-    expect(closeInstant("UNKNOWN")).toBeNull();
-    expect(closeInstant(null)).toBeNull();
+describe("asOfClose", () => {
+  it("renders the as-of with the BFF-resolved close instant (threaded, not a front-side map)", () => {
+    expect(asOfClose("2026-06-17", "17:30 CET")).toBe("clôture 2026-06-17 17:30 CET");
   });
 
-  it("renders the as-of with its close instant for SX5E", () => {
-    expect(asOfClose("2026-06-17", "SX5E")).toBe("clôture 2026-06-17 17:30 CET");
-  });
-
-  it("falls back to a bare close date for an underlying without a known instant", () => {
-    expect(asOfClose("2026-06-17", "UNKNOWN")).toBe("clôture 2026-06-17");
+  it("falls back to a bare close date when no instant was resolved", () => {
+    expect(asOfClose("2026-06-17", null)).toBe("clôture 2026-06-17");
+    expect(asOfClose("2026-06-17")).toBe("clôture 2026-06-17");
   });
 
   it("never invents a date — an absent as-of is labelled, not blank", () => {
-    expect(asOfClose(null, "SX5E")).toBe("date non résolue");
+    expect(asOfClose(null, "17:30 CET")).toBe("date non résolue");
   });
 });

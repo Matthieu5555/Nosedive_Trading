@@ -253,12 +253,30 @@ export interface SurfaceDense {
   degenerate_maturity_years: number[];
 }
 
+// The one coverage block (MAT-LEGIBILITY-coverage-headline): how much of the captured option chain
+// the surface actually rests on. Computed once in the BFF (grounding.coverage_from_snapshots) and
+// shared with the assistant frame — never refabricated on the front. Additive-nullable: a payload
+// without it (or with no option rows) parses with `coverage: null`, and the headline says
+// "couverture indisponible" rather than vanishing.
+export interface AnalyticsCoverage {
+  option_rows: number;
+  two_sided: number;
+  excluded: number;
+  two_sided_fraction: number | null;
+}
+
 export interface AnalyticsResponse {
   underlying: string;
   trade_date: string | null;
+  // The option settlement close as a PM-legible local instant ("2026-06-17 17:30 CEST"), resolved
+  // server-side from the index registry (configs/universe.yaml calendar + option_settlement_close) —
+  // the front never hard-codes "17:30 CET". Null/absent when the registry/session is unavailable;
+  // additive-nullable so an older payload without it still parses (date-only as-of).
+  close_instant?: string | null;
   n_maturities: number;
   maturities: AnalyticsMaturity[];
   surface: SurfaceDense | null;
+  coverage?: AnalyticsCoverage | null;
 }
 
 // --- /api/risk/metrics greeks cell (TARGET §5.1) --------------------------------------------

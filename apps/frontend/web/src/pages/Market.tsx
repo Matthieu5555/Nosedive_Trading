@@ -22,7 +22,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
-import { closeInstant, currencySymbol } from "../lib/format";
+import { currencySymbol } from "../lib/format";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
@@ -41,6 +41,13 @@ export function MarketPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [coverageOpen, setCoverageOpen] = useState(false);
+  // Strict is the landing state every time (canonical-first, MAT-LEGIBILITY-strict-indicative-mode):
+  // switching the underlying re-lands on strict so indicative is always a deliberate act, never a
+  // sticky state that could silently outlive the surface it was toggled on.
+  const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>("strict");
+  useEffect(() => {
+    setSurfaceMode("strict");
+  }, [index]);
 
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
@@ -56,6 +63,7 @@ export function MarketPage() {
   const analytics = useFetch<AnalyticsResponse>(
     index && effectiveAsOf
       ? `/api/analytics?underlying=${encodeURIComponent(index)}&trade_date=${encodeURIComponent(effectiveAsOf)}` +
+          `&mode=${encodeURIComponent(surfaceMode)}` +
           (effectiveRunId ? `&run_id=${encodeURIComponent(effectiveRunId)}` : "")
       : "",
   );
@@ -124,16 +132,30 @@ export function MarketPage() {
               );
             }
             const qc = selectedFetch?.qc ?? "unknown";
-            const instant = closeInstant(index);
+            // The close instant is resolved server-side from the index registry (the BFF's
+            // /api/analytics close_instant, derived from configs/universe.yaml calendar +
+            // option_settlement_close) — never a hard-coded "17:30 CET" map on the front. Absent →
+            // a date-only as-of, never a guessed instant.
+            const instant = analytics.data?.close_instant ?? null;
             const surfaceMissing =
               analytics.data !== null && analytics.data.maturities.length === 0;
             // The mode and coverage that drive BOTH the descriptor sentence and the chart captions
             // are resolved once here and threaded down, so the panel heading, the caption and the
-            // figure caption can never disagree. Coverage is not yet carried on the analytics
-            // payload, so it degrades to "couverture indisponible"; mode is strict until the
-            // indicative toggle is wired. Both are the SurfaceIdentityProps the charts consume.
-            const surfaceMode: SurfaceMode = "strict";
-            const surfaceCoverage: SurfaceCoverage | null = null;
+            // figure caption can never disagree. Coverage is the one shared block on the payload
+            // (option_rows / two_sided / excluded), mapped to the SurfaceCoverage the charts consume;
+            // in indicative mode the resting count rises to the captured chain and the lift over the
+            // strict two-sided count is the indicative-mark tally. Absent block → null (the caption
+            // degrades to "couverture indisponible", never a fabricated fraction).
+            const block = analytics.data?.coverage ?? null;
+            const surfaceCoverage: SurfaceCoverage | null = block
+              ? surfaceMode === "indicative"
+                ? {
+                    resting: block.option_rows,
+                    total: block.option_rows,
+                    indicative: block.excluded,
+                  }
+                : { resting: block.two_sided, total: block.option_rows }
+              : null;
             const descriptor = describeSurface({
               subject: index,
               asOf: effectiveAsOf,
@@ -155,6 +177,8 @@ export function MarketPage() {
                   <AsyncBlock
                     loading={analytics.loading || signals.loading}
                     error={analytics.error}
+                    height={140}
+                    subject={`les indicateurs ${index}`}
                   >
                     {analytics.data && (
                       <Scorecards
@@ -165,6 +189,10 @@ export function MarketPage() {
                         }
                         ivRank={signals.data?.by_kind?.iv_rank?.[0] ?? null}
                         impliedCorrelation={signals.data?.by_kind?.implied_correlation?.[0] ?? null}
+                        underlying={index}
+                        closeInstant={instant}
+                        asOf={effectiveAsOf}
+                        runId={effectiveRunId}
                       />
                     )}
                   </AsyncBlock>
@@ -179,7 +207,12 @@ export function MarketPage() {
                     <span className="status">{descriptor.asOfPhrase} · OHLC</span>
                   </div>
                   <ErrorBoundary label="Price">
-                    <AsyncBlock loading={price.loading} error={price.error}>
+                    <AsyncBlock
+                      loading={price.loading}
+                      error={price.error}
+                      height={440}
+                      subject={`le cours ${index}`}
+                    >
                       {price.data && <PriceChart data={price.data} />}
                     </AsyncBlock>
                   </ErrorBoundary>
@@ -198,14 +231,33 @@ export function MarketPage() {
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>{descriptor.subjectHeading}</h2>
+                      <h2>
+                        {descriptor.subjectHeading}
+                        {surfaceMode === "indicative" && (
+                          <span
+                            className="qc-badge qc-badge--indicative"
+                            role="status"
+                            aria-label="Mode indicatif — pas la clôture stockée"
+                          >
+                            INDICATIF — pas la clôture stockée
+                          </span>
+                        )}
+                      </h2>
                     </div>
-                    <span className="status" data-tone={descriptor.tone}>
-                      {descriptor.caption}
-                    </span>
+                    <div className="panel-heading__controls">
+                      <span className="status" data-tone={descriptor.tone}>
+                        {descriptor.caption}
+                      </span>
+                      <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
+                    </div>
                   </div>
                   <ErrorBoundary label="3D surface">
-                    <AsyncBlock loading={analytics.loading} error={analytics.error}>
+                    <AsyncBlock
+                      loading={analytics.loading}
+                      error={analytics.error}
+                      height={480}
+                      subject={`la nappe ${index}`}
+                    >
                       {analytics.data &&
                         (surfaceMissing ? (
                           <p className="state-panel" role="status">
@@ -227,7 +279,12 @@ export function MarketPage() {
                 </article>
 
                 <ErrorBoundary label="Tenor view">
-                  <AsyncBlock loading={analytics.loading} error={analytics.error}>
+                  <AsyncBlock
+                    loading={analytics.loading}
+                    error={analytics.error}
+                    height={360}
+                    subject={`le smile et les Greeks ${index}`}
+                  >
                     {analytics.data && (
                       <TenorPanel
                         maturities={analytics.data.maturities}
@@ -293,5 +350,42 @@ export function MarketPage() {
           })()}
       </AsyncBlock>
     </section>
+  );
+}
+
+// Strict ⟷ Indicative toggle (MAT-LEGIBILITY-strict-indicative-mode). Strict is the default and the
+// only stored/tradeable surface (two-sided quotes only); indicative is a view-time overlay that
+// includes one-sided/last marks, unmistakably badged so it can never be confused for the close. The
+// toggle says what each mode does — the consequence is shown, not sold — and a `mode` change is a
+// deliberate act that visibly reframes the page (the INDICATIF badge appears, the coverage numerator
+// rises), never a silent data swap.
+function SurfaceModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: SurfaceMode;
+  onChange: (mode: SurfaceMode) => void;
+}) {
+  return (
+    <div className="mode-toggle" role="group" aria-label="Mode de la nappe">
+      <button
+        type="button"
+        className="mode-toggle__option"
+        aria-pressed={mode === "strict"}
+        title="Deux-faces seulement — la clôture canonique stockée"
+        onClick={() => onChange("strict")}
+      >
+        Strict — deux-faces seulement
+      </button>
+      <button
+        type="button"
+        className="mode-toggle__option"
+        aria-pressed={mode === "indicative"}
+        title="Inclut les marques à une face — estimation, jamais la clôture stockée"
+        onClick={() => onChange("indicative")}
+      >
+        Indicatif — inclut les marques à une face
+      </button>
+    </div>
   );
 }

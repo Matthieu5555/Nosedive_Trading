@@ -592,6 +592,39 @@ h3 {
 .qc-badge--unknown {
   color: var(--muted);
 }
+.qc-badge--indicative {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+/* Strict ⟷ Indicative toggle: a quiet segmented control beside the nappe caption. The pressed
+   option carries the eye (border + text in the foreground); the other recedes. Reuses the existing
+   tokens — no new accent. */
+.panel-heading__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.mode-toggle {
+  display: inline-flex;
+  border: 0.5px solid var(--border-strong);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.mode-toggle__option {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.mode-toggle__option[aria-pressed="true"] {
+  color: var(--amber);
+  background: var(--panel-soft);
+}
 
 /* The dollar-Greeks term structure lays its four Greek panels out two-up (one per Greek). */
 .greeks-term-structure .chart-grid {

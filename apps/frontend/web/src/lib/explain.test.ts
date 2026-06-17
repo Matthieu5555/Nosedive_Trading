@@ -57,6 +57,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "signal",
       tenorLabel: "3m",
@@ -71,6 +72,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "projected",
       tenorLabel: "3m",
@@ -85,6 +87,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "indicative",
       source: "signal",
       tenorLabel: "1m",
@@ -99,6 +102,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "signal",
       tenorLabel: "3m",
@@ -111,6 +115,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "surface",
       coverage: { twoSided: 1706, total: 2412 },
@@ -124,6 +129,7 @@ describe("whereFrom is a pure function of context", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "surface",
       coverage: null,
@@ -153,6 +159,7 @@ describe("explainWithContext — the grounded assistant seam", () => {
     const out = explainWithContext("atm_level", {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       mode: "strict",
       source: "projected",
       tenorLabel: "3m",
@@ -171,6 +178,7 @@ describe("explainWithContext — the grounded assistant seam", () => {
     const out = explainWithContext("rv_minus_iv", {
       underlying: "SX5E",
       asOf: "2026-06-17",
+      closeInstant: "17:30 CET",
       source: "signal",
       tenorLabel: "3m",
       value: null,

@@ -4,8 +4,9 @@ export type AssistantMode = "strict" | "indicative";
 
 // The active surface frame the panel posts with every question, so the assistant grounds on the
 // SAME (subject · as-of · mode) the page is showing — it can never describe a different frame than
-// the chart. The BFF resolves the close instant (17:30 CET for SX5E, OESX settlement) server-side;
-// the front never re-derives it, it only renders what the frame carries back.
+// the chart. The BFF resolves the close instant server-side from the index registry (the venue
+// time-of-day + zone, e.g. "17:30 CEST" for SX5E's OESX settlement, honest per-date); the front
+// never re-derives it, it only renders what the frame carries back, paired with the trade_date.
 export interface AssistantFrame {
   underlying: string;
   trade_date: string;

@@ -25,7 +25,12 @@ type Turn = { kind: "question"; text: string } | { kind: "answer"; response: Ass
 
 function frameCaption(frame: AssistantFrame): string {
   const parts = [frame.underlying];
-  if (frame.close_instant) parts.push(`clôture ${frame.close_instant}`);
+  // The close instant is the venue time-of-day + zone ("17:30 CEST"); the date travels separately on
+  // the frame, so the caption pairs them ("clôture 2026-06-17 17:30 CEST") — the same as-of phrasing
+  // the nappe caption uses, never a bare time that can't say which day.
+  if (frame.close_instant) {
+    parts.push(`clôture ${frame.trade_date} ${frame.close_instant}`);
+  }
   parts.push(frame.mode === "indicative" ? "INDICATIF" : "strict");
   if (frame.coverage_label) parts.push(frame.coverage_label);
   return parts.join(" · ");

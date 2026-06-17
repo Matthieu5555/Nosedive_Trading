@@ -40,7 +40,7 @@ test("is one scrollable page (price → scorecards → nappe → tenor → dispe
   // Price (context), then the scorecards block, then the 3D nappe, then the dispersion strip.
   expect(await screen.findByRole("heading", { name: /Cours quotidien/i })).toBeInTheDocument();
   expect(await screen.findByLabelText("Volatility scorecards")).toBeInTheDocument();
-  expect(await screen.findByLabelText(/Implied-volatility surface/i)).toBeInTheDocument();
+  expect(await screen.findByLabelText(/Nappe de volatilité.*maturité/i)).toBeInTheDocument();
   expect(await screen.findByRole("heading", { name: /Dispersion/i })).toBeInTheDocument();
   // The old tab chrome is gone.
   expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
@@ -145,7 +145,7 @@ test("one tenor selector lists the pinned grid and drives the smile + greeks tab
     ).toBeInTheDocument();
   }
   // The default tenor (3m) is captured, so its smile and Greeks table render.
-  expect(await screen.findByLabelText(/Smile — 3m/i)).toBeInTheDocument();
+  expect(await screen.findByLabelText(/smile 3m/i)).toBeInTheDocument();
   expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
 });
 
@@ -154,21 +154,21 @@ test("a tenor beyond the captured span renders as a labelled projection gap", as
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await screen.findByLabelText(/Smile — 3m/i);
+  await screen.findByLabelText(/smile 3m/i);
   // 12m is offered (pinned grid) but not captured in this fixture.
   expect(
     within(screen.getByLabelText("Tenor")).getByRole("option", { name: /12m \(not captured\)/ }),
   ).toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Tenor"), "12m");
   expect(await screen.findByText(/12m is not captured/i)).toBeInTheDocument();
-  expect(screen.queryByLabelText(/Smile — 3m/i)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText(/smile 3m/i)).not.toBeInTheDocument();
 });
 
 test("the smile superimposes put + call (both wings, no side filter)", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   render(<MarketPage />);
 
-  const smile = await screen.findByLabelText(/Smile — 3m/i);
+  const smile = await screen.findByLabelText(/smile 3m/i);
   // Both wings plotted as scatter traces (the gap between them is the skew).
   expect(within(smile).getByTestId("plot-types").textContent).toMatch(/scatter,scatter/);
 });
@@ -190,7 +190,7 @@ test("never calls /api/analytics for a constituent symbol — index-keyed only",
   );
   render(<MarketPage />);
 
-  await screen.findByLabelText(/Smile — 3m/i);
+  await screen.findByLabelText(/smile 3m/i);
   await waitFor(() => expect(underlyings.length).toBeGreaterThan(0));
   // Only the index (SPX) is ever requested; no member (AAA/BBB) surface is fetched.
   expect(new Set(underlyings)).toEqual(new Set(["SPX"]));
@@ -200,7 +200,7 @@ test("renders the dense reconstructed surface as the full nappe (both wings, no 
   server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DENSE));
   render(<MarketPage />);
 
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  const surface = await screen.findByLabelText(/Nappe de volatilité.*maturité/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
   // The whole lattice survives — no put-wing slice (k = −0.1, 0.0, 0.1 all present).
   expect(within(surface).getByTestId("plot-z")).toHaveTextContent(
@@ -219,7 +219,7 @@ test("the grid-fallback smile is labeled as log-moneyness and flags a degenerate
   // so to read the smile we pick the captured label. Its single tenor renders by default since 3m
   // isn't present — the selector falls back to the front tenor for the gap label, so assert the
   // surface fallback names log-moneyness instead.
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  const surface = await screen.findByLabelText(/Nappe de volatilité.*maturité/i);
   expect(surface.getAttribute("aria-label")).toMatch(/log-moneyness|surface/i);
 });
 
@@ -351,7 +351,7 @@ test("the tenor panel shows Greek shape curves beside the Greeks table (compleme
 
   // The §3.6 profiles: delta S-curve + gamma/vega bells vs strike, alongside the raw/$ table.
   expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
-  const curves = await screen.findByLabelText(/Greek profiles — 3m/i);
+  const curves = await screen.findByLabelText(/Greeks 3m/i);
   expect(within(curves).getByTestId("plot-types").textContent).toMatch(/scatter,scatter,scatter/);
 });
 
@@ -359,7 +359,7 @@ test("the nappe renders a degenerate slice legibly (108%/140% IV clamped, not a 
   server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DEGENERATE));
   render(<MarketPage />);
 
-  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  const surface = await screen.findByLabelText(/Nappe de volatilité.*maturité/i);
   // The railed slice is flagged in the label rather than rendered as a garbage peak.
   expect(surface.getAttribute("aria-label")).toMatch(/flagged|surface/i);
   // The 140%/55% cells (above the 0.35 display band) are clamped to null holes; the duplicate
@@ -435,16 +435,26 @@ test("the nappe caption carries as-of · mode · coverage, degrading honestly wh
   expect(within(surface).queryByText(/\d+\/\d+ cotations/)).not.toBeInTheDocument();
 });
 
-test("an SX5E surface carries the 17:30 CET close instant — never 22:00", async () => {
+test("an SX5E surface carries the registry-resolved close instant — never 22:00", async () => {
+  // The close instant is the BFF-resolved /api/analytics `close_instant` (from the index registry),
+  // not a front-side hard-coded "17:30 CET" map: the front renders exactly what the payload carries.
   server.use(
     jsonGet("/api/indices", SX5E_INDICES),
     jsonGet("/api/recorded-dates", SX5E_RECORDED),
-    jsonGet("/api/analytics", { ...ANALYTICS_SCORECARD, underlying: "SX5E" }),
+    jsonGet("/api/analytics", {
+      ...ANALYTICS_SCORECARD,
+      underlying: "SX5E",
+      close_instant: "17:30 CET",
+    }),
     jsonGet("/api/signals", SIGNALS_SX5E),
   );
   render(<MarketPage />);
   const surface = await screen.findByLabelText("Nappe de volatilité — SX5E");
-  expect(within(surface).getByText(/clôture 2026-06-17 17:30 CET/)).toBeInTheDocument();
+  // The instant arrives with the analytics payload (not synchronously off a front-side map), so wait.
+  // Caption and figure caption both carry it — the self-describing guarantee means they agree, so
+  // matching all is correct (findByText would reject the legitimate duplicate).
+  const instants = await within(surface).findAllByText(/clôture 2026-06-17 17:30 CET/);
+  expect(instants.length).toBeGreaterThan(0);
   // The 22:00 XEUR futures close is the trap this binds against.
   expect(within(surface).queryByText(/22:00/)).not.toBeInTheDocument();
 });
@@ -464,7 +474,13 @@ test("switching the index rewrites the heading and the caption together (no stal
     }),
     http.get("/api/analytics", ({ request }) => {
       const u = new URL(request.url).searchParams.get("underlying");
-      return HttpResponse.json({ ...ANALYTICS_SCORECARD, underlying: u });
+      // The BFF resolves the close instant per underlying; SPX has none registered (date-only),
+      // SX5E resolves to the 17:30 venue close. The front renders whichever the payload carries.
+      return HttpResponse.json({
+        ...ANALYTICS_SCORECARD,
+        underlying: u,
+        close_instant: u === "SX5E" ? "17:30 CET" : null,
+      });
     }),
   );
   const user = userEvent.setup();
@@ -478,7 +494,9 @@ test("switching the index rewrites the heading and the caption together (no stal
   expect(
     await screen.findByRole("heading", { name: "Nappe de volatilité — SX5E" }),
   ).toBeInTheDocument();
-  expect(within(surface).getByText(/clôture 2026-06-17 17:30 CET/)).toBeInTheDocument();
+  expect(
+    (await within(surface).findAllByText(/clôture 2026-06-17 17:30 CET/)).length,
+  ).toBeGreaterThan(0);
   // The old subject left every label — no contradiction lingers.
   expect(
     screen.queryByRole("heading", { name: "Nappe de volatilité — SPX" }),

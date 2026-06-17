@@ -410,6 +410,61 @@ def test_quote_block_always_present_even_without_snapshots(
         assert point["quote"] == {"bid": None, "ask": None, "volume": None}
 
 
+def test_coverage_block_counts_two_sided_against_the_captured_chain(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # Hand-counted oracle (MAT-LEGIBILITY-coverage-headline): 5 option snapshots — 3 two-sided
+    # (both bid>0 and ask>0), 2 one-sided (ask-only, bid coerced to 0 → not two-sided). So
+    # option_rows=5, two_sided=3, excluded=2, two_sided_fraction=3/5=0.6. The block is computed
+    # once in the BFF (grounding.coverage_from_snapshots) and shared with the assistant frame.
+    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
+    call_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_CALL_LOGM), 2)
+    snapshots = [
+        _quote_snapshot(seed, strike=put_strike, right="P", bid=4.1, ask=4.4, volume=10.0),
+        _quote_snapshot(seed, strike=call_strike, right="C", bid=3.0, ask=3.2, volume=10.0),
+        _quote_snapshot(seed, strike=call_strike + 50.0, right="C", bid=1.0, ask=1.2, volume=5.0),
+        _quote_snapshot(seed, strike=call_strike + 100.0, right="C", bid=None, ask=0.6, volume=1.0),
+        _quote_snapshot(seed, strike=put_strike - 50.0, right="P", bid=None, ask=2.0, volume=1.0),
+    ]
+    app_ctx = _analytics_store_with_quotes(tmp_path / "data", seed, snapshots)
+    with TestClient(create_app(app_ctx)) as client:
+        coverage = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()["coverage"]
+    assert coverage == {
+        "option_rows": 5,
+        "two_sided": 3,
+        "excluded": 2,
+        "two_sided_fraction": pytest.approx(0.6),
+    }
+
+
+def test_coverage_block_is_null_when_no_option_snapshots(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # Additive-nullable: the seeded store banks no option snapshots under MEMBER_AAA, so the
+    # coverage block is null (the headline degrades to "couverture indisponible"), not a 500.
+    payload = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()
+    assert payload["coverage"] is None
+
+
+def test_close_instant_is_null_for_an_index_outside_the_registry(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # MEMBER_AAA is a synthetic test index with no registry entry, so the close instant cannot be
+    # resolved — the field is present and null (the front degrades to a date-only as-of), never a
+    # guessed instant and never a 500.
+    payload = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()
+    assert payload["close_instant"] is None
+
+
 def test_two_sided_quote_threads_onto_the_matching_cell(
     tmp_path: Path, seed: ModuleType
 ) -> None:

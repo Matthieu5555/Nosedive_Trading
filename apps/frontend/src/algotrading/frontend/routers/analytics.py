@@ -31,6 +31,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ..deps import CtxDep, TradeDateDep
+from ..grounding import coverage_from_snapshots, resolve_close_instant
 from ..serializers import (
     OptionQuote,
     dense_surface_to_dict,
@@ -339,14 +340,17 @@ def get_analytics(
         if maturities:
             source = "surface_grid"
     dense = reconstruct_dense_surface(slices)
+    coverage = coverage_from_snapshots(snapshots)
     return JSONResponse(
         {
             "underlying": resolved_underlying,
             "trade_date": trade_date.isoformat() if trade_date else None,
+            "close_instant": resolve_close_instant(ctx, resolved_underlying, trade_date),
             "n_maturities": len(maturities),
             "source": source,
             "maturities": maturities,
             "surface": dense_surface_to_dict(dense) if dense is not None else None,
+            "coverage": coverage.to_dict() if coverage.option_rows > 0 else None,
             "rate_curve": (
                 rate_curve_to_dict(
                     rate_context.currency, rate_context.curve, rate_context.points

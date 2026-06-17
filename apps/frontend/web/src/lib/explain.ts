@@ -20,6 +20,9 @@ export type ExplainSource = "signal" | "projected" | "surface";
 export interface ExplainContext {
   underlying?: string | null;
   asOf?: string | null;
+  // The BFF-resolved close instant (venue time-of-day + zone, e.g. "17:30 CET") for the active
+  // frame — threaded from /api/analytics, never re-derived from a front-side map.
+  closeInstant?: string | null;
   mode?: ExplainMode;
   source?: ExplainSource;
   tenorLabel?: string | null;
@@ -55,17 +58,17 @@ function modeClause(ctx: ExplainContext): string {
 
 function signalWhereFrom(ctx: ExplainContext): string {
   if (!hasValue(ctx)) return NOT_RECORDED;
-  return `signal enregistré${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.underlying)}${modeClause(ctx)}`;
+  return `signal enregistré${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
 }
 
 function projectedWhereFrom(ctx: ExplainContext): string {
   if (!hasValue(ctx)) return NOT_RECORDED;
-  return `projeté depuis le smile${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.underlying)}${modeClause(ctx)}`;
+  return `projeté depuis le smile${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
 }
 
 function surfaceWhereFrom(ctx: ExplainContext): string {
   const subject = ctx.underlying ?? "—";
-  const head = `${subject} · ${asOfClose(ctx.asOf, ctx.underlying)}`;
+  const head = `${subject} · ${asOfClose(ctx.asOf, ctx.closeInstant)}`;
   const modeWord = ctx.mode === "indicative" ? "indicatif" : "strict";
   if (ctx.coverage) {
     return `${head} · ${modeWord} · ${coverageHeadline(ctx.coverage)}`;

@@ -63,30 +63,31 @@ function signal(value: number, tenor = "3m"): Signal {
   };
 }
 
-describe("asOfCloseLine — the SX5E close instant is 17:30 CET, not the bare date and not 22:00", () => {
-  test("a known index carries its option close instant", () => {
-    expect(asOfCloseLine("2026-06-17", "SX5E")).toBe("as of 2026-06-17 17:30 CET (close)");
+describe("asOfCloseLine — renders the BFF-resolved close instant, not a front-side map", () => {
+  test("a resolved instant is paired with the as-of date", () => {
+    expect(asOfCloseLine("2026-06-17", "17:30 CET")).toBe("as of 2026-06-17 17:30 CET (close)");
   });
 
-  test("the instant is 17:30 CET — never the 22:00 XEUR futures close (the original trap)", () => {
-    const line = asOfCloseLine("2026-06-17", "SX5E");
+  test("renders exactly the threaded instant — never the 22:00 XEUR futures close", () => {
+    const line = asOfCloseLine("2026-06-17", "17:30 CET");
     expect(line).toContain("17:30 CET");
     expect(line).not.toContain("22:00");
     expect(line).not.toContain("00:00");
   });
 
-  test("an unknown index degrades to date-only — never a guessed time", () => {
-    expect(asOfCloseLine("2026-06-17", "UNKNOWN")).toBe("as of 2026-06-17");
+  test("an absent instant degrades to date-only — never a guessed time", () => {
+    expect(asOfCloseLine("2026-06-17", null)).toBe("as of 2026-06-17");
+    expect(asOfCloseLine("2026-06-17")).toBe("as of 2026-06-17");
   });
 
   test("a missing as-of yields no line at all (never a fabricated stamp)", () => {
-    expect(asOfCloseLine(null, "SX5E")).toBeNull();
+    expect(asOfCloseLine(null, "17:30 CET")).toBeNull();
     expect(asOfCloseLine(undefined, undefined)).toBeNull();
   });
 });
 
 describe("Scorecards — provenance line binds to live state", () => {
-  test("the as-of line states subject + the 17:30 CET close instant", () => {
+  test("the as-of line states subject + the resolved close instant", () => {
     render(
       <Scorecards
         maturities={[maturity()]}
@@ -95,6 +96,7 @@ describe("Scorecards — provenance line binds to live state", () => {
         ivRank={null}
         impliedCorrelation={null}
         underlying="SX5E"
+        closeInstant="17:30 CET"
         asOf="2026-06-17"
         runId="run-abc"
       />,
@@ -104,7 +106,7 @@ describe("Scorecards — provenance line binds to live state", () => {
     expect(prov.textContent).toContain("as of 2026-06-17 17:30 CET (close)");
   });
 
-  test("the as-of line rewrites itself when the underlying/date changes (label tracks state)", () => {
+  test("the as-of line rewrites itself when the underlying/date/instant changes (tracks state)", () => {
     const { rerender } = render(
       <Scorecards
         maturities={[maturity()]}
@@ -113,6 +115,7 @@ describe("Scorecards — provenance line binds to live state", () => {
         ivRank={null}
         impliedCorrelation={null}
         underlying="SX5E"
+        closeInstant="17:30 CET"
         asOf="2026-06-17"
       />,
     );
@@ -127,6 +130,7 @@ describe("Scorecards — provenance line binds to live state", () => {
         ivRank={null}
         impliedCorrelation={null}
         underlying="UNKNOWN"
+        closeInstant={null}
         asOf="2026-06-10"
       />,
     );

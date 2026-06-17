@@ -11,6 +11,7 @@ from .platform_config import (
     MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
+    RatesConfig,
     ScenarioConfig,
     SolverConfig,
     SurfaceConfig,
@@ -26,6 +27,7 @@ _PLATFORM_SECTIONS: dict[str, tuple[type, str, str | None]] = {
     "forward": (ForwardConfig, "pricing.yaml", "forward"),
     "scenario": (ScenarioConfig, "scenarios.yaml", "scenario"),
     "monetization": (MonetizationConfig, "scenarios.yaml", "monetization"),
+    "rates": (RatesConfig, "rates.yaml", None),
 }
 
 

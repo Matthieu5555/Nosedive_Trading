@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from .config import (
+    CurrencyRateConfig,
     ForwardConfig,
     LoadedConfig,
     MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
+    RatePillarConfig,
+    RatesConfig,
     ScenarioConfig,
     SolverConfig,
     StressSurfaceConfig,
@@ -43,6 +46,7 @@ __all__ = [
     "data_root",
     "load_env_file",
     "repo_root",
+    "CurrencyRateConfig",
     "ForwardConfig",
     "LoadedConfig",
     "Manifest",
@@ -53,6 +57,8 @@ __all__ = [
     "ProvenanceStamp",
     "ProvenanceValidationError",
     "QcThresholdConfig",
+    "RatePillarConfig",
+    "RatesConfig",
     "ScenarioConfig",
     "SolverConfig",
     "SourceRecordRef",

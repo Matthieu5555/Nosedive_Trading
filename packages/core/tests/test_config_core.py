@@ -9,9 +9,12 @@ from algotrading.core import (
     ForwardConfig,
     Manifest,
     ManifestValidationError,
+    CurrencyRateConfig,
     MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,
+    RatePillarConfig,
+    RatesConfig,
     ScenarioConfig,
     SolverConfig,
     StressSurfaceConfig,
@@ -79,11 +82,16 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "ef7fa60a875fd948cbd101c6ee7f30f04e398c12e208127ee23d2d32a0a6afed"
+        "fc38f74127ff9bdbb6f51e144100a7832e668ebed743d2c729285085cf7c89bd"
     )
+    # The pricing/qc/scenarios/universe bundle hashes stay byte-identical across the ADR-0054
+    # rate-curve land: `rates` is its OWN bundle, so adding it moves only the whole-config
+    # config_hash (a new section is present) and adds the `rates` key — no forward/analytics
+    # golden moves on the rate curve's account.
     assert config_hashes(config) == {
         "pricing": "9083222ce26b63f5a935f8ad1667b5e0bcbb91c8cedb14b195941bdeeeb4b31e",
         "qc": "5ee4c4ee5fb3b4b07b94a00ad3d71277abec90bd3fc570b4ba1f643ca1238a12",
+        "rates": "64e037b5a52f570f50003137a061f7e741c7805d4dfe695ac65ae48dfd8ec69f",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
         "universe": "4833799bb76dcaaafeda85c23557159ab638407ca7122ac3d9796fd93d96e3e1",
     }
@@ -331,6 +339,7 @@ def test_section_versions_lists_every_section_stamp() -> None:
         "forward": "fwd-1",
         "scenario": "sc-1",
         "monetization": "mon-1",
+        "rates": "rates-default",
     }
 
 
@@ -480,6 +489,15 @@ monetization:
   version: mon-base
   gamma_normalisation: one_pct
   theta_day_count: 365
+rates:
+  version: rt-base
+  currencies:
+    EUR:
+      currency: EUR
+      source: estr_euribor_ois
+      pillars:
+        - { tenor_label: 3m, maturity_years: 0.25, instrument: euribor_3m }
+        - { tenor_label: 1y, maturity_years: 1.0, instrument: euribor_12m }
 """
 
 
@@ -562,6 +580,12 @@ _BUNDLES = {
         "monetization:\n  version: mon-1\n  gamma_normalisation: one_pct\n"
         "  theta_day_count: 365\n"
     ),
+    "rates.yaml": (
+        "version: rt-1\ncurrencies:\n  EUR:\n    currency: EUR\n    source: estr_euribor_ois\n"
+        "    pillars:\n"
+        "      - { tenor_label: 3m, maturity_years: 0.25, instrument: euribor_3m }\n"
+        "      - { tenor_label: 1y, maturity_years: 1.0, instrument: euribor_12m }\n"
+    ),
 }
 
 
@@ -605,6 +629,23 @@ def test_load_platform_config_assembles_the_six_bundles(tmp_path) -> None:
             ),
             monetization=MonetizationConfig(
                 version="mon-1", gamma_normalisation="one_pct", theta_day_count=365
+            ),
+            rates=RatesConfig(
+                version="rt-1",
+                currencies={
+                    "EUR": CurrencyRateConfig(
+                        currency="EUR",
+                        source="estr_euribor_ois",
+                        pillars=(
+                            RatePillarConfig(
+                                tenor_label="3m", maturity_years=0.25, instrument="euribor_3m"
+                            ),
+                            RatePillarConfig(
+                                tenor_label="1y", maturity_years=1.0, instrument="euribor_12m"
+                            ),
+                        ),
+                    )
+                },
             ),
         )
     )
@@ -926,15 +967,15 @@ def _manifest(config: PlatformConfig, **overrides: object) -> Manifest:
 def test_config_hashes_are_per_bundle_and_move_only_their_bundle() -> None:
     base = _config()
     hashes = config_hashes(base)
-    assert set(hashes) == {"universe", "qc", "pricing", "scenarios"}
+    assert set(hashes) == {"universe", "qc", "pricing", "scenarios", "rates"}
 
     moved = base.model_copy(
         update={"solver": base.solver.model_copy(update={"iv_tolerance": 1e-9})}
     )
     moved_hashes = config_hashes(moved)
     assert moved_hashes["pricing"] != hashes["pricing"]
-    assert {k: moved_hashes[k] for k in ("universe", "qc", "scenarios")} == {
-        k: hashes[k] for k in ("universe", "qc", "scenarios")
+    assert {k: moved_hashes[k] for k in ("universe", "qc", "scenarios", "rates")} == {
+        k: hashes[k] for k in ("universe", "qc", "scenarios", "rates")
     }
 
 

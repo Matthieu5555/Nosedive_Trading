@@ -1,0 +1,42 @@
+# rates.yaml — per-currency risk-free rate-curve definition (ADR 0054 / R1, blueprint
+# Part II "The external rate curve r(T)").
+#
+# HASHED in its OWN bundle (config_hashes["rates"]) so adding it leaves the pricing/qc/
+# scenarios/universe bundle hashes byte-identical — no forward/analytics golden moves on
+# the rate curve's account, and the canonical ForwardConfig.rate: null path stays the
+# byte-identical parity-implied r = -ln(DF)/T.
+#
+# This file defines the curve STRUCTURE per currency — its source, pillar set, the
+# day-count/compounding the source publishes, the between-pillar interpolation
+# convention, and the warn-only implied-riskfree spread-QC bound. The actual rate LEVELS
+# are ingested daily into the as-of `rates(currency, pillar_tenor, rate, as_of)` table;
+# they do not live here.
+#
+# OPTIONAL `effective_from: YYYY-MM-DD` at this file root dates the bundle (ADR 0028 as-of
+# resolution); omit it (as shipped) for "current".
+
+version: "2026.06.17"
+
+currencies:
+  EUR:
+    currency: EUR
+    source: estr_euribor_ois            # named source per currency (typed config knob; ADR 0054
+                                        # RULED 3). An ingested REFERENCE curve, not a tradable or
+                                        # a new broker (ADR 0042 holds).
+    day_count: "ACT/365"               # canonical internal convention (continuous/ACT-365); a
+    compounding: continuous            # source publishing simple/ACT-360 is converted on ingest.
+    interpolation: linear_zero          # linear in the zero rate between pillars; flat extrapolation
+                                        # beyond the ends (ADR 0054 RULED 2).
+    spread_qc_abs_bound: 0.02           # |implied_rate - r(T)| warn bound (200bp placeholder; warn-
+                                        # only, tune from banked history later — ADR 0054 RULED 5).
+    spread_qc_disposition: warn         # WARN, do not fail (the safe default until the bound is set).
+    pillars:                            # EUR pillar set (ADR 0054 RULED 2). maturity_years are the
+                                        # continuous-ACT/365 year fractions the curve interpolates in.
+      - { tenor_label: "ON",  maturity_years: 0.0027397260273972603, instrument: estr_on }     # 1/365
+      - { tenor_label: "1m",  maturity_years: 0.08333333333333333,    instrument: euribor_1m }  # 1/12
+      - { tenor_label: "3m",  maturity_years: 0.25,                   instrument: euribor_3m }
+      - { tenor_label: "6m",  maturity_years: 0.5,                    instrument: euribor_6m }
+      - { tenor_label: "12m", maturity_years: 1.0,                    instrument: euribor_12m }
+      - { tenor_label: "18m", maturity_years: 1.5,                    instrument: ois_18m }
+      - { tenor_label: "2y",  maturity_years: 2.0,                    instrument: ois_2y }
+      - { tenor_label: "3y",  maturity_years: 3.0,                    instrument: ois_3y }

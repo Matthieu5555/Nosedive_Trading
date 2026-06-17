@@ -389,6 +389,98 @@ class ForwardConfig(_ConfigModel):
         return self
 
 
+_RATE_DAY_COUNTS = ("ACT/365", "ACT/360")
+_RATE_COMPOUNDINGS = ("continuous", "simple")
+_RATE_INTERPOLATIONS = ("linear_zero",)
+_RATE_QC_DISPOSITIONS = ("warn", "fail")
+
+
+class RatePillarConfig(_ConfigModel):
+    """One pillar of a per-currency risk-free curve (ADR 0054).
+
+    A pillar names the published instrument it is sourced from (`instrument`, e.g. `estr_on`,
+    `euribor_3m`, `ois_2y` — a config label, never economics) and the pinned tenor it sits at,
+    expressed as a continuous-ACT/365 `maturity_years` so the curve evaluator interpolates in the
+    same year-fraction the option `maturity_years` uses.
+    """
+
+    model_config = _SECTION_CONFIG
+
+    tenor_label: str = Field(min_length=1)
+    maturity_years: float = Field(gt=0.0)
+    instrument: str = Field(min_length=1)
+
+
+class CurrencyRateConfig(_ConfigModel):
+    """The risk-free curve definition for one currency (ADR 0054, RULED 1–5).
+
+    Names the source, the pillar set, the day-count + compounding the source publishes (converted to
+    the canonical continuous/ACT-365 on ingest), the between-pillar interpolation convention, and the
+    warn-only implied−riskfree spread-QC bound. Every value is typed config — never a `.py` literal.
+    """
+
+    model_config = _SECTION_CONFIG
+
+    currency: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    day_count: Literal["ACT/365", "ACT/360"] = "ACT/365"
+    compounding: Literal["continuous", "simple"] = "continuous"
+    interpolation: Literal["linear_zero"] = "linear_zero"
+    pillars: Annotated[tuple[RatePillarConfig, ...], BeforeValidator(_list_to_tuple)] = ()
+    spread_qc_abs_bound: float = Field(default=0.02, ge=0.0)
+    spread_qc_disposition: Literal["warn", "fail"] = "warn"
+
+    @model_validator(mode="after")
+    def _check_pillars(self) -> CurrencyRateConfig:
+        if not self.pillars:
+            raise ValueError(
+                f"currency {self.currency!r} must declare at least one pillar (the degenerate "
+                "flat curve is a single pillar)"
+            )
+        tenors = [p.maturity_years for p in self.pillars]
+        if any(b <= a for a, b in zip(tenors, tenors[1:], strict=False)):
+            raise ValueError(
+                f"currency {self.currency!r} pillars must be in strictly increasing maturity order"
+            )
+        labels = [p.tenor_label for p in self.pillars]
+        if len(set(labels)) != len(labels):
+            raise ValueError(f"currency {self.currency!r} pillar tenor_labels must be unique")
+        return self
+
+
+class RatesConfig(_ConfigModel):
+    """Per-currency risk-free rate-curve config (ADR 0054 / R1).
+
+    The typed-config home of the ingested external `r(T)` curve: a `currency -> CurrencyRateConfig`
+    map. Lives in its OWN `config_hashes["rates"]` bundle so adding it leaves the `pricing`/`qc`/
+    `scenarios`/`universe` bundle hashes byte-identical (no forward/analytics golden moves on the
+    rate curve's account; the canonical `ForwardConfig.rate: null` path stays parity-implied).
+    """
+
+    model_config = _SECTION_CONFIG
+
+    version: str = Field(min_length=1)
+    currencies: Mapping[str, CurrencyRateConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_currencies(self) -> RatesConfig:
+        for code, cfg in self.currencies.items():
+            if cfg.currency != code:
+                raise ValueError(
+                    f"rates currency key {code!r} must match its currency field {cfg.currency!r}"
+                )
+        object.__setattr__(self, "currencies", MappingProxyType(dict(self.currencies)))
+        return self
+
+    def for_currency(self, currency: str) -> CurrencyRateConfig:
+        try:
+            return self.currencies[currency]
+        except KeyError:
+            raise ConfigFieldError(
+                "rates", "currencies", currency, "no risk-free curve configured for currency"
+            ) from None
+
+
 class StressSurfaceConfig(_ConfigModel):
 
     model_config = _SECTION_CONFIG
@@ -482,6 +574,9 @@ class PlatformConfig(_ConfigModel):
     monetization: MonetizationConfig = Field(
         default_factory=lambda: MonetizationConfig(version="monetization-default")
     )
+    rates: RatesConfig = Field(
+        default_factory=lambda: RatesConfig(version="rates-default")
+    )
 
 
 SECTION_NAMES = (
@@ -492,6 +587,7 @@ SECTION_NAMES = (
     "forward",
     "scenario",
     "monetization",
+    "rates",
 )
 
 
@@ -547,6 +643,7 @@ _BUNDLE_SECTIONS: dict[str, tuple[str, ...]] = {
     "qc": ("qc_threshold",),
     "pricing": ("solver", "surface", "forward"),
     "scenarios": ("scenario", "monetization"),
+    "rates": ("rates",),
 }
 
 

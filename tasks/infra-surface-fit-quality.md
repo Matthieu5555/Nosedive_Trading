@@ -58,8 +58,11 @@ enforcement later"* (§02:113). Routing a railed *dense* slice to the fallback i
    thresholds") so bad intraday points never become IV points the SVI rails on. **Validate on
    settled-close data**, not intraday (the intraday thinness is a confound).
 2. **Front robustness** — the front must render the flagged degenerate slice legibly (clamp the
-   colour/Z scale, mark/exclude the outlier points), independent of the data. → folded into
-   `frontend-page1-cdc-buildout` phase 7.
+   colour/Z scale, mark/exclude the outlier points), independent of the data. → **re-homes onto the
+   Onglet-1 nappe** ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md) ② NAPPE 3D).
+   **Confirmed live 2026-06-16 (audit F3):** the ~2-3d ultra-short slice serves IV spikes to **1.0–1.4**
+   — the nappe must exclude/mark those outlier points (beyond the ~0.35 ceiling clamp). This is the
+   blueprint-conform fix (flag-not-reject) — **NOT** a persist-side drop of the slice.
 3. **Longer-term, owner-gated** — "improve fallback interpolation path" (route a railed dense slice
    to the smooth flagged fallback). A real blueprint item, but explicitly the *future* column; do
    not land it as the immediate fix.

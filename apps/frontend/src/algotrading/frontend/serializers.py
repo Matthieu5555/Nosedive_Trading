@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from algotrading.core import ProvenanceStamp
 from algotrading.infra.contracts import (
     DailyBar,
+    ForwardCurvePoint,
     IndexConstituent,
     PricingResult,
     ProjectedOptionAnalytics,
@@ -445,6 +446,19 @@ def projected_option_analytics_to_dict(
         "quote": _quote_to_dict(quote),
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
+    }
+
+
+FORWARD_RATE_UNIT = "/yr (annualized, continuous)"
+
+
+def forward_rate_diagnostics_to_dict(point: ForwardCurvePoint) -> dict[str, object]:
+    return {
+        "forward_price": point.forward_price,
+        "implied_rate": point.implied_rate,
+        "implied_carry": point.implied_carry,
+        "implied_dividend": point.implied_dividend,
+        "rate_unit": FORWARD_RATE_UNIT,
     }
 
 

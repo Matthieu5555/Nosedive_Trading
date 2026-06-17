@@ -82,7 +82,21 @@ rate; when `null` (the default, and what the yaml ships) it falls back to the pa
 `pricing` config-hash, by design). Tests: explicit override reproduces Eq 5 by hand; the `None`
 default keeps the parity-implied rate. Gate green (1288).
 
-**Open (continuation):** surface the explicit rate + implied dividend on the `forward_curve`
-contract/serializer; **BFF + front display** (the owner's "explicitement affiché" — front-adjacent,
-serializers/api.ts are claimed, do after); the `r(T)` curve form; and the value-changing MVP
-default (`rate: 0.0`) once the owner wants the carry split to use a flat 0 instead of the market rate.
+## Landed — step 2: surface rate/carry/dividend on the `forward_curve` contract + per-tenor BFF
+`ForwardCurvePoint` gained `implied_rate`/`implied_carry`/`implied_dividend` (`float | None = None`,
+`tables.py`), threaded from the `ForwardEstimate` in `forward_curve_point` (`estimate.py`). The
+storage golden gained the three columns additively (null where unset); the determinism golden
+(`forward_stamp_hash` + `forward_price`) stayed byte-identical (provenance is content-addressed off
+source records + config_hashes, not contract fields). BFF: `/api/analytics` now reads `forward_curve`
+per maturity and joins a `rate_diagnostics` object onto each tenor entry —
+`{forward_price, implied_rate, implied_carry, implied_dividend, rate_unit}`, `rate_unit =
+"/yr (annualized, continuous)"`, the whole object `null` when no forward point exists for that
+maturity. **No recompute in the BFF** — it surfaces whatever the persisted point holds (with
+`rate: null` that is the parity-implied `r`). Tests: `forward_curve_point` carries both the
+parity-implied (`rate: null`) and the explicit-`r` Eq-5 split; the BFF payload carries them per
+tenor and is null when unseeded. Gate green (2455 passed, 12 skipped).
+
+**Open (continuation):** **front display** — A6 adds the `api.ts` type + renders `rate_diagnostics`
+in the Onglet-1 ③ Panneau Ténor (payload shape above); the `r(T)` curve form; and the
+value-changing MVP default (`rate: 0.0`) once the owner wants the carry split to use a flat 0
+instead of the market rate.

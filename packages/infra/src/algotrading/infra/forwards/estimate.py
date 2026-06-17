@@ -425,4 +425,7 @@ def forward_curve_point(
         diagnostics=diagnostics,
         source_snapshot_ts=source_snapshot_ts,
         provenance=provenance,
+        implied_rate=estimate.implied_rate,
+        implied_carry=estimate.implied_carry,
+        implied_dividend=estimate.implied_dividend,
     )

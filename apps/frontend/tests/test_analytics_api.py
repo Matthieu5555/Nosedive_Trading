@@ -174,6 +174,102 @@ def test_analytics_reads_back_surface_and_dollar_greeks(
     assert put_point["metrics"]["delta"]["dollar"] == pytest.approx(seed.AN_PUT_DOLLAR_DELTA)
 
 
+def _forward_curve_point(
+    seed: ModuleType, *, implied_rate: float | None, implied_carry: float | None,
+    implied_dividend: float | None,
+) -> tables.ForwardCurvePoint:
+    return tables.ForwardCurvePoint(
+        snapshot_ts=seed.AS_OF,
+        underlying=seed.MEMBER_AAA,
+        maturity_years=0.25,
+        expiry_date=seed.EXPIRY,
+        day_count="ACT/365",
+        forward_price=seed.AN_FORWARD,
+        diagnostics=tables.ForwardDiagnostics(
+            method="parity", candidate_count=5, residual_mad=0.01, quality_label="good"
+        ),
+        source_snapshot_ts=seed.AS_OF,
+        provenance=seed.prov("forward:AAA"),
+        implied_rate=implied_rate,
+        implied_carry=implied_carry,
+        implied_dividend=implied_dividend,
+    )
+
+
+def _seeded_client_with_forward(
+    tmp_path: Path, seed: ModuleType, point: tables.ForwardCurvePoint
+) -> AppContext:
+    root = tmp_path / "data"
+    seed.seed_store(root)
+    store = ParquetStore(root)
+    store.write("forward_curve", [point])
+    return AppContext(
+        store_root=root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(root),
+        default_underlying=seed.MEMBER_AAA,
+    )
+
+
+def test_analytics_payload_surfaces_explicit_rate_carry_dividend_per_tenor(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # Eq 5 hand value (independent of any code under test): r=0.04, F=195, S=192,
+    # T=0.25 -> carry = ln(F/S)/T, dividend = r - carry. The BFF must pass these through
+    # verbatim (no recompute), so the asserted carry/dividend are derived here.
+    rate = 0.04
+    carry = math.log(195.0 / 192.0) / 0.25
+    dividend = rate - carry
+    point = _forward_curve_point(
+        seed, implied_rate=rate, implied_carry=carry, implied_dividend=dividend
+    )
+    ctx = _seeded_client_with_forward(tmp_path, seed, point)
+    with TestClient(create_app(ctx)) as client:
+        maturity = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()["maturities"][0]
+    diag = maturity["rate_diagnostics"]
+    assert diag is not None
+    assert diag["implied_rate"] == pytest.approx(rate)
+    assert diag["implied_carry"] == pytest.approx(carry)
+    assert diag["implied_dividend"] == pytest.approx(dividend)
+    assert diag["forward_price"] == pytest.approx(seed.AN_FORWARD)
+    assert diag["rate_unit"] == "/yr (annualized, continuous)"
+    assert diag["implied_dividend"] == pytest.approx(diag["implied_rate"] - diag["implied_carry"])
+
+
+def test_analytics_rate_diagnostics_carry_parity_implied_rate_when_config_rate_is_none(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # rate: null path -> the persisted point already carries the parity-implied r (computed by
+    # infra, not the BFF). The serializer simply surfaces whatever the contract holds.
+    parity_rate = 0.031
+    carry = math.log(195.0 / 192.0) / 0.25
+    point = _forward_curve_point(
+        seed, implied_rate=parity_rate, implied_carry=carry,
+        implied_dividend=parity_rate - carry,
+    )
+    ctx = _seeded_client_with_forward(tmp_path, seed, point)
+    with TestClient(create_app(ctx)) as client:
+        diag = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()["maturities"][0]["rate_diagnostics"]
+    assert diag["implied_rate"] == pytest.approx(parity_rate)
+
+
+def test_analytics_rate_diagnostics_is_null_when_no_forward_curve_seeded(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    maturity = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()["maturities"][0]
+    assert "rate_diagnostics" in maturity
+    assert maturity["rate_diagnostics"] is None
+
+
 def test_analytics_payload_uses_blueprint_field_names(
     seeded_client: TestClient, seed: ModuleType
 ) -> None:

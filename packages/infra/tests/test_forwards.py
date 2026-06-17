@@ -420,6 +420,42 @@ def test_forward_curve_point_is_a_valid_stamped_contract() -> None:
     )
 
 
+def _curve_point_for_config(config: object) -> ForwardCurvePoint:
+    surface = build_synthetic_surface()
+    estimate = estimate_forward(
+        "AAPL", surface.maturity_years, _synthetic_pairs(surface),
+        config=config, spot=_SYNTH_SPOT,  # type: ignore[arg-type]
+    )
+    snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)
+    return forward_curve_point(
+        estimate, snapshot_ts=snap_ts, expiry_date=date(2026, 6, 19),
+        day_count="ACT/365", source_snapshot_ts=snap_ts, calc_ts=snap_ts,
+        config_hashes={"cfg": "cfg-hash-0"},
+    )
+
+
+def test_forward_curve_point_surfaces_parity_implied_rate_when_config_rate_is_none() -> None:
+    assert FORWARD_CONFIG.rate is None
+    point = _curve_point_for_config(FORWARD_CONFIG)
+    parity_rate = -math.log(0.99) / 0.25
+    parity_carry = math.log(100.0 / 99.0) / 0.25
+    assert point.implied_rate == pytest.approx(parity_rate, rel=1e-9)
+    assert point.implied_carry == pytest.approx(parity_carry, rel=1e-9)
+    assert point.implied_dividend == pytest.approx(parity_rate - parity_carry, rel=1e-9)
+    assert point.provenance.stamp_hash == (
+        "15d18389881d129812d0500be89a58a774747ede196dee576ea8b58f69000088"
+    )
+
+
+def test_forward_curve_point_surfaces_explicit_config_rate_and_eq5_split() -> None:
+    explicit = FORWARD_CONFIG.model_copy(update={"rate": 0.05})
+    point = _curve_point_for_config(explicit)
+    carry = math.log(100.0 / 99.0) / 0.25
+    assert point.implied_rate == pytest.approx(0.05, rel=1e-12)
+    assert point.implied_carry == pytest.approx(carry, rel=1e-9)
+    assert point.implied_dividend == pytest.approx(0.05 - carry, rel=1e-9)
+
+
 def test_forward_curve_point_refuses_an_unusable_estimate() -> None:
     estimate = _estimate_fwd("AAPL", 0.25, (), spot=100.0)
     snap_ts = datetime(2026, 5, 29, 15, 30, tzinfo=UTC)

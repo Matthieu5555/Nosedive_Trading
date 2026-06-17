@@ -66,6 +66,9 @@ class ForwardCurvePoint:
     diagnostics: ForwardDiagnostics
     source_snapshot_ts: datetime
     provenance: ProvenanceStamp
+    implied_rate: float | None = None
+    implied_carry: float | None = None
+    implied_dividend: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

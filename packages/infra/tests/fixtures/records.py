@@ -144,6 +144,9 @@ def baseline_records() -> dict[str, Any]:
             ),
             source_snapshot_ts=SNAPSHOT_TS,
             provenance=make_stamp(),
+            implied_rate=0.04,
+            implied_carry=0.015,
+            implied_dividend=0.025,
         ),
         "iv_points": IvPoint(
             snapshot_ts=SNAPSHOT_TS,

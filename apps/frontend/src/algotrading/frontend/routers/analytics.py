@@ -5,6 +5,7 @@ from datetime import date
 
 from algotrading.infra.contracts import (
     SURFACE_SIDE_COMBINED,
+    ForwardCurvePoint,
     MarketStateSnapshot,
     ProjectedOptionAnalytics,
     SurfaceGrid,
@@ -18,6 +19,7 @@ from ..deps import CtxDep, TradeDateDep
 from ..serializers import (
     OptionQuote,
     dense_surface_to_dict,
+    forward_rate_diagnostics_to_dict,
     projected_option_analytics_to_dict,
     surface_parameters_to_dict,
 )
@@ -91,9 +93,11 @@ def _group_by_maturity(
     cells: list[ProjectedOptionAnalytics],
     slices: list[SurfaceParameters],
     snapshots: list[MarketStateSnapshot],
+    forwards: list[ForwardCurvePoint],
 ) -> list[dict[str, object]]:
     slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
     quote_index = _listed_options_by_expiry_right(snapshots)
+    forward_by_maturity = {_maturity_key(f.maturity_years): f for f in forwards}
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
         if cell.surface_side != SURFACE_SIDE_COMBINED:
@@ -112,6 +116,7 @@ def _group_by_maturity(
             )
             for cell in maturity_cells
         ]
+        forward = forward_by_maturity.get(key)
         entries.append(
             {
                 "maturity_years": maturity_cells[0].maturity_years,
@@ -125,6 +130,9 @@ def _group_by_maturity(
                 },
                 "surface_slice": (
                     surface_parameters_to_dict(fitted) if fitted is not None else None
+                ),
+                "rate_diagnostics": (
+                    forward_rate_diagnostics_to_dict(forward) if forward is not None else None
                 ),
                 "points": points,
             }
@@ -168,6 +176,7 @@ def _maturities_from_surface_grid(
                 "surface_slice": (
                     surface_parameters_to_dict(fitted) if fitted is not None else None
                 ),
+                "rate_diagnostics": None,
                 "points": [],
             }
         )
@@ -205,7 +214,14 @@ def get_analytics(
         trade_date=trade_date,
         run_id=run_id,
     )
-    maturities = _group_by_maturity(cells, slices, snapshots)
+    forwards: list[ForwardCurvePoint] = read_for_underlying(
+        ctx.store,
+        "forward_curve",
+        resolved_underlying,
+        trade_date=trade_date,
+        run_id=run_id,
+    )
+    maturities = _group_by_maturity(cells, slices, snapshots, forwards)
     source = "projected_option_analytics"
     if not maturities:
         grid: list[SurfaceGrid] = read_for_underlying(

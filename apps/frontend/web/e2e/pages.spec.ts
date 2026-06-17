@@ -85,16 +85,19 @@ test("Basket: a template button composes legs and enables pricing", async ({ pag
   await expect(price).toBeEnabled();
 });
 
-test("Basket: Build & price / Stress / Attribution split into tabs over a shared composer", async ({
+test("Basket: the four Onglet-2 tabs (Composer / Le book / Choquer / Attribution) over a shared composer", async ({
   page,
 }) => {
   await page.goto("/basket");
   await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
 
-  const buildTab = page.getByRole("tab", { name: "Build & price" });
-  const stressTab = page.getByRole("tab", { name: "Stress" });
-  const attributionTab = page.getByRole("tab", { name: "Attribution" });
-  await expect(buildTab).toBeVisible();
+  // The landed Onglet-2 layout: ① Composer / ② Le book / ③ Choquer / ④ Attribution, with the
+  // price action living on the Composer tab and the stress / attribution actions on theirs.
+  const composerTab = page.getByRole("tab", { name: /composer/i });
+  const stressTab = page.getByRole("tab", { name: /choquer/i });
+  const attributionTab = page.getByRole("tab", { name: /attribution/i });
+  await expect(composerTab).toBeVisible();
+  await expect(page.getByRole("tab", { name: /le book/i })).toBeVisible();
   await expect(stressTab).toBeVisible();
   await expect(attributionTab).toBeVisible();
 

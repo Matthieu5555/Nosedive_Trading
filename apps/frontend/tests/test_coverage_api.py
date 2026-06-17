@@ -243,6 +243,84 @@ def test_coverage_for_past_date_ignores_a_later_partition(ctx: AppContext) -> No
     )
 
 
+def test_coverage_expiry_row_keys_lock_the_field_names(ctx: AppContext) -> None:
+    # FIELD-NAME / UNIT-SHIFT GUARD: a per-expiry row must carry exactly these keys. A renamed or
+    # dropped field (the bug class this wave) fails here loudly, naming the diff. Derived from the
+    # /api/coverage contract in apps/frontend/README.md, not from the router output.
+    expected_expiry_keys = {
+        "expiry",
+        "tenor",
+        "n_strikes",
+        "n_calls",
+        "n_puts",
+        "strike_min",
+        "strike_max",
+        "total_volume",
+    }
+    expected_tenor_keys = {"tenor", "measured", "floor", "status"}
+
+    ctx.store.write("instrument_master", [_master(_opt(date(2026, 6, 19), 100.0, "C"))])
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": "2026-06-11"}
+        ).json()
+
+    assert set(payload["expiries"][0]) == expected_expiry_keys, (
+        f"per-expiry field names shifted: {set(payload['expiries'][0]) ^ expected_expiry_keys}"
+    )
+    assert set(payload["tenors"][0]) == expected_tenor_keys, (
+        f"per-tenor field names shifted: {set(payload['tenors'][0]) ^ expected_tenor_keys}"
+    )
+    top_level = {
+        "underlying",
+        "trade_date",
+        "n_expiries",
+        "expiries",
+        "tenors",
+        "qc_status",
+        "delta_band_status",
+    }
+    assert set(payload) == top_level, (
+        f"top-level coverage field names shifted: {set(payload) ^ top_level}"
+    )
+
+
+def test_coverage_whole_grid_emits_every_pinned_tenor_empty_ones_not_omitted(
+    ctx: AppContext,
+) -> None:
+    # Capture reaches only one expiry near 3m, and QC banks a breach for 1m only. The whole pinned
+    # grid (10d…3y, 8 tenors) must STILL appear: an untouched/empty tenor is a labelled row, NOT
+    # omitted. Independently derived: PINNED_TENORS has 8 labels; the 1m breach row carries
+    # measured=0 (the empty-tenor signal), every other label is present too.
+    ctx.store.write("instrument_master", [_master(_opt(date(2026, 9, 18), 200.0, "C"))])
+    ctx.store.write(
+        "qc_results",
+        [
+            _qc(
+                "tenor_coverage_floor",
+                "fail",
+                '{"underlying":"SPX","breaching_tenors":[{"tenor":"1m","measured":0,"floor":5}]}',
+            )
+        ],
+    )
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": "2026-06-11"}
+        ).json()
+
+    tenor_labels = [row["tenor"] for row in payload["tenors"]]
+    assert tenor_labels == ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"], (
+        "whole-grid coverage must list every pinned tenor in order; an empty tenor must be a "
+        f"row, never omitted — got {tenor_labels}"
+    )
+    by_tenor = {row["tenor"]: row for row in payload["tenors"]}
+    assert by_tenor["1m"]["measured"] == 0 and by_tenor["1m"]["status"] == "fail", (
+        "the empty/breaching 1m tenor must surface as a measured=0 fail row, not be dropped"
+    )
+    # A tenor with no breach context is still emitted (a labelled pass/unknown row, never absent).
+    assert by_tenor["3y"]["measured"] is None and by_tenor["3y"]["status"] in {"pass", "unknown"}
+
+
 def test_coverage_volume_by_expiry_unit() -> None:
     from algotrading.frontend.routers.coverage import _volume_by_expiry
 

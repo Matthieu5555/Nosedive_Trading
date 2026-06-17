@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 
 from algotrading.infra.contracts import (
     SURFACE_SIDE_COMBINED,
+    MarketStateSnapshot,
     ProjectedOptionAnalytics,
     SurfaceGrid,
     SurfaceParameters,
@@ -14,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from ..deps import CtxDep, TradeDateDep
 from ..serializers import (
+    OptionQuote,
     dense_surface_to_dict,
     projected_option_analytics_to_dict,
     surface_parameters_to_dict,
@@ -22,16 +25,75 @@ from ..store_reads import read_for_underlying
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
+_CANONICAL_FIELD_COUNT = 9
+_EXPIRY_SLOT = 6
+_STRIKE_SLOT = 7
+_RIGHT_SLOT = 8
+
 
 def _maturity_key(maturity_years: float) -> str:
     return f"{maturity_years:.6f}"
 
 
+def _option_right_for_band(delta_band: str) -> str | None:
+    if delta_band.endswith("p"):
+        return "P"
+    if delta_band.endswith("c"):
+        return "C"
+    return None
+
+
+def _listed_options_by_expiry_right(
+    snapshots: list[MarketStateSnapshot],
+) -> dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]]:
+    index: dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]] = {}
+    for snapshot in snapshots:
+        fields = snapshot.instrument_key.split("|")
+        if len(fields) != _CANONICAL_FIELD_COUNT:
+            continue
+        expiry_text = fields[_EXPIRY_SLOT]
+        strike_text = fields[_STRIKE_SLOT]
+        right = fields[_RIGHT_SLOT]
+        if not expiry_text or not strike_text or right not in ("C", "P"):
+            continue
+        try:
+            expiry = date.fromisoformat(expiry_text)
+            strike = float(strike_text)
+        except ValueError:
+            continue
+        index.setdefault((expiry, right), []).append((strike, snapshot))
+    return index
+
+
+def _nearest_quote(
+    listed: list[tuple[float, MarketStateSnapshot]], strike: float
+) -> OptionQuote | None:
+    if not listed:
+        return None
+    _, snapshot = min(listed, key=lambda pair: abs(pair[0] - strike))
+    return OptionQuote(bid=snapshot.bid, ask=snapshot.ask, volume=snapshot.volume)
+
+
+def _quote_for_cell(
+    cell: ProjectedOptionAnalytics,
+    expiry: date | None,
+    index: dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]],
+) -> OptionQuote | None:
+    if expiry is None:
+        return None
+    right = _option_right_for_band(cell.delta_band)
+    if right is None:
+        return None
+    return _nearest_quote(index.get((expiry, right), []), cell.strike)
+
+
 def _group_by_maturity(
     cells: list[ProjectedOptionAnalytics],
     slices: list[SurfaceParameters],
+    snapshots: list[MarketStateSnapshot],
 ) -> list[dict[str, object]]:
     slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
+    quote_index = _listed_options_by_expiry_right(snapshots)
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
         if cell.surface_side != SURFACE_SIDE_COMBINED:
@@ -41,9 +103,15 @@ def _group_by_maturity(
     entries: list[dict[str, object]] = []
     for key in sorted(grouped, key=float):
         maturity_cells = sorted(grouped[key], key=lambda c: c.target_delta)
-        points = [projected_option_analytics_to_dict(cell) for cell in maturity_cells]
         tenor_label = maturity_cells[0].tenor_label
         fitted = slice_by_maturity.get(key)
+        expiry = fitted.expiry_date if fitted is not None else None
+        points = [
+            projected_option_analytics_to_dict(
+                cell, _quote_for_cell(cell, expiry, quote_index)
+            )
+            for cell in maturity_cells
+        ]
         entries.append(
             {
                 "maturity_years": maturity_cells[0].maturity_years,
@@ -130,7 +198,14 @@ def get_analytics(
         trade_date=trade_date,
         run_id=run_id,
     )
-    maturities = _group_by_maturity(cells, slices)
+    snapshots: list[MarketStateSnapshot] = read_for_underlying(
+        ctx.store,
+        "market_state_snapshots",
+        resolved_underlying,
+        trade_date=trade_date,
+        run_id=run_id,
+    )
+    maturities = _group_by_maturity(cells, slices, snapshots)
     source = "projected_option_analytics"
     if not maturities:
         grid: list[SurfaceGrid] = read_for_underlying(

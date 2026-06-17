@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
@@ -383,7 +384,23 @@ def _nullable_analytics_metric(
     return {"raw": raw, "dollar": dollar, "unit": unit}
 
 
-def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[str, object]:
+@dataclass(frozen=True, slots=True)
+class OptionQuote:
+
+    bid: float | None
+    ask: float | None
+    volume: float | None
+
+
+def _quote_to_dict(quote: OptionQuote | None) -> dict[str, object]:
+    if quote is None:
+        return {"bid": None, "ask": None, "volume": None}
+    return {"bid": quote.bid, "ask": quote.ask, "volume": quote.volume}
+
+
+def projected_option_analytics_to_dict(
+    row: ProjectedOptionAnalytics, quote: OptionQuote | None = None
+) -> dict[str, object]:
     mirror_delta_unit = row.dollar_delta_unit if row.delta_mirror is not None else None
     mirror_theta_unit = row.dollar_theta_unit if row.theta_mirror is not None else None
     mirror_rho_unit = row.dollar_rho_unit if row.rho_mirror is not None else None
@@ -425,6 +442,7 @@ def projected_option_analytics_to_dict(row: ProjectedOptionAnalytics) -> dict[st
         },
         "model_version": row.model_version,
         "pricer_version": row.pricer_version,
+        "quote": _quote_to_dict(quote),
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
     }

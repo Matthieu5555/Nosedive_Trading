@@ -10,8 +10,101 @@ from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
 from algotrading.infra.contracts import tables
 from algotrading.infra.contracts.bundles import SurfaceFitDiagnostics
+from algotrading.infra.contracts.instrument_key import InstrumentKey
 from algotrading.infra.storage import ParquetStore
 from fastapi.testclient import TestClient
+
+
+def _option_key(seed: ModuleType, strike: float, right: str) -> str:
+    return InstrumentKey(
+        underlying_symbol=seed.MEMBER_AAA,
+        security_type="OPT",
+        exchange="SMART",
+        currency="USD",
+        multiplier=100.0,
+        broker_contract_id=f"o-{right}-{strike:g}",
+        expiry=seed.EXPIRY,
+        strike=strike,
+        option_right=right,
+    ).canonical()
+
+
+def _quote_snapshot(
+    seed: ModuleType,
+    *,
+    strike: float,
+    right: str,
+    bid: float | None,
+    ask: float | None,
+    volume: float | None,
+) -> tables.MarketStateSnapshot:
+    return tables.MarketStateSnapshot(
+        snapshot_ts=seed.AS_OF,
+        instrument_key=_option_key(seed, strike, right),
+        reference_spot=seed.AN_FORWARD,
+        bid=bid if bid is not None else 0.0,
+        ask=ask if ask is not None else 0.0,
+        last=(bid if bid is not None else 0.0),
+        spread_pct=0.0,
+        reference_type="mid",
+        flags=(),
+        completeness=1.0,
+        trade_date=seed.TRADE_DATE,
+        underlying=seed.MEMBER_AAA,
+        provenance=seed.prov(f"quote:{right}:{strike:g}"),
+        volume=volume,
+    )
+
+
+def _analytics_store_with_quotes(
+    root: Path, seed: ModuleType, snapshots: list[tables.MarketStateSnapshot]
+) -> AppContext:
+    store = ParquetStore(root)
+    store.write(
+        "projected_option_analytics",
+        [
+            seed.analytics_cell(
+                delta_band="30dp",
+                target_delta=seed.AN_PUT_DELTA,
+                log_moneyness=seed.AN_PUT_LOGM,
+                implied_vol=seed.AN_PUT_IV,
+                delta=seed.AN_PUT_DELTA,
+                dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
+            ),
+            seed.analytics_cell(
+                delta_band="30dc",
+                target_delta=seed.AN_CALL_DELTA,
+                log_moneyness=seed.AN_CALL_LOGM,
+                implied_vol=seed.AN_CALL_IV,
+                delta=seed.AN_CALL_DELTA,
+                dollar_delta=seed.AN_CALL_DOLLAR_DELTA,
+            ),
+        ],
+    )
+    store.write(
+        "surface_parameters",
+        [
+            seed.surface_parameters_row(
+                seed.MEMBER_AAA,
+                SurfaceFitDiagnostics(
+                    rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True,
+                ),
+            )
+        ],
+    )
+    if snapshots:
+        store.write("market_state_snapshots", snapshots)
+    return AppContext(
+        store_root=root,
+        configs_dir=root.parent / "configs",
+        store=ParquetStore(root),
+        default_underlying=seed.MEMBER_AAA,
+    )
+
+
+def _points_by_band(payload: dict) -> dict[str, dict]:
+    points = payload["maturities"][0]["points"]
+    return {point["delta_band"]: point for point in points}
 
 
 def test_run_id_selects_a_specific_fetch_of_the_same_trade_date(
@@ -245,3 +338,76 @@ def test_dense_surface_absent_for_a_single_fitted_slice(
     ).json()
     assert "surface" in payload
     assert payload["surface"] is None
+
+
+def test_quote_block_always_present_even_without_snapshots(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # Byte-identical-when-absent: the seeded store banks no option snapshots under MEMBER_AAA,
+    # so every cell carries a quote block whose bid/ask/volume are null.
+    points = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()["maturities"][0]["points"]
+    assert points
+    for point in points:
+        assert point["quote"] == {"bid": None, "ask": None, "volume": None}
+
+
+def test_two_sided_quote_threads_onto_the_matching_cell(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # The put cell projects to strike AN_FORWARD*(1+AN_PUT_LOGM); the nearest banked put snapshot
+    # for the fitted expiry carries the quote the BFF must surface verbatim (no recompute).
+    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
+    call_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_CALL_LOGM), 2)
+    put_bid, put_ask, put_volume = 4.10, 4.40, 1875.0
+    call_bid, call_ask, call_volume = 3.05, 3.25, 920.0
+    snapshots = [
+        _quote_snapshot(
+            seed, strike=put_strike + 5.0, right="P", bid=9.9, ask=10.1, volume=1.0
+        ),
+        _quote_snapshot(
+            seed, strike=put_strike, right="P", bid=put_bid, ask=put_ask, volume=put_volume
+        ),
+        _quote_snapshot(
+            seed, strike=call_strike, right="C", bid=call_bid, ask=call_ask, volume=call_volume
+        ),
+    ]
+    app_ctx = _analytics_store_with_quotes(tmp_path / "data", seed, snapshots)
+    with TestClient(create_app(app_ctx)) as client:
+        payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+    by_band = _points_by_band(payload)
+    assert by_band["30dp"]["quote"]["bid"] == pytest.approx(put_bid)
+    assert by_band["30dp"]["quote"]["ask"] == pytest.approx(put_ask)
+    assert by_band["30dp"]["quote"]["volume"] == pytest.approx(put_volume)
+    assert by_band["30dc"]["quote"]["bid"] == pytest.approx(call_bid)
+    assert by_band["30dc"]["quote"]["ask"] == pytest.approx(call_ask)
+    assert by_band["30dc"]["quote"]["volume"] == pytest.approx(call_volume)
+
+
+def test_one_sided_or_unmatched_quote_omits_cleanly(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # A put snapshot with no ask and null volume threads its bid through with ask/volume null; the
+    # call cell has no banked snapshot of its right, so its quote block stays fully null.
+    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
+    snapshots = [
+        _quote_snapshot(
+            seed, strike=put_strike, right="P", bid=4.10, ask=None, volume=None
+        ),
+    ]
+    app_ctx = _analytics_store_with_quotes(tmp_path / "data", seed, snapshots)
+    with TestClient(create_app(app_ctx)) as client:
+        payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+    by_band = _points_by_band(payload)
+    assert by_band["30dp"]["quote"]["bid"] == pytest.approx(4.10)
+    assert by_band["30dp"]["quote"]["ask"] == pytest.approx(0.0)
+    assert by_band["30dp"]["quote"]["volume"] is None
+    assert by_band["30dc"]["quote"] == {"bid": None, "ask": None, "volume": None}

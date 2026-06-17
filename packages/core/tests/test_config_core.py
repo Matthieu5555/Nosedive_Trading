@@ -6,10 +6,10 @@ import sys
 
 import pytest
 from algotrading.core import (
+    CurrencyRateConfig,
     ForwardConfig,
     Manifest,
     ManifestValidationError,
-    CurrencyRateConfig,
     MonetizationConfig,
     PlatformConfig,
     QcThresholdConfig,

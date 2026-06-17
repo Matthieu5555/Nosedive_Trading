@@ -414,9 +414,9 @@ class RatePillarConfig(_ConfigModel):
 class CurrencyRateConfig(_ConfigModel):
     """The risk-free curve definition for one currency (ADR 0054, RULED 1–5).
 
-    Names the source, the pillar set, the day-count + compounding the source publishes (converted to
-    the canonical continuous/ACT-365 on ingest), the between-pillar interpolation convention, and the
-    warn-only implied−riskfree spread-QC bound. Every value is typed config — never a `.py` literal.
+    Names the source, the pillar set, the day-count + compounding the source publishes (converted
+    to the canonical continuous/ACT-365 on ingest), the between-pillar interpolation convention, and
+    the warn-only implied−riskfree spread-QC bound. Every value is typed config, never a literal.
     """
 
     model_config = _SECTION_CONFIG

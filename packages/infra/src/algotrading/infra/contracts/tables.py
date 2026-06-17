@@ -85,7 +85,8 @@ class RiskFreeRatePoint:
     money-market (ACT/360) rates is converted on ingest (the source convention is recorded on
     `diagnostics`). `as_of` is the publication date — a reconstruction for past day D reads only the
     curve published as-of D (no look-ahead). `maturity_years` is the pillar's tenor as a year
-    fraction so the curve evaluator interpolates in the same units an option's `maturity_years` uses.
+    fraction, so the curve evaluator interpolates in the same units an option's `maturity_years` is
+    in.
     """
 
     as_of: date
@@ -108,7 +109,8 @@ class RiskFreeRatePoint:
             )
         if not (math.isfinite(self.maturity_years) and self.maturity_years > 0.0):
             raise ContractValidationError(
-                table, "maturity_years", self.maturity_years, "must be a finite positive year fraction"
+                table, "maturity_years", self.maturity_years,
+                "must be a finite positive year fraction",
             )
         if not math.isfinite(self.rate):
             raise ContractValidationError(table, "rate", self.rate, "must be a finite number")

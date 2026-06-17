@@ -72,7 +72,7 @@ test("Market read flow: underlying → nappe → tenor → smile/greeks/price-st
   await expect(
     page
       .getByRole("figure", {
-        name: /^Nappe de volatilité — SPX .* vol implicite vs log-moneyness vs maturité/,
+        name: /^Volatility surface — SPX .* implied vol vs log-moneyness vs maturity/,
       })
       .first(),
   ).toBeVisible();

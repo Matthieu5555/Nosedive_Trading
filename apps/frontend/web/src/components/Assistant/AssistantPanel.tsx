@@ -17,7 +17,7 @@ interface AssistantPanelProps {
   runId?: string | null;
   mode?: AssistantMode;
   // The element the user is hovering / has selected on the page (a chart, a scorecard). When set,
-  // the "C'est quoi, ça ?" shortcut asks the assistant about exactly that element via the copy map.
+  // the "What's this?" shortcut asks the assistant about exactly that element via the copy map.
   focusedElementId?: string | null;
 }
 
@@ -26,12 +26,12 @@ type Turn = { kind: "question"; text: string } | { kind: "answer"; response: Ass
 function frameCaption(frame: AssistantFrame): string {
   const parts = [frame.underlying];
   // The close instant is the venue time-of-day + zone ("17:30 CEST"); the date travels separately on
-  // the frame, so the caption pairs them ("clôture 2026-06-17 17:30 CEST") — the same as-of phrasing
-  // the nappe caption uses, never a bare time that can't say which day.
+  // the frame, so the caption pairs them ("close 2026-06-17 17:30 CEST") — the same as-of phrasing
+  // the surface caption uses, never a bare time that can't say which day.
   if (frame.close_instant) {
-    parts.push(`clôture ${frame.trade_date} ${frame.close_instant}`);
+    parts.push(`close ${frame.trade_date} ${frame.close_instant}`);
   }
-  parts.push(frame.mode === "indicative" ? "INDICATIF" : "strict");
+  parts.push(frame.mode === "indicative" ? "INDICATIVE" : "strict");
   if (frame.coverage_label) parts.push(frame.coverage_label);
   return parts.join(" · ");
 }
@@ -109,8 +109,8 @@ export function AssistantPanel({
         setTurns((prev) => [...prev, { kind: "answer", response }]);
       } catch (err) {
         if (controller.signal.aborted) return;
-        const detail = err instanceof ApiError ? err.detail : "L'assistant est indisponible.";
-        setError(`Assistant indisponible — ${detail}`);
+        const detail = err instanceof ApiError ? err.detail : "The assistant is unavailable.";
+        setError(`Assistant unavailable — ${detail}`);
       } finally {
         if (!controller.signal.aborted) setThinking(false);
       }
@@ -128,7 +128,7 @@ export function AssistantPanel({
     if (!id) return;
     const entry = explainEntry(id);
     const subject = entry ? entry.label : id;
-    void ask(`C'est quoi, ${subject} ?`, id);
+    void ask(`What is ${subject}?`, id);
   }
 
   if (!open) {
@@ -139,7 +139,7 @@ export function AssistantPanel({
         aria-expanded={false}
         onClick={() => setOpen(true)}
       >
-        Demander à l'assistant
+        Ask the assistant
       </button>
     );
   }
@@ -153,7 +153,7 @@ export function AssistantPanel({
         <button
           type="button"
           className="assistant-panel__close"
-          aria-label="Fermer l'assistant"
+          aria-label="Close the assistant"
           onClick={() => setOpen(false)}
         >
           ×
@@ -162,7 +162,7 @@ export function AssistantPanel({
 
       {!ready ? (
         <p className="assistant-empty" role="status">
-          Choisissez un indice et une clôture pour interroger l'écran.
+          Choose an index and a close to query the screen.
         </p>
       ) : (
         <>
@@ -170,9 +170,9 @@ export function AssistantPanel({
             <button
               type="button"
               className="assistant-action"
-              onClick={() => void ask("Qu'est-ce que je regarde ?")}
+              onClick={() => void ask("What am I looking at?")}
             >
-              Qu'est-ce que je regarde ?
+              What am I looking at?
             </button>
             <button
               type="button"
@@ -180,12 +180,12 @@ export function AssistantPanel({
               disabled={!focusedEntry}
               title={
                 focusedEntry
-                  ? `Expliquer : ${focusedEntry.label}`
-                  : "Survolez un élément de l'écran pour l'expliquer"
+                  ? `Explain: ${focusedEntry.label}`
+                  : "Hover over an element on the screen to explain it"
               }
               onClick={onWhatIsThis}
             >
-              {focusedEntry ? `C'est quoi : ${focusedEntry.label} ?` : "C'est quoi, ça ?"}
+              {focusedEntry ? `What is: ${focusedEntry.label}?` : "What's this?"}
             </button>
           </div>
 
@@ -201,7 +201,7 @@ export function AssistantPanel({
             )}
             {thinking && (
               <p className="assistant-thinking" role="status" aria-live="polite" aria-busy="true">
-                L'assistant réfléchit…
+                The assistant is thinking…
               </p>
             )}
             {error && (
@@ -213,17 +213,17 @@ export function AssistantPanel({
 
           <form className="assistant-form" onSubmit={onSubmit}>
             <label className="assistant-form__label" htmlFor="assistant-question">
-              Votre question
+              Your question
             </label>
             <input
               id="assistant-question"
               className="assistant-form__input"
               value={question}
-              placeholder="ex. comment voir pourquoi des lignes sont exclues ?"
+              placeholder="e.g. how do I see why rows are excluded?"
               onChange={(event) => setQuestion(event.target.value)}
             />
             <button type="submit" disabled={thinking || question.trim() === ""}>
-              {thinking ? "…" : "Envoyer"}
+              {thinking ? "…" : "Send"}
             </button>
           </form>
         </>

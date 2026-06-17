@@ -19,10 +19,10 @@ class StageLabel:
 
 
 _SAMPLE_SEQUENCE: tuple[StageLabel, ...] = (
-    StageLabel(SampleStage.RESOLVE, "Recherche du dernier jour capturé"),
-    StageLabel(SampleStage.COLLECT, "Collecte de la chaîne d'options"),
-    StageLabel(SampleStage.FIT, "Ajustement de la nappe"),
-    StageLabel(SampleStage.SUMMARIZE, "Récapitulatif de la nappe"),
+    StageLabel(SampleStage.RESOLVE, "Finding the last captured day"),
+    StageLabel(SampleStage.COLLECT, "Collecting the options chain"),
+    StageLabel(SampleStage.FIT, "Fitting the surface"),
+    StageLabel(SampleStage.SUMMARIZE, "Surface summary"),
 )
 
 _SAMPLE_INDEX: dict[SampleStage, int] = {

@@ -77,8 +77,8 @@ def test_http_error_status_becomes_openrouter_error() -> None:
 
 def test_stream_parses_sse_deltas() -> None:
     sse = (
-        'data: {"choices":[{"delta":{"content":"La "}}]}\n\n'
-        'data: {"choices":[{"delta":{"content":"nappe"}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"The "}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"surface"}}]}\n\n'
         "data: [DONE]\n\n"
     )
 
@@ -87,4 +87,4 @@ def test_stream_parses_sse_deltas() -> None:
 
     client = OpenRouterClient(_config(), transport=httpx.MockTransport(handler))
     tokens = list(client.stream([ChatMessage(role="user", content="q")]))
-    assert tokens == ["La ", "nappe"]
+    assert tokens == ["The ", "surface"]

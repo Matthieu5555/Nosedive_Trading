@@ -29,7 +29,7 @@ const FRAME_SPX = {
   run_id: "run-0529",
   mode: "strict" as const,
   close_instant: "2026-05-29 17:30 CET",
-  coverage_label: "1 706/2 412 cotations",
+  coverage_label: "1 706/2 412 quotes",
 };
 
 const FRAME_SX5E = {
@@ -41,11 +41,11 @@ const FRAME_SX5E = {
 // facts block, already run through the house sci/sciUnit idiom (so it carries its unit) — never
 // free-text the model wrote. The citation value "1.83 × 10⁻¹ Vol" is the scorecard's ATM vol.
 const GROUNDED: AssistantResponse = {
-  answer: "Vous regardez la nappe de vol implicite de SPX à la clôture.",
+  answer: "You are looking at the SPX implied-vol surface at the close.",
   citations: [
     {
       id: "atm_level",
-      label: "Vol à la monnaie",
+      label: "ATM level",
       value: "1.83 × 10⁻¹ Vol",
       source: "signal enregistré · 3m",
     },
@@ -59,7 +59,7 @@ const GROUNDED: AssistantResponse = {
 // list so no number can leak. This is the anti-pattern (a hallucinated number) made impossible.
 const HONEST_GAP: AssistantResponse = {
   answer:
-    "Ça n'est pas dans ce que l'écran affiche pour cette clôture — je ne vais pas l'inventer.",
+    "That isn't in what the screen shows for this close — I won't make it up.",
   citations: [],
   grounded: false,
   frame: FRAME_SPX,
@@ -81,7 +81,7 @@ async function mockAssistant(page: Page, response: AssistantResponse): Promise<v
 async function openAssistant(page: Page): Promise<void> {
   const panel = page.getByRole("complementary", { name: "Assistant" });
   if (await panel.isVisible().catch(() => false)) return;
-  const launch = page.getByRole("button", { name: "Demander à l'assistant" });
+  const launch = page.getByRole("button", { name: "Ask the assistant" });
   // The launch button mounts inside the Market status row, which re-mounts while the page settles
   // its fetches; click it and confirm the panel opened, retrying once if the click raced the mount.
   await expect(launch).toBeVisible();
@@ -102,12 +102,12 @@ test("assistant is non-blocking: closed by default behind a launch button, never
   await gotoMarket(page);
 
   // The page is fully usable with the assistant closed: only a launch button, no panel, no modal.
-  await expect(page.getByRole("button", { name: "Demander à l'assistant" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ask the assistant" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Assistant" })).toHaveCount(0);
   // The Market read surface is present and unobscured (the self-describing nappe figure renders
-  // behind it — its label carries the how-to-read gloss "vol implicite vs log-moneyness vs maturité").
+  // behind it — its label carries the how-to-read gloss "implied vol vs log-moneyness vs maturity").
   await expect(
-    page.getByRole("figure", { name: /vol implicite vs log-moneyness vs maturité/ }),
+    page.getByRole("figure", { name: /implied vol vs log-moneyness vs maturity/ }),
   ).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -121,21 +121,21 @@ test("a grounded answer carries its citation WITH a unit and the provenance fram
   await mockAssistant(page, GROUNDED);
   await openAssistant(page);
 
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The answer text appears.
-  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
+  await expect(page.getByText(/nappe de implied vol de SPX/)).toBeVisible();
 
   // The numeric claim is a CITATION lifted from the facts block, rendered with its unit via the
   // house sci/sciUnit idiom — the assistant's number is byte-identical to the scorecard's.
   const citations = page.getByRole("list", { name: "Citations" });
   await expect(citations).toBeVisible();
-  await expect(citations).toContainText("Vol à la monnaie");
+  await expect(citations).toContainText("ATM level");
   await expect(citations).toContainText("1.83 × 10⁻¹ Vol");
 
   // Provenance caption wears the active frame: subject · 17:30 CET close · mode · coverage — and it
   // states the OESX settlement instant, never the 22:00 futures close.
-  const frame = page.getByText(/SPX · clôture 2026-05-29 17:30 CET · strict · 1 706\/2 412/);
+  const frame = page.getByText(/SPX · close 2026-05-29 17:30 CET · strict · 1 706\/2 412/);
   await expect(frame).toBeVisible();
   await expect(frame).not.toContainText("22:00");
 
@@ -154,8 +154,8 @@ test("the browser only ever calls the BFF's /api/assistant — never OpenRouter 
   await gotoMarket(page);
   await mockAssistant(page, GROUNDED);
   await openAssistant(page);
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
-  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
+  await expect(page.getByText(/nappe de implied vol de SPX/)).toBeVisible();
 
   // No request ever touches the model host; the assistant call goes to the BFF's own endpoint.
   expect(requested.filter((u) => /openrouter\.ai|\/chat\/completions/.test(u))).toEqual([]);
@@ -172,7 +172,7 @@ test("the assistant REFUSES an uncited number: grounded=false renders the honest
   await mockAssistant(page, HONEST_GAP);
   await openAssistant(page);
 
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The loud honest-gap copy appears, in a quiet status (not an error: it is the designed answer to
   // an out-of-facts question), and it explicitly says it will not invent the number.
@@ -200,7 +200,7 @@ test("a BFF/OpenRouter failure is a LOUD inline alert, never a silent or stale a
   );
   await openAssistant(page);
 
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // Failure surfaces as a role=alert (loud), in alarm words, with the BFF's detail — never silent.
   const alert = page.getByRole("alert");
@@ -231,18 +231,18 @@ test("a request in flight shows a thinking indicator (role=status), never a froz
   });
   await openAssistant(page);
 
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // While in flight: an explicit thinking indicator, marked busy and live — not a frozen panel.
-  const thinking = page.getByText(/L'assistant réfléchit…/);
+  const thinking = page.getByText(/The assistant is thinking…/);
   await expect(thinking).toBeVisible();
   await expect(thinking).toHaveAttribute("aria-busy", "true");
   await expect(thinking).toHaveAttribute("role", "status");
 
   // Release the response: the thinking state gives way to the grounded answer.
   release();
-  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
-  await expect(page.getByText(/L'assistant réfléchit…/)).toHaveCount(0);
+  await expect(page.getByText(/nappe de implied vol de SPX/)).toBeVisible();
+  await expect(page.getByText(/The assistant is thinking…/)).toHaveCount(0);
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -260,7 +260,7 @@ test("switching the index re-writes the frame the assistant grounds on (no stale
     const frame = body.underlying === "SX5E" ? FRAME_SX5E : FRAME_SPX;
     await route.fulfill({
       json: {
-        answer: `Vous regardez la nappe de vol implicite de ${frame.underlying} à la clôture.`,
+        answer: `You are looking at the ${frame.underlying} implied-vol surface at the close.`,
         citations: [],
         grounded: true,
         frame,
@@ -270,9 +270,9 @@ test("switching the index re-writes the frame the assistant grounds on (no stale
 
   // Ask on the default index (SPX): the frame caption names SPX.
   await openAssistant(page);
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
-  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
-  await expect(page.getByText(/^SPX · clôture 2026-05-29 17:30 CET · strict/)).toBeVisible();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
+  await expect(page.getByText(/nappe de implied vol de SPX/)).toBeVisible();
+  await expect(page.getByText(/^SPX · close 2026-05-29 17:30 CET · strict/)).toBeVisible();
 
   // Switch the underlying selector to SX5E. The page re-fetches for the new index and the panel
   // subtree re-mounts (the assistant collapses back to its launch button) — re-open it the way a PM
@@ -280,33 +280,33 @@ test("switching the index re-writes the frame the assistant grounds on (no stale
   // grounds on the live subject the page is showing, never a stale one.
   await page.getByLabel("Index", { exact: true }).selectOption("SX5E");
   await openAssistant(page);
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
-  await expect(page.getByText(/nappe de vol implicite de SX5E/)).toBeVisible();
-  await expect(page.getByText(/^SX5E · clôture 2026-05-29 17:30 CET · strict/)).toBeVisible();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
+  await expect(page.getByText(/nappe de implied vol de SX5E/)).toBeVisible();
+  await expect(page.getByText(/^SX5E · close 2026-05-29 17:30 CET · strict/)).toBeVisible();
   // The stale SPX frame is gone — no two contradictory frames on one screen.
-  await expect(page.getByText(/^SPX · clôture/)).toHaveCount(0);
+  await expect(page.getByText(/^SPX · close/)).toHaveCount(0);
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
 
-test("an indicative frame is tagged INDICATIF and never reads as the stored close", async ({
+test("an indicative frame is tagged INDICATIVE and never reads as the stored close", async ({
   page,
 }) => {
   const errors = collectPageErrors(page);
   await gotoMarket(page);
 
-  // When the frame is indicative the caption carries INDICATIF (not "strict"), so the PM can never
+  // When the frame is indicative the caption carries INDICATIVE (not "strict"), so the PM can never
   // mistake an indicative mark for the stored close — the strict/indicative guardrail, surfaced.
   await mockAssistant(page, {
-    answer: "Surface indicative — marché probablement fermé.",
+    answer: "Indicative surface — market probably closed.",
     citations: [],
     grounded: true,
     frame: { ...FRAME_SPX, mode: "indicative" },
   });
   await openAssistant(page);
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
-  const frame = page.getByText(/^SPX · clôture 2026-05-29 17:30 CET · INDICATIF/);
+  const frame = page.getByText(/^SPX · close 2026-05-29 17:30 CET · INDICATIVE/);
   await expect(frame).toBeVisible();
   await expect(frame).not.toContainText("strict");
 

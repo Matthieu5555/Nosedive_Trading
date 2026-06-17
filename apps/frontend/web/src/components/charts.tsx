@@ -74,40 +74,40 @@ export interface SurfaceDescriptor {
   emptyCopy: string;
 }
 
-// French integer grouping with the narrow no-break space (U+202F), the separator the spec sentence
+// Integer grouping with the comma thousands separator, the separator the spec sentence
 // shows ("1 706/2 412"). Pinned explicitly rather than left to a host locale so the rendered
 // string is deterministic across environments.
-const FR_THIN_SPACE = " ";
-function frInt(value: number): string {
-  return String(Math.trunc(value)).replace(/\B(?=(\d{3})+(?!\d))/g, FR_THIN_SPACE);
+const THOUSANDS_SEP = ",";
+function groupInt(value: number): string {
+  return String(Math.trunc(value)).replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS_SEP);
 }
 
-const SURFACE_SUBJECT = "Nappe de volatilité";
+const SURFACE_SUBJECT = "Volatility surface";
 
 export function describeSurface(state: SurfaceDescriptorState): SurfaceDescriptor {
-  const subject = state.subject?.trim() || "indéterminé";
+  const subject = state.subject?.trim() || "unknown";
   const mode: SurfaceMode = state.mode ?? "strict";
   const degenerate = state.degenerate ?? false;
 
   // As-of clause: carry the close instant when known ("clôture 2026-06-17 17:30 CET"), else the
   // bare date ("clôture 2026-06-17"). Never guess an instant — a wrong instant is the confident
   // lie this descriptor exists to kill (SX5E close is 17:30 CET, not 22:00).
-  const date = state.asOf?.trim() || "date inconnue";
+  const date = state.asOf?.trim() || "unknown date";
   const asOfPhrase = state.closeInstant?.trim()
-    ? `clôture ${date} ${state.closeInstant.trim()}`
-    : `clôture ${date}`;
+    ? `close ${date} ${state.closeInstant.trim()}`
+    : `close ${date}`;
 
   // Coverage clause: the one shared fraction, never refabricated. Absent → say so plainly.
   let coveragePhrase: string;
   if (state.coverage == null) {
-    coveragePhrase = "couverture indisponible";
+    coveragePhrase = "coverage unavailable";
   } else {
     const { resting, total, indicative } = state.coverage;
-    const frac = `${frInt(resting)}/${frInt(total)}`;
+    const frac = `${groupInt(resting)}/${groupInt(total)}`;
     coveragePhrase =
       mode === "indicative" && indicative != null && indicative > 0
-        ? `${frac} (${frInt(indicative)} marques indicatives)`
-        : `${frac} cotations`;
+        ? `${frac} (${groupInt(indicative)} indicative marks)`
+        : `${frac} quotes`;
   }
 
   let tone: SurfaceTone;
@@ -121,9 +121,9 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
   // badge; this owns the word). On a degenerate close the mode word gives way to the plain-words
   // alarm "indicative — marché probablement fermé".
   const modeClause = degenerate
-    ? "indicative — marché probablement fermé"
+    ? "indicative — market probably closed"
     : mode === "indicative"
-      ? `INDICATIF · ${coveragePhrase}`
+      ? `INDICATIVE · ${coveragePhrase}`
       : `strict · ${coveragePhrase}`;
 
   const subjectHeading = `${SURFACE_SUBJECT} — ${subject}`;
@@ -135,8 +135,8 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
   // thing in PM register ("aucune cotation deux-faces") + the loud market-closed cause — the exact
   // canary the legibility theme exists to surface.
   const emptyCopy = degenerate
-    ? `Aucune cotation deux-faces pour ${subject} au ${date} — marché probablement fermé.`
-    : `Aucune nappe pour ${subject} au ${date}.`;
+    ? `No two-sided quote for ${subject} on ${date} — market probably closed.`
+    : `No surface for ${subject} on ${date}.`;
 
   return {
     subject,
@@ -158,9 +158,9 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
 function pointProvenance(point: AnalyticsPoint): string {
   const quote = point.quote;
   if (quote && (quote.bid == null || quote.ask == null)) {
-    return "marque indicative à une face";
+    return "one-sided indicative mark";
   }
-  return "deux-faces";
+  return "two-sided";
 }
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
@@ -180,14 +180,14 @@ export function PriceChart({ data }: { data: PriceHistoryResponse }) {
 // unlabeled or unitless axis is a bug. The trader-unit TICK formats (.2f/.0%/.2s) are kept as-is —
 // this carries the unit on the *title*, never on the ticks.
 const AXIS_LOG_MONEYNESS = `log-moneyness (${UNITS.logMoneyness})`;
-const AXIS_IMPLIED_VOL = `vol implicite (${UNITS.vol})`;
-const AXIS_MATURITY_YEARS = `maturité (${UNITS.years})`;
-const AXIS_MATURITY = "maturité";
+const AXIS_IMPLIED_VOL = `implied vol (${UNITS.vol})`;
+const AXIS_MATURITY_YEARS = `maturity (${UNITS.years})`;
+const AXIS_MATURITY = "maturity";
 function axisStrike(currency: string | null | undefined): string {
   return `strike (${withCurrency(UNITS.strike, currencySymbol(currency))})`;
 }
 
-const SURFACE_HOW_TO_READ = "vol implicite vs log-moneyness vs maturité";
+const SURFACE_HOW_TO_READ = "implied vol vs log-moneyness vs maturity";
 
 // The ATM ridge — the spine of the surface: a thin amber line tracing the at-the-money implied vol
 // (log-moneyness nearest 0) across every maturity. It is the line a vol trader reads first, and the
@@ -289,8 +289,8 @@ function DenseVolSurface({
     // every cell is the strict two-sided fit; the hovertemplate names the axis values with units.
     hovertemplate:
       `log-moneyness %{x:.3f} ${UNITS.logMoneyness}<br>` +
-      `maturité %{y:.2f} ${UNITS.years}<br>` +
-      "vol implicite %{z:.1%} · deux-faces<extra></extra>",
+      `maturity %{y:.2f} ${UNITS.years}<br>` +
+      "implied vol %{z:.1%} · two-sided<extra></extra>",
   } as Data;
   const ridge = atmRidgeTrace(cleaned);
   return (
@@ -405,7 +405,7 @@ export function VolSurface({
     colorbar: { title: { text: "IV" }, tickformat: ".0%" },
     hovertemplate:
       `log-moneyness %{x:.3f} ${UNITS.logMoneyness}<br>` +
-      "vol implicite %{z:.1%} · deux-faces<extra></extra>",
+      "implied vol %{z:.1%} · two-sided<extra></extra>",
   } as Data;
   return (
     <Plot
@@ -438,7 +438,7 @@ export function VolSurface({
 const PUT_COLOR = CHART_COLORS.negative;
 const CALL_COLOR = CHART_COLORS.positive;
 
-const SMILE_HOW_TO_READ = "vol implicite vs log-moneyness ; puts ◄ ATM ► calls";
+const SMILE_HOW_TO_READ = "implied vol vs log-moneyness ; puts ◄ ATM ► calls";
 
 // Trader-unit ticks: log-moneyness as a plain decimal k (not -3.00e-1), IV as a percent. The old
 // ".2e" scientific formatting on both axes was unreadable for an operator (the 2026-06-16 bilan).
@@ -509,10 +509,10 @@ export function SmileChart({
     y: pairs.map((p) => p[1]),
     // Point tooltip: real coordinates (k, IV) + per-point provenance (deux-faces vs marque
     // indicative à une face), reading the per-strike quote on the matching point.
-    text: pairs.map(([k]) => provByK.get(k) ?? "deux-faces"),
+    text: pairs.map(([k]) => provByK.get(k) ?? "two-sided"),
     hovertemplate:
       `${name} · log-moneyness %{x:.3f} ${UNITS.logMoneyness}<br>` +
-      "vol implicite %{y:.1%} · %{text}<extra></extra>",
+      "implied vol %{y:.1%} · %{text}<extra></extra>",
     line: { color, width: 2 },
     marker: { color, size: 5 },
   });
@@ -531,7 +531,7 @@ export function SmileChart({
 }
 
 const GREEKS_SHAPE_HOW_TO_READ =
-  "Greeks bruts vs strike ; cloche gamma/vega, S-curve delta (et son pic)";
+  "raw Greeks vs strike ; gamma/vega bell, delta S-curve (and its peak)";
 
 const GREEKS_SHAPE_LAYOUT = {
   yaxis: { title: { text: "delta (S-curve)" }, zeroline: true, tickformat: ".2f" },

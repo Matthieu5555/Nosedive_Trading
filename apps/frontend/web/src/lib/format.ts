@@ -126,15 +126,15 @@ export function withCurrency(
   return unit.replaceAll("$", symbol);
 }
 
-export function frFraction(value: number, digits = 1): string {
-  return value.toLocaleString("fr-FR", {
+export function enFraction(value: number, digits = 1): string {
+  return value.toLocaleString("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
-export function frInteger(value: number): string {
-  return Math.round(value).toLocaleString("fr-FR");
+export function enInteger(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
 }
 
 export interface CoverageCounts {
@@ -144,22 +144,22 @@ export interface CoverageCounts {
 
 export function coveragePercent(coverage: CoverageCounts, digits = 1): string {
   if (coverage.total <= 0) return "n/a";
-  return `${frFraction((coverage.twoSided / coverage.total) * 100, digits)}\u202f%`;
+  return `${enFraction((coverage.twoSided / coverage.total) * 100, digits)}%`;
 }
 
 export function coverageHeadline(coverage: CoverageCounts): string {
   const excluded = Math.max(coverage.total - coverage.twoSided, 0);
-  const base = `${frInteger(coverage.twoSided)} / ${frInteger(coverage.total)} cotations · ${coveragePercent(coverage)} deux-faces`;
-  if (excluded <= 0) return `${base} · couverture complète`;
-  return `${base} · ${frInteger(excluded)} à une face exclues`;
+  const base = `${enInteger(coverage.twoSided)} / ${enInteger(coverage.total)} quotes · ${coveragePercent(coverage)} two-sided`;
+  if (excluded <= 0) return `${base} · full coverage`;
+  return `${base} · ${enInteger(excluded)} one-sided excluded`;
 }
 
 // The close instant is never a front-side constant: it is resolved server-side from the index
 // registry (the BFF /api/analytics `close_instant`, venue time-of-day + zone) and threaded in. A
 // caller that has it passes it; absent → a date-only as-of, never a guessed instant.
 export function asOfClose(asOf: string | null | undefined, closeInstant?: string | null): string {
-  if (!asOf) return "date non résolue";
-  return closeInstant ? `clôture ${asOf} ${closeInstant}` : `clôture ${asOf}`;
+  if (!asOf) return "date unresolved";
+  return closeInstant ? `close ${asOf} ${closeInstant}` : `close ${asOf}`;
 }
 
 export function number(value: number, digits = 2): string {

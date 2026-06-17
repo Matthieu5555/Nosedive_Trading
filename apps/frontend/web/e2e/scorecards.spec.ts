@@ -61,24 +61,24 @@ function assistantHandler(body: AssistantBody) {
     run_id: "run-0529",
     mode: "strict" as const,
     close_instant: `${body.trade_date} 17:30 CET`,
-    coverage_label: "1 706/2 412 cotations",
+    coverage_label: "1 706/2 412 quotes",
   };
   // A "what number isn't on screen" probe → honest gap (no citation, refuses to invent).
   if (/sharpe|var|drawdown|inventer|99/i.test(body.question)) {
     return {
       answer:
-        "Ça n'est pas dans ce que l'écran affiche pour cette clôture — je ne vais pas l'inventer.",
+        "That isn't in what the screen shows for this close — I won't make it up.",
       citations: [],
       grounded: false,
       frame,
     };
   }
   return {
-    answer: `Vous regardez la nappe de vol implicite de ${body.underlying} à la clôture.`,
+    answer: `You are looking at the ${body.underlying} implied-vol surface at the close.`,
     citations: [
       {
         id: "atm_level",
-        label: "Vol à la monnaie",
+        label: "ATM level",
         value: "2.00 × 10⁻¹ Vol",
         source: "signal enregistré · 3m",
       },
@@ -365,12 +365,12 @@ test("the assistant explains the band from on-screen data and CITES its number (
   await expect(band(page)).toBeVisible();
 
   // Open the (non-blocking) assistant and ask it to explain the current screen.
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   const assistant = page.getByRole("complementary", { name: "Assistant" });
   // It answers from the on-screen subject (SPX, the active index), not a generic answer.
-  await expect(assistant).toContainText("nappe de vol implicite de SPX");
+  await expect(assistant).toContainText("nappe de implied vol de SPX");
   // The number it surfaces is a CITATION lifted from the facts block — the same ATM scorecard value
   // (2.00 × 10⁻¹ Vol = 0.20 = the band's 20.0%). It is in a labelled Citations list, never inline.
   await expect(assistant.getByRole("list", { name: "Citations" })).toBeVisible();
@@ -394,10 +394,10 @@ test("the assistant refuses an uncited number — honest gap in a quiet status, 
   await page.goto("/");
   await expect(band(page)).toBeVisible();
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
   // Ask for a figure the screen doesn't hold (a 99% VaR) — the data layer must REFUSE to invent it.
-  await page.getByLabel("Votre question").fill("Quel est le VaR 99% du book ?");
-  await page.getByRole("button", { name: "Envoyer" }).click();
+  await page.getByLabel("Your question").fill("What is the book's 99% VaR?");
+  await page.getByRole("button", { name: "Send" }).click();
 
   const assistant = page.getByRole("complementary", { name: "Assistant" });
   const gap = assistant.getByText(/je ne vais pas l'inventer/);

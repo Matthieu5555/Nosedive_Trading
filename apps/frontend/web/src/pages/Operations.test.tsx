@@ -196,7 +196,7 @@ test("a running job row shows a determinate step tracker, not a frozen pill", as
   renderWithClient(<OperationsPage />);
 
   // The running row narrates the engine stage in PM French, with a determinate bar at 50% (2/4).
-  expect(await screen.findByText(/étape 2\/4/)).toBeInTheDocument();
+  expect(await screen.findByText(/step 2\/4/)).toBeInTheDocument();
   expect(screen.getByText(/Collecte de la chaîne d'options/)).toBeInTheDocument();
   const bar = screen.getByRole("progressbar");
   expect(bar).toHaveAttribute("aria-valuenow", "50");
@@ -208,9 +208,9 @@ test("the launch button carries a back-end gloss, reachable via the ⓘ", async 
 
   const launch = await screen.findByRole("button", { name: /Launch run/i });
   // The intent is legible before the click: the hover title states the back-end action.
-  expect(launch).toHaveAttribute("title", expect.stringMatching(/Rejoue le dernier jour capturé/));
+  expect(launch).toHaveAttribute("title", expect.stringMatching(/Replay the last captured day/));
 
-  const info = screen.getByRole("button", { name: "Que fait ce bouton ?" });
+  const info = screen.getByRole("button", { name: "What does this button do?" });
   await userEvent.hover(info);
-  expect(screen.getByRole("tooltip")).toHaveTextContent(/n'écrit rien sur le disque tant que/);
+  expect(screen.getByRole("tooltip")).toHaveTextContent(/writes nothing to disk until validated/);
 });

@@ -6,9 +6,9 @@ import { Hotspot } from "./Hotspot";
 
 describe("Hotspot", () => {
   test("renders a quiet ⓘ trigger labelled by the metric, tooltip closed until asked", () => {
-    render(<Hotspot label="Nappe de volatilité" body="vol vs log-moneyness vs maturité" />);
+    render(<Hotspot label="Volatility surface" body="vol vs log-moneyness vs maturity" />);
     expect(
-      screen.getByRole("button", { name: "Nappe de volatilité" }),
+      screen.getByRole("button", { name: "Volatility surface" }),
     ).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("tooltip")).toBeNull();
   });

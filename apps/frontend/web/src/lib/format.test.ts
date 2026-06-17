@@ -11,7 +11,6 @@ import {
   withCurrency,
 } from "./format";
 
-const NBSP = " ";
 
 describe("sci", () => {
   it("renders the owner's worked example at 6 sig figs with trailing zeros stripped", () => {
@@ -106,8 +105,8 @@ describe("withCurrency", () => {
 
 describe("coveragePercent", () => {
   it("reports the two-sided fraction in PM register (fr-FR, comma decimal)", () => {
-    expect(coveragePercent({ twoSided: 1706, total: 2412 })).toBe(`70,7${NBSP}%`);
-    expect(coveragePercent({ twoSided: 2412, total: 2412 })).toBe(`100,0${NBSP}%`);
+    expect(coveragePercent({ twoSided: 1706, total: 2412 })).toBe(`70.7%`);
+    expect(coveragePercent({ twoSided: 2412, total: 2412 })).toBe(`100.0%`);
   });
 
   it("labels an empty chain n/a rather than dividing by zero", () => {
@@ -118,28 +117,28 @@ describe("coveragePercent", () => {
 describe("coverageHeadline", () => {
   it("names the captured-chain fraction and the excluded one-sided count", () => {
     expect(coverageHeadline({ twoSided: 1706, total: 2412 })).toBe(
-      `1${NBSP}706 / 2${NBSP}412 cotations · 70,7${NBSP}% deux-faces · 706 à une face exclues`,
+      `1,706 / 2,412 quotes · 70.7% two-sided · 706 one-sided excluded`,
     );
   });
 
-  it("recedes to couverture complète when nothing is excluded", () => {
+  it("recedes to full coverage when nothing is excluded", () => {
     expect(coverageHeadline({ twoSided: 2412, total: 2412 })).toBe(
-      `2${NBSP}412 / 2${NBSP}412 cotations · 100,0${NBSP}% deux-faces · couverture complète`,
+      `2,412 / 2,412 quotes · 100.0% two-sided · full coverage`,
     );
   });
 });
 
 describe("asOfClose", () => {
   it("renders the as-of with the BFF-resolved close instant (threaded, not a front-side map)", () => {
-    expect(asOfClose("2026-06-17", "17:30 CET")).toBe("clôture 2026-06-17 17:30 CET");
+    expect(asOfClose("2026-06-17", "17:30 CET")).toBe("close 2026-06-17 17:30 CET");
   });
 
   it("falls back to a bare close date when no instant was resolved", () => {
-    expect(asOfClose("2026-06-17", null)).toBe("clôture 2026-06-17");
-    expect(asOfClose("2026-06-17")).toBe("clôture 2026-06-17");
+    expect(asOfClose("2026-06-17", null)).toBe("close 2026-06-17");
+    expect(asOfClose("2026-06-17")).toBe("close 2026-06-17");
   });
 
   it("never invents a date — an absent as-of is labelled, not blank", () => {
-    expect(asOfClose(null, "17:30 CET")).toBe("date non résolue");
+    expect(asOfClose(null, "17:30 CET")).toBe("date unresolved");
   });
 });

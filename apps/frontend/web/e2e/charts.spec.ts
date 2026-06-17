@@ -19,7 +19,7 @@ import { mockBff } from "./mock-bff";
 //   1. the chart's self-describing title/caption RE-WRITES itself when the selector changes — the
 //      smile title carries the live tenor and a railed slice flips it to "⚠ degenerate fit"; the
 //      nappe panel <h2>/caption track the live underlying · as-of · mode · coverage. No stale frame.
-//   2. loading shows a footprint SKELETON (role=status, aria-busy, "Chargement…"), never a blank
+//   2. loading shows a footprint SKELETON (role=status, aria-busy, "Loading…"), never a blank
 //      <figure>; the empty/uncaptured state NAMES its subject, never a generic blank chart.
 //   3. numbers render WITH their unit (the price-structure block carries the currency on its column
 //      headers and never fabricates a mid for an unquoted strike).
@@ -36,7 +36,7 @@ import { mockBff } from "./mock-bff";
 // AsyncBlock's footprint skeleton, and the grounded AssistantPanel. The pairs whose feature is NOT
 // yet wired are test.fixme with the full future assertion and the MAT-LEGIBILITY spec that retires it.
 
-const FIGURE_SMILE = /^Nappe de volatilité .* smile 3m \(0\.250y\)/;
+const FIGURE_SMILE = /^Volatility surface .* smile 3m \(0\.250y\)/;
 
 async function gotoMarket(page: Page): Promise<void> {
   await page.goto("/");
@@ -124,12 +124,12 @@ test("the nappe panel heading and caption track the live underlying as-of and mo
   await gotoMarket(page);
 
   // The nappe block's panel <h2> names the live subject; its caption is the descriptor sentence
-  // (clôture <as-of> · <mode> · <coverage>). The mock's RECORDED_TWO_DATES latest close is 2026-05-29.
-  const nappe = page.getByRole("article", { name: "Nappe de volatilité — SPX" });
+  // (close <as-of> · <mode> · <coverage>). The mock's RECORDED_TWO_DATES latest close is 2026-05-29.
+  const nappe = page.getByRole("article", { name: "Volatility surface — SPX" });
   await expect(nappe).toBeVisible();
-  await expect(nappe.getByRole("heading", { name: "Nappe de volatilité — SPX" })).toBeVisible();
+  await expect(nappe.getByRole("heading", { name: "Volatility surface — SPX" })).toBeVisible();
   // Caption carries the as-of close and the strict mode word together, off one descriptor.
-  await expect(nappe).toContainText("clôture 2026-05-29");
+  await expect(nappe).toContainText("close 2026-05-29");
   await expect(nappe).toContainText("strict");
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -160,20 +160,20 @@ test("switching the index re-writes the nappe heading and caption together", asy
 
   // Before: SPX. The heading names SPX.
   await expect(
-    page.getByRole("article", { name: "Nappe de volatilité — SPX" }),
+    page.getByRole("article", { name: "Volatility surface — SPX" }),
   ).toBeVisible();
 
   // Switch the underlying selector → the heading AND caption must both re-write to the new subject
   // in the same paint. A stale "Nappe — SPX" heading next to an SX5E caption is the lie forbidden.
   await page.getByLabel("Index", { exact: true }).selectOption("SX5E");
-  const sx5e = page.getByRole("article", { name: "Nappe de volatilité — SX5E" });
+  const sx5e = page.getByRole("article", { name: "Volatility surface — SX5E" });
   await expect(sx5e).toBeVisible();
-  await expect(sx5e.getByRole("heading", { name: "Nappe de volatilité — SX5E" })).toBeVisible();
+  await expect(sx5e.getByRole("heading", { name: "Volatility surface — SX5E" })).toBeVisible();
   // SX5E close is 17:30 CET (OESX settlement, not 22:00) — the caption carries that close instant.
-  await expect(sx5e).toContainText("clôture 2026-06-17 17:30 CET");
+  await expect(sx5e).toContainText("close 2026-06-17 17:30 CET");
   // The stale SPX heading is gone — both labels never disagree on one screen.
   await expect(
-    page.getByRole("article", { name: "Nappe de volatilité — SPX" }),
+    page.getByRole("article", { name: "Volatility surface — SPX" }),
   ).toHaveCount(0);
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -188,15 +188,15 @@ test("a loading nappe shows a footprint skeleton, not a blank figure", async ({ 
   await mockBff(page);
   // Hold the analytics response open past the skeleton-visible floor (SKELETON_DELAY_MS = 1000ms) so
   // the skeleton has time to mount, then release. The skeleton reserves the chart footprint with a
-  // role="status" aria-busy element labelled "Chargement…" — never a bare blank <figure>.
+  // role="status" aria-busy element labelled "Loading…" — never a bare blank <figure>.
   await page.route("**/api/analytics**", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 1600));
     await route.fulfill({ json: ANALYTICS_AAA });
   });
   await gotoMarket(page);
 
-  // While the fetch is in flight, the footprint skeleton is on screen (role=status, "Chargement").
-  const skeleton = page.getByRole("status", { name: /Chargement/ }).first();
+  // While the fetch is in flight, the footprint skeleton is on screen (role=status, "Loading").
+  const skeleton = page.getByRole("status", { name: /Loading/ }).first();
   await expect(skeleton).toBeVisible();
   // It is NOT a bare one-line "Loading…" text — it carries a real footprint (a reserved height box).
   const box = await skeleton.boundingBox();
@@ -206,9 +206,9 @@ test("a loading nappe shows a footprint skeleton, not a blank figure", async ({ 
   );
 
   // Then the real nappe figure resolves in its place. The surface figcaption uniquely ends with its
-  // how-to-read gloss "vs maturité" (the smile/Greeks figures share the descriptor prefix but not it).
+  // how-to-read gloss "vs maturity" (the smile/Greeks figures share the descriptor prefix but not it).
   await expect(
-    page.getByRole("figure", { name: /Nappe de volatilité .*vs log-moneyness vs maturité$/ }),
+    page.getByRole("figure", { name: /Volatility surface .*vs log-moneyness vs maturity$/ }),
   ).toBeVisible({ timeout: 5000 });
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -259,11 +259,11 @@ test.fixme(
     const errors = collectPageErrors(page);
     await mockBff(page);
     // ANALYTICS_MARKET_CLOSED (to be added to fixtures.ts): every surface_slice.degenerate = true,
-    // zero two-sided rows. The nappe must say, in error tone, "marché probablement fermé" — NOT a
+    // zero two-sided rows. The nappe must say, in error tone, "market probably closed" — NOT a
     // plausible nappe off a closed market with nothing on screen saying so (the original sin).
     await gotoMarket(page);
-    const nappe = page.getByRole("article", { name: /Nappe de volatilité/ });
-    await expect(nappe).toContainText("marché probablement fermé");
+    const nappe = page.getByRole("article", { name: /Volatility surface/ });
+    await expect(nappe).toContainText("market probably closed");
     // Tone: the degenerate caption rides the alarm role, not a quiet status.
     await expect(nappe.getByRole("alert")).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -307,7 +307,7 @@ const ASSISTANT_FRAME = {
   run_id: "run-0529",
   mode: "strict" as const,
   close_instant: "17:30 CET",
-  coverage_label: "1 706/2 412 cotations",
+  coverage_label: "1 706/2 412 quotes",
 };
 
 test("the assistant surfaces a number only with a citation that names its source", async ({
@@ -321,13 +321,13 @@ test("the assistant surfaces a number only with a citation that names its source
   await page.route("**/api/assistant", (route) =>
     route.fulfill({
       json: {
-        answer: "La nappe SPX au 2026-05-29 repose sur 1 706 cotations deux-faces.",
+        answer: "The SPX surface on 2026-05-29 rests on 1,706 two-sided quotes.",
         citations: [
           {
             id: "coverage.two_sided",
-            label: "Cotations deux-faces",
-            value: "1 706/2 412 cotations",
-            source: "coverage @ clôture 2026-05-29",
+            label: "Cotations two-sided",
+            value: "1 706/2 412 quotes",
+            source: "coverage @ close 2026-05-29",
           },
         ],
         grounded: true,
@@ -337,14 +337,14 @@ test("the assistant surfaces a number only with a citation that names its source
   );
   await gotoMarket(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The citation list renders with the value and its source — the number is backed by provenance.
   const citations = page.getByRole("list", { name: "Citations" });
   await expect(citations).toBeVisible();
-  await expect(citations).toContainText("1 706/2 412 cotations");
-  await expect(citations).toContainText("coverage @ clôture 2026-05-29");
+  await expect(citations).toContainText("1 706/2 412 quotes");
+  await expect(citations).toContainText("coverage @ close 2026-05-29");
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -359,7 +359,7 @@ test("the assistant refuses to invent a number it cannot ground", async ({ page 
     route.fulfill({
       json: {
         answer:
-          "Je ne peux pas fonder ce chiffre sur l'écran actuel — aucune donnée de gamma agrégé n'y figure.",
+          "I can't ground this number on the current screen — there's no aggregate-gamma data on it.",
         citations: [],
         grounded: false,
         frame: ASSISTANT_FRAME,
@@ -368,8 +368,8 @@ test("the assistant refuses to invent a number it cannot ground", async ({ page 
   );
   await gotoMarket(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The honest-gap answer reads in status tone (a non-blocking "I can't ground it"), with NO
   // citation list (no number is surfaced) — never a hallucinated figure.
@@ -396,8 +396,8 @@ test("the assistant frame echoes the on-screen subject, never a different one", 
   );
   await gotoMarket(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   const assistant = page.getByRole("complementary", { name: "Assistant" });
   await expect(assistant).toContainText("SPX");

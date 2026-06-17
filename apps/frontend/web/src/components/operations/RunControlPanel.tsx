@@ -17,7 +17,7 @@ import { JobNotice } from "./JobNotice";
 import { JobProgress } from "./JobProgress";
 
 const LAUNCH_GLOSS =
-  "Rejoue le dernier jour capturé en une nouvelle nappe — n'écrit rien sur le disque tant que ce n'est pas validé.";
+  "Replay the last captured day as a new surface — writes nothing to disk until validated.";
 
 const JOB_STATE_CLASS: Record<Job["state"], string> = {
   queued: "ops-pill--warn",
@@ -175,7 +175,7 @@ export function RunControlPanel() {
             >
               {launch.isPending ? "Launching…" : "Launch run"}
             </button>
-            <InfoDot label="Que fait ce bouton ?" body={LAUNCH_GLOSS} />
+            <InfoDot label="What does this button do?" body={LAUNCH_GLOSS} />
           </div>
         </div>
       </AsyncBlock>

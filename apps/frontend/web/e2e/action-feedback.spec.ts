@@ -14,7 +14,7 @@ import { mockBff } from "./mock-bff";
 // the shared fixture. Each test asserts pageErrors == [] (a crash is the loudest silent failure).
 
 // A running capture row that DOES report a determinate stage k/N (the BFF stage passthrough). Hand-
-// derived expected: stage_index=2, stage_total=4 → "étape 2/4" and 2/4 = 50%.
+// derived expected: stage_index=2, stage_total=4 → "step 2/4" and 2/4 = 50%.
 const JOBS_RUNNING_DETERMINATE = {
   jobs: [
     {
@@ -26,7 +26,7 @@ const JOBS_RUNNING_DETERMINATE = {
       finished_at: null,
       message: "Replaying the latest committed day into a surface…",
       summary: {},
-      stage: "collecte de la chaîne d'options",
+      stage: "Collecting the options chain",
       stage_index: 2,
       stage_total: 4,
     },
@@ -34,7 +34,7 @@ const JOBS_RUNNING_DETERMINATE = {
 };
 
 // A running row whose stage fields are all null — the engine hasn't reported a stage. The contract
-// is an HONEST indeterminate "en cours…" with NO fabricated percent (never a CSS-timer fake bar).
+// is an HONEST indeterminate "in progress…" with NO fabricated percent (never a CSS-timer fake bar).
 const JOBS_RUNNING_INDETERMINATE = {
   jobs: [
     {
@@ -79,18 +79,18 @@ const ASSISTANT_FRAME = {
   run_id: "run-0529",
   mode: "strict" as const,
   close_instant: "2026-05-29 17:30 CET",
-  coverage_label: "1 706/2 412 cotations",
+  coverage_label: "1 706/2 412 quotes",
 };
 
 // A grounded answer: every number it surfaces is a CITATION lifted verbatim from the server facts
 // block (already through the house sci/sciUnit idiom), never free-text the model wrote. The panel
 // renders the citation value byte-identical and a provenance caption.
 const ASSISTANT_GROUNDED = {
-  answer: "Vous regardez la nappe de vol implicite de SPX à la clôture.",
+  answer: "You are looking at the SPX implied-vol surface at the close.",
   citations: [
     {
       id: "atm_level",
-      label: "Vol à la monnaie",
+      label: "ATM level",
       value: "1.83 × 10⁻¹ Vol",
       source: "signal enregistré · 3m",
     },
@@ -103,7 +103,7 @@ const ASSISTANT_GROUNDED = {
 // REFUSES rather than invents — answer is the loud "I won't make it up" copy, citations is empty.
 const ASSISTANT_HONEST_GAP = {
   answer:
-    "Ça n'est pas dans ce que l'écran affiche pour cette clôture — je ne vais pas l'inventer.",
+    "That isn't in what the screen shows for this close — I won't make it up.",
   citations: [],
   grounded: false,
   frame: ASSISTANT_FRAME,
@@ -128,7 +128,7 @@ test("the launch button reveals the backend action it fires", async ({ page }) =
   // surfaced as the button's title (the future ⓘ-tooltip + assistant read the same string).
   await expect(launch).toHaveAttribute(
     "title",
-    /Rejoue le dernier jour capturé.*n'écrit rien sur le disque tant que ce n'est pas validé/,
+    /Replay the last captured day.*writes nothing to disk until validated/,
   );
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);
 });
@@ -144,11 +144,11 @@ test("a running capture narrates determinate step progress with the stage in PM 
   // The running row shows a determinate progressbar — a step the eye can follow, not a frozen pill.
   const bar = page.getByRole("progressbar");
   await expect(bar).toBeVisible();
-  // "étape 2/4" + the real stage name in PM register (never the engine enum like STAGE_COLLECTION).
-  await expect(bar).toHaveAttribute("aria-label", /étape 2\/4 · collecte de la chaîne d'options/);
+  // "step 2/4" + the real stage name in PM register (never the engine enum like STAGE_COLLECTION).
+  await expect(bar).toHaveAttribute("aria-label", /step 2\/4 · Collecting the options chain/);
   // 2 of 4 stages = 50% — a determinate claim that tracks the server's stage count (hand-derived).
   await expect(bar).toHaveAttribute("aria-valuenow", "50");
-  await expect(page.getByText("étape 2/4 · collecte de la chaîne d'options · 50%")).toBeVisible();
+  await expect(page.getByText("step 2/4 · Collecting the options chain · 50%")).toBeVisible();
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);
 });
 
@@ -160,9 +160,9 @@ test("a running capture with no reported stage shows an honest indeterminate bar
   const { pageErrors } = collectPageErrors(page);
   await gotoOperations(page, JOBS_RUNNING_INDETERMINATE);
 
-  const bar = page.getByRole("progressbar", { name: "en cours…" });
+  const bar = page.getByRole("progressbar", { name: "in progress…" });
   await expect(bar).toBeVisible();
-  await expect(page.getByText("en cours…", { exact: true })).toBeVisible();
+  await expect(page.getByText("in progress…", { exact: true })).toBeVisible();
   // The honest-gap on progress: when the server can't say which stage, NO percent is claimed.
   await expect(bar).not.toHaveAttribute("aria-valuenow", /.+/);
   await expect(page.getByText(/%/)).toHaveCount(0);
@@ -177,7 +177,7 @@ test("a running job payload without stage fields degrades to the indeterminate b
   const { pageErrors } = collectPageErrors(page);
   await gotoOperations(page, JOBS_RUNNING_LEGACY);
 
-  await expect(page.getByRole("progressbar", { name: "en cours…" })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "in progress…" })).toBeVisible();
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);
 });
 
@@ -200,9 +200,9 @@ test("a capture that lands done announces a non-blocking polite notice, never a 
   });
   await page.goto("/operations");
   await expect(page.getByRole("heading", { level: 1, name: "Operations" })).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "en cours…" })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole("progressbar", { name: "in progress…" })).toBeVisible({ timeout: 8000 });
 
-  const notice = page.getByText("Capture SX5E terminée — nappe prête.");
+  const notice = page.getByText("SX5E capture complete — surface ready.");
   await expect(notice).toBeVisible({ timeout: 15_000 });
   // Announced "polite" (an aria-live status line), never a modal that traps the page (Principle 6:
   // non-blocking). It is a role=status, and the page heading stays interactive behind it.
@@ -242,9 +242,9 @@ test("a capture that fails announces a loud role=alert notice, never silent", as
   });
   await page.goto("/operations");
   await expect(page.getByRole("heading", { level: 1, name: "Operations" })).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "en cours…" })).toBeVisible({ timeout: 8000 });
+  await expect(page.getByRole("progressbar", { name: "in progress…" })).toBeVisible({ timeout: 8000 });
 
-  const alert = page.getByText(/Capture SX5E échouée/);
+  const alert = page.getByText(/SX5E capture failed/);
   await expect(alert).toBeVisible({ timeout: 15_000 });
   await expect(alert).toHaveAttribute("role", "alert");
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);
@@ -284,11 +284,11 @@ test("a slow nappe fetch shows a footprint skeleton in the house idiom, not a ba
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
 
   // Past the 1s floor the skeleton appears: a status with reserved footprint, in the house French
-  // idiom ("Chargement…"), NOT the bare one-line English "Loading…" that reflowed the layout (the
+  // idiom ("Loading…"), NOT the bare one-line English "Loading…" that reflowed the layout (the
   // lie §3.4 forbids). NOTE the Onglet-1 panels do not yet pass a per-panel `subject` to AsyncBlock,
   // so the skeleton names the house idiom but not the specific subject — the ChartSkeleton primitive
   // supports `subject` but Market.tsx does not wire it (open self-describing §2b follow-up).
-  const skeleton = page.getByRole("status", { name: /^Chargement/ });
+  const skeleton = page.getByRole("status", { name: /^Loading/ });
   await expect(skeleton.first()).toBeVisible({ timeout: 4000 });
   await expect(skeleton.first()).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("Loading…", { exact: true })).toHaveCount(0);
@@ -307,20 +307,20 @@ test("the assistant explains the current screen and cites a number from the payl
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
 
   // The assistant is a summonable panel, never a wall — closed by default (non-blocking, Principle 6).
-  const launch = page.getByRole("button", { name: "Demander à l'assistant" });
+  const launch = page.getByRole("button", { name: "Ask the assistant" });
   await expect(launch).toBeVisible();
   await expect(launch).toHaveAttribute("aria-expanded", "false");
   await launch.click();
 
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // It answers from the on-screen surface (names the subject), not generically.
-  await expect(page.getByText(/nappe de vol implicite de SPX/)).toBeVisible();
+  await expect(page.getByText(/nappe de implied vol de SPX/)).toBeVisible();
   // Every number is a CITATION lifted verbatim from the facts block (byte-identical to a scorecard).
   await expect(page.getByRole("list", { name: "Citations" })).toBeVisible();
   await expect(page.getByText("1.83 × 10⁻¹ Vol")).toBeVisible();
   // The provenance caption wears the resolved 17:30 CET close (OESX), NEVER 22:00.
-  const caption = page.getByText(/SPX · clôture 2026-05-29 17:30 CET · strict/);
+  const caption = page.getByText(/SPX · close 2026-05-29 17:30 CET · strict/);
   await expect(caption).toBeVisible();
   await expect(caption).not.toContainText("22:00");
   expect(pageErrors, pageErrors.join("\n")).toEqual([]);
@@ -337,8 +337,8 @@ test("the assistant refuses to state a number absent from the payload — no hal
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The refusal is the contract: it says, plainly, it will not invent the number.
   const gap = page.getByText(/je ne vais pas l'inventer/);
@@ -363,8 +363,8 @@ test("an assistant backend failure surfaces a loud role=alert, never silent", as
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   const alert = page.getByRole("alert").filter({ hasText: /Assistant indisponible/ });
   await expect(alert).toBeVisible();

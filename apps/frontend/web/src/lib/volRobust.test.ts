@@ -67,7 +67,7 @@ describe("cleanSmile (degenerate slice)", () => {
 
   // infra-surface-fit-quality LANE 2 (front robustness): the ~2-3d ultra-short slice serves wing IV
   // spikes to 1.0–1.4 (10d-wing extrapolation, audit F3). The clean must exclude every such spike
-  // so the smile/nappe can't draw a garbage peak — flag-not-reject, render-side only.
+  // so the smile/surface can't draw a garbage peak — flag-not-reject, render-side only.
   test("excludes the ultra-short wing IV spikes (1.0–1.4) the 10d slice serves", () => {
     const wingKs = [-0.25, -0.18, 0.0, 0.18, 0.25];
     const wingIvs = [1.4, 1.08, 0.152, 1.0, 1.2];

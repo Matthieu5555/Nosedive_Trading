@@ -8,7 +8,7 @@ export type MetricId =
   | "rv_minus_iv"
   | "rho_bar"
   | "convexity_25d"
-  | "nappe"
+  | "surface"
   | "smile"
   | "greek_profiles"
   | "surface_coverage";
@@ -39,7 +39,7 @@ export interface ExplainEntry {
   whereFrom: (ctx: ExplainContext) => string;
 }
 
-const NOT_RECORDED = "signal non enregistré pour cette clôture";
+const NOT_RECORDED = "signal not recorded for this close";
 
 function hasValue(ctx: ExplainContext): boolean {
   return ctx.value !== null && ctx.value !== undefined && Number.isFinite(ctx.value);
@@ -51,29 +51,29 @@ function tenorClause(ctx: ExplainContext): string {
 
 function modeClause(ctx: ExplainContext): string {
   if (ctx.mode === "indicative") {
-    return " · marque indicative — pas la clôture stockée";
+    return " · indicative mark — not the stored close";
   }
   return "";
 }
 
 function signalWhereFrom(ctx: ExplainContext): string {
   if (!hasValue(ctx)) return NOT_RECORDED;
-  return `signal enregistré${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
+  return `recorded signal${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
 }
 
 function projectedWhereFrom(ctx: ExplainContext): string {
   if (!hasValue(ctx)) return NOT_RECORDED;
-  return `projeté depuis le smile${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
+  return `projected from the smile${tenorClause(ctx)} · ${asOfClose(ctx.asOf, ctx.closeInstant)}${modeClause(ctx)}`;
 }
 
 function surfaceWhereFrom(ctx: ExplainContext): string {
   const subject = ctx.underlying ?? "—";
   const head = `${subject} · ${asOfClose(ctx.asOf, ctx.closeInstant)}`;
-  const modeWord = ctx.mode === "indicative" ? "indicatif" : "strict";
+  const modeWord = ctx.mode === "indicative" ? "indicative" : "strict";
   if (ctx.coverage) {
     return `${head} · ${modeWord} · ${coverageHeadline(ctx.coverage)}`;
   }
-  return `${head} · ${modeWord} · couverture indisponible`;
+  return `${head} · ${modeWord} · coverage unavailable`;
 }
 
 export const EXPLAIN: Record<MetricId, ExplainEntry> = {
@@ -126,8 +126,8 @@ export const EXPLAIN: Record<MetricId, ExplainEntry> = {
     unit: "Vol",
     whereFrom: projectedWhereFrom,
   },
-  nappe: {
-    label: "Nappe de volatilité",
+  surface: {
+    label: "Volatility surface",
     whatIs: "implied-volatility surface (vol vs log-moneyness vs maturity)",
     howToRead: "the ATM ridge is the spine; the tilt across maturities is the term structure",
     unit: "Vol",
@@ -148,10 +148,10 @@ export const EXPLAIN: Record<MetricId, ExplainEntry> = {
     whereFrom: surfaceWhereFrom,
   },
   surface_coverage: {
-    label: "Couverture de la nappe",
+    label: "Surface coverage",
     whatIs: "what fraction of the captured chain the surface actually rests on",
     howToRead:
-      "deux-faces = quotes with both bid and ask; à une face exclues = dropped from strict",
+      "two-sided = quotes with both bid and ask; one-sided excluded = dropped from strict",
     unit: null,
     whereFrom: surfaceWhereFrom,
   },

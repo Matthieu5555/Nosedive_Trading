@@ -29,7 +29,7 @@ describe("AsyncBlock loading branch", () => {
     );
     advance(SKELETON_DELAY_MS - 1);
     expect(screen.queryByRole("status")?.querySelector(".chart-skeleton")).toBeFalsy();
-    expect(screen.queryByText("Chargement…")).toBeNull();
+    expect(screen.queryByText("Loading…")).toBeNull();
   });
 
   test("mounts a footprint-preserving skeleton once the floor elapses", () => {
@@ -43,30 +43,20 @@ describe("AsyncBlock loading branch", () => {
     expect(block).not.toBeNull();
     expect(block.getAttribute("role")).toBe("status");
     expect(block.style.height).toBe("440px");
-    expect(block).toHaveTextContent("Chargement…");
+    expect(block).toHaveTextContent("Loading…");
   });
 
   test("names the subject on the skeleton when given one", () => {
     render(
-      <AsyncBlock loading error={null} subject="la nappe SX5E">
+      <AsyncBlock loading error={null} subject="the SX5E surface">
         <div>chart</div>
       </AsyncBlock>,
     );
     advance(SKELETON_DELAY_MS);
     expect(screen.getByRole("status")).toHaveAttribute(
       "aria-label",
-      "Chargement de la nappe SX5E…",
+      "Loading the SX5E surface…",
     );
-  });
-
-  test("never leaks the bare English 'Loading…' text", () => {
-    render(
-      <AsyncBlock loading error={null}>
-        <div>chart</div>
-      </AsyncBlock>,
-    );
-    advance(SKELETON_DELAY_MS);
-    expect(screen.queryByText("Loading…")).toBeNull();
   });
 
   test("is never blank in either loading phase", () => {

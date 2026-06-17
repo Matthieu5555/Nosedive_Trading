@@ -5,22 +5,17 @@ import { assertNeverBlank } from "../test/assertNeverBlank";
 import { ChartSkeleton, Skeleton, SKELETON_DELAY_MS } from "./Skeleton";
 
 describe("Skeleton", () => {
-  test("is a role=status surface named 'Chargement…' by default", () => {
+  test("is a role=status surface named 'Loading…' by default", () => {
     render(<Skeleton />);
     const block = screen.getByRole("status");
-    expect(block).toHaveAttribute("aria-label", "Chargement…");
-    expect(block).toHaveTextContent("Chargement…");
+    expect(block).toHaveAttribute("aria-label", "Loading…");
+    expect(block).toHaveTextContent("Loading…");
   });
 
   test("reserves the requested footprint height", () => {
     const { container } = render(<Skeleton height={440} />);
     const block = container.querySelector(".chart-skeleton") as HTMLElement;
     expect(block.style.height).toBe("440px");
-  });
-
-  test("never renders the English 'Loading…' bare text", () => {
-    render(<Skeleton />);
-    expect(screen.queryByText("Loading…")).toBeNull();
   });
 
   test("is never blank", () => {
@@ -30,16 +25,16 @@ describe("Skeleton", () => {
 
 describe("ChartSkeleton", () => {
   test("names its subject when given one", () => {
-    render(<ChartSkeleton subject="la nappe SX5E" />);
+    render(<ChartSkeleton subject="the SX5E surface" />);
     expect(screen.getByRole("status")).toHaveAttribute(
       "aria-label",
-      "Chargement de la nappe SX5E…",
+      "Loading the SX5E surface…",
     );
   });
 
   test("falls back to the plain label without a subject", () => {
     render(<ChartSkeleton />);
-    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "Chargement…");
+    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "Loading…");
   });
 
   test("defaults to the 440px chart footprint", () => {

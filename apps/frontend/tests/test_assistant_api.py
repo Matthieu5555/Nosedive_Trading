@@ -238,11 +238,11 @@ def test_close_instant_is_1730_local_not_2200(ctx: AppContext) -> None:
 
 def test_router_flags_a_fabricated_number_and_returns_the_honest_gap(ctx: AppContext) -> None:
     # The stub returns an IV the facts block never contained (0.30 is not on the screen).
-    fake = FakeOpenRouterClient("L'ATM est à 30.0% — soit 3 × 10⁻¹ Vol.")
+    fake = FakeOpenRouterClient("The ATM is at 30.0% — i.e. 3 × 10⁻¹ Vol.")
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     assert resp.status_code == 200
@@ -256,12 +256,12 @@ def test_router_flags_a_fabricated_number_and_returns_the_honest_gap(ctx: AppCon
 def test_router_passes_a_grounded_answer_through(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
     atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
-    grounded_answer = f"L'ATM à la monnaie est {atm_text}, en clôture strict."
+    grounded_answer = f"The ATM is {atm_text}, at strict close."
     fake = FakeOpenRouterClient(grounded_answer)
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     body = resp.json()
@@ -272,7 +272,7 @@ def test_router_passes_a_grounded_answer_through(ctx: AppContext) -> None:
 
 def test_validator_allows_coverage_counts_and_facts(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
-    answer = "La nappe repose sur 4 cotations deux-faces sur 6, soit 2 exclues."
+    answer = "The surface rests on 4 two-sided quotes out of 6, so 2 excluded."
     assert is_grounded(answer, grounding)
     assert ungrounded_numbers(answer, grounding) == []
 
@@ -281,10 +281,10 @@ def test_validator_allows_coverage_counts_and_facts(ctx: AppContext) -> None:
 # (the ATM is 0.184) is absent in every form: an ASCII percent, the house sci-notation idiom with a
 # Unicode-superscript exponent, and spelled out in French and English.
 _FABRICATED_FORMS = {
-    "ascii_percent": "L'ATM est à 30.0%.",
-    "ascii_decimal": "La vol implicite vaut 0.30.",
-    "sci_superscript": "La vol implicite vaut 3 × 10⁻¹ Vol.",
-    "sci_wrong_exponent": "La vol à la monnaie est 1.84 × 10⁻⁹ Vol.",
+    "ascii_percent": "The ATM is at 30.0%.",
+    "ascii_decimal": "Implied vol is 0.30.",
+    "sci_superscript": "Implied vol is 3 × 10⁻¹ Vol.",
+    "sci_wrong_exponent": "ATM vol is 1.84 × 10⁻⁹ Vol.",
     "spelled_fr": "La vol implicite est de trente pour cent.",
     "spelled_en": "Implied vol is thirty percent.",
 }
@@ -306,7 +306,7 @@ def test_post_refuses_a_fabricated_number_in_every_form(ctx: AppContext, form: s
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     body = resp.json()
@@ -326,7 +326,7 @@ def test_stream_refuses_a_fabricated_number_in_every_form(ctx: AppContext, form:
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant/stream",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     assert resp.status_code == 200
@@ -337,13 +337,13 @@ def test_stream_refuses_a_fabricated_number_in_every_form(ctx: AppContext, form:
 def test_stream_passes_a_grounded_answer_through(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
     atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
-    grounded = f"L'ATM à la monnaie est {atm_text}."
+    grounded = f"The ATM is {atm_text}."
     tokens = [grounded[i : i + 4] for i in range(0, len(grounded), 4)]
     fake = FakeOpenRouterClient("ignored", stream_tokens=tokens)
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant/stream",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     assert resp.text == grounded
@@ -352,11 +352,11 @@ def test_stream_passes_a_grounded_answer_through(ctx: AppContext) -> None:
 def test_contract_frame_carries_run_id_close_instant_and_coverage_label(
     ctx: AppContext,
 ) -> None:
-    fake = FakeOpenRouterClient("Vous regardez la nappe SX5E.")
+    fake = FakeOpenRouterClient("You are looking at the SX5E surface.")
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant",
-            json={"question": "Qu'est-ce que je regarde ?", "underlying": UNDERLYING,
+            json={"question": "What am I looking at?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat(), "run_id": "run-0616"},
         )
     frame = resp.json()["frame"]
@@ -364,18 +364,18 @@ def test_contract_frame_carries_run_id_close_instant_and_coverage_label(
     assert frame["run_id"] == "run-0616"
     assert frame["close_instant"] is not None and "17:30" in frame["close_instant"]
     assert frame["coverage_label"] == (
-        f"{EXPECTED_TWO_SIDED}/{EXPECTED_OPTION_ROWS} cotations"
+        f"{EXPECTED_TWO_SIDED}/{EXPECTED_OPTION_ROWS} quotes"
     )
 
 
 def test_contract_citation_has_id_label_value_source(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
     atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
-    fake = FakeOpenRouterClient(f"L'ATM est {atm_text}.")
+    fake = FakeOpenRouterClient(f"The ATM is {atm_text}.")
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant",
-            json={"question": "C'est quoi l'ATM ?", "underlying": UNDERLYING,
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat()},
         )
     citations = resp.json()["citations"]
@@ -384,7 +384,7 @@ def test_contract_citation_has_id_label_value_source(ctx: AppContext) -> None:
     # The shape the front's AssistantCitation declares: {id, label, value, source}.
     assert set(atm) == {"id", "label", "value", "source"}
     assert atm["value"] == atm_text
-    assert atm["source"].startswith("signal enregistré")
+    assert atm["source"].startswith("recorded signal")
 
 
 # --- Strict / indicative honesty -----------------------------------------------------------
@@ -393,15 +393,15 @@ def test_indicative_mode_tags_the_frame(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE, mode=MODE_INDICATIVE)
     assert grounding.frame.mode == MODE_INDICATIVE
     assert grounding.frame.to_dict()["indicative"] is True
-    messages = build_messages(grounding, "Qu'est-ce que je regarde ?")
+    messages = build_messages(grounding, "What am I looking at?")
     user_text = messages[1].content
-    assert "INDICATIF" in user_text
+    assert "INDICATIVE" in user_text
 
 
 def test_strict_mode_has_no_indicative_framing(ctx: AppContext) -> None:
     grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
-    messages = build_messages(grounding, "Qu'est-ce que je regarde ?")
-    assert "INDICATIF" not in messages[1].content
+    messages = build_messages(grounding, "What am I looking at?")
+    assert "INDICATIVE" not in messages[1].content
     assert grounding.frame.to_dict()["indicative"] is False
 
 
@@ -475,13 +475,13 @@ def test_model_error_is_a_labelled_non_500(ctx: AppContext) -> None:
 # --- Routing: gloss flag selects the cheap model -------------------------------------------
 
 def test_gloss_flag_routes_to_the_cheap_model(ctx: AppContext) -> None:
-    fake = FakeOpenRouterClient("une nappe de volatilité")
+    fake = FakeOpenRouterClient("a volatility surface")
     with _client(ctx, fake) as client:
         client.post(
             "/api/assistant",
-            json={"question": "c'est quoi la nappe ?", "underlying": UNDERLYING,
+            json={"question": "what is the surface?", "underlying": UNDERLYING,
                   "trade_date": TRADE_DATE.isoformat(), "gloss": True,
-                  "element_id": "nappe"},
+                  "element_id": "surface"},
         )
     assert fake.calls and fake.calls[-1][1] is True
 
@@ -511,7 +511,7 @@ def test_client_model_routing_picks_distinct_models() -> None:
 # --- Streaming -----------------------------------------------------------------------------
 
 def test_stream_endpoint_relays_tokens(ctx: AppContext) -> None:
-    fake = FakeOpenRouterClient("ignored", stream_tokens=["La ", "nappe ", "SX5E."])
+    fake = FakeOpenRouterClient("ignored", stream_tokens=["The ", "surface ", "SX5E."])
     with _client(ctx, fake) as client:
         resp = client.post(
             "/api/assistant/stream",
@@ -519,4 +519,4 @@ def test_stream_endpoint_relays_tokens(ctx: AppContext) -> None:
                   "trade_date": TRADE_DATE.isoformat()},
         )
     assert resp.status_code == 200
-    assert resp.text == "La nappe SX5E."
+    assert resp.text == "The surface SX5E."

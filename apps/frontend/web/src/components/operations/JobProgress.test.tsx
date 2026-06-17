@@ -19,7 +19,7 @@ function job(overrides: Partial<Job>): Job {
 }
 
 describe("JobProgress", () => {
-  test("a determinate stage renders étape k/N, the stage label, and the right percent", () => {
+  test("a determinate stage renders step k/N, the stage label, and the right percent", () => {
     // 2 of 4 stages reached -> 50% (derived by hand, not read from the component).
     render(
       <JobProgress
@@ -29,7 +29,7 @@ describe("JobProgress", () => {
     const bar = screen.getByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "50");
     expect(bar).toHaveAttribute("aria-valuemax", "100");
-    expect(screen.getByText(/étape 2\/4/)).toBeInTheDocument();
+    expect(screen.getByText(/step 2\/4/)).toBeInTheDocument();
     expect(screen.getByText(/Collecte de la chaîne d'options/)).toBeInTheDocument();
     expect(screen.getByText(/50%/)).toBeInTheDocument();
   });
@@ -37,7 +37,7 @@ describe("JobProgress", () => {
   test("the final reached stage reads 100% (4 of 4)", () => {
     render(
       <JobProgress
-        job={job({ stage: "Récapitulatif de la nappe", stage_index: 4, stage_total: 4 })}
+        job={job({ stage: "Récapitulatif de la surface", stage_index: 4, stage_total: 4 })}
       />,
     );
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
@@ -46,7 +46,7 @@ describe("JobProgress", () => {
 
   test("a null stage degrades to an honest indeterminate bar with no percent", () => {
     render(<JobProgress job={job({ stage: null, stage_index: null, stage_total: null })} />);
-    expect(screen.getByText("en cours…")).toBeInTheDocument();
+    expect(screen.getByText("in progress…")).toBeInTheDocument();
     const bar = screen.getByRole("progressbar");
     expect(bar).not.toHaveAttribute("aria-valuenow");
     // No fabricated percent anywhere — the indeterminate case never claims progress.
@@ -55,13 +55,13 @@ describe("JobProgress", () => {
 
   test("a payload missing the stage fields entirely (back-compat) is indeterminate, not a crash", () => {
     render(<JobProgress job={job({})} />);
-    expect(screen.getByText("en cours…")).toBeInTheDocument();
+    expect(screen.getByText("in progress…")).toBeInTheDocument();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
   test("a stage_total of 0 is not trusted — degrades to indeterminate, never divides by zero", () => {
     render(<JobProgress job={job({ stage: "x", stage_index: 0, stage_total: 0 })} />);
-    expect(screen.getByText("en cours…")).toBeInTheDocument();
+    expect(screen.getByText("in progress…")).toBeInTheDocument();
   });
 
   test("a done job renders no progress bar (the row shows its summary, never a stale bar)", () => {

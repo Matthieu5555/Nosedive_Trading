@@ -64,11 +64,11 @@ test("nappe panel heading is a self-describing sentence naming the underlying (n
   page,
 }) => {
   // 2b.5 (LIVE): Market.tsx builds the nappe panel <h2> off the live (index) state via its own
-  // describeSurface — "Nappe de volatilité — {underlying}". The default SPX load must name SPX in
+  // describeSurface — "Volatility surface — {underlying}". The default SPX load must name SPX in
   // the heading; a static <h2>Volatility nappe</h2> would fail this. (charts.tsx:79,123;
   // Market.tsx describeSurface.) NOTE: the Plotly figure's OWN aria-label is still the descriptor
   // built INSIDE VolSurface, which Market mounts without identity props — so the figure title is
-  // "Nappe de volatilité — indéterminé · …". That gap is the fixme below; the visible heading the
+  // "Volatility surface — indéterminé · …". That gap is the fixme below; the visible heading the
   // eye lands on first is what's wired today.
   const errors = collectPageErrors(page);
   await mockBff(page);
@@ -76,13 +76,13 @@ test("nappe panel heading is a self-describing sentence naming the underlying (n
 
   await gotoMarket(page);
   await expect(
-    page.getByRole("heading", { level: 2, name: /^Nappe de volatilité — SPX$/ }),
+    page.getByRole("heading", { level: 2, name: /^Volatility surface — SPX$/ }),
   ).toBeVisible();
   // The 3D surface figure renders (it is on screen), even though its own label does not yet carry
   // the subject (see fixme). The surface figure is the one whose how-to-read clause ends "vs
-  // maturité" — distinct from the smile/Greeks figures that share the same descriptor prefix.
+  // maturity" — distinct from the smile/Greeks figures that share the same descriptor prefix.
   await expect(
-    page.getByRole("figure", { name: /^Nappe de volatilité — .* vs maturité/ }),
+    page.getByRole("figure", { name: /^Volatility surface — .* vs maturity/ }),
   ).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -103,14 +103,14 @@ test("switching the index re-writes the nappe title and the price/dispersion hea
   });
 
   await gotoMarket(page);
-  await expect(page.getByRole("heading", { level: 2, name: /^Nappe de volatilité — SPX$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /^Volatility surface — SPX$/ })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /^Cours quotidien — SPX$/ })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /^Dispersion \(ρ̄\) — SPX$/ })).toBeVisible();
 
   await selectSx5e(page);
 
   // Every self-describing label now reads SX5E; none is left stale on SPX.
-  await expect(page.getByRole("heading", { level: 2, name: /^Nappe de volatilité — SX5E$/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /^Volatility surface — SX5E$/ })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /^Cours quotidien — SX5E$/ })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /^Dispersion \(ρ̄\) — SX5E$/ })).toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: /SPX$/ })).toHaveCount(0);
@@ -144,7 +144,7 @@ test("smile title carries the selected tenor and the degenerate-fit warning when
 });
 
 test("smile and greeks axes carry their units in the house idiom", async ({ page }) => {
-  // 2b.8 (LIVE): axis titles render "log-moneyness (k)", "vol implicite (%)", "strike (...)" via
+  // 2b.8 (LIVE): axis titles render "log-moneyness (k)", "implied vol (%)", "strike (...)" via
   // charts.tsx AXIS_* constants off lib/format UNITS. An unlabeled/unitless axis is a bug. Plotly
   // draws axis titles into the SVG as text; assert the unit text is present in the smile figure.
   const errors = collectPageErrors(page);
@@ -157,7 +157,7 @@ test("smile and greeks axes carry their units in the house idiom", async ({ page
   // The unit-bearing axis titles are drawn as text inside the figure, in the house UNITS idiom
   // (lib/format.ts: logMoneyness = "ln(K/F)", vol = "Vol"). An unlabeled/unitless axis is a bug.
   await expect(smile).toContainText("log-moneyness (ln(K/F))");
-  await expect(smile).toContainText("vol implicite (Vol)");
+  await expect(smile).toContainText("implied vol (Vol)");
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -185,7 +185,7 @@ test.fixme(
   async ({ page }) => {
     // 2b.4 / 2b.7 FIXME — retired by MAT-LEGIBILITY-coverage-headline + -strict-indicative-mode.
     // Today Market.tsx mounts <VolSurface> WITHOUT the identity props (subject/asOf/closeInstant/
-    // mode/coverage), so the descriptor degrades to "indéterminé · clôture date inconnue · strict ·
+    // mode/coverage), so the descriptor degrades to "indéterminé · close date inconnue · strict ·
     // couverture indisponible" inside the figure title — self-describing in shape but blank on
     // identity. When the page threads the live (index, effectiveAsOf, mode, coverage) tuple into
     // VolSurface, the SX5E figure title must read the full sentence with the real coverage fraction
@@ -200,7 +200,7 @@ test.fixme(
     await selectSx5e(page);
     await expect(
       page.getByRole("figure", {
-        name: /^Nappe de volatilité — SX5E · clôture 2026-\d{2}-\d{2} 17:30 CET · strict · \d/,
+        name: /^Volatility surface — SX5E · close 2026-\d{2}-\d{2} 17:30 CET · strict · \d/,
       }),
     ).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -215,7 +215,7 @@ test.fixme(
     // instant = closeInstant(index), so SX5E SHOULD carry "17:30 CET" in the caption — but the
     // status line above the nappe prints only descriptor.asOfPhrase off effectiveAsOf, and the
     // coverage fraction is still null ("couverture indisponible"). When coverage lands, the nappe
-    // caption must read "clôture {date} 17:30 CET · strict · {n}/{m} cotations".
+    // caption must read "close {date} 17:30 CET · strict · {n}/{m} quotes".
     const errors = collectPageErrors(page);
     await mockBff(page);
     await page.route("**/api/analytics**", (route) =>
@@ -224,8 +224,8 @@ test.fixme(
 
     await gotoMarket(page);
     await selectSx5e(page);
-    const nappe = page.getByRole("article", { name: /^Nappe de volatilité — SX5E$/ });
-    await expect(nappe.getByText(/clôture 2026-\d{2}-\d{2} 17:30 CET · strict · \d.* cotations/)).toBeVisible();
+    const nappe = page.getByRole("article", { name: /^Volatility surface — SX5E$/ });
+    await expect(nappe.getByText(/close 2026-\d{2}-\d{2} 17:30 CET · strict · \d.* quotes/)).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
   },
 );
@@ -333,14 +333,14 @@ test("a loading nappe shows a footprint skeleton, never a blank chart or a bare 
   });
 
   await gotoMarket(page);
-  // A role=status, aria-busy skeleton labelled "Chargement…" appears while the fetch is in flight.
+  // A role=status, aria-busy skeleton labelled "Loading…" appears while the fetch is in flight.
   const skeleton = page.locator('[role="status"][aria-busy="true"]').first();
   await expect(skeleton).toBeVisible();
   // It must NOT be the bare one-line "Loading…" text the skeleton replaced.
   await expect(page.getByText(/^Loading…$/)).toHaveCount(0);
   // Once data lands the nappe renders and the skeleton is gone.
   await expect(
-    page.getByRole("heading", { level: 2, name: /^Nappe de volatilité — SPX$/ }),
+    page.getByRole("heading", { level: 2, name: /^Volatility surface — SPX$/ }),
   ).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -364,7 +364,7 @@ test("an empty (no-maturity) nappe names its subject and as-of, never a blank ch
   page,
 }) => {
   // 3.5 (LIVE): when analytics returns zero maturities Market.tsx renders descriptor.emptyCopy in a
-  // role="status" panel — "Aucune cotation deux-faces pour {index} au {date} — marché probablement
+  // role="status" panel — "No two-sided quote for {index} au {date} — marché probablement
   // fermé." — a named empty state, never a blank <figure>.
   const errors = collectPageErrors(page);
   await mockBff(page);
@@ -374,7 +374,7 @@ test("an empty (no-maturity) nappe names its subject and as-of, never a blank ch
 
   await gotoMarket(page);
   await expect(
-    page.getByText(/Aucune cotation deux-faces pour SPX au .* — marché probablement fermé\./),
+    page.getByText(/No two-sided quote for SPX on .* — market probably closed\./),
   ).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -408,11 +408,11 @@ test("a degenerate surface is never rendered clean — its fit carries a loud qu
 });
 
 test.fixme(
-  "a market-closed nappe says 'marché probablement fermé' in plain words, not just a slice flag",
+  "a market-closed nappe says 'market probably closed' in plain words, not just a slice flag",
   async ({ page }) => {
     // 3.3 FIXME — retired by MAT-LEGIBILITY-coverage-headline + -strict-indicative-mode. The full
     // silent-green canary: a degenerate/market-closed surface must say, in error tone and plain PM
-    // words, "marché probablement fermé" on the nappe the eye lands on — not only the engineering
+    // words, "market probably closed" on the nappe the eye lands on — not only the engineering
     // "⚠ N slice flagged". charts.tsx describeSurface already emits that phrase when degenerate=true,
     // but Market.tsx mounts <VolSurface> WITHOUT the identity props, so the descriptor inside the
     // figure degrades to "strict · couverture indisponible" and the loud market-closed clause never
@@ -425,7 +425,7 @@ test.fixme(
     );
 
     await gotoMarket(page);
-    await expect(page.getByText(/marché probablement fermé/).first()).toBeVisible();
+    await expect(page.getByText(/market probably closed/).first()).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
   },
 );
@@ -477,7 +477,7 @@ test("the convexity readout carries its butterfly-formula gloss in place", async
 test("the assistant is a summonable, non-blocking panel — a button, not a wall", async ({
   page,
 }) => {
-  // 6 (LIVE, structural): the AssistantPanel mounts collapsed as a "Demander à l'assistant" button
+  // 6 (LIVE, structural): the AssistantPanel mounts collapsed as a "Ask the assistant" button
   // in the status row (non-blocking — a panel you summon, not a wall you must pass). Opening it
   // reveals the grounded actions and a close affordance.
   const errors = collectPageErrors(page);
@@ -485,16 +485,16 @@ test("the assistant is a summonable, non-blocking panel — a button, not a wall
   await page.route("**/api/analytics**", (route) => route.fulfill({ json: ANALYTICS_AAA }));
 
   await gotoMarket(page);
-  const launch = page.getByRole("button", { name: "Demander à l'assistant" });
+  const launch = page.getByRole("button", { name: "Ask the assistant" });
   await expect(launch).toBeVisible();
   await launch.click();
   const panel = page.getByRole("complementary", { name: "Assistant" });
   await expect(panel).toBeVisible();
   // The grounded "explain this screen" shortcut is offered.
-  await expect(panel.getByRole("button", { name: "Qu'est-ce que je regarde ?" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "What am I looking at?" })).toBeVisible();
   // Non-blocking: it can be dismissed.
-  await panel.getByRole("button", { name: "Fermer l'assistant" }).click();
-  await expect(page.getByRole("button", { name: "Demander à l'assistant" })).toBeVisible();
+  await panel.getByRole("button", { name: "Close the assistant" }).click();
+  await expect(page.getByRole("button", { name: "Ask the assistant" })).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -513,7 +513,7 @@ test("the assistant renders only numbers the BFF payload carried, with a citatio
   await page.route("**/api/assistant", (route) =>
     route.fulfill({
       json: {
-        answer: "L'ATM 3m ressort à 18.4% sur cette clôture.",
+        answer: "The 3m ATM comes out at 18.4% on this close.",
         grounded: true,
         citations: [
           { id: "atm", label: "ATM level", value: "18.4%", source: "run abc123" },
@@ -524,15 +524,15 @@ test("the assistant renders only numbers the BFF payload carried, with a citatio
           run_id: "abc123",
           mode: "strict",
           close_instant: null,
-          coverage_label: "1 706/2 412 cotations",
+          coverage_label: "1 706/2 412 quotes",
         },
       },
     }),
   );
 
   await gotoMarket(page);
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   const citations = page.getByRole("list", { name: "Citations" });
   await expect(citations).toBeVisible();
@@ -540,7 +540,7 @@ test("the assistant renders only numbers the BFF payload carried, with a citatio
   await expect(citations).toContainText("18.4%");
   await expect(citations).toContainText("run abc123");
   // The frame caption wears the same provenance the screen shows.
-  await expect(page.getByText(/SPX · strict · 1 706\/2 412 cotations/)).toBeVisible();
+  await expect(page.getByText(/SPX · strict · 1 706\/2 412 quotes/)).toBeVisible();
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -558,7 +558,7 @@ test("an ungrounded assistant answer refuses to state a number and shows no cita
   await page.route("**/api/assistant", (route) =>
     route.fulfill({
       json: {
-        answer: "Je ne peux pas chiffrer cela : l'écran ne porte pas ce nombre.",
+        answer: "I can't put a number on that: the screen doesn't carry it.",
         grounded: false,
         citations: [],
         frame: {
@@ -574,8 +574,8 @@ test("an ungrounded assistant answer refuses to state a number and shows no cita
   );
 
   await gotoMarket(page);
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   await expect(page.getByText(/Je ne peux pas chiffrer cela/)).toBeVisible();
   // No citation list is rendered for an ungrounded answer (no fabricated number to cite).
@@ -597,8 +597,8 @@ test("an assistant transport failure surfaces a loud alert, never a silent or fa
   );
 
   await gotoMarket(page);
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-  await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
+  await page.getByRole("button", { name: "What am I looking at?" }).click();
 
   await expect(page.getByRole("alert").filter({ hasText: /Assistant indisponible/ })).toBeVisible();
 
@@ -609,7 +609,7 @@ test.fixme(
   "the assistant explains indicative mode without presenting it as the stored close",
   async ({ page }) => {
     // 6.3 FIXME — retired by MAT-LEGIBILITY-strict-indicative-mode. The load-bearing guardrail:
-    // when mode=indicative the frame caption must say INDICATIF and the answer must never present an
+    // when mode=indicative the frame caption must say INDICATIVE and the answer must never present an
     // indicative mark as the canonical stored close. The Market page has no strict/indicative toggle
     // yet (it hard-codes mode="strict" into the AssistantPanel), so this contract can't be exercised
     // end-to-end until the toggle lands and threads mode=indicative into the panel + the BFF frame.
@@ -621,7 +621,7 @@ test.fixme(
     await page.route("**/api/assistant", (route) =>
       route.fulfill({
         json: {
-          answer: "Cette nappe est INDICATIVE — des marques à une face, pas la clôture stockée.",
+          answer: "This surface is INDICATIVE — one-sided marks, not the stored close.",
           grounded: true,
           citations: [],
           frame: {
@@ -640,10 +640,10 @@ test.fixme(
     await selectSx5e(page);
     // The mode toggle (unbuilt) flips the surface to indicative before the assistant is asked.
     await page.getByRole("button", { name: /indicati/i }).click();
-    await page.getByRole("button", { name: "Demander à l'assistant" }).click();
-    await page.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
-    await expect(page.getByText(/INDICATIF/)).toBeVisible();
-    await expect(page.getByText(/pas la clôture stockée/)).toBeVisible();
+    await page.getByRole("button", { name: "Ask the assistant" }).click();
+    await page.getByRole("button", { name: "What am I looking at?" }).click();
+    await expect(page.getByText(/INDICATIVE/)).toBeVisible();
+    await expect(page.getByText(/not the stored close/)).toBeVisible();
     expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
   },
 );

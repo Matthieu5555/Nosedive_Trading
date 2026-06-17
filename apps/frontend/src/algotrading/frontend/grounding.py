@@ -111,9 +111,9 @@ class GroundingContext:
 
     def citations(self) -> list[dict[str, object]]:
         mode_word = (
-            "signal indicatif"
+            "indicative signal"
             if self.frame.mode == MODE_INDICATIVE
-            else "signal enregistré"
+            else "recorded signal"
         )
         source = f"{mode_word} · {self.tenor_label}" if self.tenor_label else mode_word
         return [
@@ -238,7 +238,7 @@ def _scorecard_facts(
     facts.append(
         Fact(
             fact_id="atm_level",
-            label="ATM (vol implicite à la monnaie)",
+            label="ATM (at-the-money implied vol)",
             value_text=sci_unit(atm, UNITS["vol"]),
             raw_value=atm,
             unit=UNITS["vol"],
@@ -264,7 +264,7 @@ def _scorecard_facts(
     facts.append(
         Fact(
             fact_id="convexity_25d",
-            label="Convexité 25Δ (papillon)",
+            label="Convexity 25Δ (butterfly)",
             value_text=sci_unit(convexity, UNITS["vol"]),
             raw_value=convexity,
             unit=UNITS["vol"],
@@ -275,22 +275,22 @@ def _scorecard_facts(
 
 def _coverage_facts(coverage: Coverage) -> list[Fact]:
     fraction_text = (
-        f"{coverage.two_sided}/{coverage.option_rows} cotations deux-faces"
+        f"{coverage.two_sided}/{coverage.option_rows} two-sided quotes"
         if coverage.option_rows > 0
-        else "aucune cotation d'option"
+        else "no option quotes"
     )
     return [
         Fact(
             fact_id="surface_coverage",
-            label="Couverture de la nappe",
+            label="Surface coverage",
             value_text=fraction_text,
             raw_value=coverage.two_sided_fraction,
             unit=None,
         ),
         Fact(
             fact_id="excluded_rows",
-            label="Cotations exclues (une face / manquantes)",
-            value_text=f"{coverage.excluded} exclues",
+            label="Excluded quotes (one-sided / missing)",
+            value_text=f"{coverage.excluded} excluded",
             raw_value=float(coverage.excluded),
             unit=None,
         ),

@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 from .test_run_api import seeded_ctx  # noqa: F401 — pytest fixture reuse
 
 EXPECTED_SEQUENCE: tuple[tuple[SampleStage, int, str], ...] = (
-    (SampleStage.RESOLVE, 1, "Recherche du dernier jour capturé"),
-    (SampleStage.COLLECT, 2, "Collecte de la chaîne d'options"),
-    (SampleStage.FIT, 3, "Ajustement de la nappe"),
-    (SampleStage.SUMMARIZE, 4, "Récapitulatif de la nappe"),
+    (SampleStage.RESOLVE, 1, "Finding the last captured day"),
+    (SampleStage.COLLECT, 2, "Collecting the options chain"),
+    (SampleStage.FIT, 3, "Fitting the surface"),
+    (SampleStage.SUMMARIZE, 4, "Surface summary"),
 )
 
 EXPECTED_TOTAL = 4
@@ -34,10 +34,10 @@ def test_mark_stage_maps_each_stage_to_pm_label_index_and_total() -> None:
         assert job.stage_total == EXPECTED_TOTAL
 
 
-def test_pm_label_is_french_register_never_the_engine_enum() -> None:
+def test_pm_label_is_plain_english_never_the_engine_enum() -> None:
     job = _new_job()
     job.mark_stage(SampleStage.COLLECT)
-    assert job.stage == "Collecte de la chaîne d'options"
+    assert job.stage == "Collecting the options chain"
     assert job.stage != SampleStage.COLLECT.value
     assert "collect" not in (job.stage or "")
     assert "STAGE_" not in (job.stage or "")
@@ -61,7 +61,7 @@ def test_to_dict_is_additive_and_serialises_the_stage_fields() -> None:
 
     job.mark_stage(SampleStage.FIT)
     filled = job.to_dict()
-    assert filled["stage"] == "Ajustement de la nappe"
+    assert filled["stage"] == "Fitting the surface"
     assert filled["stage_index"] == 3
     assert filled["stage_total"] == EXPECTED_TOTAL
 
@@ -108,7 +108,7 @@ def test_failing_build_marks_error_and_does_not_lie_about_completion(
     assert job.finished_at is not None
     assert job.stage_index is not None
     assert job.stage_index < EXPECTED_TOTAL
-    assert job.stage == "Ajustement de la nappe"
+    assert job.stage == "Fitting the surface"
 
 
 def test_non_sample_provider_never_reports_a_stage(ctx: AppContext) -> None:

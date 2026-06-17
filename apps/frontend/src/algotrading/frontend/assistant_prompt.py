@@ -7,22 +7,22 @@ from .grounding import MODE_INDICATIVE, GroundingContext
 from .openrouter import ChatMessage
 
 _HONEST_GAP = (
-    "Ça n'est pas dans ce que l'écran affiche pour cette clôture — "
-    "je ne vais pas l'inventer."
+    "That isn't in what the screen shows for this close — "
+    "I won't make it up."
 )
 
 _SYSTEM_RULES = (
-    "Tu es l'assistant du cockpit de volatilité, pour un gérant de portefeuille (PM). "
-    "Tu expliques ce que l'écran affiche, en français clair, en registre PM "
-    "(« cotations », « deux-faces », « exclues », « clôture » — jamais le jargon moteur). "
-    "RÈGLE ABSOLUE : tu ne calcules, n'interpoles, n'estimes JAMAIS aucune valeur "
-    "analytique. Chaque nombre que tu cites doit être repris MOT POUR MOT du bloc de faits "
-    "ci-dessous — chiffres, notation scientifique (× 10ⁿ), ou nombre écrit en toutes lettres "
-    "(« trente pour cent » compte comme un nombre). Si la réponse exige un nombre absent du "
-    "bloc de faits, réponds exactement : "
-    f"« {_HONEST_GAP} » — jamais une valeur plausible inventée. "
-    "Tu cites la provenance (sujet · clôture · mode · couverture) quand tu donnes un nombre. "
-    "En mode INDICATIF, tu ne présentes jamais une marque indicative comme la clôture stockée."
+    "You are the volatility-cockpit assistant, for a portfolio manager (PM). "
+    "You explain what the screen shows, in plain English, in PM register "
+    "(\"quotes\", \"two-sided\", \"excluded\", \"close\" — never the engine jargon). "
+    "ABSOLUTE RULE: you NEVER compute, interpolate, or estimate any analytics "
+    "value. Every number you cite must be taken WORD FOR WORD from the facts block "
+    "below — digits, scientific notation (× 10ⁿ), or a number spelled out in words "
+    "(\"thirty percent\" counts as a number). If the answer requires a number absent from "
+    "the facts block, reply exactly: "
+    f"\"{_HONEST_GAP}\" — never an invented plausible value. "
+    "You cite the provenance (subject · close · mode · coverage) when you give a number. "
+    "In INDICATIVE mode, you never present an indicative mark as the stored close."
 )
 
 _VALUE_TOLERANCE = 1e-9
@@ -36,34 +36,34 @@ def _frame_caption(ctx: GroundingContext) -> str:
     frame = ctx.frame
     parts = [frame.underlying]
     if frame.close_instant is not None:
-        parts.append(f"clôture {frame.close_instant}")
+        parts.append(f"close {frame.close_instant}")
     elif frame.trade_date is not None:
         parts.append(frame.trade_date.isoformat())
-    parts.append("INDICATIF" if frame.mode == MODE_INDICATIVE else "strict")
+    parts.append("INDICATIVE" if frame.mode == MODE_INDICATIVE else "strict")
     coverage = frame.coverage
     if coverage.option_rows > 0:
-        parts.append(f"{coverage.two_sided}/{coverage.option_rows} cotations")
+        parts.append(f"{coverage.two_sided}/{coverage.option_rows} quotes")
     return " · ".join(parts)
 
 
 def _facts_block(ctx: GroundingContext) -> str:
     lines = [f"- {fact.label} : {fact.value_text}" for fact in ctx.facts]
     if not lines:
-        lines = ["- (aucun fait analytique disponible pour cette clôture)"]
+        lines = ["- (no analytics facts available for this close)"]
     header = (
-        "INDICATIF — marques reconstruites"
+        "INDICATIVE — reconstructed marks"
         if ctx.frame.mode == MODE_INDICATIVE
-        else "strict — clôture stockée"
+        else "strict — stored close"
     )
-    intro = "Bloc de faits (les seules valeurs que tu peux citer) :"
-    return f"Mode : {header}\n{intro}\n" + "\n".join(lines)
+    intro = "Facts block (the only values you may cite):"
+    return f"Mode: {header}\n{intro}\n" + "\n".join(lines)
 
 
 def build_messages(ctx: GroundingContext, question: str) -> list[ChatMessage]:
     user = (
-        f"Frame : {_frame_caption(ctx)}\n\n"
+        f"Frame: {_frame_caption(ctx)}\n\n"
         f"{_facts_block(ctx)}\n\n"
-        f"Question du PM : {question}"
+        f"PM question: {question}"
     )
     return [
         ChatMessage(role="system", content=_SYSTEM_RULES),

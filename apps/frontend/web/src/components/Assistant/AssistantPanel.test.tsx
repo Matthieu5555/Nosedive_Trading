@@ -14,17 +14,17 @@ const FRAME = {
   run_id: "run-1",
   mode: "strict" as const,
   close_instant: "17:30 CET",
-  coverage_label: "1 706/2 412 cotations",
+  coverage_label: "1,706/2,412 quotes",
 };
 
 const GROUNDED: AssistantResponse = {
-  answer: "Vous regardez la nappe de vol implicite de SX5E à la clôture.",
+  answer: "You are looking at the SX5E implied-vol surface at the close.",
   citations: [
     {
       id: "atm_level",
-      label: "Vol à la monnaie",
+      label: "ATM level",
       value: "1.83 × 10⁻¹ Vol",
-      source: "signal enregistré · 3m",
+      source: "recorded signal · 3m",
     },
   ],
   grounded: true,
@@ -33,7 +33,7 @@ const GROUNDED: AssistantResponse = {
 
 const HONEST_GAP: AssistantResponse = {
   answer:
-    "Ça n'est pas dans ce que l'écran affiche pour cette clôture — je ne vais pas l'inventer.",
+    "That isn't in what the screen shows for this close — I won't make it up.",
   citations: [],
   grounded: false,
   frame: FRAME,
@@ -46,7 +46,7 @@ function open() {
 describe("AssistantPanel", () => {
   test("is closed by default — only a non-blocking launch button, never a modal wall", () => {
     const rendered = render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    expect(screen.getByRole("button", { name: "Demander à l'assistant" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Ask the assistant" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -57,23 +57,23 @@ describe("AssistantPanel", () => {
   test("with no frame yet, opening shows an affirmative empty state, not a blank box", async () => {
     const user = open();
     render(<AssistantPanel underlying="" asOf={null} />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent(/Choisissez un indice et une clôture/);
+    expect(status).toHaveTextContent(/Choose an index and a close/);
   });
 
   test("a grounded answer renders the text, its citation value, and the provenance caption", async () => {
     server.use(jsonPost("/api/assistant", GROUNDED));
     const user = open();
     render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" runId="run-1" mode="strict" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    await user.click(screen.getByRole("button", { name: "Qu'est-ce que je regarde ?" }));
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    await user.click(screen.getByRole("button", { name: "What am I looking at?" }));
 
-    await screen.findByText(/nappe de vol implicite de SX5E/);
+    await screen.findByText(/SX5E implied-vol surface/);
     // The number is the citation lifted from the facts block, byte-identical to a scorecard.
     expect(screen.getByText("1.83 × 10⁻¹ Vol")).toBeInTheDocument();
     // Provenance caption agrees with the active frame: subject · 17:30 CET close · mode · coverage.
-    const frame = screen.getByText(/SX5E · clôture 2026-06-17 17:30 CET · strict · 1 706\/2 412/);
+    const frame = screen.getByText(/SX5E · close 2026-06-17 17:30 CET · strict · 1,706\/2,412/);
     expect(frame).toBeInTheDocument();
     expect(frame).not.toHaveTextContent("22:00");
   });
@@ -82,10 +82,10 @@ describe("AssistantPanel", () => {
     server.use(jsonPost("/api/assistant", HONEST_GAP));
     const user = open();
     render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    await user.click(screen.getByRole("button", { name: "Qu'est-ce que je regarde ?" }));
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    await user.click(screen.getByRole("button", { name: "What am I looking at?" }));
 
-    const gap = await screen.findByText(/je ne vais pas l'inventer/);
+    const gap = await screen.findByText(/I won't make it up/);
     expect(gap).toHaveAttribute("role", "status");
     // No citation list, so no number can leak.
     expect(screen.queryByRole("list", { name: "Citations" })).toBeNull();
@@ -102,11 +102,11 @@ describe("AssistantPanel", () => {
     );
     const user = open();
     render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    await user.click(screen.getByRole("button", { name: "Qu'est-ce que je regarde ?" }));
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    await user.click(screen.getByRole("button", { name: "What am I looking at?" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/Assistant indisponible/);
+    expect(alert).toHaveTextContent(/Assistant unavailable/);
     expect(alert).toHaveTextContent(/OpenRouter timed out/);
   });
 
@@ -118,37 +118,37 @@ describe("AssistantPanel", () => {
     server.use(http.post("/api/assistant", async () => HttpResponse.json(await pending)));
     const user = open();
     render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    await user.click(screen.getByRole("button", { name: "Qu'est-ce que je regarde ?" }));
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    await user.click(screen.getByRole("button", { name: "What am I looking at?" }));
 
     await waitFor(() =>
-      expect(screen.getByText(/L'assistant réfléchit…/)).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByText(/The assistant is thinking…/)).toHaveAttribute("aria-busy", "true"),
     );
     resolve(GROUNDED);
-    await screen.findByText(/nappe de vol implicite de SX5E/);
+    await screen.findByText(/SX5E implied-vol surface/);
   });
 
   test("the 'what is this' shortcut is disabled with no focused element and labelled when set", async () => {
     server.use(jsonPost("/api/assistant", GROUNDED));
     const user = open();
     const { rerender } = render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    expect(screen.getByRole("button", { name: "C'est quoi, ça ?" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    expect(screen.getByRole("button", { name: "What's this?" })).toBeDisabled();
 
     rerender(<AssistantPanel underlying="SX5E" asOf="2026-06-17" focusedElementId="smile" />);
-    const explainBtn = screen.getByRole("button", { name: /C'est quoi : Smile/ });
+    const explainBtn = screen.getByRole("button", { name: /What is: Smile/ });
     expect(explainBtn).toBeEnabled();
     await user.click(explainBtn);
-    await screen.findByText(/nappe de vol implicite de SX5E/);
+    await screen.findByText(/SX5E implied-vol surface/);
     // The asked question names the element via the shared copy map's label.
-    expect(screen.getByText(/C'est quoi, Smile \?/)).toBeInTheDocument();
+    expect(screen.getByText(/What is Smile\?/)).toBeInTheDocument();
   });
 
   test("the panel closes back to the launch button", async () => {
     const user = open();
     render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
-    await user.click(screen.getByRole("button", { name: "Demander à l'assistant" }));
-    await user.click(screen.getByRole("button", { name: "Fermer l'assistant" }));
-    expect(screen.getByRole("button", { name: "Demander à l'assistant" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ask the assistant" }));
+    await user.click(screen.getByRole("button", { name: "Close the assistant" }));
+    expect(screen.getByRole("button", { name: "Ask the assistant" })).toBeInTheDocument();
   });
 });

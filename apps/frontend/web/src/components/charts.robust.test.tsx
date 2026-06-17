@@ -12,7 +12,7 @@ import { SmileChart, VolSurface } from "./charts";
 const DEGEN = ANALYTICS_AAA_DEGENERATE;
 const DEGEN_MATURITY: AnalyticsMaturity = DEGEN.maturities[0];
 
-describe("VolSurface dense nappe robustness", () => {
+describe("VolSurface dense surface robustness", () => {
   test("clamps out-of-band cells to null, collapses duplicate columns, and flags the slice", () => {
     render(
       <VolSurface
@@ -22,7 +22,7 @@ describe("VolSurface dense nappe robustness", () => {
       />,
     );
 
-    const fig = screen.getByLabelText(/Nappe de volatilité — AAA/i);
+    const fig = screen.getByLabelText(/Volatility surface — AAA/i);
     expect(fig.getAttribute("aria-label")).toMatch(/1 slice flagged/i);
 
     const z = JSON.parse(within(fig).getByTestId("plot-z").textContent || "[]") as (

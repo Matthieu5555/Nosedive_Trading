@@ -107,7 +107,7 @@ export function MarketPage() {
           </select>
           {index === "" && (
             <span className="status" role="status" data-hint-for="choose-index">
-              Choisissez un indice pour commencer
+              Choose an index to begin
             </span>
           )}
           <AsOfSelect
@@ -178,7 +178,7 @@ export function MarketPage() {
                     loading={analytics.loading || signals.loading}
                     error={analytics.error}
                     height={140}
-                    subject={`les indicateurs ${index}`}
+                    subject={`the ${index} indicators`}
                   >
                     {analytics.data && (
                       <Scorecards
@@ -202,7 +202,7 @@ export function MarketPage() {
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>Cours quotidien — {index}</h2>
+                      <h2>Daily price — {index}</h2>
                     </div>
                     <span className="status">{descriptor.asOfPhrase} · OHLC</span>
                   </div>
@@ -211,7 +211,7 @@ export function MarketPage() {
                       loading={price.loading}
                       error={price.error}
                       height={440}
-                      subject={`le cours ${index}`}
+                      subject={`the ${index} price`}
                     >
                       {price.data && <PriceChart data={price.data} />}
                     </AsyncBlock>
@@ -237,9 +237,9 @@ export function MarketPage() {
                           <span
                             className="qc-badge qc-badge--indicative"
                             role="status"
-                            aria-label="Mode indicatif — pas la clôture stockée"
+                            aria-label="Indicative mode — not the stored close"
                           >
-                            INDICATIF — pas la clôture stockée
+                            INDICATIVE — not the stored close
                           </span>
                         )}
                       </h2>
@@ -256,7 +256,7 @@ export function MarketPage() {
                       loading={analytics.loading}
                       error={analytics.error}
                       height={480}
-                      subject={`la nappe ${index}`}
+                      subject={`the ${index} surface`}
                     >
                       {analytics.data &&
                         (surfaceMissing ? (
@@ -283,7 +283,7 @@ export function MarketPage() {
                     loading={analytics.loading}
                     error={analytics.error}
                     height={360}
-                    subject={`le smile et les Greeks ${index}`}
+                    subject={`the ${index} smile and Greeks`}
                   >
                     {analytics.data && (
                       <TenorPanel
@@ -306,7 +306,7 @@ export function MarketPage() {
                       <h2>Dispersion (ρ̄) — {index}</h2>
                     </div>
                     <span className="status">
-                      {descriptor.asOfPhrase} · diagnostic vol réalisée
+                      {descriptor.asOfPhrase} · realized-vol diagnostic
                     </span>
                   </div>
                   <ErrorBoundary label="Dispersion">
@@ -367,24 +367,24 @@ function SurfaceModeToggle({
   onChange: (mode: SurfaceMode) => void;
 }) {
   return (
-    <div className="mode-toggle" role="group" aria-label="Mode de la nappe">
+    <div className="mode-toggle" role="group" aria-label="Surface mode">
       <button
         type="button"
         className="mode-toggle__option"
         aria-pressed={mode === "strict"}
-        title="Deux-faces seulement — la clôture canonique stockée"
+        title="Two-sided only — the canonical stored close"
         onClick={() => onChange("strict")}
       >
-        Strict — deux-faces seulement
+        Strict — two-sided only
       </button>
       <button
         type="button"
         className="mode-toggle__option"
         aria-pressed={mode === "indicative"}
-        title="Inclut les marques à une face — estimation, jamais la clôture stockée"
+        title="Includes one-sided marks — estimate, never the stored close"
         onClick={() => onChange("indicative")}
       >
-        Indicatif — inclut les marques à une face
+        Indicative — includes one-sided marks
       </button>
     </div>
   );

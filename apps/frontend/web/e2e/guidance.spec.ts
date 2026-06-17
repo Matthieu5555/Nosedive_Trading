@@ -20,7 +20,7 @@ import { mockBff } from "./mock-bff";
 // surfaces exactly these, never a number the payload didn't carry.
 const ASSISTANT_GROUNDED = {
   answer:
-    "Vous regardez la nappe de volatilité SX5E à la clôture du 2026-06-17. L'ATM 3m est à 18,3 %.",
+    "You are looking at the SX5E volatility surface at the 2026-06-17 close. The 3m ATM is at 18.3%.",
   citations: [
     { id: "atm_level", label: "ATM 3m", value: "1.830e1 %", source: "facts-block" },
   ],
@@ -31,7 +31,7 @@ const ASSISTANT_GROUNDED = {
     run_id: null,
     mode: "strict",
     close_instant: "2026-06-17 17:30 CET",
-    coverage_label: "1 706/2 412 cotations",
+    coverage_label: "1 706/2 412 quotes",
   },
 };
 
@@ -40,7 +40,7 @@ const ASSISTANT_GROUNDED = {
 // anti-pattern guard ("an assistant that hallucinates a number is worse than no assistant").
 const ASSISTANT_GAP = {
   answer:
-    "Ça n'est pas dans ce que l'écran affiche pour cette clôture — je ne vais pas l'inventer.",
+    "That isn't in what the screen shows for this close — I won't make it up.",
   citations: [] as { id: string; label: string; value: string; source: string }[],
   grounded: false,
   frame: {
@@ -49,7 +49,7 @@ const ASSISTANT_GAP = {
     run_id: null,
     mode: "strict",
     close_instant: "2026-06-17 17:30 CET",
-    coverage_label: "1 706/2 412 cotations",
+    coverage_label: "1 706/2 412 quotes",
   },
 };
 
@@ -104,14 +104,14 @@ test("guidance: the unconfigured index selector flags the next step on first loa
   // Before any index is chosen: the selector carries the next-step hint and the prompt cue is shown,
   // in plain PM words, NOT a modal — assert no dialog overlay exists.
   await expect(index).toHaveAttribute("data-hint", "choose-index");
-  await expect(page.getByText("Choisissez un indice pour commencer")).toBeVisible();
+  await expect(page.getByText("Choose an index to begin")).toBeVisible();
   expect(await page.getByRole("dialog").count()).toBe(0);
 
   // The PM acts (the auto-select resolves the index). The hint must die — never re-fire.
   releaseIndices();
   await expect(index).toHaveValue("SPX");
   await expect(index).not.toHaveAttribute("data-hint", "choose-index");
-  await expect(page.getByText("Choisissez un indice pour commencer")).toHaveCount(0);
+  await expect(page.getByText("Choose an index to begin")).toHaveCount(0);
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -162,19 +162,19 @@ test("guidance: the nappe heading and caption re-write themselves when the under
   await gotoMarketResolved(page);
 
   // On SPX (no close instant configured) the subject names the index; no false instant is invented.
-  await expect(page.getByRole("heading", { name: "Nappe de volatilité — SPX" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Nappe de volatilité — SX5E" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Volatility surface — SPX" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Volatility surface — SX5E" })).toHaveCount(0);
 
   // Switch the underlying. The subject heading AND the panel aria-label re-write in the same paint —
   // no stale frame. For SX5E the caption must state the 17:30 CET close instant (not 22:00, not bare).
   await page.getByLabel("Index", { exact: true }).selectOption("SX5E");
-  const nappe = page.getByRole("heading", { name: "Nappe de volatilité — SX5E" });
+  const nappe = page.getByRole("heading", { name: "Volatility surface — SX5E" });
   await expect(nappe).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Nappe de volatilité — SPX" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Volatility surface — SPX" })).toHaveCount(0);
 
   // The caption (status line) on the SX5E nappe carries the close instant. Read the panel by its
   // re-written aria-label and assert the instant text is present, never the 22:00 futures close.
-  const sx5ePanel = page.getByRole("article", { name: "Nappe de volatilité — SX5E" });
+  const sx5ePanel = page.getByRole("article", { name: "Volatility surface — SX5E" });
   await expect(sx5ePanel).toContainText("17:30 CET");
   await expect(sx5ePanel).not.toContainText("22:00");
 
@@ -193,7 +193,7 @@ test("guidance: the assistant is summonable and non-blocking — a panel you ope
   await gotoMarketResolved(page);
 
   // Closed by default: the page is fully usable, only a quiet launch affordance is present.
-  const launch = page.getByRole("button", { name: "Demander à l'assistant" });
+  const launch = page.getByRole("button", { name: "Ask the assistant" });
   await expect(launch).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Assistant" })).toHaveCount(0);
 
@@ -205,7 +205,7 @@ test("guidance: the assistant is summonable and non-blocking — a panel you ope
   await expect(page.getByLabel("Index", { exact: true })).toBeEnabled();
 
   // It is dismissible without losing the page.
-  await page.getByRole("button", { name: "Fermer l'assistant" }).click();
+  await page.getByRole("button", { name: "Close the assistant" }).click();
   await expect(page.getByRole("complementary", { name: "Assistant" })).toHaveCount(0);
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
@@ -218,19 +218,19 @@ test("guidance: a grounded assistant answer cites the on-screen number and wears
   await mockGuidance(page, ASSISTANT_GROUNDED);
   await gotoMarketResolved(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
   const panel = page.getByRole("complementary", { name: "Assistant" });
-  await panel.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await panel.getByRole("button", { name: "What am I looking at?" }).click();
 
   // The answer renders, and it carries a CITATION with the value lifted verbatim from the payload —
   // provenance made visible. The number on screen is the number the payload carried, byte for byte.
   // The citation's LABEL is resolved from the shared explanation map (explainEntry(cite.id)) — for
-  // atm_level that is "Vol à la monnaie" — so the tooltip and the assistant can never disagree on
+  // atm_level that is "ATM level" — so the tooltip and the assistant can never disagree on
   // what the number is; the VALUE is the payload's sci-notation string verbatim.
-  await expect(panel.getByText(/L'ATM 3m est à 18,3/)).toBeVisible();
+  await expect(panel.getByText(/The 3m ATM is at 18.3/)).toBeVisible();
   const citations = panel.getByRole("list", { name: "Citations" });
   await expect(citations).toBeVisible();
-  await expect(citations).toContainText("Vol à la monnaie");
+  await expect(citations).toContainText("ATM level");
   await expect(citations).toContainText("1.830e1 %");
 
   // The answer wears the same provenance frame the page shows: subject · 17:30-CET close · mode ·
@@ -238,7 +238,7 @@ test("guidance: a grounded assistant answer cites the on-screen number and wears
   await expect(panel).toContainText("SX5E");
   await expect(panel).toContainText("17:30 CET");
   await expect(panel).toContainText("strict");
-  await expect(panel).toContainText("1 706/2 412 cotations");
+  await expect(panel).toContainText("1 706/2 412 quotes");
 
   expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
 });
@@ -250,12 +250,12 @@ test("guidance: when the screen does not hold the number, the assistant refuses 
   await mockGuidance(page, ASSISTANT_GAP);
   await gotoMarketResolved(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
   const panel = page.getByRole("complementary", { name: "Assistant" });
 
   // Ask for a figure the facts block doesn't carry.
-  await panel.getByLabel("Votre question").fill("Quel est le vega total du book ?");
-  await panel.getByRole("button", { name: "Envoyer" }).click();
+  await panel.getByLabel("Your question").fill("What is the book's total vega?");
+  await panel.getByRole("button", { name: "Send" }).click();
 
   // The honest-gap answer renders in status (quiet, not a confident assertion) and says it won't
   // invent the number — the loud refusal, never a fabricated value.
@@ -285,9 +285,9 @@ test("guidance: a failed assistant request surfaces a loud alert, never a silent
   );
   await gotoMarketResolved(page);
 
-  await page.getByRole("button", { name: "Demander à l'assistant" }).click();
+  await page.getByRole("button", { name: "Ask the assistant" }).click();
   const panel = page.getByRole("complementary", { name: "Assistant" });
-  await panel.getByRole("button", { name: "Qu'est-ce que je regarde ?" }).click();
+  await panel.getByRole("button", { name: "What am I looking at?" }).click();
 
   // No silent state in the panel: the failure reads as a loud role=alert, naming the assistant as
   // unavailable — it never silently returns nothing or a stale answer.

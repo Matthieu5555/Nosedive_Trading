@@ -13,13 +13,13 @@ function noticeFor(job: Job): Notice {
     return {
       job_id: job.job_id,
       tone: "done",
-      text: `Capture ${job.underlying} terminée — nappe prête.`,
+      text: `${job.underlying} capture complete — surface ready.`,
     };
   }
   return {
     job_id: job.job_id,
     tone: "error",
-    text: `Capture ${job.underlying} échouée : ${job.message || "raison inconnue"}.`,
+    text: `${job.underlying} capture failed: ${job.message || "unknown reason"}.`,
   };
 }
 

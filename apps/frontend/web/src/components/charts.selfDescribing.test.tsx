@@ -41,7 +41,6 @@ import {
 
 // The narrow no-break space (U+202F) the descriptor groups thousands with — pinned in the oracle
 // so the expected strings are derived from the spec sentence, not copied from the code under test.
-const NB = " ";
 
 // A minimal smooth dense surface so VolSurface takes the DenseVolSurface path and the Plot mock
 // renders the figcaption with the descriptor title.
@@ -89,7 +88,7 @@ const SX5E_MATURITY: AnalyticsMaturity = {
       implied_vol: 0.21,
       total_variance: 0.01,
       price: 12,
-      // One-sided quote → "marque indicative à une face".
+      // One-sided quote → "one-sided indicative mark".
       quote: { bid: 11.5, ask: null, volume: 3 },
       metrics: {
         delta: { raw: -0.3, dollar: -1260, unit: "$ per $1 of underlying" },
@@ -115,7 +114,7 @@ const SX5E_MATURITY: AnalyticsMaturity = {
       implied_vol: 0.18,
       total_variance: 0.008,
       price: 30,
-      // Two-sided quote → "deux-faces".
+      // Two-sided quote → "two-sided".
       quote: { bid: 29.5, ask: 30.5, volume: 120 },
       metrics: {
         delta: { raw: 0.0, dollar: 0, unit: "$ per $1 of underlying" },
@@ -156,7 +155,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: COVERAGE_STRICT,
     });
     expect(d.title).toBe(
-      `Nappe de volatilité — SX5E · clôture 2026-06-17 17:30 CET · strict · 1${NB}706/2${NB}412 cotations`,
+      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · 1,706/2,412 quotes`,
     );
     // 1706 < 2412 is partial coverage: the headline raises its voice (spec: recede only when full).
     expect(d.tone).toBe("partial");
@@ -171,12 +170,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: { resting: 2412, total: 2412 },
     });
     expect(d.title).toBe(
-      `Nappe de volatilité — SX5E · clôture 2026-06-17 17:30 CET · strict · 2${NB}412/2${NB}412 cotations`,
+      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · 2,412/2,412 quotes`,
     );
     expect(d.tone).toBe("full");
   });
 
-  test("indicative + partial says INDICATIF and counts the indicative marks, tone partial", () => {
+  test("indicative + partial says INDICATIVE and counts the indicative marks, tone partial", () => {
     const d = describeSurface({
       subject: "SX5E",
       asOf: "2026-06-17",
@@ -185,12 +184,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: COVERAGE_INDICATIVE,
     });
     expect(d.title).toBe(
-      `Nappe de volatilité — SX5E · clôture 2026-06-17 17:30 CET · INDICATIF · 2${NB}280/2${NB}412 (574 marques indicatives)`,
+      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · INDICATIVE · 2,280/2,412 (574 indicative marks)`,
     );
     expect(d.tone).toBe("partial");
   });
 
-  test("degenerate close goes loud with marché probablement fermé, tone degenerate", () => {
+  test("degenerate close goes loud with market probably closed, tone degenerate", () => {
     const d = describeSurface({
       subject: "SX5E",
       asOf: "2026-06-17",
@@ -200,12 +199,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       degenerate: true,
     });
     expect(d.title).toBe(
-      "Nappe de volatilité — SX5E · clôture 2026-06-17 17:30 CET · indicative — marché probablement fermé",
+      "Volatility surface — SX5E · close 2026-06-17 17:30 CET · indicative — market probably closed",
     );
     expect(d.tone).toBe("degenerate");
   });
 
-  test("missing coverage degrades to couverture indisponible — never a fabricated fraction", () => {
+  test("missing coverage degrades to coverage unavailable — never a fabricated fraction", () => {
     const d = describeSurface({
       subject: "SX5E",
       asOf: "2026-06-17",
@@ -214,7 +213,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: null,
     });
     expect(d.title).toBe(
-      "Nappe de volatilité — SX5E · clôture 2026-06-17 17:30 CET · strict · couverture indisponible",
+      "Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · coverage unavailable",
     );
     expect(d.title).not.toMatch(/\//);
   });
@@ -226,7 +225,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       mode: "strict",
       coverage: COVERAGE_STRICT,
     });
-    expect(d.asOfPhrase).toBe("clôture 2026-06-17");
+    expect(d.asOfPhrase).toBe("close 2026-06-17");
     expect(d.title).not.toMatch(/17:30|22:00|:/);
   });
 
@@ -234,12 +233,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
     const d = describeSurface({ subject: "SX5E", asOf: "2026-06-17", coverage: COVERAGE_STRICT });
     expect(d.modeWord).toBe("strict");
     expect(d.title).toMatch(/· strict ·/);
-    expect(d.title).not.toMatch(/INDICATIF|indicative/);
+    expect(d.title).not.toMatch(/INDICATIVE|indicative/);
   });
 });
 
 describe("VolSurface — one state drives every label, no contradiction", () => {
-  test("dense nappe figcaption carries subject · as-of · mode · coverage", () => {
+  test("dense surface figcaption carries subject · as-of · mode · coverage", () => {
     render(
       <VolSurface
         subject="SX5E"
@@ -251,12 +250,12 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     const label = fig.getAttribute("aria-label") || "";
     expect(label).toMatch(/SX5E/);
-    expect(label).toMatch(/clôture 2026-06-17 17:30 CET/);
+    expect(label).toMatch(/close 2026-06-17 17:30 CET/);
     expect(label).toMatch(/strict/);
-    expect(label).toMatch(new RegExp(`1${NB}706/2${NB}412 cotations`));
+    expect(label).toMatch(new RegExp(`1,706/2,412 quotes`));
   });
 
   test("switching the subject rewrites the title in the same paint", () => {
@@ -270,7 +269,7 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    expect(screen.getByLabelText(/Nappe de volatilité — SX5E/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Volatility surface — SX5E/i)).toBeTruthy();
 
     rerender(
       <VolSurface
@@ -282,11 +281,11 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    expect(screen.queryByLabelText(/Nappe de volatilité — SX5E/i)).toBeNull();
-    expect(screen.getByLabelText(/Nappe de volatilité — DAX/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/Volatility surface — SX5E/i)).toBeNull();
+    expect(screen.getByLabelText(/Volatility surface — DAX/i)).toBeTruthy();
   });
 
-  test("indicative + partial never says strict and never says couverture complète", () => {
+  test("indicative + partial never says strict and never says full coverage", () => {
     render(
       <VolSurface
         subject="SX5E"
@@ -299,13 +298,13 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const label =
-      screen.getByLabelText(/Nappe de volatilité — SX5E/i).getAttribute("aria-label") || "";
-    expect(label).toMatch(/INDICATIF/);
+      screen.getByLabelText(/Volatility surface — SX5E/i).getAttribute("aria-label") || "";
+    expect(label).toMatch(/INDICATIVE/);
     expect(label).not.toMatch(/· strict ·/);
     expect(label).not.toMatch(/complète/i);
   });
 
-  test("dense nappe axes carry their UNITS unit in the house idiom", () => {
+  test("dense surface axes carry their UNITS unit in the house idiom", () => {
     render(
       <VolSurface
         subject="SX5E"
@@ -317,15 +316,15 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const layout =
-      within(screen.getByLabelText(/Nappe de volatilité — SX5E/i)).getByTestId("plot-layout")
+      within(screen.getByLabelText(/Volatility surface — SX5E/i)).getByTestId("plot-layout")
         .textContent || "";
-    // log-moneyness (ln(K/F)), maturité (y), vol implicite (Vol) — the UNITS tokens on the titles.
+    // log-moneyness (ln(K/F)), maturity (y), implied vol (Vol) — the UNITS tokens on the titles.
     expect(layout).toMatch(/log-moneyness \(ln\(K\/F\)\)/);
-    expect(layout).toMatch(/maturité \(y\)/);
-    expect(layout).toMatch(/vol implicite \(Vol\)/);
+    expect(layout).toMatch(/maturity \(y\)/);
+    expect(layout).toMatch(/implied vol \(Vol\)/);
   });
 
-  test("dense nappe point tooltip carries coordinates with units + two-sided provenance", () => {
+  test("dense surface point tooltip carries coordinates with units + two-sided provenance", () => {
     render(
       <VolSurface
         subject="SX5E"
@@ -337,12 +336,12 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const tpl =
-      within(screen.getByLabelText(/Nappe de volatilité — SX5E/i)).getByTestId(
+      within(screen.getByLabelText(/Volatility surface — SX5E/i)).getByTestId(
         "plot-hovertemplates",
       ).textContent || "";
     expect(tpl).toMatch(/log-moneyness %\{x:\.3f\} ln\(K\/F\)/);
-    expect(tpl).toMatch(/maturité %\{y:\.2f\} y/);
-    expect(tpl).toMatch(/vol implicite %\{z:\.1%\} · deux-faces/);
+    expect(tpl).toMatch(/maturity %\{y:\.2f\} y/);
+    expect(tpl).toMatch(/implied vol %\{z:\.1%\} · two-sided/);
   });
 });
 
@@ -358,13 +357,13 @@ describe("VolSurface empty state — self-describing, not a generic blank", () =
         maturities={[]}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     const status = within(fig).getByRole("status");
-    expect(status.textContent).toBe("Aucune nappe pour SX5E au 2026-06-17.");
+    expect(status.textContent).toBe("No surface for SX5E on 2026-06-17.");
     expect(status.textContent).not.toMatch(/No surface to plot/i);
   });
 
-  test("degenerate-everywhere close announces marché probablement fermé in title and empty copy", () => {
+  test("degenerate-everywhere close announces market probably closed in title and empty copy", () => {
     render(
       <VolSurface
         subject="SX5E"
@@ -375,8 +374,8 @@ describe("VolSurface empty state — self-describing, not a generic blank", () =
         maturities={[]}
       />,
     );
-    const fig = screen.getByLabelText(/marché probablement fermé/i);
-    expect(fig.getAttribute("aria-label")).toMatch(/Nappe de volatilité — SX5E/);
+    const fig = screen.getByLabelText(/market probably closed/i);
+    expect(fig.getAttribute("aria-label")).toMatch(/Volatility surface — SX5E/);
   });
 });
 
@@ -394,9 +393,9 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
       />,
     );
     const label =
-      screen.getByLabelText(/Nappe de volatilité — SX5E/i).getAttribute("aria-label") || "";
+      screen.getByLabelText(/Volatility surface — SX5E/i).getAttribute("aria-label") || "";
     expect(label).toMatch(/SX5E/);
-    expect(label).toMatch(/clôture 2026-06-17 17:30 CET/);
+    expect(label).toMatch(/close 2026-06-17 17:30 CET/);
     expect(label).toMatch(/smile 1m/);
   });
 
@@ -404,9 +403,9 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
     render(
       <SmileChart subject="SX5E" asOf="2026-06-17" mode="strict" coverage={null} maturities={[]} />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     expect(within(fig).getByRole("status").textContent).toBe(
-      "Aucune nappe pour SX5E au 2026-06-17.",
+      "No surface for SX5E on 2026-06-17.",
     );
   });
 
@@ -421,7 +420,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     expect(within(fig).getByTestId("plot-types").textContent).toMatch(/scatter/);
     const tpl = within(fig).getByTestId("plot-hovertemplates").textContent || "";
     // The wing series carry their real name in the hovertemplate, never a "Series N".
@@ -430,7 +429,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
     expect(tpl).not.toMatch(/Series \d/);
   });
 
-  test("point tooltip carries per-point provenance: one-sided → marque indicative, two-sided → deux-faces", () => {
+  test("point tooltip carries per-point provenance: one-sided → marque indicative, two-sided → two-sided", () => {
     render(
       <SmileChart
         subject="SX5E"
@@ -441,15 +440,15 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     // The template feeds per-point provenance through its %{text} slot…
     const tpl = within(fig).getByTestId("plot-hovertemplates").textContent || "";
-    expect(tpl).toMatch(/vol implicite %\{y:\.1%\} · %\{text\}/);
+    expect(tpl).toMatch(/implied vol %\{y:\.1%\} · %\{text\}/);
     // …and the trace `text` array carries the real provenance words: the 30dp point has a
     // one-sided quote (ask null) → indicative; the ATM point is two-sided.
     const texts = within(fig).getByTestId("plot-texts").textContent || "";
-    expect(texts).toMatch(/marque indicative à une face/);
-    expect(texts).toMatch(/deux-faces/);
+    expect(texts).toMatch(/one-sided indicative mark/);
+    expect(texts).toMatch(/two-sided/);
   });
 });
 
@@ -466,7 +465,7 @@ describe("GreeksShapeCurves — identity sentence + currencied strike axis", () 
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     const label = fig.getAttribute("aria-label") || "";
     expect(label).toMatch(/Greeks 1m/);
     // strike ($) re-currencied to € via withCurrency for an EUR index.
@@ -484,9 +483,9 @@ describe("GreeksShapeCurves — identity sentence + currencied strike axis", () 
         maturities={[]}
       />,
     );
-    const fig = screen.getByLabelText(/Nappe de volatilité — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
     expect(within(fig).getByRole("status").textContent).toBe(
-      "Aucune nappe pour SX5E au 2026-06-17.",
+      "No surface for SX5E on 2026-06-17.",
     );
   });
 });

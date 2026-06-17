@@ -19,7 +19,7 @@ export function JobProgress({ job }: { job: Job }) {
 
   if (hasStage(job)) {
     const percent = stagePercent(job.stage_index, job.stage_total);
-    const stageText = `étape ${job.stage_index}/${job.stage_total}`;
+    const stageText = `step ${job.stage_index}/${job.stage_total}`;
     const label = job.stage ? `${stageText} · ${job.stage}` : stageText;
     return (
       <div className="ops-progress">
@@ -45,11 +45,11 @@ export function JobProgress({ job }: { job: Job }) {
       <div
         className="ops-progress__bar ops-progress__bar--indeterminate"
         role="progressbar"
-        aria-label="en cours…"
+        aria-label="in progress…"
       >
         <span className="ops-progress__fill ops-progress__fill--indeterminate" />
       </div>
-      <span className="ops-progress__label">en cours…</span>
+      <span className="ops-progress__label">in progress…</span>
     </div>
   );
 }

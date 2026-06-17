@@ -9,7 +9,7 @@ interface SkeletonProps {
   label?: string;
 }
 
-export function Skeleton({ height = 440, width, className, label = "Chargement…" }: SkeletonProps) {
+export function Skeleton({ height = 440, width, className, label = "Loading…" }: SkeletonProps) {
   const style: CSSProperties = { height };
   if (width !== undefined) style.width = width;
   return (
@@ -31,6 +31,6 @@ interface ChartSkeletonProps {
 }
 
 export function ChartSkeleton({ height = 440, subject }: ChartSkeletonProps) {
-  const label = subject ? `Chargement de ${subject}…` : "Chargement…";
+  const label = subject ? `Loading ${subject}…` : "Loading…";
   return <Skeleton height={height} label={label} />;
 }

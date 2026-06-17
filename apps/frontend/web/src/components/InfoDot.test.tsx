@@ -6,19 +6,19 @@ import { InfoDot } from "./InfoDot";
 
 describe("InfoDot", () => {
   test("renders a quiet, labelled trigger and no tooltip until opened", () => {
-    render(<InfoDot label="Nappe de volatilité" body="vol vs log-moneyness vs maturité" />);
-    const trigger = screen.getByRole("button", { name: "Nappe de volatilité" });
+    render(<InfoDot label="Volatility surface" body="vol vs log-moneyness vs maturity" />);
+    const trigger = screen.getByRole("button", { name: "Volatility surface" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   test("hover opens the tooltip with the body and wires aria-describedby", async () => {
     const user = userEvent.setup();
-    render(<InfoDot label="Nappe" body="vol vs log-moneyness vs maturité" />);
+    render(<InfoDot label="Nappe" body="vol vs log-moneyness vs maturity" />);
     const trigger = screen.getByRole("button", { name: "Nappe" });
     await user.hover(trigger);
     const tip = screen.getByRole("tooltip");
-    expect(tip).toHaveTextContent("vol vs log-moneyness vs maturité");
+    expect(tip).toHaveTextContent("vol vs log-moneyness vs maturity");
     expect(trigger).toHaveAttribute("aria-describedby", tip.id);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });

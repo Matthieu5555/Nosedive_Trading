@@ -9,7 +9,6 @@ import {
   UnknownMetricError,
 } from "./explain";
 
-const NBSP = "\u202f";
 
 describe("EXPLAIN map", () => {
   it("has one entry per declared metric id and each is fully populated", () => {
@@ -21,7 +20,7 @@ describe("EXPLAIN map", () => {
       "rv_minus_iv",
       "rho_bar",
       "convexity_25d",
-      "nappe",
+      "surface",
       "smile",
       "greek_profiles",
       "surface_coverage",
@@ -64,7 +63,7 @@ describe("whereFrom is a pure function of context", () => {
       value: 0.012,
     };
     expect(EXPLAIN.term_structure_slope.whereFrom(ctx)).toBe(
-      `signal enregistré · 3m · clôture 2026-06-17 17:30 CET`,
+      `recorded signal · 3m · close 2026-06-17 17:30 CET`,
     );
   });
 
@@ -79,7 +78,7 @@ describe("whereFrom is a pure function of context", () => {
       value: 0.184,
     };
     expect(EXPLAIN.atm_level.whereFrom(ctx)).toBe(
-      `projeté depuis le smile · 3m · clôture 2026-06-17 17:30 CET`,
+      `projected from the smile · 3m · close 2026-06-17 17:30 CET`,
     );
   });
 
@@ -94,7 +93,7 @@ describe("whereFrom is a pure function of context", () => {
       value: 0.02,
     };
     expect(EXPLAIN.iv_rank.whereFrom(ctx)).toBe(
-      `signal enregistré · 1m · clôture 2026-06-17 17:30 CET · marque indicative — pas la clôture stockée`,
+      `recorded signal · 1m · close 2026-06-17 17:30 CET · indicative mark — not the stored close`,
     );
   });
 
@@ -108,10 +107,10 @@ describe("whereFrom is a pure function of context", () => {
       tenorLabel: "3m",
       value: null,
     };
-    expect(EXPLAIN.rv_minus_iv.whereFrom(ctx)).toBe("signal non enregistré pour cette clôture");
+    expect(EXPLAIN.rv_minus_iv.whereFrom(ctx)).toBe("signal not recorded for this close");
   });
 
-  it("renders the coverage clause for the nappe in strict mode", () => {
+  it("renders the coverage clause for the surface in strict mode", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
@@ -120,12 +119,12 @@ describe("whereFrom is a pure function of context", () => {
       source: "surface",
       coverage: { twoSided: 1706, total: 2412 },
     };
-    expect(EXPLAIN.nappe.whereFrom(ctx)).toBe(
-      `SX5E · clôture 2026-06-17 17:30 CET · strict · 1${NBSP}706 / 2${NBSP}412 cotations · 70,7${NBSP}% deux-faces · 706 à une face exclues`,
+    expect(EXPLAIN.surface.whereFrom(ctx)).toBe(
+      `SX5E · close 2026-06-17 17:30 CET · strict · 1,706 / 2,412 quotes · 70.7% two-sided · 706 one-sided excluded`,
     );
   });
 
-  it("degrades to couverture indisponible when the coverage block is absent", () => {
+  it("degrades to coverage unavailable when the coverage block is absent", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-17",
@@ -135,7 +134,7 @@ describe("whereFrom is a pure function of context", () => {
       coverage: null,
     };
     expect(EXPLAIN.surface_coverage.whereFrom(ctx)).toBe(
-      `SX5E · clôture 2026-06-17 17:30 CET · strict · couverture indisponible`,
+      `SX5E · close 2026-06-17 17:30 CET · strict · coverage unavailable`,
     );
   });
 
@@ -170,7 +169,7 @@ describe("explainWithContext — the grounded assistant seam", () => {
     expect(out.label).toBe("ATM level");
     expect(out.whatIs).toBe(EXPLAIN.atm_level.whatIs);
     expect(out.howToRead).toBe(EXPLAIN.atm_level.howToRead);
-    expect(out.whereFrom).toContain("clôture 2026-06-17 17:30 CET");
+    expect(out.whereFrom).toContain("close 2026-06-17 17:30 CET");
     expect(out.value).toBe("1.84 × 10⁻¹ Vol");
   });
 
@@ -184,13 +183,13 @@ describe("explainWithContext — the grounded assistant seam", () => {
       value: null,
     });
     expect(out.value).toBeNull();
-    expect(out.whereFrom).toBe("signal non enregistré pour cette clôture");
+    expect(out.whereFrom).toBe("signal not recorded for this close");
     expect(out.whereFrom).not.toMatch(/\d/);
   });
 
   it("rejects an unknown metric id with a typed error, never free text", () => {
     expect(() => explainWithContext("made_up_metric")).toThrow(UnknownMetricError);
     expect(isMetricId("made_up_metric")).toBe(false);
-    expect(isMetricId("nappe")).toBe(true);
+    expect(isMetricId("surface")).toBe(true);
   });
 });

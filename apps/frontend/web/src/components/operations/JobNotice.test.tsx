@@ -30,7 +30,7 @@ describe("JobNotice", () => {
     rerender(<JobNotice jobs={[job({ state: "done" })]} />);
     const notice = screen.getByRole("status");
     expect(notice).toHaveAttribute("aria-live", "polite");
-    expect(notice).toHaveTextContent(/Capture SX5E terminée/);
+    expect(notice).toHaveTextContent(/SX5E capture complete/);
     // Non-blocking: no modal/dialog in the tree.
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -39,7 +39,7 @@ describe("JobNotice", () => {
     const { rerender } = render(<JobNotice jobs={[job({ state: "running" })]} />);
     rerender(<JobNotice jobs={[job({ state: "error", message: "no committed sample day" })]} />);
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent(/Capture SX5E échouée/);
+    expect(alert).toHaveTextContent(/SX5E capture failed/);
     expect(alert).toHaveTextContent(/no committed sample day/);
     expect(screen.queryByRole("dialog")).toBeNull();
   });

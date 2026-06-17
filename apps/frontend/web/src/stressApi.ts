@@ -75,4 +75,9 @@ export interface BasketScenariosResponse {
   n_resolved: number;
   gaps: BasketScenarioGap[];
   n_gaps: number;
+  // Additive (basket rate sweep): on-demand parallel rate sweep over the reconstructed legs,
+  // beside the spot × vol surface. Omitted when the grid configures no rate_shocks, so the
+  // surface-only payload stays byte-identical. Reuses RateScenario from the persisted path.
+  rate?: RateScenario[];
+  n_rate?: number;
 }

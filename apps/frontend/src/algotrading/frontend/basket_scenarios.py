@@ -13,16 +13,38 @@ from algotrading.infra.contracts import (
 )
 from algotrading.infra.pricing import price
 from algotrading.infra.risk import BasketGap, ContractValuationInput, PositionRisk, position_risk
+from algotrading.infra.risk.greeks import net_lots
 from algotrading.infra.risk.multileg import (
     analytics_cell_key,
     index_rows_by_cell_and_side,
     resolve_cell_side,
+)
+from algotrading.infra.risk.scenarios import (
+    Scenario,
+    scenario_grid,
+    shock_valuation,
 )
 from algotrading.infra.risk.stress_surface import stress_surface
 from algotrading.infra.risk.valuation import pricing_state_for
 
 _PORTFOLIO_ID = "basket-stress"
 _MIN_PRICE_FOR_DF = 1e-9
+
+
+@dataclass(frozen=True, slots=True)
+class BasketRateScenario:
+    """One cell of the on-demand basket rate sweep.
+
+    A single parallel rate move applied to the reconstructed option legs (the additive
+    forward-fixed shock the engine already implements), and the book-summed full-reprice
+    P&L delta it produces. Swept *beside* the spot × vol surface, not crossed with it
+    (owner-ruled parallel sweep). Mirrors the persisted-path ``rate_scenarios_to_list`` cell.
+    """
+
+    scenario_id: str
+    rate_shock: float
+    scenario_pnl: float
+    n_legs: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +63,7 @@ class BasketStressResult:
     n_legs: int
     n_resolved: int
     gaps: tuple[BasketGap, ...]
+    rate_sweep: tuple[BasketRateScenario, ...] = ()
 
 
 def _option_right(target_delta: float) -> str:
@@ -82,6 +105,58 @@ def _worst_cell(
             if pnl_grid[i][j] < worst[2]:
                 worst = (spot_shock, vol_shock, pnl_grid[i][j])
     return worst
+
+
+def _rate_scenarios(config: ScenarioConfig) -> tuple[Scenario, ...]:
+    return tuple(scenario for scenario in scenario_grid(config) if scenario.family == "rate")
+
+
+def _rate_shock_pnl(line: PositionRisk, scenario: Scenario) -> float:
+    """Full-reprice a single line under a parallel rate shock (additive, forward-fixed).
+
+    Mirrors ``scenarios.full_reprice_pnl``/``shock_valuation`` (the same engine the persisted
+    Risk path uses), but clamps the shocked discount factor to the pricer's valid (0, 1]
+    domain. The basket reconstructs legs *rate-free* (parity-implied DF ≈ 1, so implied rate
+    ≈ 0); a downward rate shock there would imply a sub-zero rate (DF > 1), which the pricer
+    rejects. Flooring at DF = 1.0 floors the implied rate at 0 for that cell — an honest "no
+    further discount benefit" rather than a crash or a fabricated number.
+    """
+    shocked = shock_valuation(line.valuation, scenario)
+    if shocked.discount_factor > 1.0:
+        shocked = dataclasses.replace(shocked, discount_factor=1.0)
+    shocked_price = price(pricing_state_for(shocked)).price
+    return (shocked_price - line.greeks.price) * line.scale
+
+
+def _rate_sweep(
+    lines: list[PositionRisk], config: ScenarioConfig
+) -> tuple[BasketRateScenario, ...]:
+    """Sweep the configured rate scenarios over the reconstructed option legs.
+
+    A *new* on-demand reprice in the basket engine (the whole point of this remainder): the
+    engine sweeps, the router only serializes. Empty when ``config.rate_shocks`` is unset,
+    keeping the payload byte-identical to the spot×vol-only contract. Stock legs carry no rate
+    sensitivity and are excluded (only ``lines`` — the reconstructed option positions —
+    contribute). Returns one book-summed cell per configured shock, sorted ascending.
+    """
+    rate_scenarios = _rate_scenarios(config)
+    if not rate_scenarios:
+        return ()
+    netted = net_lots(lines)
+    if not netted:
+        return ()
+    n_legs = len(netted)
+    sweep = [
+        BasketRateScenario(
+            scenario_id=scenario.scenario_id,
+            rate_shock=scenario.rate_shock,
+            scenario_pnl=math.fsum(_rate_shock_pnl(line, scenario) for line in netted),
+            n_legs=n_legs,
+        )
+        for scenario in rate_scenarios
+    ]
+    sweep.sort(key=lambda cell: cell.rate_shock)
+    return tuple(sweep)
 
 
 def basket_stress(
@@ -138,6 +213,7 @@ def basket_stress(
         for i in range(len(spot_axis))
     )
     worst_spot, worst_vol, worst_pnl = _worst_cell(spot_axis, vol_axis, pnl_grid)
+    rate_sweep = _rate_sweep(lines, config)
 
     return BasketStressResult(
         basket_id=basket.basket_id,
@@ -153,4 +229,5 @@ def basket_stress(
         n_legs=len(basket.legs),
         n_resolved=n_resolved,
         gaps=tuple(gaps),
+        rate_sweep=rate_sweep,
     )

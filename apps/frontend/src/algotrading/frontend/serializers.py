@@ -506,9 +506,27 @@ def basket_risk_to_dict(result: BasketRisk) -> dict[str, object]:
     }
 
 
+def _basket_rate_sweep_to_list(result: BasketStressResult) -> list[dict[str, object]]:
+    # Mirrors rate_scenarios_to_list (the persisted Risk path): each cell labelled with its
+    # rate_shock fraction, bp, the book-summed full-reprice scenario_pnl, and n_legs.
+    return [
+        {
+            "scenario_id": cell.scenario_id,
+            "rate_shock": cell.rate_shock,
+            "bp": cell.rate_shock * _BP_PER_UNIT_RATE,
+            "scenario_pnl": cell.scenario_pnl,
+            "scenario_version": result.scenario_version,
+            "n_legs": cell.n_legs,
+            "unit": SCENARIO_PNL_UNIT,
+            "bp_unit": RATE_SHOCK_BP_UNIT,
+        }
+        for cell in result.rate_sweep
+    ]
+
+
 def basket_scenarios_to_dict(result: BasketStressResult) -> dict[str, object]:
     n_cells = len(result.spot_axis) * len(result.vol_axis)
-    return {
+    payload: dict[str, object] = {
         "basket_id": result.basket_id,
         "trade_date": result.trade_date.isoformat(),
         "underlying": result.underlying,
@@ -541,6 +559,13 @@ def basket_scenarios_to_dict(result: BasketStressResult) -> dict[str, object]:
         ],
         "n_gaps": len(result.gaps),
     }
+    # Additive rate sweep beside the spot×vol surface. Omitted entirely when the grid
+    # configures no rate_shocks, so the surface-only payload stays byte-identical.
+    rate_sweep = _basket_rate_sweep_to_list(result)
+    if rate_sweep:
+        payload["rate"] = rate_sweep
+        payload["n_rate"] = len(rate_sweep)
+    return payload
 
 
 def slice_plot_series_to_dict(series: SlicePlotSeries) -> dict[str, object]:

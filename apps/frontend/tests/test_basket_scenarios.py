@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import math
 from datetime import UTC, date, datetime
 
@@ -9,6 +10,8 @@ from algotrading.core.config import ScenarioConfig, StressSurfaceConfig
 from algotrading.frontend.basket_scenarios import basket_stress, reconstruct_valuation
 from algotrading.infra.contracts import Basket, BasketLeg, ProjectedOptionAnalytics
 from algotrading.infra.pricing import UNIT_STRINGS, price
+from algotrading.infra.risk import position_risk
+from algotrading.infra.risk.scenarios import Scenario, shock_valuation
 from algotrading.infra.risk.valuation import pricing_state_for
 
 _TS = datetime(2026, 6, 5, 20, 0, tzinfo=UTC)
@@ -88,11 +91,12 @@ def _row(
     )
 
 
-def _config(steps: int = 5) -> ScenarioConfig:
+def _config(steps: int = 5, *, rate_shocks: tuple[float, ...] = ()) -> ScenarioConfig:
     return ScenarioConfig(
         version="scn-basket-test",
         spot_shocks=(-0.05, 0.05),
         vol_shocks=(0.05,),
+        rate_shocks=rate_shocks,
         stress_surface=StressSurfaceConfig(
             version="ss-basket-test",
             spot_shock_abs=0.5,
@@ -283,3 +287,56 @@ def test_stock_leg_linear_overlay():
     expected = 10.0 * 50.0 * 0.25
     assert all(result.pnl_grid[i][j] == pytest.approx(expected, abs=1e-9) for j in range(5))
     assert result.n_resolved == 1
+
+
+def test_no_rate_shocks_means_no_rate_sweep():
+    # Backward-compatible: an unconfigured rate axis yields an empty sweep.
+    result = basket_stress(
+        _basket(_leg()),
+        analytics_rows=[_row()],
+        multiplier=_MULT,
+        currency="USD",
+        spot_by_underlying={},
+        config=_config(),
+    )
+    assert result.rate_sweep == ()
+
+
+def test_rate_sweep_matches_independent_reprice():
+    rate_shocks = (-0.0025, 0.0, 0.0025)
+    row = _row(right="C")
+    quantity = 2.0
+    result = basket_stress(
+        _basket(_leg("long", quantity)),
+        analytics_rows=[row],
+        multiplier=_MULT,
+        currency="USD",
+        spot_by_underlying={},
+        config=_config(rate_shocks=rate_shocks),
+    )
+
+    # One cell per configured rate shock, sorted ascending, each labelled with its shock.
+    assert tuple(cell.rate_shock for cell in result.rate_sweep) == rate_shocks
+    assert all(cell.n_legs == 1 for cell in result.rate_sweep)
+    assert all(cell.scenario_id == f"rate_{cell.rate_shock:+.4f}" for cell in result.rate_sweep)
+
+    # Independently rebuild the single leg and full-reprice each rate scenario, clamping the
+    # shocked discount factor to (0, 1] exactly as the basket engine does.
+    valuation = reconstruct_valuation(row, multiplier=_MULT, currency="USD")
+    line = position_risk(portfolio_id="basket-stress", quantity=quantity, valuation=valuation)
+    for cell in result.rate_sweep:
+        scenario = Scenario(cell.scenario_id, "rate", 0.0, 0.0, 0.0, cell.rate_shock)
+        shocked = shock_valuation(line.valuation, scenario)
+        if shocked.discount_factor > 1.0:
+            shocked = dataclasses.replace(shocked, discount_factor=1.0)
+        shocked_price = price(pricing_state_for(shocked)).price
+        expected = (shocked_price - line.greeks.price) * line.scale
+        assert cell.scenario_pnl == pytest.approx(expected, abs=1e-9)
+
+    # The zero-rate-shock cell is a no-op; a positive shock raises the rate, lowering the
+    # call's discount factor and moving the book. The negative shock floors at rate 0 (DF=1),
+    # since the rate-free reconstruction starts at implied rate ~0.
+    by_shock = {c.rate_shock: c.scenario_pnl for c in result.rate_sweep}
+    assert by_shock[0.0] == pytest.approx(0.0, abs=1e-9)
+    assert by_shock[0.0025] != pytest.approx(0.0, abs=1e-9)
+    assert by_shock[-0.0025] == pytest.approx(0.0, abs=1e-9)

@@ -49,7 +49,7 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| _(none — all 2026-06-17 stream claims cleared after landing)_ | | | |
+| Claude (Matthieu) | `infra/surfaces/projection.py` + `infra/contracts/tables.py` (ProjectedOptionAnalytics) + BFF `serializers.py` analytics path + web `DollarGreeksByMaturity.tsx`/`api.ts` | 2026-06-17 | frontend-second-order-greeks-panels — Onglet-1 ③ remainder. **Measured: `/api/risk/metrics` (pricing_results) is empty per index close → spec's read-RiskMetricCell premise refuted.** Correct path = carry the *already-computed* Vanna/Volga/Charm (price_european emits them, projection drops them) through the analytics grid. Single Onglet-1 lane owner. |
 
 ## Layer ownership (planning pass, 2026-06-13)
 

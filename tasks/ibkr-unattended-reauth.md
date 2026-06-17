@@ -44,6 +44,27 @@ forced). Until OAuth enrollment clears, the unattended week is not real.
   the headless SMS login, the dedicated second username (so the backfill never knocks out the
   live feed — one username = one brokerage session), and the pre-close verification.
 
+## Known limitation — pre-close two-sided-fraction probe is a stub (Stream-D tech-lead ruling, 2026-06-17)
+
+`infra_ibkr/preclose_readiness.py` (the ~18:00 close-specific check) verifies **auth only**. Its
+`probe_two_sided_fraction` returns `None`, so `evaluate_readiness` reports reason
+`no_quote_observation` and stays conservatively NOT READY on quote-health — it never fabricates a
+passing fraction, but it also cannot yet confirm the chain is quoting two-sided before the close.
+
+**Ruling: ship as auth-only + honest-not-ready-on-fraction; do NOT wire the real probe under
+time pressure.** A real probe must reproduce most of the capture path (chain discovery + contract
+qualification + a warmup snapshot via `cp_rest_close_capture._snapshot_events`, which already
+computes `two_sided_count / option_row_count`). That is a mini-capture with its own failure modes
+and the risk of kicking a competing session off the live line — exactly the class of thing a
+hands-off pre-close *check* must not do. The conservative stub is honest and safe (verified on the
+real box: `reasons=['not_authenticated','no_quote_observation']`, never a false green).
+
+**Consequence the operator must know:** the trustworthy gate is `eod_healthcheck.py` (auth + timer +
+last-banked, verified discriminating on real banked data). `preclose_readiness` confirms auth and
+honestly says "quote-health not yet verified"; it will not go fully green until this probe is wired.
+Documented in `scripts/systemd/README.md` and `RUNBOOK-reauth.md`. Wiring the real probe is the
+follow-up here (build it over the existing `_snapshot_events` counts; gate-green + a contract test).
+
 ## Out of scope / boundaries
 
 - The generic alert-delivery transport (Telegram/email client) — that is

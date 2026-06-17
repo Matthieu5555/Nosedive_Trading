@@ -28,6 +28,23 @@ needs and exits 0 only if all three are green:
 
 `--json` emits the same verdict as one object. Red checks print the exact remediation command.
 
+There is a **second, close-specific** pre-close probe (run it ~18:00 CET before the Eurex close):
+
+    uv run python -m algotrading.infra_ibkr.preclose_readiness
+
+**Known limitation (verified, intentional):** this 18:00 check currently verifies **auth only**. Its
+two-sided-quote-fraction probe is a stub that returns `None`, so the readiness logic reports
+`no_quote_observation` and conservatively stays **NOT READY on the quote-health dimension** — it
+never fabricates a passing fraction, but it also cannot yet confirm the chain is quoting two-sided
+before the close. In practice the verdict reduces to "auth NOT ready" → red, or "auth ready but
+quote-health unverified" → still red with reason `no_quote_observation`. A real probe would have to
+reproduce most of the capture path (chain discovery + contract qualification + a warmup snapshot via
+`cp_rest_close_capture._snapshot_events`), which is a mini-capture with its own failure modes and the
+risk of kicking a competing session — out of scope for a hands-off check. **Treat `eod_healthcheck.py`
+(auth + timer + last-banked) as the trustworthy gate; treat `preclose_readiness` as auth-confirmation
+plus an honest "quote-health not yet verified."** Wiring the real fraction probe is tracked on
+`tasks/ibkr-unattended-reauth.md`.
+
 ## What fires when
 
 All times are stated in the **exchange** timezone (so the trigger tracks the close across DST, not
@@ -121,6 +138,23 @@ failed run and its `correlation_id`:
     journalctl --user -u 'eod-capture@*.service' --since today     # the run trace, one id per fire
     journalctl --user -u eod-capture-alert.service --since today   # the alert line
     journalctl --user -u data-backup.service --since today         # backup trace
+
+### Which alert woke you — kind, severity, action
+
+Alerts carry a `kind`; the delivery seam (`alert_delivery.severity_for`) maps each to a severity.
+**Critical kinds page** (the push that wakes you); a **warning** is logged/delivered but is not a
+"get-up-at-06:00" event. So when you are paged, it is one of the critical kinds below.
+
+| `kind` | Severity | What happened | Operator action |
+|--------|----------|---------------|-----------------|
+| `degenerate_close` | **critical (pages)** | the close ran but banked nothing usable (no basket, or 0 combined-surface grid cells) — the silent-green gap; the runner exits non-zero | inspect the run by its `correlation_id`; re-run the capture once the gateway/quote-health is restored (a degenerate close is usually a dead session or a market-closed snapshot) |
+| `qc_fail` | **critical (pages)** | the QC report escalated to `ESCALATION_PAGE` — data is on disk but failed a critical check | read the triage records for the run; the data persisted but is not trustworthy |
+| `sso_reauth_needed` | **critical (pages)** | CP-gateway SSO expired (clock 3) and the babysitter could not revive it | follow [`RUNBOOK-reauth.md`](RUNBOOK-reauth.md) — manual SMS re-login |
+| `coverage_breach` | warning (does **not** page) | a tenor's coverage is below floor — partition present but thin | note it; it degrades surface quality but does not block the close. Not the thing that woke you |
+
+The severity split is in `_CRITICAL_KINDS` (`alert_delivery.py`); the alert-kind constants are in
+`orchestration/alerts.py`. The exit code the runner returns for a critical-QC/degenerate close is
+**1** (see the exit-code table above), which is what fires `OnFailure=`.
 
 The journald line is the **delivery of last resort**. Wiring the alert to a real channel
 (Telegram/email/webhook) is owned by the shared alert-delivery seam (the `execution-operational-

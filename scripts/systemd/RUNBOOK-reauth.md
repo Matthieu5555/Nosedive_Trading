@@ -30,8 +30,10 @@ uv run python scripts/eod_healthcheck.py
 uv run python -m algotrading.infra_ibkr.preclose_readiness
 ```
 
-All three exit 0 when green. If `eod_healthcheck.py` is still red after step 1, re-read its
-remediation line — it prints the exact next command.
+Steps 1 and 2 exit 0 when green. Step 3 (`preclose_readiness`) confirms **auth only** today — its
+quote-fraction probe is a stub, so it stays NOT READY on quote-health by design (see Step 3 below);
+the real recovery signal is a green `eod_healthcheck.py`. If `eod_healthcheck.py` is still red after
+step 1, re-read its remediation line — it prints the exact next command.
 
 ## Step 1 — the headless SMS login
 
@@ -80,14 +82,24 @@ Before the next close, prove the session will actually capture. Two checks, both
 
 `eod_healthcheck.py` (D1) probes three things through the real `CpRestSession` seam:
 gateway authenticated, a capture timer armed with a future fire, and the last close banked (no
-silent failure). `preclose_readiness` (D2) is the close-specific ~18:00 probe. Run both; if either
-is red, its output names the remediation. Only then is the session recovered before the close.
+silent failure). `preclose_readiness` (D2) is the close-specific ~18:00 probe.
+
+**What `preclose_readiness` does and does NOT confirm:** today it verifies **auth only**. Its
+two-sided-quote-fraction probe is a stub (returns `None`), so it reports reason
+`no_quote_observation` and stays conservatively NOT READY on quote-health rather than fabricating a
+pass. It therefore confirms the session is **authenticated** for the close but does **not** yet
+confirm the chain is quoting two-sided. **Consequence: `preclose_readiness` will not go fully green
+until that probe is wired** — so do not wait on its green. After a re-login, a green
+`eod_healthcheck.py` is the real recovery signal; read `preclose_readiness` as auth-confirmation
+(reason `not_authenticated` cleared) plus an honest "quote-health not yet verified." (Limitation
+tracked on `tasks/ibkr-unattended-reauth.md`.)
 
 ## What "recovered" means
 
-`eod_healthcheck.py` green **and** `preclose_readiness` green **and** the next close banks a real
-grid (visible in the run-state ledger / the next morning's health check showing the date as
-fully-healthy). Until OAuth clears, expect to do this roughly daily.
+`eod_healthcheck.py` green **and** `preclose_readiness` showing auth cleared (no `not_authenticated`
+reason — see the limitation above; it will still report `no_quote_observation`) **and** the next
+close banks a real grid (visible in the run-state ledger / the next morning's health check showing
+the date as fully-healthy). Until OAuth clears, expect to do this roughly daily.
 
 ## The OAuth-enrollment blocker (why this is still manual)
 

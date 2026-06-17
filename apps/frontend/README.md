@@ -50,6 +50,18 @@ Two layers, both under `apps/frontend/web`:
   into the shared gate is a team decision. Run it locally with `npm run e2e`
   (`npm run e2e:ui` for the inspector, `npm run e2e:report` for the last HTML report).
 
+### The never-blank three-state policy
+
+Every async surface must render something legible in all three states, and the three must read
+differently: **loading** is a `role="status"` skeleton that reserves the panel footprint (never the
+bare text "Loading…"); **empty** is an affirmative sentence that names its subject; **error** is a
+loud `role="alert"` with a recovery path. `AsyncBlock` carries the loading/error halves for the
+whole app — its loading branch mounts the footprint-preserving `<ChartSkeleton>` (`components/
+Skeleton.tsx`) after a `SKELETON_DELAY_MS` (1 s) floor, so a sub-second fetch shows no loader (P4)
+while a longer one fades the chart in with zero reflow. New async surfaces use the
+`assertNeverBlank(renderResult)` helper (`src/test/assertNeverBlank.ts`) in their component test to
+guarantee the surface is never a silent blank.
+
 ## Pages
 
 Three top-level onglets over `react-router`, wrapped in the shared top-bar shell: **Données →

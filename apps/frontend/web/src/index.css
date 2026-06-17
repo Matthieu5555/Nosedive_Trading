@@ -1590,3 +1590,84 @@ h3 {
   gap: 12px;
   margin-top: 14px;
 }
+
+.chart-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--panel) 30%, var(--border) 50%, var(--panel) 70%);
+  background-size: 200% 100%;
+  animation: chart-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.chart-skeleton__label {
+  color: var(--faint);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.chart-skeleton-pending {
+  height: 0;
+  overflow: hidden;
+}
+
+@keyframes chart-skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.info-dot-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1;
+  cursor: help;
+}
+
+.info-dot:hover,
+.info-dot:focus-visible {
+  color: var(--muted);
+}
+
+.info-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 280px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--panel-soft-text);
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-skeleton {
+    animation: none;
+    background: var(--panel);
+  }
+}

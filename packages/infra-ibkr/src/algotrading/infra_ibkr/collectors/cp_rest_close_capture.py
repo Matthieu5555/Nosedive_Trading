@@ -343,7 +343,12 @@ def _snapshot_events(
     two_sided.sort(key=lambda pair: pair[0].canonical())
     quarantined.sort(key=lambda pair: pair[0].canonical())
     events: list[RawMarketEvent] = []
-    for sequence, (instrument, row) in enumerate([*two_sided, *quarantined]):
+    for instrument, row in [*two_sided, *quarantined]:
+        # Stable identity (T-restore-overwrite-last-wins, blueprint 01-arch:17 idempotency): the close
+        # is a POLL — one observation per (instrument, field) per day — so the event_id must NOT depend
+        # on the membership-sorted position (which drifts between re-fires as quotes pass/fail the
+        # two-sided filter). ``sequence=0`` is constant; ``instrument_key`` + ``field_name`` already
+        # identify the observation, so a re-poll of the same close dedups to one row (idempotent).
         # Keep the three timestamps distinct (blueprint 01-architecture §60): exchange_ts is the
         # broker's real update time (the row's ``_updated``, ms→datetime), preserved rather than
         # discarded; receipt_ts and canonical_ts stay at the session close ``as_of`` — the
@@ -358,7 +363,7 @@ def _snapshot_events(
                 instrument_key=instrument.canonical(),
                 underlying=underlying,
                 session_id=session_id,
-                sequence=sequence,
+                sequence=0,
                 exchange_ts=row_exchange_ts,
                 receipt_ts=as_of,
                 canonical_ts=as_of,

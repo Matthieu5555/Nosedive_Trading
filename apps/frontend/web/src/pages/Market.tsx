@@ -7,6 +7,7 @@ import {
   type RecordedDatesResponse,
   type SignalsResponse,
 } from "../api";
+import { AssistantPanel } from "../components/Assistant/AssistantPanel";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { PriceChart, VolSurface } from "../components/charts";
 import { CoveragePanel } from "../components/CoverageTable";
@@ -218,6 +219,11 @@ export function MarketPage() {
                   <span className="status">
                     {index} · {descriptor.asOfPhrase} <QcBadge qc={qc} />
                   </span>
+                  <AssistantPanel
+                    underlying={index}
+                    asOf={effectiveAsOf}
+                    runId={effectiveRunId}
+                  />
                 </div>
 
                 <ErrorBoundary label="Scorecards">

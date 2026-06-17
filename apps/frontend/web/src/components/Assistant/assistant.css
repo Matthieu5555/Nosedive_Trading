@@ -1,0 +1,164 @@
+/* Assistant panel — rides the existing design tokens (var(--*) from index.css :root); no new
+   accent, no second palette. The boldness on Onglet 1 is spent on the coverage headline / the
+   INDICATIF badge, never on the assistant chrome, which stays quiet. */
+
+.assistant-launch,
+.assistant-action {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.assistant-launch:hover,
+.assistant-action:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.assistant-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.assistant-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.assistant-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.assistant-panel__head h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.assistant-panel__close {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.assistant-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.assistant-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assistant-question {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.assistant-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 2px solid var(--border-strong);
+  padding-left: 10px;
+}
+
+.assistant-answer--gap {
+  border-left-color: var(--amber);
+}
+
+.assistant-answer__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.assistant-citations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assistant-citation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.assistant-citation__label {
+  color: var(--muted);
+}
+
+.assistant-citation__value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.assistant-citation__source {
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.assistant-answer__frame {
+  justify-self: start;
+}
+
+.assistant-thinking,
+.assistant-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.assistant-error {
+  margin: 0;
+}
+
+.assistant-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.assistant-form__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.assistant-form__input {
+  flex: 1 1 200px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}

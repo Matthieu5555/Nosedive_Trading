@@ -191,6 +191,58 @@ def test_coverage_total_volume_is_null_with_no_snapshots(ctx: AppContext) -> Non
     assert by_expiry["2026-06-19"]["total_volume"] is None
 
 
+def test_coverage_for_past_date_ignores_a_later_partition(ctx: AppContext) -> None:
+    past_date = date(2026, 6, 11)
+    later_date = date(2026, 6, 12)
+
+    past_masters = [
+        InstrumentMaster(
+            instrument_key=key.canonical(),
+            as_of_date=past_date,
+            instrument=key,
+            raw_broker_payload="{}",
+        )
+        for key in (
+            _opt(date(2026, 6, 19), 100.0, "C"),
+            _opt(date(2026, 6, 19), 105.0, "C"),
+        )
+    ]
+    later_masters = [
+        InstrumentMaster(
+            instrument_key=key.canonical(),
+            as_of_date=later_date,
+            instrument=key,
+            raw_broker_payload="{}",
+        )
+        for key in (
+            _opt(date(2026, 12, 18), 500.0, "C"),
+            _opt(date(2026, 12, 18), 505.0, "P"),
+            _opt(date(2027, 6, 18), 600.0, "C"),
+        )
+    ]
+
+    ctx.store.write("instrument_master", past_masters)
+
+    with TestClient(create_app(ctx)) as client:
+        before = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": past_date.isoformat()}
+        ).json()
+
+    ctx.store.write("instrument_master", later_masters)
+
+    with TestClient(create_app(ctx)) as client:
+        after = client.get(
+            "/api/coverage", params={"underlying": "SPX", "trade_date": past_date.isoformat()}
+        ).json()
+
+    assert before["n_expiries"] == 1, "fixture: past date D has exactly one captured expiry"
+    assert [row["expiry"] for row in before["expiries"]] == ["2026-06-19"]
+    assert after == before, (
+        "coverage for past date D must be byte-identical before and after a later "
+        "date D+1 partition is written; reading D must never join D+1"
+    )
+
+
 def test_coverage_volume_by_expiry_unit() -> None:
     from algotrading.frontend.routers.coverage import _volume_by_expiry
 

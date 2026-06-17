@@ -38,7 +38,7 @@ def live_basket_source(
     now: Callable[[], date] | None = None,
     store: ParquetStore | None = None,
     use_discovery_cache: bool = True,
-) -> Callable[[FiredIndex, date, str], IndexBasket | None] | None:
+) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     resolved_env = os.environ if env is None else env
 
     if transport is None:
@@ -58,9 +58,7 @@ def live_basket_source(
     )
     warmup = WarmupConfig() if use_discovery_cache else None
 
-    def source(
-        fired: FiredIndex, trade_date: date, _correlation_id: str
-    ) -> IndexBasket | None:
+    def source(fired: FiredIndex, trade_date: date) -> IndexBasket | None:
         current_day = today()
         if trade_date < current_day:
             _LOGGER.info(
@@ -107,7 +105,7 @@ def gateway_basket_source(
     now: Callable[[], date] | None = None,
     store: ParquetStore | None = None,
     use_discovery_cache: bool = True,
-) -> Callable[[FiredIndex, date, str], IndexBasket | None] | None:
+) -> Callable[[FiredIndex, date], IndexBasket | None] | None:
     resolved_env = os.environ if env is None else env
     if transport is None:
         if not gateway_requested(resolved_env):

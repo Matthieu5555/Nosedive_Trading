@@ -800,12 +800,7 @@ def _is_underlying_key(instrument_key: str) -> bool:
     return len(fields) == 9 and fields[6] == "" and fields[7] == "" and fields[8] == ""
 
 
-def persist_outputs(
-    store: ParquetStore, outputs: ActorOutputs, *, run_id: str | None = None
-) -> None:
-    # ``run_id`` is the fire's correlation_id; on run-partitioned tables it routes each fetch to
-    # its own ``run=`` partition (no overwrite). Non-run-partitioned tables (risk/scenario) ignore
-    # it, so passing it uniformly is safe.
+def persist_outputs(store: ParquetStore, outputs: ActorOutputs) -> None:
     tables = (
         (MarketStateSnapshot, outputs.snapshots),
         (ForwardCurvePoint, outputs.forwards),
@@ -820,7 +815,7 @@ def persist_outputs(
     for contract_type, records in tables:
         if not records:
             continue
-        store.write(table_for_contract(contract_type), list(records), run_id=run_id)
+        store.write(table_for_contract(contract_type), list(records))
 
 
 def run_day(

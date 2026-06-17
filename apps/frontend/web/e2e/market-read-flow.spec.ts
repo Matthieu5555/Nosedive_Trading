@@ -66,11 +66,15 @@ test("Market read flow: underlying → nappe → tenor → smile/greeks/price-st
   await expect(index).toBeVisible();
   await expect(index).toHaveValue("SPX");
 
-  // 2. The 3D vol nappe renders (the surface-grid fallback path off the maturities).
+  // 2. The 3D vol nappe renders (the surface-grid fallback path off the maturities). The figure
+  // now carries the self-describing identity sentence (subject · as-of · mode · coverage) followed
+  // by the how-to-read gloss — the old static "Implied-volatility surface (...)" name is gone.
   await expect(
-    page.getByRole("figure", {
-      name: "Implied-volatility surface (vol vs log-moneyness vs maturity)",
-    }),
+    page
+      .getByRole("figure", {
+        name: /^Nappe de volatilité — SPX .* vol implicite vs log-moneyness vs maturité/,
+      })
+      .first(),
   ).toBeVisible();
 
   // 3. Select a tenor. The panel opens on 3m (the captured tenor in the fixture).
@@ -81,14 +85,20 @@ test("Market read flow: underlying → nappe → tenor → smile/greeks/price-st
   await tenor.selectOption("3m");
   await expect(tenor).toHaveValue("3m");
 
-  // 4a. The smile renders for the selected tenor (per-tenor IV vs log-moneyness).
-  await expect(page.getByRole("figure", { name: /^Smile — 3m \(0\.250y\)/ })).toBeVisible();
+  // 4a. The smile renders for the selected tenor (per-tenor IV vs log-moneyness). The figure shares
+  // the nappe's identity sentence with the tenor appended as "— smile 3m (0.250y)".
+  await expect(
+    page.getByRole("figure", { name: /smile 3m \(0\.250y\)/ }).first(),
+  ).toBeVisible();
 
   // 4b. The Greeks TABLE for the tenor (deltas × greeks).
   await expect(page.getByRole("table", { name: "Dollar Greeks — 3m (0.250y)" })).toBeVisible();
 
   // 4c. The Greeks SHAPE CURVES (gamma/vega bell, delta S-curve) — complementary to the table.
-  await expect(page.getByRole("figure", { name: /^Greek profiles —/ })).toBeVisible();
+  // The figure shares the identity sentence with the tenor appended as "— Greeks 3m (0.250y)".
+  await expect(
+    page.getByRole("figure", { name: /Greeks 3m \(0\.250y\)/ }).first(),
+  ).toBeVisible();
 
   // 4d. The price-structure block: bid / ask / volume COLUMNS visible (NOT a synthetic mid). This
   // is the exact seam that broke — quote.bid / quote.ask / quote.volume per strike.

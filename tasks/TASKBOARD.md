@@ -20,7 +20,7 @@ Scope + universe model live in ADR [0042](../.agent/decisions/0042-index-options
 and [`TARGET.md §0`](../TARGET.md) — **index-options-only, IBKR sole broker, SX5E sole live index**.
 If any older spec, ADR, or README still says "Saxo", "Deribit", "three brokers", or "equity
 underlying", **the index-only pivot wins** — do not resurrect it. The gate (the only one) is in
-`AGENTS.md`; **green 2026-06-17** after the board-clearing fleet (2946 passed, 12 skipped).
+`AGENTS.md`; **green 2026-06-17** after the post-fleet cleanup pass (`uv run pytest -q`: 2998 passed, 12 skipped; frontend `npm test`: 376 passed).
 
 > **⛔ Standing guardrails.**
 > 1. **Ground in the reference:** every design/scope decision traces to `docs/blueprint/` + the

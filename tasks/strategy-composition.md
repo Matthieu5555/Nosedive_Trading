@@ -7,6 +7,11 @@
 > the priority; 2D builds only after its three siblings give it positions, a grid, and attribution.
 > The blueprint (ADR 0011) overrides this spec on every formula, $-convention, and aggregation rule;
 > where this file and the blueprint disagree, the blueprint wins.
+>
+> **3-onglets home (2026-06-17):** "Tab 2" = **Onglet 2 (Risque)** in the consolidated app — the
+> composed book + combined $Greeks land in its **② Le book** / **④ Attribution** blocks
+> ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md):60-73). The infra/BFF compute is
+> unchanged; only the front home is renamed.
 
 - **Owns:** a new book/composition layer under `packages/infra/src/algotrading/infra/risk/` (a *book
   view* that layers several 2A baskets/position sets into one and exposes combined net Greeks + a

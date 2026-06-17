@@ -1,9 +1,14 @@
 # frontend-second-order-greeks-panels — carry Vanna/Volga/Charm through to the front panels
 
-> **⛔ NOT launch-ready (2026-06-16) — re-scope first.** The page-1 landing (`c4ce734`) **deleted**
-> the front render targets this spec extended (`DollarGreeks`, `GreeksTermStructure`). The greeks now
-> live in the page-1 tenor panel (reading model). Re-scope onto the new greeks home before building —
-> do **not** pick it up autonomously as-is.
+> **Re-scoped & pickable (owner ruling, 2026-06-17 — these Greeks must reach the front).** The
+> page-1 rebuild (`c4ce734`) deleted the old render targets (`DollarGreeks`, `GreeksTermStructure`);
+> the second-order Greeks now belong on the **3-onglets homes**
+> ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md)): the **Onglet 1 › ③ Panneau Ténor**
+> Greeks table + shape-curves block (`:45-47`), and the **Onglet 2 › ④ Attribution** panel
+> (Rho/Vanna/Volga terms beside Δ/Γ/Vega/Θ, `:72-73`). Compute (Vanna/Volga/Charm, raw+cash) is
+> **landed on `main`**; this slice is the wiring that carries it through to those two panels so it
+> stops being banked-but-invisible. Sequence under the single 3-onglets front owner (shared
+> `serializers.py`/`api.ts`).
 
 > **Front slice (step 3) of [infra-second-order-greeks](archive/infra-second-order-greeks.md) (landed/archived 2026-06-14).**
 > Steps 1-2 (compute) landed: Vanna/Volga/Charm in `black76` / `dollar_greeks` /
@@ -24,10 +29,11 @@ correctly labelled, in dollars" gap this layer owns.
 ## Scope boundary
 - **In:** extend `apps/frontend/src/algotrading/frontend/serializers.py` to surface
   Vanna/Volga/Charm (raw + cash) with their `UNIT_STRINGS` / `charm_unit_string`; extend
-  the `api.ts` typed contract to match; render them in the dollar-Greeks term-structure
-  panels and the attribution view (Rho/Vanna/Volga terms beside the existing
-  Δ/Γ/Vega/Θ). Each value self-labelled with its unit string; small magnitudes respect the
-  sig-fig formatter (coordinate with `frontend-sigfig-scientific-display`).
+  the `api.ts` typed contract to match; render them on the **Onglet 1 › ③ Panneau Ténor** Greeks
+  table + shape-curves block (the per-tenor Greeks home in the reading model) and add the
+  Rho/Vanna/Volga terms to the **Onglet 2 › ④ Attribution** panel beside the existing Δ/Γ/Vega/Θ.
+  Each value self-labelled with its unit string; small magnitudes respect the sig-fig formatter
+  (coordinate with `frontend-sigfig-scientific-display`).
 - **Out:** the pricing/attribution math (landed) — never re-implement a Greek or a
   $-conversion in the BFF; the serializer reads the cash values the compute layer already
   produced. Charm is a **display** Greek, not an attribution term (the dPnL eq stops at
@@ -42,6 +48,6 @@ correctly labelled, in dollars" gap this layer owns.
   `T-front-currency-and-bands` (vincent) and the sig-fig task — shared-tree hazard.
 
 ## Done criteria
-Vanna/Volga/Charm (raw + cash, unit-tagged) reach the front Greek panels; Rho/Vanna/Volga
-attribution terms render in the attribution view; small Greeks keep their sig-figs; no math
-re-implemented in the BFF; web gate green and the Python BFF tests green.
+Vanna/Volga/Charm (raw + cash, unit-tagged) render on the Onglet 1 ③ Panneau Ténor Greeks block;
+Rho/Vanna/Volga attribution terms render in the Onglet 2 ④ Attribution panel; small Greeks keep
+their sig-figs; no math re-implemented in the BFF; web gate green and the Python BFF tests green.

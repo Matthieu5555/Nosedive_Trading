@@ -5,6 +5,11 @@
 > (only front-month expiries, 1m…3y empty) sat unseen for a day. A coverage table makes it
 > obvious in one glance. Directly serves the TASKBOARD review-priority #1 ("verify tonight's EOD
 > captures are 100% clean and fully populated"): this is the operator's tool to *see* it.
+>
+> **3-onglets home (2026-06-17):** data-quality belongs on **Onglet 1 (Données)**. The old
+> `Market.tsx` mount moved when `c4ce734` rebuilt page 1 — re-confirm placement against the locked
+> [frontend-3onglets-target-ux](frontend-3onglets-target-ux.md) before the phase-2 quote-completeness
+> add (the consolidation may host it as a secondary utility, not a primary block).
 
 ## Why this is cheap
 

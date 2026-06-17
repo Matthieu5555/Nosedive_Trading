@@ -9,10 +9,14 @@ vision/roadmap notes (the "why" and the phase sequence), which were removed with
 **this file plus `tasks/TASKBOARD.md`**, diffs the target against what exists, and cuts the
 next specs from the gap (§7 is that gap list, pre-ordered).
 
-Authority: **this file is the domain authority** on any formula, field, or definition — it
-absorbed the retired blueprint (ADR 0011; the `documentation/` tree is gone, git history is the
-archive). The rulings in §4 that touch domain contracts need a new ADR before build, and say so.
-`AGENTS.md` governs process.
+Authority: **this file is the roadmap — the scope, sequence, and state authority.** The
+**domain contract** (every formula, field, tenor, and data-dictionary row) lives in the
+**blueprint (`docs/blueprint/`), which stays live and amendable** (ADR 0011) — it has already
+been amended against the teacher's course material, and it is the reference any build traces to.
+Where this file restates a formula it is a convenience copy of the blueprint, not a replacement:
+a §4 ruling that touches a domain contract lands as a **blueprint amendment + a new ADR before
+build** (each such ruling says so). The retired `documentation/` vision/roadmap tree is gone (git
+history is the archive). `AGENTS.md` governs process.
 
 ## 0. Scope & universe model (frozen 2026-06-13, ADR 0042)
 
@@ -439,8 +443,9 @@ Each row is roughly one spec.
 Reference it, don't restate it. This is now **the single roadmap** — it holds both the finish
 line (the money thesis + capability map) *and* the build order (§7, pre-sequenced); the former
 roadmap and vision notes were merged in and removed. `BIG_PICTURE.md` (how we build the backbone
-with least code) stays separate by design; the retired blueprint's domain content was absorbed
-here (this file is the domain authority now). When a
+with least code) stays separate by design; the **domain contract stays in the live blueprint**
+(`docs/blueprint/`, amendable per ADR 0011) — this file references it and keeps convenience copies,
+it does not replace it. When a
 target item lands, update its *state* line here in the same change — a stale target is worse than
 none. When the owner moves the goal, this file moves first. Resolved open-questions live in
 `.agent/open-questions.md`; per-workstream tactics live in `tasks/`.

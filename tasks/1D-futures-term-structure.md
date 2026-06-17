@@ -1,23 +1,21 @@
 # 1D — Futures term structure (gated): listed-futures capture as secondary
 
-> **GATED — DO NOT START. P0.4 DEFERRED FUTURES (forward-only).**
-> [ADR 0037](../.agent/decisions/0037-futures-capture-deferred-forward-only.md) (accepted
-> 2026-06-07) ships **forward-only** for now: no futures product is introduced. This spec
-> therefore **stays parked** — a no-op until a later increment re-opens the decision with a
-> follow-up ADR that amends the blueprint and defines the futures contract. Original gate
-> text retained below.
+> **GO — owner ruling, 2026-06-17: pursue listed-futures capture opportunistically.**
+> The option-implied forward and the listed future carry the **same** information, so the
+> derived forward (`ForwardCurvePoint`, already built) stays **primary and sufficient** for
+> analytics and nothing on the critical path waits on this. But the owner ruled that **where
+> listed-futures data is obtainable from IBKR, we should capture it** — the teacher's Tab-1
+> (Données) brief puts a futures term-structure grid in the data tab. This **supersedes the
+> ADR-0037 forward-only deferral for the capture decision.**
 >
-> This workstream is **blocked at the contract line** until
-> **P0.4** (in `tasks/P0-contracts-and-unblockers.md`) produces an **accepted ADR + a blueprint
-> amendment** for the listed-futures product. **Futures are not in the blueprint today**
-> ([ADR 0011](../.agent/decisions/0011-blueprint-as-plan-of-record.md): the blueprint is the
-> plan of record and overrides specs and code on any field, formula, or tenor). The roadmap's
-> OQ ruling is explicit: *"Futures are not in the blueprint. Capturing them needs a blueprint
-> amendment + new ADR and a contract before build."* If P0.4 **defers** futures (ship
-> forward-only first), this spec **stays parked** — it does not become a TODO, it becomes a
-> no-op until a later increment re-opens P0.4. Nothing on the critical path waits on it: the
-> option-implied forward (`ForwardCurvePoint`, already built) is primary and sufficient for
-> analytics. 1D is a **secondary cross-check** that runs **parallel** to 1A→1I, never on it.
+> **The blueprint amendment is now a step to execute, not a gate that keeps this parked.** The
+> blueprint stays the amendable domain contract ([ADR 0011](../.agent/decisions/0011-blueprint-as-plan-of-record.md));
+> futures are **not** in it yet, so the first task is still **not code** — land a **futures
+> blueprint amendment + a `FuturesPoint` contract ADR** (which exchanges/contracts, roll
+> convention, settlement, day count, listed-contract→pinned-tenor mapping), then build. Until both
+> exist, write them — do not wait on them. The reconciliation discipline below stands unchanged:
+> futures are **captured/secondary**, the derived forward is **never displaced**; 1D runs
+> **parallel** to 1A→1I, never on the critical path.
 
 - **Owns:** *(only once gated open)* a futures-points contract under
   `packages/infra/src/algotrading/infra/contracts/tables.py` (extend `ForwardCurvePoint` or add a
@@ -27,8 +25,8 @@
   **[ADR 0033](../.agent/decisions/0033-analytical-storage-duckdb-polars-over-parquet.md)** /
   **[ADR 0034](../.agent/decisions/0034-data-retention-compaction-and-backend-disposition.md) §4**
   for storage.
-- **Depends on:** **P0.4 ruling = GO** (accepted ADR + merged blueprint amendment for the futures
-  product). Hard precondition — no other dependency matters until this one is satisfied. Then:
+- **Depends on:** the **futures blueprint amendment + `FuturesPoint` ADR** authored in task 1
+  (the owner ruling 2026-06-17 supplies the GO; these artifacts are produced here, not awaited). Then:
   `tasks/D1-storage-foundation.md` (the `provider` partition segment must already be a first-class
   segment so captured futures cannot mix sources), and the pinned tenor grid from **P0.1**.
 - **Blocks:** **nothing on the critical path.** It is a cross-check on a value that is already
@@ -51,13 +49,13 @@ Tenor grid (pinned, P0.1 / OQ-4): **10d, 1m, 3m, 6m, 12m, 18m, 2y, 3y**.
 
 ## What to do (ordered)
 
-1. **Confirm the gate is open — this is the first task, and it is not code.** Verify P0.4 has
-   produced an **accepted ADR** and a **merged blueprint amendment** that define the listed-futures
-   product (which exchanges/contracts, roll convention, settlement, day count, and how a listed
-   contract maps onto a pinned tenor). If either artifact is missing or the ADR is not yet
-   accepted, **stop here** — the rest of this spec is parked. Do not write the contract ahead of
-   the blueprint; ADR 0011 makes the blueprint the reference, and a contract that precedes it is
-   the divergence the gate exists to prevent.
+1. **Land the blueprint amendment + `FuturesPoint` ADR first — this is the first task, and it is
+   not code.** Author and accept an **ADR** and a **merged blueprint amendment** that define the
+   listed-futures product (which exchanges/contracts, roll convention, settlement, day count, and
+   how a listed contract maps onto a pinned tenor). The owner ruling (2026-06-17) supplies the GO;
+   this step **produces** the contract artifacts, it does not wait on someone else to. Do not write
+   the contract code ahead of the blueprint amendment; ADR 0011 makes the blueprint the reference,
+   and a contract that precedes it is the divergence this discipline exists to prevent.
 2. **Decide the contract: extend `ForwardCurvePoint` vs. new `FuturesPoint`.** Prefer a **new
    `FuturesPoint`** (D1 already reserves the name as a gated 1D contract): the captured futures
    leg has fields the derived forward does not (listed contract identifier, exchange, settlement
@@ -116,8 +114,9 @@ contract exists, round-trips through A, and is registered additive-nullable; lis
 are captured as **secondary**, provenance-stamped, partitioned per ADR 0034 §4 with `provider`
 first; a forward-vs-futures cross-check reconciles the captured futures against the **primary**
 derived forward within a configured tolerance and flags breaches as triage records; the derived
-forward is never displaced; no look-ahead; root gate green. **If P0.4 deferred futures, the done
-criterion is simply: this spec stays parked and no 1D code is written.**
+forward is never displaced; no look-ahead; root gate green. **If listed-futures data turns out not
+to be obtainable from IBKR for a given tenor, that tenor surfaces as a coverage gap (feeds 1H QC) —
+the derived forward already covers it; absence is not a defect.**
 
 ## Gotchas
 

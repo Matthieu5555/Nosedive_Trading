@@ -3,6 +3,10 @@
 **Owner:** Matthieu · **Lane:** `infra-`/`core-` (capture call params + computing params) · **Priority:** P1
 (blocks a trustworthy front; surfaced by the 2026-06-15 live SX5E validation run)
 
+> **3-onglets home (2026-06-17):** the "Market-tab" surface is now **Onglet 1 (Données) › ② NAPPE 3D
+> + ③ Panneau Ténor** ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md)); lane 2 (front
+> robustness to degenerate slices) re-homes onto that reading model, not the retired term-structure panels.
+
 ## Symptom (measured on real 2026-06-15 intraday data)
 
 The Market-tab vol surface renders **distorted/spiky** and everything downstream of it (greeks

@@ -6,6 +6,12 @@
 > risk-engine gap has a home (margin forecasting is already owned by
 > [execution-operational-hardening](execution-operational-hardening.md); VaR/ES + liquidity/
 > concentration had no task in any lane).
+>
+> **Provenance note:** VaR / ES is **net-new scope traced to TARGET only** — it is **not** in the
+> blueprint (which expresses risk purely as Greeks + scenario PnL, never a VaR/ES/confidence-level
+> measure) and **not** in the course transcripts. Defensible (it is standard desk risk) and deferred,
+> but it does not inherit from either reference doc; if it is ever pulled forward, fold the VaR/ES
+> definition into the blueprint via an amendment first (ADR 0011) rather than treating it as already-blessed.
 
 ## The gap
 §5.9 names three risk-engine capabilities with no task: **intraday VaR / expected shortfall**,

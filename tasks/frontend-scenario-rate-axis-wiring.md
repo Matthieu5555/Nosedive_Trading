@@ -9,7 +9,11 @@
 ## Why (TARGET cite)
 TARGET §5.4 (the risk-manager's stress screen: spot ±X%, vol ±X pts, **rates ±X bp**) and
 §2 goal — the stress screen is how S2's kill condition and the book's rate exposure get
-*seen*. The rate family is now produced by the engine but the stress-surface BFF
+*seen*. **Provenance note:** the transcript's stress grid is "±50% spot / ±50% vol / **±10%
+third axis**", and the third axis being **rates** is the owner's *inference* over a garbled
+word — not a clean course mandate. Rates is the sensible reading (and the blueprint lists rate
+shocks as an optional scenario family), so this is defensible; just don't cite it as
+"course-prescribed". The rate axis traces to TARGET §5.4 + owner ruling, not verbatim to the transcript. The rate family is now produced by the engine but the stress-surface BFF
 (`/api/risk/scenarios`, `/api/basket/scenarios`) and the Risk Scenarios / Basket-stress
 front panels only render the spot×vol surface — the rate sweep reaches no screen. This
 layer owns "carry it through to the operator's stress screen, labelled in bp and dollars".

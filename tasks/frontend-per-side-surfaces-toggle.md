@@ -4,6 +4,10 @@
 > which landed the infra core (per-side fit, `surface_side` in the grid contract, put−call IV
 > spread signal + QC, ADR 0048) 2026-06-14. Split out the way the second-order-greeks front work
 > was split from its infra lane.
+>
+> **3-onglets home (2026-06-17):** the side toggle lives on **Onglet 1 (Données) › ② NAPPE 3D +
+> ③ put/call smile** ([frontend-3onglets-target-ux](frontend-3onglets-target-ux.md):37,45), not a
+> standalone surface page; the put−call IV-spread view is a diagnostic in the same tenor block.
 
 ## The gap
 The projected grid now carries `surface_side ∈ {put, call, combined}` (up to three rows per

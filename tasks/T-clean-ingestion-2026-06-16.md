@@ -14,6 +14,13 @@ events), so **everything here is recompute-from-raw; nothing is lost.**
 
 ## Scope (blueprint: Part XV — raw is Tier-1, all derived recomputable from raw)
 
+0. **Provisional archive (safety net — do this FIRST, before any mutation).** Snapshot **everything
+   that will be altered** to `data/_provisional_archive/2026-06-16-pre-cleanup/` (out of the canonical
+   read path): the 2026-06-16 derived partitions (`surface_grid`, `qc_results`, `option_quote_snapshot`,
+   `projected_option_analytics`) **and** the 42 stale `run=` partitions about to be pruned. (`rebuild_from_raw`
+   already backs up its own purge targets to `_rebuild_backups`, but this archive is **explicit and
+   complete** — it also covers the pruned runs, which the script's backup does not.) Recoverable until the
+   post-validation cleanup below.
 1. **Re-derive** the derived layer for `trade_date=2026-06-16` from raw via
    `scripts/rebuild_from_raw.py` (no broker re-hit; raw byte-identical, hash-verified). One clean run.
 2. **Re-run QC** for 2026-06-16 under current (post-0052) code → a clean verdict replacing the
@@ -43,3 +50,16 @@ The only genuinely unobtainable data is two-sided 2y/3y LEAP quotes the broker n
 - The 42 stale `run=` partitions pruned; raw byte-identical (rebuild's hash-verify passes).
 - The degenerate ultra-short slice is still present-and-flagged (untouched); its front clamp is
   tracked separately under `infra-surface-fit-quality` lane 2.
+
+## ⚠️ Post-validation cleanup (REQUIRED follow-up — do NOT skip)
+
+The provisional archive (Step 0) is a **rollback net only**. Once the re-derived run + the post-0052
+QC verdict are **validated by the owner** (the front nappe reads clean, the QC verdict is sane), the
+archive must be **deleted** so it does not become stale shadow data:
+
+- [ ] Owner validates the re-derived 2026-06-16 run + QC verdict.
+- [ ] **Delete `data/_provisional_archive/2026-06-16-pre-cleanup/`** and the `rebuild_from_raw`
+      `_rebuild_backups` entry for the day.
+- [ ] Confirm the canonical read path holds exactly **one** clean run; close this task.
+
+Until this runs, the provisional archive is the recovery source — **do not delete it before owner sign-off.**

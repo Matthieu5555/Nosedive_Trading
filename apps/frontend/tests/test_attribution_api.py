@@ -34,7 +34,13 @@ POS_DELTA = 21_000.0
 POS_GAMMA = -1_750.0
 POS_VEGA = 6_250.0
 POS_THETA = -600.0
-POS_APPROX = POS_DELTA + POS_GAMMA + POS_VEGA + POS_THETA
+# Second-order PnL contributions the engine decomposes onto the position record. Distinct values so
+# a test can prove Rho/Vanna/Volga reach the /api/attribution payload, each dollar-labelled. Charm
+# is a display Greek, never an attribution term — the dPnL decomposition stops at Volga.
+POS_RHO = 90.0
+POS_VANNA = -45.0
+POS_VOLGA = 12.5
+POS_APPROX = POS_DELTA + POS_GAMMA + POS_VEGA + POS_THETA + POS_RHO + POS_VANNA + POS_VOLGA
 POS_FULL_REPRICE = POS_APPROX + 10.0
 POS_RESIDUAL = POS_FULL_REPRICE - POS_APPROX
 
@@ -61,6 +67,9 @@ def _attribution(
     full_reprice_pnl: float,
     residual: float,
     within_tolerance: bool,
+    rho_pnl: float | None = None,
+    vanna_pnl: float | None = None,
+    volga_pnl: float | None = None,
 ) -> tables.ScenarioAttribution:
     return tables.ScenarioAttribution(
         valuation_ts=AS_OF,
@@ -75,6 +84,9 @@ def _attribution(
         gamma_pnl=gamma_pnl,
         vega_pnl=vega_pnl,
         theta_pnl=theta_pnl,
+        rho_pnl=rho_pnl,
+        vanna_pnl=vanna_pnl,
+        volga_pnl=volga_pnl,
         approx_pnl=approx_pnl,
         full_reprice_pnl=full_reprice_pnl,
         residual=residual,
@@ -116,6 +128,9 @@ def _seed_store(root: Path) -> None:
                 full_reprice_pnl=POS_FULL_REPRICE,
                 residual=POS_RESIDUAL,
                 within_tolerance=True,
+                rho_pnl=POS_RHO,
+                vanna_pnl=POS_VANNA,
+                volga_pnl=POS_VOLGA,
             ),
         ],
     )
@@ -223,6 +238,50 @@ def test_attribution_position_drill_selects_that_contract(seeded_client: TestCli
     assert terms["Delta"] == pytest.approx(POS_DELTA)
     assert payload["residual"]["dollars"] == pytest.approx(POS_RESIDUAL)
     assert payload["verdict"]["within_tolerance"] is True
+
+
+def test_attribution_position_carries_second_order_terms_dollar_labelled(
+    seeded_client: TestClient,
+) -> None:
+    # Rho/Vanna/Volga are banked on the record but were invisible until the serializer emitted them.
+    # They must reach the payload beside Delta/Gamma/Vega/Theta, each with its dollar value and a
+    # dollar unit string. Charm is a display Greek, so it must NOT appear as a term.
+    payload = seeded_client.get(
+        "/api/attribution",
+        params={
+            "trade_date": TRADE_DATE.isoformat(),
+            "portfolio_id": PORTFOLIO_ID,
+            "level": "position",
+            "contract_key": POSITION_CONTRACT_KEY,
+        },
+    ).json()
+    terms = {term["name"]: term for term in payload["terms"]}
+    assert [term["name"] for term in payload["terms"]] == [
+        "Delta",
+        "Gamma",
+        "Vega",
+        "Theta",
+        "Rho",
+        "Vanna",
+        "Volga",
+    ]
+    assert "Charm" not in terms
+    for name, dollars in [("Rho", POS_RHO), ("Vanna", POS_VANNA), ("Volga", POS_VOLGA)]:
+        assert terms[name]["dollars"] == pytest.approx(dollars)
+        assert terms[name]["unit"], f"{name} must carry a non-empty unit string"
+        assert "$" in terms[name]["unit"]
+
+
+def test_attribution_book_without_second_order_terms_stays_four_term(
+    seeded_client: TestClient,
+) -> None:
+    # A record that predates the second-order decomposition (rho/vanna/volga None) must serialize its
+    # original four-term waterfall unchanged — the new terms appear only when the engine produced them.
+    payload = seeded_client.get(
+        "/api/attribution",
+        params={"trade_date": TRADE_DATE.isoformat(), "portfolio_id": PORTFOLIO_ID},
+    ).json()
+    assert [term["name"] for term in payload["terms"]] == ["Delta", "Gamma", "Vega", "Theta"]
 
 
 def test_attribution_default_level_is_the_book_not_a_position(seeded_client: TestClient) -> None:

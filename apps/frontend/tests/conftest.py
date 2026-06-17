@@ -44,6 +44,14 @@ PR_DOLLAR_GAMMA = 8.0
 PR_DOLLAR_VEGA = 0.10
 PR_DOLLAR_THETA = -0.0000274
 PR_DOLLAR_RHO = 0.0003
+# Second-order set (raw + cash) the pricing engine banks on PricingResult. Distinct, recognisable
+# values so a test can prove each reaches the /api/risk/metrics payload labelled with its unit.
+PR_RAW_VANNA = -0.012
+PR_RAW_VOLGA = 0.34
+PR_RAW_CHARM = -0.0008
+PR_DOLLAR_VANNA = -0.66
+PR_DOLLAR_VOLGA = 0.000034
+PR_DOLLAR_CHARM = -0.044
 
 GAMMA_UNDERLYING = "GMMA"
 GMMA_RAW_GAMMA = 0.04
@@ -376,6 +384,12 @@ def _seed_legacy_store(store: ParquetStore) -> None:
                 dollar_vega=PR_DOLLAR_VEGA,
                 dollar_theta=PR_DOLLAR_THETA,
                 dollar_rho=PR_DOLLAR_RHO,
+                vanna=PR_RAW_VANNA,
+                volga=PR_RAW_VOLGA,
+                charm=PR_RAW_CHARM,
+                dollar_vanna=PR_DOLLAR_VANNA,
+                dollar_volga=PR_DOLLAR_VOLGA,
+                dollar_charm=PR_DOLLAR_CHARM,
                 source_snapshot_ts=AS_OF,
                 provenance=prov("px:AAPL"),
             ),

@@ -265,6 +265,30 @@ def test_metrics_carry_a_unit_string_and_the_raw_value_beside_each_dollar(
         assert metric["dollar"] == pytest.approx(dollar)
 
 
+def test_metrics_carry_second_order_greeks_each_with_dollar_and_unit(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # The banked-but-invisible set: Vanna/Volga/Charm must reach the operator's screen, each with
+    # its raw value, its already-monetized dollar value, and a self-labelling unit string. The BFF
+    # re-derives nothing — these are the PricingResult cash values the compute layer produced.
+    payload = seeded_client.get(
+        "/api/risk/metrics", params={"underlying": seed.UNDERLYING}
+    ).json()
+    metrics = payload["results"][0]["metrics"]
+    assert metrics["vanna"]["unit"] == "$ delta per 1 vol point"
+    assert metrics["volga"]["unit"] == "$ vega per 1 vol point"
+    assert metrics["charm"]["unit"] == "$ delta per calendar day"
+    for name, raw, dollar in [
+        ("vanna", seed.PR_RAW_VANNA, seed.PR_DOLLAR_VANNA),
+        ("volga", seed.PR_RAW_VOLGA, seed.PR_DOLLAR_VOLGA),
+        ("charm", seed.PR_RAW_CHARM, seed.PR_DOLLAR_CHARM),
+    ]:
+        metric = metrics[name]
+        assert metric["unit"], f"{name} must carry a non-empty unit string"
+        assert metric["raw"] == pytest.approx(raw)
+        assert metric["dollar"] == pytest.approx(dollar)
+
+
 def test_metrics_dollar_gamma_value_matches_its_one_pct_label(
     seeded_client: TestClient, seed: ModuleType
 ) -> None:

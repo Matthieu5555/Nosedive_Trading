@@ -260,6 +260,16 @@ _ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
     ("Theta", "theta_pnl"),
 )
 
+# Second-order PnL contributions. The compute layer carries these as nullable columns on
+# ScenarioAttribution; they reach the payload only when the engine actually decomposed them,
+# so a record that predates the second-order terms still serializes its four-term waterfall
+# unchanged. The dPnL decomposition stops at Volga — Charm is a display Greek, never a term.
+_SECOND_ORDER_ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
+    ("Rho", "rho_pnl"),
+    ("Vanna", "vanna_pnl"),
+    ("Volga", "volga_pnl"),
+)
+
 
 def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
     terms = [
@@ -270,6 +280,15 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
         }
         for name, field in _ATTRIBUTION_TERMS
     ]
+    terms.extend(
+        {
+            "name": name,
+            "dollars": getattr(row, field),
+            "unit": ATTRIBUTION_TERM_UNIT,
+        }
+        for name, field in _SECOND_ORDER_ATTRIBUTION_TERMS
+        if getattr(row, field) is not None
+    )
     return {
         "valuation_ts": _iso(row.valuation_ts),
         "portfolio_id": row.portfolio_id,
@@ -343,6 +362,9 @@ def pricing_result_to_dict(row: PricingResult) -> dict[str, object]:
             "rt_vega": _metric(row.rt_vega, row.dollar_rt_vega, UNIT_STRINGS["dollar_rt_vega"]),
             "theta": _metric(row.theta, row.dollar_theta, UNIT_STRINGS["dollar_theta_365"]),
             "rho": _metric(row.rho, row.dollar_rho, UNIT_STRINGS["dollar_rho"]),
+            "vanna": _metric(row.vanna, row.dollar_vanna, UNIT_STRINGS["dollar_vanna"]),
+            "volga": _metric(row.volga, row.dollar_volga, UNIT_STRINGS["dollar_volga"]),
+            "charm": _metric(row.charm, row.dollar_charm, UNIT_STRINGS["dollar_charm_365"]),
         },
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),

@@ -226,6 +226,40 @@ export interface AnalyticsResponse {
   surface: SurfaceDense | null;
 }
 
+// --- /api/risk/metrics greeks cell (TARGET §5.1) --------------------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/serializers.py::pricing_result_to_dict and the
+// /api/risk/metrics router body. The HTTP shape is the seam — keep both sides in lockstep. Each
+// metric is the engine's own raw + already-monetized dollar value plus its unit string; the BFF
+// re-derives no Greek and no $-conversion. The second-order set (vanna/volga/charm) is
+// additive-nullable: a PricingResult that predates it carries those metrics with null raw/dollar
+// but a populated unit string. Charm is a display Greek, never an attribution term.
+export interface RiskMetricCell {
+  delta: DollarMetric;
+  gamma: DollarMetric;
+  vega: DollarMetric;
+  theta: DollarMetric;
+  rho: DollarMetric;
+  vanna: DollarMetric;
+  volga: DollarMetric;
+  charm: DollarMetric;
+}
+
+export interface RiskMetricResult {
+  snapshot_ts: string;
+  contract_key: string;
+  pricer_version: string;
+  price: number;
+  metrics: RiskMetricCell;
+  source_snapshot_ts: string;
+  provenance: Provenance;
+}
+
+export interface RiskMetricsResponse {
+  underlying: string | null;
+  n_results: number;
+  results: RiskMetricResult[];
+}
+
 export interface IndexOption {
   symbol: string;
   name: string;

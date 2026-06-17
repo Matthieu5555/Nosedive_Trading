@@ -90,11 +90,13 @@ and QC the implied−riskfree spread.**
 
 ### Proposed blueprint amendment (for owner acceptance — DRAFT, do not treat as merged)
 
-> Proposed per ADR 0011 as the amendment introducing the external rate curve. **Not** yet merged
-> into `docs/blueprint/`. On owner acceptance it lands as a clarifying paragraph under
-> `02-math-framework.md` ("Forward reconstruction and carry", which already contemplates "the system
-> may maintain a rate curve and derive an implied carry or dividend yield") and two new
-> `09-data-dictionary.md` rows.
+> Proposed per ADR 0011 as the amendment introducing the external rate curve. It is now present in
+> `docs/blueprint/` as a **clearly-fenced "Proposed amendment — pending owner acceptance" block**
+> (a clarifying paragraph under `02-math-framework.md` "Forward reconstruction and carry", which
+> already contemplates "the system may maintain a rate curve and derive an implied carry or
+> dividend yield", and two `09-data-dictionary.md` rows marked Proposed). It is **not ratified
+> canon** — the fenced markers say so explicitly, and on owner acceptance the markers are dropped so
+> the rows/paragraph become plain blueprint canon. The verbatim text follows.
 
 **Amendment to `02-math-framework.md` — Forward reconstruction and carry (clarifying paragraph):**
 
@@ -111,6 +113,51 @@ and QC the implied−riskfree spread.**
 
 > | `risk_free_rate` | Ingested per-currency risk-free rate at a pillar tenor (`rates` table), as-of dated. The Eq. 5 `r(T)` **input** and the **risk** rate Rho is bumped against — distinct from the parity-implied pricing-consistency rate. |
 > | `implied_riskfree_spread` | `implied_rate − risk_free_rate` per `(currency, tenor)`; a funding/dividend/borrow diagnostic and a QC gate on forward estimation. Beyond a configured bound it is a flagged triage record, never an exception. |
+
+## Open questions for the owner (must be ruled before build)
+
+These are the forks this ADR does **not** settle on the owner's behalf. Each is recorded here
+rather than guessed; the Decision above fixes the *shape* (a per-currency as-of `r(T)` curve, two
+rates kept separate, a spread QC) but leaves the following economic/operational choices open.
+
+1. **Curve form: per-tenor points `r(T)` vs a single flat short rate per currency.** The Decision
+   assumes **per-tenor pillar points** (`rates(currency, pillar_tenor, rate, as_of)`), which is the
+   only form coherent with Eq. 5's `r(T)` across the tenor grid and with a term-structured Rho. A
+   flat per-currency rate is the cheaper MVP (it is what the landed `ForwardConfig.rate` already
+   supports) and is a degenerate one-pillar case of the same table. **Owner ruling needed:** ship
+   the full pillar curve in v1, or ship flat-per-currency first and add pillars second? The contract
+   absorbs both, so this is a sequencing call, not a schema fork.
+
+2. **Pillar set and interpolation convention per currency.** Which pillars to capture (e.g. €STR
+   O/N plus Euribor 1m/3m/6m/12m, then OIS-swap pillars 18m/2y/3y for EUR; SOFR equivalents for
+   USD), and the rule for evaluating `r(T)` between pillars — **linear in the zero rate**, linear in
+   the discount factor, or log-linear in DF. These materially move Rho and the implied−riskfree
+   spread. The Decision says "a documented convention named in config"; **which convention is the
+   default** is the owner's to fix, because the goldens bake it in.
+
+3. **Source per currency and capture cadence.** The Decision says config names the source; it does
+   **not** pick it. **Owner ruling needed:** the concrete EUR source (€STR/Euribor fixings vendor
+   vs an OIS swap curve vs a broker-supplied curve) and USD source (SOFR), and whether capture is
+   **daily EOD as-of the close** (the assumed cadence, matching the option snapshot) or a separate
+   publication time. Index-options-only / IBKR-sole-broker scope (ADR 0042) holds either way — the
+   curve is an ingested reference, not a tradable — but the provider choice has cost/licensing
+   implications the owner owns.
+
+4. **`r` continuous-vs-annual compounding and day-count.** Eq. 5 and Black-76 use continuous `r`;
+   most published Euribor/€STR/SOFR pillars are simple or annually-compounded under a money-market
+   day-count (ACT/360 for €STR/SOFR, ACT/365 elsewhere). The ingest must convert to the continuous
+   `r(T)` the pricer expects. **Owner ruling needed:** confirm the canonical internal convention is
+   **continuous / ACT-365** (consistent with `maturity_years`, data dictionary), so the conversion
+   on ingest is fixed rather than per-source ad hoc.
+
+5. **Spread-QC bound.** The implied−riskfree spread QC flags "beyond a configured bound". The bound
+   itself (per currency, possibly per tenor) is a tuning number that decides what gets quarantined;
+   it should be set from banked spread history once a few days exist, not picked blind here. Until
+   then a placeholder bound with a "warn, do not fail" disposition is the safe default — **owner to
+   confirm** that disposition (warn-only at first) and who owns the bound thereafter.
+
+None of these block *writing* the contract or the engine seam; they are values and conventions the
+build must not invent silently. Until they are ruled, R1 stays Proposed/parked (see Consequences).
 
 ## Consequences
 

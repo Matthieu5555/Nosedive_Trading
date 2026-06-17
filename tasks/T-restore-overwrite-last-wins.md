@@ -15,14 +15,25 @@ wall-clocks, each recording the then-current quote, all stamped to the nominal c
 timestamps. **It worked before `b10ed3d`** because the derived layer *overwrote* (one run shown),
 masking a latent raw-idempotency bug.
 
-## Blueprint mandate (the target)
+## Blueprint mandate (the target — blueprint-BACKED, not just git-grounded)
 
-**One settled close per `(instrument, field)` per day, idempotent re-capture** — overwrite-last-wins on
-the live slot (or an explicit `version=` lineage), never run-accumulation:
-- `15-data-governance.md:9` raw = Tier-1, replayable; `:18` *"any replay/backfill must write a **new
-  version identifier** instead of silently mutating/accumulating"* (versioned-replace, not 42 anon rows).
-- `06-runbooks.md:32` *"raw partitions are **finalized**"* — one finalized partition per day.
-- `b10ed3d`'s premise ("a re-fetch **can't overwrite** a prior run") directly contradicts this.
+The decisive rule is **`01-architecture.md:17` (Idempotent processing):** *"If a job is re-run for a
+given date partition, the outcome must either be **byte-for-byte identical** or **intentionally
+versioned as a new analytics release**."* So a re-capture is **idempotent (byte-identical) OR
+explicitly `version=`d — never a silent overwrite, never anonymous run-accumulation.**
+- `01-architecture.md:13` *"no downstream layer may **silently overwrite** an upstream observation."*
+- `15-data-governance.md:18` *"any replay/backfill must write a **new version identifier** instead of
+  silently mutating past results."* `:9` raw = Tier-1, replayable.
+- `06-runbooks.md:32` *"raw partitions are **finalized**"* (one finalized partition/day) · `:46` *"write
+  outputs to **versioned** historical partitions rather than overwriting."*
+- `19-final-reminders.md:20` `event_id` *"**unique within collector session; never recycled**"* +
+  `08-acceptance-tests.md:19` *"raw events written **continuously**"* → the raw is a **stream**; the
+  **snapshot** layer (`12-file-by-file-guide.md:37`, field-precedence/quote-age) picks the close.
+
+**Verdict:** `b10ed3d`'s anonymous `run=` accumulation is neither byte-identical nor versioned → it
+**violates `01-arch:17`**. And a destructive overwrite-in-place would violate `01-arch:13`/`15-gov:18`.
+The blueprint-backed model is **idempotent re-capture (byte-identical) + explicit `version=` for
+deliberate re-captures** (the adapter already supports `version=`/`list_versions`).
 
 ## Two roots — both restore to a known-good pre-casse git state
 
@@ -34,12 +45,22 @@ sha256(instrument_key, field_name, sequence)` (`market_fields.py`, `sequence` fr
 and `sequence` is the **membership-sorted ordinal** within each run's list (`cp_rest_close_capture.py:343-346`).
 When a re-run's live quotes shift which options pass the two-sided / quarantine filter, the same
 instrument lands at a **different `sequence` → different `event_id` → not deduped → appended.**
-- **Fix:** drop `sequence` from the content hash — key `event_id` on `(instrument_key, field_name)`
-  (+ `trade_date`), so one row per instrument-field-day, **last write wins**. This makes the
-  `07c011f` idempotency real regardless of membership drift. (`sequence=` at `cp_rest_close_capture.py:346,361`
-  becomes inert; keep it as a column if useful, just out of the identity hash.)
-- **Plus a run-state gate** so a 2nd close fire for an already-captured `(trade_date, underlying)`
-  **replaces** rather than re-appends (none exists today in `scripts/eod_run.py`/`eod_stages.py`).
+- **Fix (blueprint-backed):** make a re-capture of the **same** close **byte-identical** (`01-arch:17`
+  branch 1) by stabilising `event_id` — drop the membership-ordinal `sequence` from the content hash
+  (`market_fields.py`; `sequence=` at `cp_rest_close_capture.py:346,361` becomes inert). Then the
+  `07c011f` dedup actually idempotents and a re-fire of identical data is a no-op.
+- **Deliberate re-captures → `version=`, NOT overwrite** (`15-gov:18`): a re-capture that yields
+  *different* data writes a new `version=` lineage (the adapter already supports `version=`/`list_versions`);
+  reads resolve to the latest version. No destructive replace, no anonymous `run=`.
+- **Run-state gate:** a 2nd close fire of an already-finalized `(trade_date, underlying)` either no-ops
+  (identical → idempotent) or writes a `version=` — never re-appends. None exists today
+  (`scripts/eod_run.py`/`eod_stages.py`).
+- ⚠️ **One open design choice to resolve first (grounded in the capture model):** is the CP-REST close
+  a **poll** (one observation/day → the identity collapses re-fires) or a **stream** (`08-acceptance:19`
+  "continuous"; keep distinct events, the **snapshot** layer picks the close via field-precedence/
+  quote-age, `12-file:37`)? The 42 rows are accidental **re-fires of the close poll**, not a tick
+  stream — but pin this against the capture spec before choosing the exact `event_id` identity, so we
+  don't collapse a stream the blueprint wants kept.
 
 ### C2 — Derived: retire the run-partitioning (pure revert to `b10ed3d^` = `c665614`)
 `run_partitioned` **did not exist before `b10ed3d`** (`registry.py` pre-`b10ed3d` count = 0) — the

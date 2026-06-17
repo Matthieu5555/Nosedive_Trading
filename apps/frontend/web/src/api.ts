@@ -87,6 +87,11 @@ export interface ProvidersResponse {
   providers: Provider[];
 }
 
+// One capture/recompute run as the BFF job ledger sees it. `stage`/`stage_index`/`stage_total` are
+// additive-nullable: the BFF sets them as the engine walks its named stages (resolve → collect → fit
+// → summarize); a payload that predates the passthrough, or a job that hasn't reported a stage yet,
+// carries all three null and the running row degrades to an honest indeterminate bar (never a
+// fabricated percent). `stage` is already the PM-register French label, not the engine enum.
 export interface Job {
   job_id: string;
   provider: string;
@@ -96,6 +101,9 @@ export interface Job {
   finished_at: string | null;
   message: string;
   summary: Record<string, unknown>;
+  stage?: string | null;
+  stage_index?: number | null;
+  stage_total?: number | null;
 }
 
 export interface DailyBar {

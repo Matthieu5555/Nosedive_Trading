@@ -12,6 +12,12 @@ import {
 } from "../../hooks/queries";
 import { statusLabel } from "../../lib/format";
 import { AsyncBlock } from "../AsyncBlock";
+import { InfoDot } from "../InfoDot";
+import { JobNotice } from "./JobNotice";
+import { JobProgress } from "./JobProgress";
+
+const LAUNCH_GLOSS =
+  "Rejoue le dernier jour capturé en une nouvelle nappe — n'écrit rien sur le disque tant que ce n'est pas validé.";
 
 const JOB_STATE_CLASS: Record<Job["state"], string> = {
   queued: "ops-pill--warn",
@@ -47,7 +53,9 @@ function JobRow({ job }: { job: Job }) {
       <td>{job.underlying}</td>
       <td>{clockTime(job.started_at)}</td>
       <td>{clockTime(job.finished_at)}</td>
-      <td className="ops-job-message">{job.message || "—"}</td>
+      <td className="ops-job-message">
+        {job.state === "running" ? <JobProgress job={job} /> : job.message || "—"}
+      </td>
     </tr>
   );
 }
@@ -157,30 +165,31 @@ export function RunControlPanel() {
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            className="ops-launch"
-            disabled={!canLaunch}
-            onClick={() => launch.mutate({ provider, underlying: underlying || null })}
-          >
-            {launch.isPending ? "Launching…" : "Launch run"}
-          </button>
+          <div className="ops-launch-wrap">
+            <button
+              type="button"
+              className="ops-launch"
+              disabled={!canLaunch}
+              title={LAUNCH_GLOSS}
+              onClick={() => launch.mutate({ provider, underlying: underlying || null })}
+            >
+              {launch.isPending ? "Launching…" : "Launch run"}
+            </button>
+            <InfoDot label="Que fait ce bouton ?" body={LAUNCH_GLOSS} />
+          </div>
         </div>
       </AsyncBlock>
 
-      {selected && selected.status !== "ready" && (
-        <p className="panel-note">{selected.note}</p>
-      )}
+      {selected && selected.status !== "ready" && <p className="panel-note">{selected.note}</p>}
       {launchError && (
         <p role="alert" className="error">
           Could not launch the run: {launchError}
         </p>
       )}
 
-      <AsyncBlock
-        loading={jobs.isPending}
-        error={jobs.isError ? jobs.error.message : null}
-      >
+      <JobNotice jobs={jobs.data?.jobs ?? []} />
+
+      <AsyncBlock loading={jobs.isPending} error={jobs.isError ? jobs.error.message : null}>
         {jobs.data && <JobsTable data={jobs.data} />}
       </AsyncBlock>
     </div>

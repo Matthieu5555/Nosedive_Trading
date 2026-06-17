@@ -66,6 +66,20 @@ const QUEUED_JOB: Job = {
   summary: {},
 };
 
+const RUNNING_JOB_WITH_STAGE: Job = {
+  job_id: "job-2",
+  provider: "SAMPLE",
+  underlying: "SX5E",
+  state: "running",
+  started_at: "2026-06-17T17:30:00",
+  finished_at: null,
+  message: "",
+  summary: {},
+  stage: "Collecte de la chaîne d'options",
+  stage_index: 2,
+  stage_total: 4,
+};
+
 const RECORDED: RecordedDatesResponse = {
   index: "SPX",
   count: 7,
@@ -169,4 +183,34 @@ test("a health fetch error renders through AsyncBlock, not a blank panel", async
   await waitFor(() => {
     expect(screen.getByRole("alert")).toHaveTextContent(/error|failed|500/i);
   });
+});
+
+test("a running job row shows a determinate step tracker, not a frozen pill", async () => {
+  server.use(
+    jsonGet("/api/health", HEALTH),
+    jsonGet("/api/providers", PROVIDERS),
+    jsonGet("/api/run/underlyings", RUN_UNDERLYINGS),
+    jsonGet("/api/jobs", { jobs: [RUNNING_JOB_WITH_STAGE] }),
+    jsonGet("/api/recorded-dates", RECORDED),
+  );
+  renderWithClient(<OperationsPage />);
+
+  // The running row narrates the engine stage in PM French, with a determinate bar at 50% (2/4).
+  expect(await screen.findByText(/étape 2\/4/)).toBeInTheDocument();
+  expect(screen.getByText(/Collecte de la chaîne d'options/)).toBeInTheDocument();
+  const bar = screen.getByRole("progressbar");
+  expect(bar).toHaveAttribute("aria-valuenow", "50");
+});
+
+test("the launch button carries a back-end gloss, reachable via the ⓘ", async () => {
+  mockOps();
+  renderWithClient(<OperationsPage />);
+
+  const launch = await screen.findByRole("button", { name: /Launch run/i });
+  // The intent is legible before the click: the hover title states the back-end action.
+  expect(launch).toHaveAttribute("title", expect.stringMatching(/Rejoue le dernier jour capturé/));
+
+  const info = screen.getByRole("button", { name: "Que fait ce bouton ?" });
+  await userEvent.hover(info);
+  expect(screen.getByRole("tooltip")).toHaveTextContent(/n'écrit rien sur le disque tant que/);
 });

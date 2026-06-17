@@ -61,7 +61,7 @@ test("Onglet-1 read flow: underlying → nappe → tenor → smile/greeks/price-
 
   // 1. Pick the underlying. SPX is the default; the picker is present, enabled, and on SPX.
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Données" })).toBeVisible();
   const index = page.getByLabel("Index", { exact: true });
   await expect(index).toBeVisible();
   await expect(index).toHaveValue("SPX");

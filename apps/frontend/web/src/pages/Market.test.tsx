@@ -258,14 +258,15 @@ test("the price-structure block reads bid / ask / volume per strike — never a 
   expect(within(block).getByRole("columnheader", { name: /bid/i })).toBeInTheDocument();
   expect(within(block).getByRole("columnheader", { name: /ask/i })).toBeInTheDocument();
   expect(within(block).getByRole("columnheader", { name: /volume/i })).toBeInTheDocument();
-  // The ATM strike (1×10²) carries quote.{bid 4.1, ask 4.5, volume 1234} — the nested shape the
-  // BFF emits — shown in sci-notation + unit (house formatting), not averaged to a mid. The row
-  // name concatenates every cell, including the bid/ask-derived spread (4.5 − 4.1 = 4 × 10⁻¹).
+  // The ATM strike (100) carries quote.{bid 4.1, ask 4.5, volume 1234} — the nested shape the BFF
+  // emits — shown as plain readable numbers (the currency lives in the column header), not averaged
+  // to a mid. The row name concatenates every cell, including the bid/ask-derived spread (4.5−4.1
+  // =0.4) and the thousands-separated volume.
   const atmRow = within(block).getByRole("row", { name: /atm/i });
-  expect(atmRow).toHaveTextContent("4.1 × 10⁰ $");
-  expect(atmRow).toHaveTextContent("4.5 × 10⁰ $");
-  expect(atmRow).toHaveTextContent("4 × 10⁻¹ $");
-  expect(atmRow).toHaveTextContent("1.234 × 10³");
+  expect(atmRow).toHaveTextContent("4.1"); // bid
+  expect(atmRow).toHaveTextContent("4.5"); // ask
+  expect(atmRow).toHaveTextContent("0.4"); // spread = ask − bid
+  expect(atmRow).toHaveTextContent("1,234"); // volume, thousands-separated
 });
 
 test("a strike with no quotes shows '—' for bid/ask/volume (honest gap, no fabricated mid)", async () => {

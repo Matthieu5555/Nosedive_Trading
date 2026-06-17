@@ -6,8 +6,13 @@ export const CHART_COLORS = {
   axis: "#454d45",
   text: "#f2f5ef",
   muted: "#8f978f",
-  positive: "#a8e6ba",
-  negative: "#ef9c92",
+  // The sign/risk colour law (kept byte-identical to the index.css --positive/--negative/--amber/
+  // --blue tokens): up/call/long = positive, down/put/short = negative, ATM/attention = amber,
+  // structural/cold = blue. Every signed number and the vol colorscale below speak this grammar.
+  positive: "#7fd99a",
+  negative: "#f08a7e",
+  amber: "#e8c264",
+  blue: "#79b8d6",
   transparent: "rgba(0,0,0,0)",
 } as const;
 
@@ -19,7 +24,17 @@ export const CHART_FONT_FAMILY =
   'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 export const CHART_FONT_SIZE = 11;
 
-export const VOL_COLORSCALE = "Plasma" as const;
+// The house "Nappe" vol colorscale — cold (low IV, structural cyan) → neutral → hot (high IV,
+// attention coral), built from the sign palette so the 3D surface speaks the same grammar as every
+// number on the page. The ATM band (~0.72 of the displayed range) lights amber. Replaces the stock
+// Plasma ramp, which carried no domain meaning and read as off-the-shelf.
+export const VOL_COLORSCALE: Array<[number, string]> = [
+  [0, "#1c3a45"],
+  [0.25, "#3f7e93"],
+  [0.5, "#6f8a7c"],
+  [0.72, "#e8c264"],
+  [1, "#f08a7e"],
+];
 
 const PLOT_AXIS_THEME = {
   gridcolor: CHART_COLORS.grid,

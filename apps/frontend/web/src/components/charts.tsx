@@ -39,6 +39,41 @@ export function PriceChart({ data }: { data: PriceHistoryResponse }) {
 
 const SURFACE_LABEL = "Implied-volatility surface (vol vs log-moneyness vs maturity)";
 
+// The ATM ridge — the spine of the surface: a thin amber line tracing the at-the-money implied vol
+// (log-moneyness nearest 0) across every maturity. It is the line a vol trader reads first, and the
+// one bespoke gesture that makes the nappe "ours". Appended as the SECOND trace (never the first —
+// the Plot test mock reads data[0].z). Null/holey ATM cells are skipped; needs ≥2 points to draw.
+function atmRidgeTrace(cleaned: ReturnType<typeof cleanDenseSurface>): Data | null {
+  const k = cleaned.logMoneyness;
+  if (k.length === 0) return null;
+  let atmIdx = 0;
+  for (let i = 1; i < k.length; i += 1) {
+    if (Math.abs(k[i]) < Math.abs(k[atmIdx])) atmIdx = i;
+  }
+  const x: number[] = [];
+  const y: number[] = [];
+  const z: number[] = [];
+  cleaned.maturityYears.forEach((maturity, i) => {
+    const iv = cleaned.impliedVol[i]?.[atmIdx];
+    if (typeof iv === "number" && Number.isFinite(iv)) {
+      x.push(k[atmIdx]);
+      y.push(maturity);
+      z.push(iv);
+    }
+  });
+  if (z.length < 2) return null;
+  return {
+    type: "scatter3d",
+    mode: "lines",
+    x,
+    y,
+    z,
+    name: "ATM",
+    line: { color: CHART_COLORS.amber, width: 5 },
+    hoverinfo: "skip",
+  } as Data;
+}
+
 // Preferred path: the dense surface reconstructed from the fitted SVI slices (the blueprint's
 // regularized grid), served by the BFF. It is already a smooth (maturity × log-moneyness) lattice
 // of implied vol, so it plots as the smooth fitted model — no kinks from a sparse delta-band
@@ -57,7 +92,7 @@ function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
   );
   const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
   // The colour scale tops out at the DISPLAY ceiling (the live SX5E band) so the skew/term reads
-  // across the full Plasma ramp; a rare in-band-but-tall slice still draws (the z-axis spans wider),
+  // across the full house ramp; a rare in-band-but-tall slice still draws (the z-axis spans wider),
   // it just saturates the top colour rather than washing every normal cell into the lower ramp.
   const trace = {
     type: "surface",
@@ -69,13 +104,14 @@ function DenseVolSurface({ surface }: { surface: SurfaceDense }) {
     cmin: 0,
     cmax: SURFACE_DISPLAY_Z_MAX,
     connectgaps: false,
-    colorbar: { title: { text: "IV" } },
+    colorbar: { title: { text: "IV" }, tickformat: ".0%" },
   } as Data;
+  const ridge = atmRidgeTrace(cleaned);
   return (
     <Plot
       label={note ? `${SURFACE_LABEL} — ⚠ ${note}` : SURFACE_LABEL}
       height={480}
-      data={[trace]}
+      data={ridge ? [trace, ridge] : [trace]}
       layout={{
         scene: {
           xaxis: { title: { text: "log-moneyness" } },
@@ -159,7 +195,7 @@ export function VolSurface({
     cmin: 0,
     cmax: SURFACE_DISPLAY_Z_MAX,
     connectgaps: false,
-    colorbar: { title: { text: "IV" } },
+    colorbar: { title: { text: "IV" }, tickformat: ".0%" },
   } as Data;
   return (
     <Plot

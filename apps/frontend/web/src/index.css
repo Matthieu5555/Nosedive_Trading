@@ -48,10 +48,10 @@
   --text: #f2f5ef;
   --muted: #8f978f;
   --faint: #5f6860;
-  --positive: #a8e6ba;
-  --negative: #ef9c92;
-  --amber: #e5c36a;
-  --blue: #86b9ff;
+  --positive: #7fd99a;
+  --negative: #f08a7e;
+  --amber: #e8c264;
+  --blue: #79b8d6;
   --radius: 8px;
   /* One UI font stack for the whole app. No web font is bundled, so leading with an uninstalled
    * "Basis Grotesque"/"Inter" only made elements fall back inconsistently — every surface now
@@ -295,6 +295,13 @@ td span {
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: thin;
+  /* Below ~390px the four triggers overflow the strip; snap + a little inline padding keep the
+     active pill from resting half-clipped at the edge. */
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 8px;
+}
+.market-tabs__list [role="tab"] {
+  scroll-snap-align: start;
 }
 
 @media (min-width: 981px) and (max-width: 1180px) {
@@ -329,6 +336,12 @@ td span {
 
 .page-header {
   min-height: 58px;
+}
+
+/* The page intro lede (the paragraph right after the header) — cap the measure so it doesn't run
+   to ~120ch across a wide desktop; matches the existing 70-72ch convention used per-tab. */
+.page-header + p {
+  max-width: 75ch;
 }
 
 .eyebrow,
@@ -685,6 +698,9 @@ h3 {
 
 /* The scorecards: the four-number instant read. A responsive grid of equal cards — level / skew /
    convexity / RV−IV — index-keyed and side-agnostic. The value is the largest thing in each card. */
+/* ⓪ The scorecard band echoes the vol surface — a whisper-faint cold→hot gradient (the house Nappe
+   colorscale: cyan → neutral → amber → coral) behind the cards, so the headline reads as a slice of
+   the surface. The cards stay near-opaque; only a few % of the gradient bleeds through the edges. */
 .scorecards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -692,7 +708,15 @@ h3 {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--border);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(63, 126, 147, 0.06),
+      rgba(111, 138, 124, 0.05),
+      rgba(232, 194, 100, 0.06),
+      rgba(240, 138, 126, 0.06)
+    ),
+    var(--border);
 }
 @media (max-width: 800px) {
   .scorecards {
@@ -704,7 +728,7 @@ h3 {
   flex-direction: column;
   gap: 3px;
   padding: 10px 14px;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 93%, transparent);
 }
 .scorecard__label {
   margin: 0;

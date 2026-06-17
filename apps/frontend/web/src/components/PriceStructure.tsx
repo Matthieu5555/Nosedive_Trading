@@ -1,20 +1,22 @@
 import { ALL_MATURITIES, type AnalyticsMaturity, type AnalyticsPoint } from "../api";
-import { sci, sciUnit, UNITS, withCurrency } from "../lib/format";
+import { number, UNITS, withCurrency } from "../lib/format";
 
-function quoteCell(value: number | null | undefined, unit: string): string {
+// Prices and the spread render as plain fixed decimals (the currency lives once in the column
+// header, not on every cell) — a strike ladder is read by scanning, which scientific notation
+// (4.81 × 10³) defeats. A null quote stays the honest "—", never a fabricated mid.
+function priceCell(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return sciUnit(value, unit);
+  return number(value, 2);
 }
 
 function volumeCell(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return sci(value);
+  return number(value, 0);
 }
 
 function spreadCell(
   bid: number | null | undefined,
   ask: number | null | undefined,
-  unit: string,
 ): string {
   if (
     bid === null ||
@@ -26,7 +28,7 @@ function spreadCell(
   ) {
     return "—";
   }
-  return sciUnit(ask - bid, unit);
+  return number(ask - bid, 2);
 }
 
 export function PriceStructure({
@@ -99,13 +101,13 @@ export function PriceStructure({
             <tbody>
               {rows.map((point) => (
                 <tr key={`${point.delta_band}-${point.strike}`}>
-                  <th scope="row">{sci(point.strike)}</th>
+                  <th scope="row">{number(point.strike, 0)}</th>
                   <td>{point.delta_band}</td>
-                  <td>{quoteCell(point.quote?.bid, priceUnit)}</td>
-                  <td>{quoteCell(point.quote?.ask, priceUnit)}</td>
-                  <td>{spreadCell(point.quote?.bid, point.quote?.ask, priceUnit)}</td>
+                  <td>{priceCell(point.quote?.bid)}</td>
+                  <td>{priceCell(point.quote?.ask)}</td>
+                  <td>{spreadCell(point.quote?.bid, point.quote?.ask)}</td>
                   <td>{volumeCell(point.quote?.volume)}</td>
-                  <td>{quoteCell(point.price, priceUnit)}</td>
+                  <td>{priceCell(point.price)}</td>
                 </tr>
               ))}
             </tbody>

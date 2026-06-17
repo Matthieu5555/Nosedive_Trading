@@ -103,11 +103,11 @@ test("Onglet-1 read flow: underlying → nappe → tenor → smile/greeks/price-
   const rows = priceStructure.locator("tbody tr");
   await expect(rows).toHaveCount(3);
   const atmRow = rows.filter({ hasText: "atm" });
-  // Values render through lib/format `sci` (6 sig figs, scientific): 4.1 → "4.1 × 10⁰",
-  // 1234 → "1.234 × 10³". Assert the mantissa substring of each.
+  // Values render as plain readable numbers (the currency lives in the column header): bid 4.1,
+  // ask 4.5, volume thousands-separated (1234 → "1,234").
   await expect(atmRow).toContainText("4.1"); // bid
   await expect(atmRow).toContainText("4.5"); // ask
-  await expect(atmRow).toContainText("1.234"); // volume = 1234 → "1.234 × 10³"
+  await expect(atmRow).toContainText("1,234"); // volume = 1234 → "1,234"
   // The unquoted put strike reads as an honest gap, never a fabricated mid.
   await expect(rows.filter({ hasText: "30dp" })).toContainText("—");
 

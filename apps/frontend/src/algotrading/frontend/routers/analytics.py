@@ -26,7 +26,7 @@ from algotrading.infra.rates import (
     implied_riskfree_spread,
 )
 from algotrading.infra.surfaces import reconstruct_dense_surface
-from algotrading.infra.universe import load_index_registry
+from algotrading.infra.universe import IndexRegistryError, load_index_registry
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -149,7 +149,7 @@ def _load_rate_context(
         currency = registry.get(underlying).currency
         platform = load_platform_config(ctx.configs_dir)  # type: ignore[attr-defined]
         currency_cfg = platform.rates.for_currency(currency)
-    except (ConfigError, ConfigFieldError, KeyError):
+    except (ConfigError, ConfigFieldError, IndexRegistryError, KeyError):
         return None
     rows: list[RiskFreeRatePoint] = ctx.store.read(  # type: ignore[attr-defined]
         "rates", trade_date=trade_date, underlying=currency

@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.actor import ActorOutputs, persist_outputs, run_analytics
+from algotrading.infra.actor.basket import DEFAULT_PROVIDER
 from algotrading.infra.actor.valuation_join import default_exercise_style
 from algotrading.infra.collectors import replay_day
 from algotrading.infra.contracts import (
@@ -16,6 +17,7 @@ from algotrading.infra.contracts import (
     MarketStateSnapshot,
     Position,
     PricingResult,
+    ProjectedOptionAnalytics,
     RiskAggregate,
     ScenarioResult,
     SurfaceGrid,
@@ -62,6 +64,8 @@ def reconstruct_day(
     calc_ts: datetime,
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
     moneyness_buckets: tuple[float, ...] | None = None,
+    provider: str = DEFAULT_PROVIDER,
+    session_open: bool = False,
     version: str | None = None,
     persist: bool = True,
     correlation_id: str = "",
@@ -83,6 +87,11 @@ def reconstruct_day(
             reason="no stored raw partition for this trade date",
         )
 
+    # ``provider`` + ``session_open=False`` MUST mirror the live EOD ``_analytics`` call: the
+    # projection (``projected_option_analytics`` — the front's vol nappe) short-circuits to empty
+    # when ``provider is None`` (``driver._build_projected_analytics``). Reconstruct previously
+    # passed neither, so recompute-from-raw silently produced zero projected + zero pricing
+    # (blueprint Part XV breach: not all derived recomputed from raw).
     outputs = run_analytics(
         events,
         positions,
@@ -94,6 +103,8 @@ def reconstruct_day(
         calc_ts=calc_ts,
         exercise_style_for=exercise_style_for,
         moneyness_buckets=moneyness_buckets,
+        session_open=session_open,
+        provider=provider,
     )
 
     count = _record_count(outputs)
@@ -136,6 +147,8 @@ def reconstruct_range(
     calc_ts_for: Callable[[date], datetime],
     exercise_style_for: Callable[[InstrumentKey], str] = default_exercise_style,
     moneyness_buckets: tuple[float, ...] | None = None,
+    provider: str = DEFAULT_PROVIDER,
+    session_open: bool = False,
     version: str | None = None,
     persist: bool = True,
     correlation_id: str = "",
@@ -162,6 +175,8 @@ def reconstruct_range(
             calc_ts=calc_ts_for(trade_date),
             exercise_style_for=exercise_style_for,
             moneyness_buckets=moneyness_buckets,
+            provider=provider,
+            session_open=session_open,
             version=version,
             persist=persist,
             correlation_id=correlation_id,
@@ -194,6 +209,7 @@ def _persist_outputs(
         (PricingResult, outputs.pricings),
         (RiskAggregate, outputs.risk_aggregates),
         (ScenarioResult, outputs.scenarios),
+        (ProjectedOptionAnalytics, outputs.projected_analytics),
     )
     for contract_type, records in tables:
         if not records:
@@ -211,6 +227,7 @@ def _record_count(outputs: ActorOutputs) -> int:
         + len(outputs.pricings)
         + len(outputs.risk_aggregates)
         + len(outputs.scenarios)
+        + len(outputs.projected_analytics)
     )
 
 

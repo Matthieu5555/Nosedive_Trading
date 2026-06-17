@@ -329,6 +329,45 @@ def test_replay_vs_live_names_the_divergent_table_when_they_differ(
     assert iv_agreement.divergent_keys
 
 
+def test_reconstruct_threads_provider_and_eod_session_to_run_analytics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: recompute-from-raw must reproduce the front's projection.
+
+    ``projected_option_analytics`` (the Onglet-1 vol nappe) + ``pricing_results`` short-circuit to
+    EMPTY inside ``driver._build_projected_analytics`` when ``provider is None``. The live EOD passes
+    ``provider="IBKR"`` + ``session_open=False``; ``reconstruct_day`` historically passed neither, so a
+    recompute silently dropped 20k+ projected rows (blueprint Part XV breach). Pin the wiring at the
+    seam so it can never be dropped again — independent of whether a given fixture's forwards project.
+    """
+    import algotrading.infra.orchestration.reconstruction.batch as batch
+    from algotrading.infra.actor.basket import DEFAULT_PROVIDER
+
+    chain = get_fixture("synthetic_known_answer")
+    store = ParquetStore(tmp_path / "store")
+    trade_date = date(2026, 3, 2)
+    _seed_raw(store, chain, trade_date)
+    instruments, masters = _instruments_and_masters(chain, trade_date)
+
+    captured: dict[str, object] = {}
+    real_run_analytics = batch.run_analytics
+
+    def _spy(*args: object, **kwargs: object) -> object:
+        captured.update(kwargs)
+        return real_run_analytics(*args, **kwargs)
+
+    monkeypatch.setattr(batch, "run_analytics", _spy)
+
+    reconstruct_day(
+        store, trade_date, [], instruments=instruments, masters=masters,
+        config=_config(), config_hashes={"cfg": "cfg"},
+        as_of=_as_of(trade_date), calc_ts=_calc_ts(trade_date),
+    )
+
+    assert captured.get("provider") == DEFAULT_PROVIDER, "reconstruct must pass the EOD provider"
+    assert captured.get("session_open") is False, "reconstruct must run in the EOD (closed) session"
+
+
 def test_an_inverted_date_range_is_refused(tmp_path: Path) -> None:
     chain = get_fixture("synthetic_known_answer")
     store = ParquetStore(tmp_path / "store")

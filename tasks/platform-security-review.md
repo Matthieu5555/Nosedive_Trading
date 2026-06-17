@@ -27,12 +27,13 @@
 > (`cp_rest_lst.py`/`cp_rest_oauth.py`); pycryptodome is now in `packages/infra-ibkr/pyproject.toml`;
 > and a secret-scan CI exists (`.pre-commit-config.yaml` + `scan.yml`). The **3B live-transmit path
 > still does not exist** (transmit grep clean), so this review's core purpose remains live.
-> **The one gating MEDIUM is still UNFIXED:** the booking audit must be write-ahead of the fill write,
-> but `commit.py:206` appends fills *before* `commit.py:216` appends the audit (the block path is
-> correctly audited-first; only the commit path inverts). Carry M2 forward as the live gate against
-> [execution-order-sign-and-send](execution-order-sign-and-send.md) (3B). See
-> [platform-security-review-report.md](archive/platform-security-review-report.md) (archived as the
-> finished verdict record).
+> **The one gating MEDIUM (M2) is now CLOSED (2026-06-17):** the booking commit path now appends the
+> audit (`commit.py:215`) write-ahead of the fills (`commit.py:216`), mirroring the block path's
+> audit-first discipline, pinned by `test_the_commit_path_persists_the_audit_before_the_fills`. The
+> standing live-gate against [execution-order-sign-and-send](execution-order-sign-and-send.md) (3B) is
+> now only the §2 review of the 3B sign-and-send seam once it lands. See the refreshed verdict
+> [platform-security-review-2026-06-17.md](platform-security-review-2026-06-17.md) (and the archived
+> [platform-security-review-report.md](archive/platform-security-review-report.md)).
 
 - **State going in (audited 2026-06-07 — see baseline refresh above):** the dangerous path is **not built yet**, which is why this
   runs ahead of it. `packages/execution` is one docstring line; no `place_order`/`transmit`/`reply`

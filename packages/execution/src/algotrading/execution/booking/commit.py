@@ -203,7 +203,6 @@ def book(
             audit_log=audit_log,
         )
 
-    ledger.append_many(fills)
     audit = _audit_record(
         ticket,
         decision=COMMIT,
@@ -214,4 +213,5 @@ def book(
         block_reason=None,
     )
     audit_log.append(audit)
+    ledger.append_many(fills)
     return BookingCommitted(fills=fills, audit=audit)

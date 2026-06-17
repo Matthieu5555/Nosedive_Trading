@@ -258,6 +258,61 @@ def test_an_unresolvable_leg_fails_closed_with_no_fill_written(
     assert records[0].block_reason == UNRESOLVABLE_LEG
 
 
+class _RecordingLedger:
+
+    def __init__(self, tape: list[str]) -> None:
+        self._inner = InMemoryFillsLedger()
+        self._tape = tape
+
+    def append(self, fill: Fill) -> None:
+        self._tape.append("fills")
+        self._inner.append(fill)
+
+    def append_many(self, fills: object) -> None:
+        self._tape.append("fills")
+        self._inner.append_many(fills)  # type: ignore[arg-type]
+
+    def read(
+        self, *, trade_date: date | None = None, underlying: str | None = None
+    ) -> tuple[Fill, ...]:
+        return self._inner.read(trade_date=trade_date, underlying=underlying)
+
+
+class _RecordingAuditLog:
+
+    def __init__(self, tape: list[str]) -> None:
+        self._inner = InMemoryBookingAuditLog()
+        self._tape = tape
+
+    def append(self, record: object) -> None:
+        self._tape.append("audit")
+        self._inner.append(record)  # type: ignore[arg-type]
+
+    def read(self, **kwargs: object) -> object:
+        return self._inner.read(**kwargs)  # type: ignore[arg-type]
+
+
+def test_the_commit_path_persists_the_audit_before_the_fills(
+    make_ticket: Callable[..., OrderTicket],
+    reference_resolver: Callable[..., ResolvedLeg],
+    chain: dict[str, float],
+    verify_gate: Callable[[str], object],
+) -> None:
+    tape: list[str] = []
+    ticket = make_ticket(basket_id="bsk-7", two_legs=True)
+    ledger = _RecordingLedger(tape)
+    audit_log = _RecordingAuditLog(tape)
+
+    result = _book(
+        ticket, BOOKING_PASSWORD, ledger=ledger, audit_log=audit_log,
+        resolver=reference_resolver, chain=chain, verify_gate=verify_gate, booking_id="bkg-7",
+    )
+
+    assert isinstance(result, BookingCommitted)
+    assert tape == ["audit", "fills"]
+    assert tape.index("audit") < tape.index("fills")
+
+
 def test_the_booking_module_imports_no_broker_or_order_submit_symbol() -> None:
     import importlib
     import pkgutil

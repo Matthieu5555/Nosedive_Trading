@@ -34,6 +34,7 @@ from .s3_gamma import (
     GammaMarketData,
     GammaStrategy,
 )
+from .s5_calendar_carry import CalendarCarryConfig, CalendarCarryStrategy
 from .signal_data import signal_snapshot_from_store
 from .signals import (
     SignalReading,
@@ -89,4 +90,6 @@ __all__ = [
     "gamma_strategy",
     "PutLineStrategy",
     "PutLineConfig",
+    "CalendarCarryStrategy",
+    "CalendarCarryConfig",
 ]

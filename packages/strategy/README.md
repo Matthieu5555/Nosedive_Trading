@@ -193,6 +193,37 @@ position-side proxy until the realized-vs-implied kill reading lands. S3 and S1 
 mode (low realized vol) **on purpose** — the §3 overlap is held so the 2D book/correlation view
 must surface it; it is not "fixed" here.
 
+## S5 — the calendar-carry strategy (course p.42–45, the optional fifth)
+
+`s5_calendar_carry.py` is the §3 **optional** fifth strategy (TARGET §3 S5). It harvests
+**term-structure carry**: in contango the front month decays faster than the back at the **same
+strike**, so a **short-front / long-back** calendar banks the theta differential while the long
+back leg carries the vega. It is the same shape as S2 — pure over a `CalendarCarryConfig`, no
+external market-data seam, because the structure is a fixed two-leg same-strike spread rather
+than a sized hedge.
+
+- **`CalendarCarryStrategy`** — pure over an injected `CalendarCarryConfig` (`index`,
+  `front_tenor`, `back_tenor`, `strike_band`, `entry_slope_threshold`, `contracts`,
+  `surface_side`, optional `exit_theta_floor`; the config rejects equal front/back tenors).
+  Entry reads the **term-structure slope** the signal layer publishes (the front already renders
+  the term-structure panel) and fires when the slope is at or above the threshold — contango,
+  front decaying faster than back. `construct` emits the two-leg basket: a **short** front-tenor
+  option and a **long** back-tenor option at the *same* `strike_band` and `surface_side`. The
+  declared §3 contract is positive theta, long back vega, short gamma, ~flat delta; the kill is
+  **front-month event repricing** that inverts the term structure (the front bid above the back,
+  the carry reversing). Exit expresses that kill on the position side: a configurable
+  `exit_theta_floor` flattens when **net theta** falls to/through the floor (the front decay no
+  longer outpaces the back); with no floor it defers to the execution kill switch, like S2.
+  `rebalance` is a no-op — the same-strike calendar nets near delta-flat, so it carries no band
+  hedge.
+- **Calendar parity (course p.45) is relied on, not re-derived.** The consistency identity is
+  the surface layer's no-calendar-arbitrage condition — total variance is non-decreasing in
+  maturity, `w(k, T_back) ≥ w(k, T_front)` at the shared strike (blueprint Eq. 21,
+  `∂w/∂T ≥ 0`), enforced by `infra.surfaces.calendar_violations`. The S5 tests assert the spread
+  the object builds respects it (no violation in the contango entry regime; a violation exactly
+  when the term structure inverts — the kill regime), checking *against* the pricing layer's
+  identity rather than re-implementing it.
+
 ## The research backtester (`backtest/`, course p.129-130 "2021-vs-2008")
 
 `backtest/` is the **research backtester** (TARGET §5.7 / §7.8) — "does this idea have edge?".

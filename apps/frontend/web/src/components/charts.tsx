@@ -1,6 +1,12 @@
 import type { Data } from "plotly.js";
 
-import { type AnalyticsMaturity, type PriceHistoryResponse, type SurfaceDense } from "../api";
+import {
+  ALL_MATURITIES,
+  type AnalyticsMaturity,
+  type AnalyticsPoint,
+  type PriceHistoryResponse,
+  type SurfaceDense,
+} from "../api";
 import { cleanDenseSurface, cleanSmile, flaggedNote } from "../lib/volRobust";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
@@ -260,4 +266,96 @@ export function SmileChart({
     );
   }
   return <Plot label={label} height={360} data={traces} layout={SMILE_LAYOUT} />;
+}
+
+const GREEKS_SHAPE_HEAD = "raw Greeks vs strike; gamma/vega bell, delta S-curve (where it peaks)";
+
+const GREEKS_SHAPE_LAYOUT = {
+  xaxis: { title: { text: "strike" }, tickformat: ".2s" },
+  yaxis: { title: { text: "delta (S-curve)" }, zeroline: true, tickformat: ".2f" },
+  yaxis2: {
+    title: { text: "gamma / vega (bell)" },
+    overlaying: "y" as const,
+    side: "right" as const,
+    showgrid: false,
+  },
+  legend: { orientation: "h" as const, y: -0.22 },
+  hovermode: "closest" as const,
+};
+
+export function GreeksShapeCurves({
+  maturities,
+  maturityLabel,
+}: {
+  maturities: AnalyticsMaturity[];
+  maturityLabel?: string;
+}) {
+  const label = `Greek profiles — ${GREEKS_SHAPE_HEAD}`;
+  if (maturities.length === 0) {
+    return (
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p>No Greek profiles for this tenor yet.</p>
+      </figure>
+    );
+  }
+
+  const isAll = maturityLabel === ALL_MATURITIES || maturityLabel === undefined;
+  const frontMaturity = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years)[0];
+  const maturity = isAll
+    ? frontMaturity
+    : (maturities.find((m) => m.label === maturityLabel) ?? frontMaturity);
+
+  const points: AnalyticsPoint[] = [...maturity.points].sort((a, b) => a.strike - b.strike);
+  if (points.length === 0) {
+    return (
+      <figure aria-label={`${label} — ${maturity.label}`} className="plot">
+        <figcaption>
+          Greek profiles — {maturity.label} ({GREEKS_SHAPE_HEAD})
+        </figcaption>
+        <p>No strikes for this tenor.</p>
+      </figure>
+    );
+  }
+
+  const strikes = points.map((p) => p.strike);
+  const deltaCurve: Data = {
+    type: "scatter",
+    mode: "lines+markers",
+    name: "delta",
+    x: strikes,
+    y: points.map((p) => p.metrics.delta.raw),
+    yaxis: "y",
+    line: { color: CHART_COLORS.positive, width: 2 },
+    marker: { color: CHART_COLORS.positive, size: 4 },
+  };
+  const gammaCurve: Data = {
+    type: "scatter",
+    mode: "lines+markers",
+    name: "gamma",
+    x: strikes,
+    y: points.map((p) => p.metrics.gamma.raw),
+    yaxis: "y2",
+    line: { color: CHART_COLORS.muted, width: 2 },
+    marker: { color: CHART_COLORS.muted, size: 4 },
+  };
+  const vegaCurve: Data = {
+    type: "scatter",
+    mode: "lines+markers",
+    name: "vega",
+    x: strikes,
+    y: points.map((p) => p.metrics.vega.raw),
+    yaxis: "y2",
+    line: { color: CHART_COLORS.negative, width: 2, dash: "dot" },
+    marker: { color: CHART_COLORS.negative, size: 4 },
+  };
+
+  return (
+    <Plot
+      label={`Greek profiles — ${maturity.label} (${GREEKS_SHAPE_HEAD})`}
+      height={360}
+      data={[deltaCurve, gammaCurve, vegaCurve]}
+      layout={GREEKS_SHAPE_LAYOUT}
+    />
+  );
 }

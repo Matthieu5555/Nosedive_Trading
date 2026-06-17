@@ -653,7 +653,11 @@ h3 {
 .scorecards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--border);
 }
 @media (max-width: 800px) {
   .scorecards {
@@ -663,11 +667,9 @@ h3 {
 .scorecard {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel-soft, #121412);
+  gap: 3px;
+  padding: 10px 14px;
+  background: var(--panel);
 }
 .scorecard__label {
   margin: 0;
@@ -678,7 +680,7 @@ h3 {
 }
 .scorecard__value {
   margin: 0;
-  font-size: 26px;
+  font-size: 22px;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
@@ -694,6 +696,26 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+.tenor-panel__greeks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .tenor-panel__greeks {
+    grid-template-columns: 1fr;
+  }
+}
+.price-structure-scroll {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.price-structure .panel-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 .projection-gap {
   margin: 0;

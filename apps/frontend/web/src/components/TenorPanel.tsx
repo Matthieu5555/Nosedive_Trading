@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 
 import { type AnalyticsMaturity, TENOR_GRID } from "../api";
-import { SmileChart } from "./charts";
+import { GreeksShapeCurves, SmileChart } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
+import { PriceStructure } from "./PriceStructure";
 
 // The reference tenor the page opens on (the blueprint signal tenor). When 3m wasn't captured the
 // selector still opens on it and shows the projection gap, so the default is honest rather than
@@ -65,11 +66,19 @@ export function TenorPanel({
       ) : (
         <div className="tenor-panel__body">
           <SmileChart maturities={maturities} maturityLabel={selected.label} />
-          <DollarGreeksByMaturity
+          <PriceStructure
             maturities={maturities}
             maturityLabel={selected.label}
             currency={currency}
           />
+          <div className="tenor-panel__greeks">
+            <DollarGreeksByMaturity
+              maturities={maturities}
+              maturityLabel={selected.label}
+              currency={currency}
+            />
+            <GreeksShapeCurves maturities={maturities} maturityLabel={selected.label} />
+          </div>
         </div>
       )}
     </article>

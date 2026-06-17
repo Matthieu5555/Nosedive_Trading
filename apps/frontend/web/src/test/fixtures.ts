@@ -463,6 +463,65 @@ export const ANALYTICS_SCORECARD: AnalyticsResponse = {
   surface: null,
 };
 
+const _quotedPoint = (
+  band: string,
+  target: number,
+  strike: number,
+  iv: number,
+  bid: number | null,
+  ask: number | null,
+  volume: number | null,
+) => ({
+  delta_band: band,
+  target_delta: target,
+  log_moneyness: 0,
+  strike,
+  forward_price: 100,
+  implied_vol: iv,
+  total_variance: 0,
+  price: bid !== null && ask !== null ? (bid + ask) / 2 : 1.0,
+  bid,
+  ask,
+  volume,
+  metrics: {
+    delta: { raw: target, dollar: target * 100, unit: "$ per $1 of underlying" },
+    gamma: { raw: 0.01, dollar: 4.0, unit: "$ per 1% move" },
+    vega: { raw: 0.5, dollar: 0.5, unit: "$ per 1 vol point" },
+    theta: { raw: -0.01, dollar: -0.00002, unit: "$ per calendar day" },
+    rho: { raw: 0.08, dollar: 0.001, unit: "$ per 1% rate" },
+  },
+  provenance: PROV,
+});
+
+// A 3m slice carrying per-strike bid/ask/volume on each point (A3's additive fields) so the
+// price-structure block can be asserted against the spread/size, never a mid. The 80 strike has
+// no quotes (null) to prove the "—" honest gap.
+export const ANALYTICS_QUOTED: AnalyticsResponse = {
+  underlying: "SPX",
+  trade_date: "2026-05-29",
+  n_maturities: 1,
+  maturities: [
+    {
+      maturity_years: 0.25,
+      tenor_label: "3m",
+      label: "3m (0.250y)",
+      smile: {
+        axis_type: "delta",
+        deltas: [-0.3, 0.0, 0.3],
+        implied_vols: [0.32, 0.2, 0.24],
+        log_moneyness: [-0.2, 0.0, 0.2],
+      },
+      surface_slice: null,
+      points: [
+        _quotedPoint("30dp", -0.3, 80, 0.32, null, null, null),
+        _quotedPoint("atm", 0.0, 100, 0.2, 4.1, 4.5, 1234),
+        _quotedPoint("30dc", 0.3, 120, 0.24, 2.2, 2.6, 87),
+      ],
+    },
+  ],
+  surface: null,
+};
+
 export const ANALYTICS_AAA_MONEYNESS_FALLBACK: AnalyticsResponse = {
   underlying: "AAA",
   trade_date: "2026-05-29",

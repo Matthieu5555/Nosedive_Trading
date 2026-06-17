@@ -179,6 +179,9 @@ export interface AnalyticsPoint {
   implied_vol: number;
   total_variance: number;
   price: number;
+  bid?: number | null;
+  ask?: number | null;
+  volume?: number | null;
   metrics: {
     delta: DollarMetric;
     gamma: DollarMetric;

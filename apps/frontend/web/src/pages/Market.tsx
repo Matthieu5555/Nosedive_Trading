@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   type AnalyticsResponse,
-  type ConstituentsResponse,
   type IndicesResponse,
   type PriceHistoryResponse,
   type RecordedDatesResponse,
@@ -10,13 +9,14 @@ import {
 } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { PriceChart, VolSurface } from "../components/charts";
-import { ConstituentTable } from "../components/ConstituentTable";
+import { CoveragePanel } from "../components/CoverageTable";
 import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
 export function MarketPage() {
@@ -31,9 +31,9 @@ export function MarketPage() {
     }
   }, [indexOptions, index]);
 
-  // The chosen as-of fetch. The picker now lists ONE canonical close per trade_date (the newest run,
-  // collapsed serving-side in /api/recorded-dates), so a same-day re-fetch shows once, latest wins.
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  const [coverageOpen, setCoverageOpen] = useState(false);
 
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
@@ -46,8 +46,6 @@ export function MarketPage() {
   const effectiveAsOf = selectedFetch?.date ?? null;
   const selectedFetchKey = selectedFetch ? (selectedFetch.run_id ?? selectedFetch.date) : null;
 
-  // The page is INDEX-KEYED ONLY (ADR 0051): every analytics/price read is the index itself; the
-  // constituent table below is display-only and never routes a member into the surface.
   const analytics = useFetch<AnalyticsResponse>(
     index && effectiveAsOf
       ? `/api/analytics?underlying=${encodeURIComponent(index)}&trade_date=${encodeURIComponent(effectiveAsOf)}` +
@@ -59,19 +57,11 @@ export function MarketPage() {
       ? `/api/price-history?underlying=${encodeURIComponent(index)}&end=${encodeURIComponent(effectiveAsOf)}`
       : "",
   );
-  // The persisted signal layer for the index, as-of: RV−IV for the scorecard and ρ̄ for the
-  // dispersion strip — both read straight off /api/signals (the BFF computed them; we never recompute).
   const signals = useFetch<SignalsResponse>(
     index && effectiveAsOf
       ? `/api/signals?underlying=${encodeURIComponent(index)}&trade_date=${encodeURIComponent(effectiveAsOf)}`
       : "",
   );
-  const constituents = useFetch<ConstituentsResponse>(
-    index && effectiveAsOf
-      ? `/api/constituents?index=${encodeURIComponent(index)}&as_of=${encodeURIComponent(effectiveAsOf)}`
-      : "",
-  );
-  const constituentList = useMemo(() => constituents.data?.constituents ?? [], [constituents.data]);
 
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
 
@@ -90,6 +80,7 @@ export function MarketPage() {
             onChange={(event) => {
               setIndex(event.target.value);
               setSelectedKey(null);
+              setSelectedMember(null);
             }}
           >
             {indexOptions.map((item) => (
@@ -106,9 +97,6 @@ export function MarketPage() {
         </div>
       </div>
 
-      {/* The index list gates the whole page: if it fails, nothing below can render, so its error
-          must front the page rather than leave a dead screen. Indices error takes precedence; once
-          the index resolves, the recorded-dates error fronts here instead. */}
       <AsyncBlock
         loading={indices.loading || recorded.loading}
         error={indices.error ?? recorded.error}
@@ -131,14 +119,27 @@ export function MarketPage() {
                   </span>
                 </div>
 
-                {/* 1 — Price (context). */}
+                <ErrorBoundary label="Scorecards">
+                  <AsyncBlock
+                    loading={analytics.loading || signals.loading}
+                    error={analytics.error}
+                  >
+                    {analytics.data && (
+                      <Scorecards
+                        maturities={analytics.data.maturities}
+                        ivVsRealized={signals.data?.by_kind?.iv_vs_realized?.[0] ?? null}
+                      />
+                    )}
+                  </AsyncBlock>
+                </ErrorBoundary>
+
                 <article className="panel" aria-label={`${index} daily history`}>
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
                       <h2>Price</h2>
                     </div>
-                    <span className="status">daily OHLC</span>
+                    <span className="status">index daily OHLC</span>
                   </div>
                   <ErrorBoundary label="Price">
                     <AsyncBlock loading={price.loading} error={price.error}>
@@ -147,29 +148,15 @@ export function MarketPage() {
                   </ErrorBoundary>
                 </article>
 
-                {/* 2 — Scorecards (the instant read). RV−IV from /api/signals; the smile-derived
-                    level/skew/convexity from the projected analytics at the reference tenor. */}
-                <article className="panel" aria-label="Volatility scorecards">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{index}</p>
-                      <h2>Scorecards</h2>
-                    </div>
-                    <span className="status">the instant read</span>
-                  </div>
-                  <ErrorBoundary label="Scorecards">
-                    <AsyncBlock loading={analytics.loading || signals.loading} error={analytics.error}>
-                      {analytics.data && (
-                        <Scorecards
-                          maturities={analytics.data.maturities}
-                          ivVsRealized={signals.data?.by_kind?.iv_vs_realized?.[0] ?? null}
-                        />
-                      )}
-                    </AsyncBlock>
-                  </ErrorBoundary>
-                </article>
+                <ErrorBoundary label="Constituents">
+                  <ConstituentsWorkspace
+                    index={index}
+                    asOf={effectiveAsOf}
+                    selected={selectedMember}
+                    onSelect={setSelectedMember}
+                  />
+                </ErrorBoundary>
 
-                {/* 3 — 3D nappe (the all-maturity gestalt), side-agnostic. */}
                 <article className="panel" aria-label="Volatility surface">
                   <div className="panel-heading">
                     <div>
@@ -190,7 +177,6 @@ export function MarketPage() {
                   </ErrorBoundary>
                 </article>
 
-                {/* 4 — ONE tenor selector → {smile + greeks table} for that tenor. */}
                 <ErrorBoundary label="Tenor view">
                   <AsyncBlock loading={analytics.loading} error={analytics.error}>
                     {analytics.data && (
@@ -199,7 +185,6 @@ export function MarketPage() {
                   </AsyncBlock>
                 </ErrorBoundary>
 
-                {/* 5 — ρ̄ / dispersion (realized-vol implied correlation), the secondary strip. */}
                 <article className="panel" aria-label="Dispersion">
                   <div className="panel-heading">
                     <div>
@@ -220,23 +205,29 @@ export function MarketPage() {
                   </ErrorBoundary>
                 </article>
 
-                {/* Secondary: constituents (weight + price), display-only and index-keyed — a member
-                    row never routes into the surface (ADR 0051). The per-tenor capture-coverage
-                    ratios were dropped here: they are a data-check artefact, not a market read. */}
-                <article className="panel" aria-label="Index constituents">
+                <article className="panel" aria-label="Capture coverage">
                   <div className="panel-heading">
-                    <h2>Constituents</h2>
-                    <span className="status">{constituentList.length} members</span>
+                    <div>
+                      <p className="panel-kicker">{index}</p>
+                      <h2>Capture coverage</h2>
+                    </div>
+                    <button
+                      type="button"
+                      aria-expanded={coverageOpen}
+                      onClick={() => setCoverageOpen((open) => !open)}
+                    >
+                      {coverageOpen ? "Hide" : "Show"}
+                    </button>
                   </div>
-                  <AsyncBlock loading={constituents.loading} error={constituents.error}>
-                    {constituentList.length === 0 ? (
-                      <p>
-                        No constituents for {index} as of {effectiveAsOf}.
-                      </p>
-                    ) : (
-                      <ConstituentTable constituents={constituentList} />
-                    )}
-                  </AsyncBlock>
+                  {coverageOpen && (
+                    <ErrorBoundary label="Capture coverage">
+                      <CoveragePanel
+                        underlying={index}
+                        tradeDate={effectiveAsOf}
+                        runId={effectiveRunId ?? undefined}
+                      />
+                    </ErrorBoundary>
+                  )}
                 </article>
               </div>
             );

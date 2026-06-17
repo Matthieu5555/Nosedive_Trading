@@ -11,8 +11,10 @@ vi.mock(
 );
 
 import {
+  ANALYTICS_AAA_DEGENERATE,
   ANALYTICS_AAA_DENSE,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
+  ANALYTICS_QUOTED,
   ANALYTICS_SCORECARD,
   RECORDED_EMPTY,
   SIGNALS_SX5E,
@@ -212,6 +214,119 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
   const greeks = await screen.findByRole("table", { name: /Dollar Greeks — 3m/i });
   expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();
+});
+
+test("the scorecards strip sits at the very top, above the price block", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  const cards = await screen.findByLabelText("Volatility scorecards");
+  const price = await screen.findByRole("heading", { name: "Price" });
+  // DOM order = reading order: the scorecards come before the price heading (⓪ then ①).
+  expect(cards.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test("the price block carries a master-detail constituents workspace (index + member candles)", async () => {
+  render(<MarketPage />);
+
+  // The index candlestick and the selected member's candlestick are both present (the 2nd candle).
+  expect(await screen.findByRole("heading", { name: "Price" })).toBeInTheDocument();
+  // The constituents workspace defaults to the heaviest member; its panel names that member.
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  expect(within(constituents).getByText("AAA")).toBeInTheDocument();
+  expect(within(constituents).getByText("BBB")).toBeInTheDocument();
+  // The member detail panel labels itself for the selected ticker (heaviest by default).
+  expect(await screen.findByLabelText(/Price history for/i)).toBeInTheDocument();
+});
+
+test("selecting a constituent swaps the member candlestick (master-detail)", async () => {
+  const user = userEvent.setup();
+  render(<MarketPage />);
+
+  await screen.findByLabelText(/Price history for/i);
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  await user.click(within(constituents).getByRole("button", { name: "BBB" }));
+  expect(await screen.findByLabelText("Price history for BBB")).toBeInTheDocument();
+});
+
+test("the price-structure block reads bid / ask / volume per strike — never a mid", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_QUOTED));
+  render(<MarketPage />);
+
+  const block = await screen.findByLabelText(/Price structure — 3m/i);
+  // The header advertises bid/ask/volume, the columns an operator reads for the spread + size.
+  expect(within(block).getByRole("columnheader", { name: /bid/i })).toBeInTheDocument();
+  expect(within(block).getByRole("columnheader", { name: /ask/i })).toBeInTheDocument();
+  expect(within(block).getByRole("columnheader", { name: /volume/i })).toBeInTheDocument();
+  // The ATM strike (1×10²) carries bid 4.1, ask 4.5, volume 1234 — shown in sci-notation + unit
+  // (house formatting), not averaged to a mid. The row name concatenates every cell.
+  const atmRow = within(block).getByRole("row", { name: /atm/i });
+  expect(atmRow).toHaveTextContent("4.1 × 10⁰ $");
+  expect(atmRow).toHaveTextContent("4.5 × 10⁰ $");
+  expect(atmRow).toHaveTextContent("1.234 × 10³");
+});
+
+test("a strike with no quotes shows '—' for bid/ask/volume (honest gap, no fabricated mid)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_QUOTED));
+  render(<MarketPage />);
+
+  const block = await screen.findByLabelText(/Price structure — 3m/i);
+  // The 8×10¹ (80) strike / 30dp band has null bid/ask/volume → honest dashes, never a mid.
+  const noQuoteRow = within(block).getByRole("row", { name: /30dp/i });
+  expect(within(noQuoteRow).getAllByText("—").length).toBeGreaterThanOrEqual(3);
+});
+
+test("the tenor panel shows Greek shape curves beside the Greeks table (complementary)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  // The §3.6 profiles: delta S-curve + gamma/vega bells vs strike, alongside the raw/$ table.
+  expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
+  const curves = await screen.findByLabelText(/Greek profiles — 3m/i);
+  expect(within(curves).getByTestId("plot-types").textContent).toMatch(/scatter,scatter,scatter/);
+});
+
+test("the nappe renders a degenerate slice legibly (108%/140% IV clamped, not a spike)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_AAA_DEGENERATE));
+  render(<MarketPage />);
+
+  const surface = await screen.findByLabelText(/Implied-volatility surface/i);
+  // The railed slice is flagged in the label rather than rendered as a garbage peak.
+  expect(surface.getAttribute("aria-label")).toMatch(/flagged|surface/i);
+  // The 140%/55% cells (above the 0.35 display band) are clamped to null holes; the duplicate
+  // -0.1 column is collapsed. The plotted z keeps only the in-band cells of the short slice.
+  const z = JSON.parse(within(surface).getByTestId("plot-z").textContent || "[]") as (
+    | number
+    | null
+  )[][];
+  const shortSlice = z[0];
+  // Every plotted value in the degenerate slice is either a hole or inside the sane band.
+  for (const cell of shortSlice) {
+    if (cell !== null) expect(cell).toBeLessThanOrEqual(0.6);
+  }
+  // The 140% cell did not survive as a height-spiking value.
+  expect(shortSlice).not.toContain(1.4);
+});
+
+test("the capture coverage panel mounts collapsed and expands on demand", async () => {
+  server.use(
+    jsonGet("/api/coverage", {
+      underlying: "SPX",
+      trade_date: "2026-05-29",
+      n_expiries: 0,
+      expiries: [],
+      tenors: [],
+      qc_status: "pass",
+      delta_band_status: "pass",
+    }),
+  );
+  const user = userEvent.setup();
+  render(<MarketPage />);
+
+  const toggle = await screen.findByRole("button", { name: /show/i });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await user.click(toggle);
+  expect(await screen.findByText(/Capture coverage — SPX/i)).toBeInTheDocument();
 });
 
 test("the index selector is driven by /api/indices — a parked index is not offered", async () => {

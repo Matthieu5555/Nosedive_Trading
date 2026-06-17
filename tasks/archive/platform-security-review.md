@@ -3,8 +3,8 @@
 > **Parallel cross-cutting review, not a feature.** The front (1I) is the sprint priority; this is
 > non-conflicting and gates the one genuinely dangerous path: it must pass **before Phase 3 (3B)
 > transmits any real (non-paper) order**. Output is a severity-ranked findings report (`file:line` +
-> fix), in the shape of [`archive/H1-repo-hygiene-report.md`](archive/H1-repo-hygiene-report.md) and
-> [`archive/H2-doc-reconciliation-report.md`](archive/H2-doc-reconciliation-report.md) — not a code
+> fix), in the shape of [`archive/H1-repo-hygiene-report.md`](H1-repo-hygiene-report.md) and
+> [`archive/H2-doc-reconciliation-report.md`](H2-doc-reconciliation-report.md) — not a code
 > change. It produces a verdict; the fixes it names land in the owning tasks.
 
 - **Owns:** nothing structural — a read-only review producing this findings report. It reviews, it
@@ -15,8 +15,8 @@
   (the [`execution`](../packages/execution/src/algotrading/execution/__init__.py) package is an empty
   skeleton today). The auth + secrets + BFF half (sections 1, 3, 4, 5 below) can start **now**
   against landed code; the order-seam half (section 2) opens when 3A/3B land. Conforms to
-  **[ADR 0024 §4](../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)** (read-only
-  invariant) and **[ADR 0031](../.agent/decisions/0031-ibkr-historical-data-cp-rest-oauth1a.md)**
+  **[ADR 0024 §4](../../.agent/decisions/0024-ibkr-rest-transport-alongside-tws.md)** (read-only
+  invariant) and **[ADR 0031](../../.agent/decisions/0031-ibkr-historical-data-cp-rest-oauth1a.md)**
   (OAuth 1.0a + pycryptodome).
 - **Blocks:** any real (non-paper) order transmission in **3B**. Paper/read-only operation is not
   blocked. The gate is: this report's HIGH/CRITICAL findings are closed (or owner-accepted) before
@@ -30,10 +30,10 @@
 > **The one gating MEDIUM (M2) is now CLOSED (2026-06-17):** the booking commit path now appends the
 > audit (`commit.py:215`) write-ahead of the fills (`commit.py:216`), mirroring the block path's
 > audit-first discipline, pinned by `test_the_commit_path_persists_the_audit_before_the_fills`. The
-> standing live-gate against [execution-order-sign-and-send](execution-order-sign-and-send.md) (3B) is
+> standing live-gate against [execution-order-sign-and-send](../execution-order-sign-and-send.md) (3B) is
 > now only the §2 review of the 3B sign-and-send seam once it lands. See the refreshed verdict
-> [platform-security-review-2026-06-17.md](platform-security-review-2026-06-17.md) (and the archived
-> [platform-security-review-report.md](archive/platform-security-review-report.md)).
+> [platform-security-review-2026-06-17.md](../platform-security-review-2026-06-17.md) (and the archived
+> [platform-security-review-report.md](platform-security-review-report.md)).
 
 - **State going in (audited 2026-06-07 — see baseline refresh above):** the dangerous path is **not built yet**, which is why this
   runs ahead of it. `packages/execution` is one docstring line; no `place_order`/`transmit`/`reply`
@@ -141,7 +141,7 @@ Drive the pass with the **`security-review`** slash skill; record findings as yo
 
 ## Review surface
 
-Read [TESTING.md](TESTING.md) for the seam→contract-test map. This task adds **no new tests** — it
+Read [TESTING.md](../TESTING.md) for the seam→contract-test map. This task adds **no new tests** — it
 **verifies** that the security-relevant invariants are *already* asserted, and files a finding where
 they are not. Specific checks the report must answer:
 - The IBKR read-only invariant is asserted (it is — `test_snapshot_is_read_only`); the ADR-0031

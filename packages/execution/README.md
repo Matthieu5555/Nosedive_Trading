@@ -132,7 +132,7 @@ named blocked decision. This lands the page-3 scaffold; transmission ships **off
   environment (`$HOME/.env`). Absent/blank → `absent` (fail-closed); unrecognized →
   `GateUnparseable` (fail-closed); `paper`/`live` synonyms map explicitly. Live additionally
   requires `EXECUTION_SECURITY_REVIEW=green` — the owner records this only after the
-  [security review](../../tasks/platform-security-review.md) passes; it is the single source of
+  [security review](../../tasks/platform-security-review-2026-06-17.md) passes; it is the single source of
   truth for the recorded-green handshake, not a second one.
 - **The decision function** (`transmit/decision.py`) — one pure
   `decide_transmission(SignedTicket, gate, now) -> TransmissionDecision`. It returns `SENT_LIVE`

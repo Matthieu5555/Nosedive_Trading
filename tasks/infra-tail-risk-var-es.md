@@ -4,7 +4,7 @@
 > audit. **DEFERRED / post-week** — the scenario full-reprice engine and per-book risk aggregation it
 > sits on are built; this is the tail-risk layer over them, not week-critical. Spec'd so the §5.9
 > risk-engine gap has a home (margin forecasting is already owned by
-> [execution-operational-hardening](execution-operational-hardening.md); VaR/ES + liquidity/
+> [execution-operational-hardening](archive/execution-operational-hardening.md); VaR/ES + liquidity/
 > concentration had no task in any lane).
 >
 > **Provenance note:** VaR / ES is **net-new scope traced to TARGET only** — it is **not** in the
@@ -37,7 +37,7 @@ Reads the landed full-reprice scenario engine + `risk/aggregation.py`. Liquidity
 [[ibkr-option-volume-capture]]. Tail metrics over history need banked surface/P&L depth, so this is
 naturally post-week (pairs in spirit with [[infra-named-scenarios-and-corr-shock]] — named stress and
 VaR/ES are the two halves of the §5.4/§5.9 risk-manager screen). Distinct from
-[execution-operational-hardening](execution-operational-hardening.md), which owns margin forecasting
+[execution-operational-hardening](archive/execution-operational-hardening.md), which owns margin forecasting
 and the kill switch.
 
 ## Done criteria

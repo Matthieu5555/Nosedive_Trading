@@ -45,22 +45,26 @@ sha256(instrument_key, field_name, sequence)` (`market_fields.py`, `sequence` fr
 and `sequence` is the **membership-sorted ordinal** within each run's list (`cp_rest_close_capture.py:343-346`).
 When a re-run's live quotes shift which options pass the two-sided / quarantine filter, the same
 instrument lands at a **different `sequence` → different `event_id` → not deduped → appended.**
-- **Fix (blueprint-backed):** make a re-capture of the **same** close **byte-identical** (`01-arch:17`
-  branch 1) by stabilising `event_id` — drop the membership-ordinal `sequence` from the content hash
-  (`market_fields.py`; `sequence=` at `cp_rest_close_capture.py:346,361` becomes inert). Then the
-  `07c011f` dedup actually idempotents and a re-fire of identical data is a no-op.
-- **Deliberate re-captures → `version=`, NOT overwrite** (`15-gov:18`): a re-capture that yields
-  *different* data writes a new `version=` lineage (the adapter already supports `version=`/`list_versions`);
-  reads resolve to the latest version. No destructive replace, no anonymous `run=`.
-- **Run-state gate:** a 2nd close fire of an already-finalized `(trade_date, underlying)` either no-ops
-  (identical → idempotent) or writes a `version=` — never re-appends. None exists today
-  (`scripts/eod_run.py`/`eod_stages.py`).
-- ⚠️ **One open design choice to resolve first (grounded in the capture model):** is the CP-REST close
-  a **poll** (one observation/day → the identity collapses re-fires) or a **stream** (`08-acceptance:19`
-  "continuous"; keep distinct events, the **snapshot** layer picks the close via field-precedence/
-  quote-age, `12-file:37`)? The 42 rows are accidental **re-fires of the close poll**, not a tick
-  stream — but pin this against the capture spec before choosing the exact `event_id` identity, so we
-  don't collapse a stream the blueprint wants kept.
+**DECIDED LOGIC (2026-06-17, owner-validated). Capture is a POLL** (`cp_rest_close_capture.py:300`
+`snapshot_with_warmup` — one poll/fire), not a stream → **one observation per `(instrument, field)`
+per day. Re-fetch = OVERWRITE-LAST-WINS, never versioned.** This is the pre-mess design ("overwrite-by-
+re-run: replace tables + ledger gate" — the `data/_run_state.jsonl` ledger still on disk proves a gate
+existed) and it is blueprint-conform: overwrite-last-wins **finalizes** the day to the latest poll
+(replacing intraday *scratch*, not mutating a finalized observation, `06-runbooks:32`). `01-arch:13/17`'s
+"no silent overwrite / version=" protects a *finalized* close — enforced here by the **ledger gate**,
+not by routine versioning.
+
+- **Stable `event_id` on `(instrument_key, field_name, trade_date)`** — drop the membership-ordinal
+  `sequence` from the content hash (`market_fields.py`; `sequence=` at `cp_rest_close_capture.py:346,361`
+  becomes inert). Makes the `07c011f` dedup real: a re-poll of the same (instrument,field) is one row.
+- **Overwrite-last-wins (replace the day's slot) on re-fetch** — raw + derived. The latest legitimate
+  poll (the close cron) is canonical. **No routine `version=`, no anonymous `run=`.**
+- **Restore the run-state ledger GATE** (`data/_run_state.jsonl`, currently written but no longer
+  gated-on per the audit): a re-fire **replaces** an unfinalized day, and is **blocked/idempotent** on a
+  finalized day. This is the lost gate that prevented the 42 accumulation.
+- **`version=` stays ONLY as the blueprint's deliberate-replay escape hatch** (re-derive with new
+  code/config — `15-gov:18`, adapter `version=`/`list_versions`). It is **never** on the close-capture
+  routine path. (Owner ruling: we overwrite with the most recent; we do not version the close.)
 
 ### C2 — Derived: retire the run-partitioning (pure revert to `b10ed3d^` = `c665614`)
 `run_partitioned` **did not exist before `b10ed3d`** (`registry.py` pre-`b10ed3d` count = 0) — the

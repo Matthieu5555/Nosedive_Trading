@@ -256,8 +256,8 @@ export function BasketPage() {
       )}
 
       <Tabs defaultValue="compose" className="market-tabs">
-        <div className="market-tabs__bar">
-          <TabsList className="market-tabs__list">
+        <div className="market-tabs__bar max-w-full overflow-x-auto">
+          <TabsList className="market-tabs__list max-w-none">
             <TabsTrigger value="compose">① Composer</TabsTrigger>
             <TabsTrigger value="book">② Le book</TabsTrigger>
             <TabsTrigger value="stress">③ Choquer</TabsTrigger>

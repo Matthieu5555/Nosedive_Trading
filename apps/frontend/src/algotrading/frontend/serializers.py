@@ -12,6 +12,7 @@ from algotrading.infra.contracts import (
     PricingResult,
     ProjectedOptionAnalytics,
     RiskAggregate,
+    RiskFreeRatePoint,
     ScenarioAttribution,
     ScenarioResult,
     StrategySignal,
@@ -19,6 +20,7 @@ from algotrading.infra.contracts import (
 )
 from algotrading.infra.orders import Limit, OrderTicket
 from algotrading.infra.pricing import UNIT_STRINGS
+from algotrading.infra.rates import ImpliedRiskfreeSpread, RateCurve
 from algotrading.infra.risk import BasketRisk, LegRisk
 from algotrading.infra.surfaces import (
     DenseSurface,
@@ -472,6 +474,55 @@ def forward_rate_diagnostics_to_dict(point: ForwardCurvePoint) -> dict[str, obje
         "implied_carry": point.implied_carry,
         "implied_dividend": point.implied_dividend,
         "rate_unit": FORWARD_RATE_UNIT,
+    }
+
+
+# The external (ingested) risk-free curve r(T), distinct from the parity-implied rate above.
+RISK_FREE_RATE_UNIT = "/yr (annualized, continuous, ACT/365)"
+SPREAD_UNIT = "/yr (annualized)"
+
+
+def rate_curve_point_to_dict(point: RiskFreeRatePoint) -> dict[str, object]:
+    """Serialize one persisted risk-free pillar (the ingested external curve)."""
+    return {
+        "currency": point.currency,
+        "pillar_tenor": point.pillar_tenor,
+        "maturity_years": point.maturity_years,
+        "risk_free_rate": point.rate,
+        "day_count": point.day_count,
+        "as_of": point.as_of.isoformat(),
+        "source": point.diagnostics.source,
+        "instrument": point.diagnostics.instrument,
+        "rate_unit": RISK_FREE_RATE_UNIT,
+    }
+
+
+def rate_curve_to_dict(
+    currency: str, curve: RateCurve, points: list[RiskFreeRatePoint]
+) -> dict[str, object]:
+    """Top-level summary of the external curve: the ingested pillars for the currency."""
+    return {
+        "currency": currency,
+        "n_pillars": len(curve.pillars),
+        "rate_unit": RISK_FREE_RATE_UNIT,
+        "pillars": [rate_curve_point_to_dict(p) for p in points],
+    }
+
+
+def implied_riskfree_spread_to_dict(spread: ImpliedRiskfreeSpread) -> dict[str, object]:
+    """Per-maturity external curve evaluation + the implied−riskfree spread diagnostic + QC."""
+    return {
+        "currency": spread.currency,
+        "maturity_years": spread.maturity_years,
+        "risk_free_rate": spread.risk_free_rate,
+        "implied_rate": spread.implied_rate,
+        "spread": spread.spread,
+        "abs_bound": spread.abs_bound,
+        "breached": spread.breached,
+        "qc_status": spread.qc_status,
+        "label": spread.label,
+        "rate_unit": RISK_FREE_RATE_UNIT,
+        "spread_unit": SPREAD_UNIT,
     }
 
 

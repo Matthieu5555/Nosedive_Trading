@@ -1,17 +1,32 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date
 
+from algotrading.core.config import (
+    ConfigError,
+    ConfigFieldError,
+    load_platform_config,
+)
 from algotrading.infra.contracts import (
     SURFACE_SIDE_COMBINED,
     ForwardCurvePoint,
     MarketStateSnapshot,
     ProjectedOptionAnalytics,
+    RiskFreeRatePoint,
     SurfaceGrid,
     SurfaceParameters,
 )
+from algotrading.infra.rates import (
+    RateCurve,
+    RateCurveError,
+    RateIngestError,
+    curve_from_points,
+    implied_riskfree_spread,
+)
 from algotrading.infra.surfaces import reconstruct_dense_surface
+from algotrading.infra.universe import load_index_registry
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
@@ -20,7 +35,9 @@ from ..serializers import (
     OptionQuote,
     dense_surface_to_dict,
     forward_rate_diagnostics_to_dict,
+    implied_riskfree_spread_to_dict,
     projected_option_analytics_to_dict,
+    rate_curve_to_dict,
     surface_parameters_to_dict,
 )
 from ..store_reads import read_for_underlying
@@ -107,11 +124,85 @@ def _smile_axis_cells(
     return deduped
 
 
+@dataclass(frozen=True, slots=True)
+class _RateContext:
+    """The ingested external curve + QC bound resolved for the analytics currency (ADR 0054)."""
+
+    currency: str
+    curve: RateCurve
+    points: list[RiskFreeRatePoint]
+    abs_bound: float
+    disposition: str
+
+
+def _load_rate_context(
+    ctx: object, underlying: str, trade_date: date | None
+) -> _RateContext | None:
+    """Read the as-of `rates` partition for the underlying's currency and build the curve.
+
+    Reads only the curve published as-of `trade_date` (no look-ahead — the store reads the partition
+    for that day). Returns None when the currency, config, or rows are unavailable; the rest of the
+    payload stays unaffected (additive surface).
+    """
+    try:
+        registry = load_index_registry(ctx.configs_dir)  # type: ignore[attr-defined]
+        currency = registry.get(underlying).currency
+        platform = load_platform_config(ctx.configs_dir)  # type: ignore[attr-defined]
+        currency_cfg = platform.rates.for_currency(currency)
+    except (ConfigError, ConfigFieldError, KeyError):
+        return None
+    rows: list[RiskFreeRatePoint] = ctx.store.read(  # type: ignore[attr-defined]
+        "rates", trade_date=trade_date, underlying=currency
+    )
+    rows = [row for row in rows if row.currency == currency]
+    if not rows:
+        return None
+    try:
+        curve = curve_from_points(currency, rows)
+    except (RateIngestError, RateCurveError):
+        return None
+    return _RateContext(
+        currency=currency,
+        curve=curve,
+        points=rows,
+        abs_bound=currency_cfg.spread_qc_abs_bound,
+        disposition=currency_cfg.spread_qc_disposition,
+    )
+
+
+def _spread_for_maturity(
+    forward: ForwardCurvePoint | None,
+    rate_context: _RateContext | None,
+) -> dict[str, object] | None:
+    """Per-maturity external r(T) + implied−riskfree spread, from PERSISTED inputs only.
+
+    Evaluates the ingested curve at the option's maturity (a read-time projection of the persisted
+    pillars) and pairs it with the forward's persisted `implied_rate`. Returns None when either the
+    curve or the implied rate is unavailable — never a recompute of any analytics value.
+    """
+    if rate_context is None or forward is None or forward.implied_rate is None:
+        return None
+    try:
+        risk_free_rate = rate_context.curve.rate_at(forward.maturity_years)
+    except RateCurveError:
+        return None
+    spread = implied_riskfree_spread(
+        currency=rate_context.currency,
+        maturity_years=forward.maturity_years,
+        implied_rate=forward.implied_rate,
+        risk_free_rate=risk_free_rate,
+        abs_bound=rate_context.abs_bound,
+        disposition=rate_context.disposition,
+    )
+    return implied_riskfree_spread_to_dict(spread)
+
+
 def _group_by_maturity(
     cells: list[ProjectedOptionAnalytics],
     slices: list[SurfaceParameters],
     snapshots: list[MarketStateSnapshot],
     forwards: list[ForwardCurvePoint],
+    rate_context: _RateContext | None = None,
 ) -> list[dict[str, object]]:
     slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
     quote_index = _listed_options_by_expiry_right(snapshots)
@@ -153,6 +244,7 @@ def _group_by_maturity(
                 "rate_diagnostics": (
                     forward_rate_diagnostics_to_dict(forward) if forward is not None else None
                 ),
+                "rate_curve": _spread_for_maturity(forward, rate_context),
                 "points": points,
             }
         )
@@ -233,7 +325,8 @@ def get_analytics(
         resolved_underlying,
         trade_date=trade_date,
     )
-    maturities = _group_by_maturity(cells, slices, snapshots, forwards)
+    rate_context = _load_rate_context(ctx, resolved_underlying, trade_date)
+    maturities = _group_by_maturity(cells, slices, snapshots, forwards, rate_context)
     source = "projected_option_analytics"
     if not maturities:
         grid: list[SurfaceGrid] = read_for_underlying(
@@ -254,5 +347,12 @@ def get_analytics(
             "source": source,
             "maturities": maturities,
             "surface": dense_surface_to_dict(dense) if dense is not None else None,
+            "rate_curve": (
+                rate_curve_to_dict(
+                    rate_context.currency, rate_context.curve, rate_context.points
+                )
+                if rate_context is not None
+                else None
+            ),
         }
     )

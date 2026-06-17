@@ -55,6 +55,7 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 | C4 stream-C | shared alert-delivery seam over `infra/orchestration/alerts.py` | 2026-06-17 | Telegram/email/webhook channel — built ONCE; Stream D consumes (do not duplicate) |
 | C5 stream-C | `packages/execution/.../booking/commit.py` (M2 fix) + security-review report | 2026-06-17 | close M2 (audit write-ahead of fills) + review §1/3/4/5 |
 | C6 stream-C | `packages/execution/.../execution/` — sign-and-send PAPER path | 2026-06-17 | SignedTicket/decision/audit; transmit gated OFF by default |
+| D2 stream-D | `infra/orchestration/alerts.py` + `eod_stages.py` (alert-sink seam) + new readiness check (`infra_ibkr`) | 2026-06-17 | AlertSink seam (D owns call sites, C4 owns transport) + pre-close readiness check; no concrete channel forked |
 
 ## Layer ownership (planning pass, 2026-06-13)
 

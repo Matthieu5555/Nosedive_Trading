@@ -4,9 +4,9 @@ import { ANALYTICS_QUOTED } from "../src/test/fixtures";
 import { collectPageErrors } from "./helpers";
 import { mockBff } from "./mock-bff";
 
-// The Onglet-1 (Données) READ flow, end to end in a real browser: pick the underlying → the 3D
-// nappe renders → select a tenor → smile + Greeks table + Greeks shape curves + the price-structure
-// block (bid / ask / volume columns, the seam that broke this wave) → the coverage panel expands.
+// The Market READ flow, end to end in a real browser: pick the underlying → the 3D nappe renders →
+// select a tenor → smile + Greeks table + Greeks shape curves + the price-structure block (bid /
+// ask / volume columns, the seam that broke this wave) → the coverage panel expands.
 // Assertions are on user-visible text/rows, not internal state; numeric checks carry tolerances.
 //
 // The shared mock-bff serves ANALYTICS_AAA on /api/analytics, which carries no per-strike quotes.
@@ -47,21 +47,21 @@ const COVERAGE_SPX = {
   delta_band_status: "pass",
 };
 
-async function mockOnglet1(page: Page): Promise<void> {
+async function mockMarketRead(page: Page): Promise<void> {
   await mockBff(page);
   await page.route("**/api/analytics**", (route) => route.fulfill({ json: ANALYTICS_QUOTED }));
   await page.route("**/api/coverage**", (route) => route.fulfill({ json: COVERAGE_SPX }));
 }
 
-test("Onglet-1 read flow: underlying → nappe → tenor → smile/greeks/price-structure → coverage", async ({
+test("Market read flow: underlying → nappe → tenor → smile/greeks/price-structure → coverage", async ({
   page,
 }) => {
   const errors = collectPageErrors(page);
-  await mockOnglet1(page);
+  await mockMarketRead(page);
 
   // 1. Pick the underlying. SPX is the default; the picker is present, enabled, and on SPX.
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Données" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Market" })).toBeVisible();
   const index = page.getByLabel("Index", { exact: true });
   await expect(index).toBeVisible();
   await expect(index).toHaveValue("SPX");

@@ -3,10 +3,10 @@ import { expect, type Page, test } from "@playwright/test";
 import { collectPageErrors } from "./helpers";
 import { mockBff } from "./mock-bff";
 
-// Stream-B Onglet-2 (Risque) end-to-end flow, in a real browser against a mocked BFF:
-//   ① Composer — layer two sub-strategies into one book and compose it (read the combined +
+// The Basket tab end-to-end flow, in a real browser against a mocked BFF:
+//   ① Compose — layer two sub-strategies into one book and compose it (read the combined +
 //      per-layer dollar Greeks, each with its unit string).
-//   ③ Choquer — shock the composed basket; read the spot×vol stress surface AND the parallel
+//   ③ Stress — shock the composed basket; read the spot×vol stress surface AND the parallel
 //      rate-sweep cells (each labelled in bp and dollars).
 //   ④ Attribution — read the P&L waterfall; assert the second-order terms (Rho/Vanna/Volga)
 //      render BESIDE the first-order Δ/Γ/Vega/Θ, with dollar unit strings.
@@ -166,9 +166,9 @@ const ATTRIBUTION = {
   verdict: { within_tolerance: true, residual_abs_tol: 100, residual_rel_tol: 0.001 },
 };
 
-// Route the Onglet-2 seams per path+method on top of the shared BFF mock. The shared mock catches
+// Route the Basket seams per path+method on top of the shared BFF mock. The shared mock catches
 // every other /api/** call (indices, delta-bands, …) so no panel renders an error.
-async function routeOnglet2(page: Page): Promise<void> {
+async function routeBasket(page: Page): Promise<void> {
   await mockBff(page);
   await page.route(
     (url) => url.pathname === "/api/compose/sub-strategies",
@@ -188,15 +188,15 @@ async function routeOnglet2(page: Page): Promise<void> {
   );
 }
 
-test("Onglet-2: compose a 2-layer book, shock it (spot/vol + rate), read the attribution", async ({
+test("Basket: compose a 2-layer book, shock it (spot/vol + rate), read the attribution", async ({
   page,
 }) => {
   const { pageErrors } = collectPageErrors(page);
-  await routeOnglet2(page);
-  await page.goto("/risque");
-  await expect(page.getByRole("heading", { level: 1, name: "Risque" })).toBeVisible();
+  await routeBasket(page);
+  await page.goto("/basket");
+  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
 
-  // ── ① Composer: build a 2-layer book ───────────────────────────────────────────────────
+  // ── ① Compose: build a 2-layer book ─────────────────────────────────────────────────────
   // Two legs in the shared composer (a straddle template seeds two legs → "can stress").
   await page.getByRole("button", { name: /template straddle/i }).click();
   const legs = page.getByRole("table", { name: /composed legs/i });
@@ -223,8 +223,8 @@ test("Onglet-2: compose a 2-layer book, shock it (spot/vol + rate), read the att
   await expect(combinedRow.getByText(/5 × 10/).first()).toBeVisible();
   await expect(bookTable.getByRole("columnheader", { name: /delta \$/i })).toBeVisible();
 
-  // ── ③ Choquer: shock the book across spot/vol and the rate sweep ────────────────────────
-  await page.getByRole("tab", { name: /choquer/i }).click();
+  // ── ③ Stress: shock the book across spot/vol and the rate sweep ──────────────────────────
+  await page.getByRole("tab", { name: /stress/i }).click();
   await page.getByRole("button", { name: /stress basket/i }).click();
 
   // The stress surface summary renders with its cell count and PnL unit.
@@ -243,7 +243,7 @@ test("Onglet-2: compose a 2-layer book, shock it (spot/vol + rate), read the att
   await expect(sweepTable.getByText(/2\.5 × 10/).first()).toBeVisible();
   await expect(sweepTable.getByText(/\bbp\b/).first()).toBeVisible();
 
-  // ── ④ Attribution: read the waterfall; Rho/Vanna/Volga beside Δ/Γ/Vega/Θ ────────────────
+  // ── ④ Attribution: read the waterfall; Rho/Vanna/Volga beside Δ/Γ/Vega/Θ ─────────────────
   await page.getByRole("tab", { name: /attribution/i }).click();
   await page.getByLabel("portfolio").fill("demo-book");
   await page.getByRole("button", { name: /P&L attribution/i }).click();
@@ -255,7 +255,7 @@ test("Onglet-2: compose a 2-layer book, shock it (spot/vol + rate), read the att
   for (const term of ["Delta", "Gamma", "Vega", "Theta"]) {
     await expect(legend.getByText(new RegExp(`^${term}:`))).toBeVisible();
   }
-  // Second-order terms render BESIDE the first-order ones — the Onglet-2 acceptance criterion.
+  // Second-order terms render BESIDE the first-order ones — the Basket acceptance criterion.
   for (const term of ["Rho", "Vanna", "Volga"]) {
     await expect(legend.getByText(new RegExp(`^${term}:`))).toBeVisible();
   }

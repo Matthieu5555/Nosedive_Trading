@@ -262,8 +262,8 @@ td span {
   font-size: 12px;
 }
 
-/* The secondary-utility cluster in the third topbar column: the quiet Operations link + the session
-   pill. Operations is deliberately NOT a top-level onglet — a low-emphasis link, not a nav tab. */
+/* The secondary-utility cluster in the third topbar column: a quiet utility link + the session
+   pill. (Legacy styling kept for any low-emphasis link; the top-level tabs use .nav-button.) */
 .topbar-utility {
   display: flex;
   align-items: center;
@@ -288,7 +288,7 @@ td span {
   background: var(--panel-soft);
 }
 
-/* The Risque/Ordres sub-tab pill bar: with four triggers the inline-flex list is wider than a
+/* The Basket sub-tab pill bar: with four triggers the inline-flex list is wider than a
    390px phone viewport, so cap it and let it scroll sideways rather than push the whole page into
    horizontal overflow (same policy as the top nav below its breakpoint). */
 .market-tabs__list {

@@ -9,7 +9,7 @@ import structlog
 from algotrading.core.config import PlatformConfig
 from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
-from algotrading.infra.qc import ESCALATION_NONE, ESCALATION_PAGE, build_report
+from algotrading.infra.qc import ESCALATION_NOTICE, ESCALATION_PAGE
 from algotrading.infra.storage import ParquetStore
 
 from .alert_delivery import AlertSink, deliver_alerts, resolve_alert_sink
@@ -356,21 +356,10 @@ def default_stages_builder(
         )
 
     def _qc() -> QcJobResult:
-        if intraday:
-            latest_close = max((f.as_of for f in fired), default=qc_ts)
-            log.info(
-                "orchestration.eod_run.qc_skipped_intraday",
-                captured_indices=sorted(baskets),
-                qc_ts=qc_ts.isoformat(),
-                latest_close=latest_close.isoformat(),
-                reason="fired before session close; QC skipped on provisional intraday data",
-            )
-            return QcJobResult(
-                correlation_id=correlation_id,
-                trade_date=trade_date,
-                report=build_report((), run_id=correlation_id, run_ts=qc_ts),
-                escalation=ESCALATION_NONE,
-            )
+        # QC ALWAYS runs and ALWAYS records its verdict — intraday is not a free pass. run_qc judges
+        # the captured data against the thresholds and persist_triage records the named offenders,
+        # so a human reads whether a provisional midday capture is genuinely sound or genuinely
+        # broken. Intraday changes only the *consequence* of a fail, never whether we look (below).
         job = run_qc(
             store=store,
             thresholds=thresholds,
@@ -389,6 +378,28 @@ def default_stages_builder(
             triage_row_count=len(triage),
             escalation=job.escalation,
         )
+
+        if intraday:
+            # A fire before the session close captures provisional data: one-sided wings and a
+            # sparse front-week are EXPECTED midday, not a failed close. The QC verdict is recorded
+            # above for inspection, but intraday it is INFORMATIONAL — we cap the escalation below
+            # PAGE so the runner exits 0 and the close pager stays silent, and we fire none of the
+            # close-incident alerts (qc_fail / coverage / degenerate). The verdict stays honest: a
+            # genuinely-degenerate intraday capture still records FAIL in the report/triage; it
+            # simply does not page. The production timer fires at/after the close, so a production
+            # run is never intraday and never takes this branch (its close QC is untouched below).
+            capped = ESCALATION_NOTICE if job.escalation == ESCALATION_PAGE else job.escalation
+            log.info(
+                "orchestration.eod_run.qc_intraday_informational",
+                overall_status=job.report.overall_status,
+                fail_count=job.report.fail_count,
+                warn_count=job.report.warn_count,
+                escalation=capped,
+                escalation_before_cap=job.escalation,
+                reason="fired before close; QC verdict recorded but not paged on provisional data",
+            )
+            return replace(job, escalation=capped)
+
         # A degenerate close — no basket captured at all, or baskets captured but zero usable
         # combined-surface grid cells (market-closed / last-only below the two-sided floor) — is
         # the silent-green gap: every stage exits OUTCOME_OK, run_qc has nothing to fail on, and

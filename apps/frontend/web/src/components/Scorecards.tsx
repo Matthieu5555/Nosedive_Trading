@@ -1,5 +1,26 @@
 import type { AnalyticsMaturity, Signal } from "../api";
 import { computeScorecards } from "../lib/scorecards";
+import { InfoDot } from "./InfoDot";
+
+// The canonical option EOD close instant per index, as time-of-day in the venue zone (owner ruling,
+// sx5e-close-instant-1730-cet): SX5E is the OESX index-option settlement at 17:30 CET — NOT the XEUR
+// futures/venue close at 22:00 Berlin. This is the instant the captured chain (and every number on
+// this band) stands on. Keyed by symbol so an unknown index degrades to a date-only as-of rather
+// than a wrong time; a later additive BFF registry field can supersede this map.
+const CLOSE_INSTANT: Record<string, string> = {
+  SX5E: "17:30 CET",
+};
+
+// "as of 2026-06-17 17:30 CET (close)" — the date *and* the close instant, never the bare date that
+// can't tell a PM which instant the surface rests on. Unknown instant → date only (never a guess).
+export function asOfCloseLine(
+  asOf: string | null | undefined,
+  underlying: string | null | undefined,
+): string | null {
+  if (!asOf) return null;
+  const instant = underlying ? CLOSE_INSTANT[underlying] : undefined;
+  return instant ? `as of ${asOf} ${instant} (close)` : `as of ${asOf}`;
+}
 
 // One vol-point figure (a difference of two implied vols) in trader units: vol points = IV × 100,
 // signed, one decimal. "+1.8 vp" / "−0.4 vp". A null reads "—" (the honest gap).
@@ -46,6 +67,9 @@ export function Scorecards({
   termStructureSlope,
   ivRank,
   impliedCorrelation,
+  underlying = null,
+  asOf = null,
+  runId = null,
 }: {
   maturities: AnalyticsMaturity[];
   // The persisted signals for the index, or null when the signal layer hasn't recorded one for this
@@ -54,8 +78,22 @@ export function Scorecards({
   termStructureSlope: Signal | null;
   ivRank: Signal | null;
   impliedCorrelation: Signal | null;
+  // Provenance of the band (Principle 2 — "where did this number come from?"). All optional so the
+  // band still renders before the page threads them: the index symbol drives the close instant, the
+  // resolved as-of date stamps which close these numbers stand on, the run_id names the capture that
+  // produced them. Absent → the as-of line is omitted rather than printed wrong.
+  underlying?: string | null;
+  asOf?: string | null;
+  runId?: string | null;
 }) {
   const card = computeScorecards(maturities);
+  const asOfLine = asOfCloseLine(asOf, underlying);
+  // Where the numbers came from, in PM register: ATM/Skew are projected off the captured surface;
+  // slope/IV-rank/RV−IV/ρ̄ are persisted signals the BFF computed (we never recompute one here). The
+  // run_id names the exact capture so a PM can defend any number against any question.
+  const provenanceBody = `ATM & Skew are read off the captured volatility surface; Term-structure slope, IV-rank, RV−IV and ρ̄ are persisted signals computed by the backend (never recomputed on the front).${
+    runId ? ` Source capture: run ${runId}.` : ""
+  }`;
   const tenorNote = card
     ? card.isReferenceTenor
       ? `at ${card.tenorLabel}`
@@ -116,6 +154,14 @@ export function Scorecards({
 
   return (
     <section className="scorecards-band" aria-label="Volatility scorecards">
+      {(asOfLine || underlying) && (
+        <p className="scorecards-legend" aria-label="Scorecard provenance">
+          {underlying ? <strong>{underlying}</strong> : null}
+          {underlying && asOfLine ? " · " : null}
+          {asOfLine}
+          <InfoDot label="Scorecards — where these numbers come from" body={provenanceBody} />
+        </p>
+      )}
       <div className="scorecards">
         {cards.map((c) => {
           const color = c.sign !== undefined ? signColor(c.sign) : null;

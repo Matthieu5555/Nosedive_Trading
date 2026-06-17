@@ -17,6 +17,12 @@ from algotrading.infra.orchestration import SurfaceJobRequest, build_surface
 from algotrading.infra.storage import ParquetStore
 
 from .context import AppContext
+from .job_stages import (
+    SAMPLE_STAGE_TOTAL,
+    SampleStage,
+    sample_stage_index,
+    sample_stage_label,
+)
 from .providers import SAMPLE_PROVIDER
 from .store_reads import latest_partition_date
 
@@ -45,6 +51,9 @@ class JobStatus:
     finished_at: datetime | None = None
     message: str = ""
     summary: dict[str, Any] = field(default_factory=dict)
+    stage: str | None = None
+    stage_index: int | None = None
+    stage_total: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -56,7 +65,20 @@ class JobStatus:
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "message": self.message,
             "summary": self.summary,
+            "stage": self.stage,
+            "stage_index": self.stage_index,
+            "stage_total": self.stage_total,
         }
+
+    def mark_stage(self, stage: SampleStage) -> None:
+        try:
+            self.stage = sample_stage_label(stage)
+            self.stage_index = sample_stage_index(stage)
+            self.stage_total = SAMPLE_STAGE_TOTAL
+        except Exception:  # noqa: BLE001 — narration must never break the job boundary
+            self.stage = None
+            self.stage_index = None
+            self.stage_total = None
 
 
 class PipelineRunner:
@@ -118,7 +140,10 @@ def _resolve_sample_day(ctx: AppContext, underlying: str) -> date:
 
 def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
     underlying = job.underlying
+    job.mark_stage(SampleStage.RESOLVE)
     trade_date = _resolve_sample_day(ctx, underlying)
+
+    job.mark_stage(SampleStage.COLLECT)
     events = replay_day(ctx.store, trade_date, underlying=underlying)
     masters = list(
         ctx.store.read("instrument_master", trade_date=trade_date, underlying=underlying)
@@ -128,6 +153,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
     as_of = max(event.canonical_ts for event in events)
     replay_source = ReplaySource(events)
 
+    job.mark_stage(SampleStage.FIT)
     with TemporaryDirectory(prefix="sample-surface-") as tmp:
         temp_store = ParquetStore(Path(tmp))
         temp_store.write("instrument_master", masters)
@@ -150,6 +176,7 @@ def _build_sample_surface(ctx: AppContext, job: JobStatus) -> dict[str, Any]:
             correlation_id=f"api-{job.job_id}",
         )
 
+    job.mark_stage(SampleStage.SUMMARIZE)
     params = result.outputs.surface_parameters
     return {
         "underlying": underlying,

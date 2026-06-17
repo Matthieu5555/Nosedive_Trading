@@ -122,7 +122,9 @@ The BFF exposes (all under `/api` except the liveness probe):
   no-cron counterpart to the persisted-surface read — works off today's analytics without a
   configured portfolio.
 - `GET /api/providers`, `GET /api/run/underlyings`, `POST /api/run`,
-  `GET /api/jobs`, `GET /api/jobs/{id}`.
+  `GET /api/jobs`, `GET /api/jobs/{id}` — the job payload carries additive-nullable
+  `stage` (PM-register label) / `stage_index` / `stage_total` for determinate progress
+  narration (see "The live-run build path").
 - `GET /api/config`, `GET /api/config/{filename}`.
 - `GET /api/config/delta-bands` — the ordered delta-band axis (`30dp … atm, atmp … 30dc`) the
   basket leg selector offers, the single source built from `qc_threshold.grid` via
@@ -282,6 +284,16 @@ no-op append anyway), and reduces the fitted surface to a small job summary the 
 polls. The queue/poll/state-machine job lifecycle wraps it; any failure marks the job
 `ERROR` and is logged. A run needs a committed day to replay — a `SAMPLE` against an
 empty store fails fast with a typed error.
+
+As the build walks, the runner reports the step it has **reached** — not a timer — through
+the additive-nullable `stage` / `stage_index` / `stage_total` fields on `JobStatus`
+(carried by `/api/jobs` and `/api/jobs/{id}`). `stage` is a PM-register French label
+(`Collecte de la chaîne d'options`, `Ajustement de la nappe`, …), mapped once in
+`job_stages.py` from the build's ordered steps; the engine enum never reaches the wire.
+The fields stay `null` until a stage is reached (and for any non-`SAMPLE` provider), so the
+front falls back to an honest indeterminate bar rather than a fabricated percent. Stage
+reporting can never throw into the job boundary. State is per-process (`PipelineRunner.jobs`
+is an in-memory dict); progress lives only as long as the BFF process.
 
 Live broker providers (Saxo/Deribit/IBKR) capture through the same `build_surface` seam;
 the broker-session → `RawMarketEvent` normalization lives in the

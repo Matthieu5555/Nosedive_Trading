@@ -1,5 +1,16 @@
 # frontend-second-order-greeks-panels — carry Vanna/Volga/Charm through to the front panels
 
+> **⚠️ STATUS (2026-06-17, Stream B) — PARTIALLY LANDED. Only the Onglet-1 remainder is open.**
+> Landed on `main`: the BFF half — Vanna/Volga/Charm (raw+cash+unit strings) on `/api/risk/metrics`
+> as `RiskMetricCell`, and Rho/Vanna/Volga attribution terms on the drill (`c2773d2`) — and the
+> **Onglet 2 ④ Attribution** render (the waterfall shows all 7 terms; Charm correctly absent, `b2f95bb`).
+> **Key finding:** the landed 2nd-order compute lives on `PricingResult` (`/api/risk/metrics`), **NOT**
+> on `ProjectedOptionAnalytics`/`AnalyticsPoint` — so the **Onglet 1 ③ Panneau Ténor** Greeks render is
+> the **only remaining work**: render Vanna/Volga/**Charm** from `RiskMetricCell` (fields `vanna`/`volga`/
+> `charm`, each a `DollarMetric`), unit-labelled via `sci`/`sciUnit`. This touches `TenorPanel.tsx` and is
+> **owned by the Onglet-1 front lane (Stream A)**, not the risk lane. (Putting them on `AnalyticsPoint`
+> would need a contract + projection math-layer change — out of this front/BFF slice's scope.)
+
 > **Re-scoped & pickable (owner ruling, 2026-06-17 — these Greeks must reach the front).** The
 > page-1 rebuild (`c4ce734`) deleted the old render targets (`DollarGreeks`, `GreeksTermStructure`);
 > the second-order Greeks now belong on the **3-onglets homes**

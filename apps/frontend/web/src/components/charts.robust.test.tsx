@@ -22,7 +22,7 @@ describe("VolSurface dense surface robustness", () => {
       />,
     );
 
-    const fig = screen.getByLabelText(/Volatility surface — AAA/i);
+    const fig = screen.getByLabelText(/Volatility surface, AAA/i);
     expect(fig.getAttribute("aria-label")).toMatch(/1 slice flagged/i);
 
     const z = JSON.parse(within(fig).getByTestId("plot-z").textContent || "[]") as (

@@ -51,7 +51,7 @@ function tenorClause(ctx: ExplainContext): string {
 
 function modeClause(ctx: ExplainContext): string {
   if (ctx.mode === "indicative") {
-    return " · indicative mark — not the stored close";
+    return " · indicative mark, not the stored close";
   }
   return "";
 }
@@ -67,7 +67,7 @@ function projectedWhereFrom(ctx: ExplainContext): string {
 }
 
 function surfaceWhereFrom(ctx: ExplainContext): string {
-  const subject = ctx.underlying ?? "—";
+  const subject = ctx.underlying ?? "-";
   const head = `${subject} · ${asOfClose(ctx.asOf, ctx.closeInstant)}`;
   const modeWord = ctx.mode === "indicative" ? "indicative" : "strict";
   if (ctx.coverage) {
@@ -80,7 +80,7 @@ export const EXPLAIN: Record<MetricId, ExplainEntry> = {
   atm_level: {
     label: "ATM level",
     whatIs: "at-the-money implied vol",
-    howToRead: "the spine of the smile — where the at-the-money options are priced",
+    howToRead: "the spine of the smile, where the at-the-money options are priced",
     unit: "Vol",
     whereFrom: projectedWhereFrom,
   },
@@ -150,8 +150,7 @@ export const EXPLAIN: Record<MetricId, ExplainEntry> = {
   surface_coverage: {
     label: "Surface coverage",
     whatIs: "what fraction of the captured chain the surface actually rests on",
-    howToRead:
-      "two-sided = quotes with both bid and ask; one-sided excluded = dropped from strict",
+    howToRead: "two-sided = quotes with both bid and ask; one-sided excluded = dropped from strict",
     unit: null,
     whereFrom: surfaceWhereFrom,
   },

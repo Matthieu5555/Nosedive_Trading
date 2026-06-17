@@ -5,19 +5,16 @@ import { number, UNITS, withCurrency } from "../lib/format";
 // header, not on every cell) — a strike ladder is read by scanning, which scientific notation
 // (4.81 × 10³) defeats. A null quote stays the honest "—", never a fabricated mid.
 function priceCell(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return number(value, 2);
 }
 
 function volumeCell(value: number | null | undefined): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (value === null || value === undefined || !Number.isFinite(value)) return "-";
   return number(value, 0);
 }
 
-function spreadCell(
-  bid: number | null | undefined,
-  ask: number | null | undefined,
-): string {
+function spreadCell(bid: number | null | undefined, ask: number | null | undefined): string {
   if (
     bid === null ||
     bid === undefined ||
@@ -26,7 +23,7 @@ function spreadCell(
     !Number.isFinite(bid) ||
     !Number.isFinite(ask)
   ) {
-    return "—";
+    return "-";
   }
   return number(ask - bid, 2);
 }
@@ -63,17 +60,17 @@ export function PriceStructure({
   return (
     <section aria-label={label} className="price-structure">
       <div className="price-structure-heading">
-        <h3>Price structure — {maturity.label}</h3>
+        <h3>Price structure, {maturity.label}</h3>
         <p className="panel-note">
-          Per strike: bid / ask / volume and the option price — read the spread and the
-          traded size, never a synthetic mid.
+          Per strike: bid / ask / volume and the option price, read the spread and the traded size,
+          never a synthetic mid.
         </p>
       </div>
       {rows.length === 0 ? (
         <p>No strikes for {maturity.label} yet.</p>
       ) : (
         <div className="price-structure-scroll">
-          <table aria-label={`Price structure — ${maturity.label}`}>
+          <table aria-label={`Price structure, ${maturity.label}`}>
             <caption className="visually-hidden">
               Bid, ask, spread, volume and option price for each strike at {maturity.label}.
             </caption>

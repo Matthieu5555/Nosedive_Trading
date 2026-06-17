@@ -66,7 +66,7 @@ test("adding labelled layers renders them as ordered rows in the layer list", as
   expect(rowLabels()).toEqual(["S1 dispersion", "S2 put line"]);
 });
 
-test("reordering moves a layer up — display order changes, the selection is honoured", async () => {
+test("reordering moves a layer up, display order changes, the selection is honoured", async () => {
   const user = userEvent.setup();
   render(<Host />);
 

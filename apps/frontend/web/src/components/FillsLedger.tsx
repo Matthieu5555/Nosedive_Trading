@@ -1,5 +1,6 @@
 import type { Fill } from "../api";
 import { sci, sciUnit, withCurrency } from "../lib/format";
+import { Scroll } from "./layout";
 
 function contractLabel(fill: Fill): string {
   const parts = fill.contract_key.split("|");
@@ -11,7 +12,7 @@ function contractLabel(fill: Fill): string {
 }
 
 export function FillsLedger({ fills, currency = "$" }: { fills: Fill[]; currency?: string }) {
-  const label = "Fills ledger — the append-only execution blotter";
+  const label = "Fills ledger, the append-only execution blotter";
   if (fills.length === 0) {
     return (
       <div className="state-panel" role="status">
@@ -20,7 +21,7 @@ export function FillsLedger({ fills, currency = "$" }: { fills: Fill[]; currency
     );
   }
   return (
-    <div className="table-wrap">
+    <Scroll label={label}>
       <table aria-label={label}>
         <caption>{label}, with each fill's venue timestamp</caption>
         <thead>
@@ -46,6 +47,6 @@ export function FillsLedger({ fills, currency = "$" }: { fills: Fill[]; currency
           ))}
         </tbody>
       </table>
-    </div>
+    </Scroll>
   );
 }

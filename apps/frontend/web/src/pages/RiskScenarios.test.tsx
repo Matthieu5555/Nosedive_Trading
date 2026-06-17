@@ -116,7 +116,7 @@ test("a missing cell is reported as missing and excluded from the gain/loss stat
   renderWithClient(<RiskScenariosPage />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
 
-  expect(screen.getByText(/8 cells — 1 missing/)).toBeInTheDocument();
+  expect(screen.getByText(/8 cells, 1 missing/)).toBeInTheDocument();
 
   expect(screen.getByText("1.5 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
   expect(screen.getByText("-1.2 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
@@ -155,7 +155,7 @@ test("the rate-shock sweep renders beside the surface when the grid carries a ra
   expect(within(table).getByText("1 × 10¹ bp")).toBeInTheDocument();
 });
 
-test("no rate family means no rate panel — the surface render stays as it was", async () => {
+test("no rate family means no rate panel, the surface render stays as it was", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
   renderWithClient(<RiskScenariosPage />);
 

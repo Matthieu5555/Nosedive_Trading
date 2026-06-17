@@ -1,13 +1,9 @@
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
+import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { useState } from "react";
 
 import type { BasketLegInput, ComposeLayerInput, ComposeResponse } from "../../api";
 import { CombinedBookView } from "../../components/CombinedBookView";
+import { Cluster, Stack } from "../../components/layout";
 
 type ComposeTabProps = {
   subStrategies: string[];
@@ -143,141 +139,153 @@ export function ComposeTab({
   }
 
   return (
-    <div className="basket-tab">
-      <p className="basket-tab__lead">
-        Layer decorrelated sub-strategies into one book. Pick a sub-strategy, label the layer, add a
-        leg, and reorder freely — the book&apos;s combined Greeks are order-free (the layer order is
-        display only). Then compose to see the combined view.
-      </p>
+    <Stack gap="md">
+      <article className="panel" aria-label="Compose the book">
+        <Stack gap="md">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Compose</p>
+              <h2>Layer sub-strategies into a book</h2>
+            </div>
+          </div>
+          <p className="basket-tab__lead">
+            Layer decorrelated sub-strategies into one book. Pick a sub-strategy, label the layer,
+            add a leg, and reorder freely, the book&apos;s combined Greeks are order-free (the layer
+            order is display only). Then compose to see the combined view.
+          </p>
 
-      {subStrategiesError !== null && (
-        <p role="alert" className="error">
-          Could not load sub-strategies: {subStrategiesError}
-        </p>
-      )}
+          {subStrategiesError !== null && (
+            <p role="alert" className="error">
+              Could not load sub-strategies: {subStrategiesError}
+            </p>
+          )}
 
-      <div className="basket-controls" role="group" aria-label="add layer">
-        <label>
-          Label{" "}
-          <input
-            aria-label="layer label"
-            value={label}
-            placeholder="e.g. S1 dispersion"
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </label>
-        <label>
-          Sub-strategy{" "}
-          <select
-            aria-label="sub-strategy"
-            value={effectiveUnderlying}
-            disabled={subStrategiesLoading || subStrategies.length === 0}
-            onChange={(e) => setUnderlying(e.target.value)}
-          >
-            {subStrategies.map((symbol) => (
-              <option key={symbol} value={symbol}>
-                {symbol}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Side{" "}
-          <select
-            aria-label="layer side"
-            value={side}
-            onChange={(e) => setSide(e.target.value as "long" | "short")}
-          >
-            <option value="long">long</option>
-            <option value="short">short</option>
-          </select>
-        </label>
-        <label>
-          Qty{" "}
-          <input
-            aria-label="layer quantity"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-        </label>
-        <label>
-          Tenor{" "}
-          <input aria-label="layer tenor" value={tenor} onChange={(e) => setTenor(e.target.value)} />
-        </label>
-        <label>
-          Band{" "}
-          <select
-            aria-label="layer band"
-            value={band}
-            onChange={(e) => setBand(e.target.value)}
-          >
-            {bandOptions.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          aria-label="add layer"
-          disabled={!effectiveUnderlying}
-          onClick={addLayer}
-        >
-          Add layer
-        </button>
-      </div>
-
-      <div className="table-wrap">
-        <table aria-label="composed layers">
-          <thead>
-            {table.getHeaderGroups().map((group) => (
-              <tr key={group.id}>
-                {group.headers.map((header) => (
-                  <th key={header.id}>
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
+          <Cluster gap="sm" align="end" role="group" aria-label="add layer">
+            <label>
+              Label{" "}
+              <input
+                aria-label="layer label"
+                value={label}
+                placeholder="e.g. S1 dispersion"
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            </label>
+            <label>
+              Sub-strategy{" "}
+              <select
+                aria-label="sub-strategy"
+                value={effectiveUnderlying}
+                disabled={subStrategiesLoading || subStrategies.length === 0}
+                onChange={(e) => setUnderlying(e.target.value)}
+              >
+                {subStrategies.map((symbol) => (
+                  <option key={symbol} value={symbol}>
+                    {symbol}
+                  </option>
                 ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.length === 0 ? (
-              <tr>
-                <td colSpan={6}>
-                  <span role="status">No layers yet — add one above to compose a book.</span>
-                </td>
-              </tr>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} aria-label={`layer row ${row.original.label}`}>
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id}>
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </select>
+            </label>
+            <label>
+              Side{" "}
+              <select
+                aria-label="layer side"
+                value={side}
+                onChange={(e) => setSide(e.target.value as "long" | "short")}
+              >
+                <option value="long">long</option>
+                <option value="short">short</option>
+              </select>
+            </label>
+            <label>
+              Qty{" "}
+              <input
+                aria-label="layer quantity"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </label>
+            <label>
+              Tenor{" "}
+              <input
+                aria-label="layer tenor"
+                value={tenor}
+                onChange={(e) => setTenor(e.target.value)}
+              />
+            </label>
+            <label>
+              Band{" "}
+              <select
+                aria-label="layer band"
+                value={band}
+                onChange={(e) => setBand(e.target.value)}
+              >
+                {bandOptions.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              aria-label="add layer"
+              disabled={!effectiveUnderlying}
+              onClick={addLayer}
+            >
+              Add layer
+            </button>
+          </Cluster>
+
+          <div className="table-wrap">
+            <table aria-label="composed layers">
+              <thead>
+                {table.getHeaderGroups().map((group) => (
+                  <tr key={group.id}>
+                    {group.headers.map((header) => (
+                      <th key={header.id}>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>
+                      <span role="status">No layers yet, add one above to compose a book.</span>
                     </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                  </tr>
+                ) : (
+                  table.getRowModel().rows.map((row) => (
+                    <tr key={row.id} aria-label={`layer row ${row.original.label}`}>
+                      {row.getVisibleCells().map((cell) => (
+                        <td key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-      <div className="basket-actions">
-        <button type="button" onClick={onCompose} disabled={loading || layers.length === 0}>
-          {loading ? "Composing…" : "Compose book"}
-        </button>
-      </div>
+          <Cluster gap="xs">
+            <button type="button" onClick={onCompose} disabled={loading || layers.length === 0}>
+              {loading ? "Composing…" : "Compose book"}
+            </button>
+          </Cluster>
 
-      {error !== null && (
-        <p role="alert" className="error">
-          Failed to compose book: {error}
-        </p>
-      )}
+          {error !== null && (
+            <p role="alert" className="error">
+              Failed to compose book: {error}
+            </p>
+          )}
+        </Stack>
+      </article>
 
-      {book !== null && (
-        <CombinedBookView book={book} currency={currency} tradeDate={tradeDate} />
-      )}
-    </div>
+      {book !== null && <CombinedBookView book={book} currency={currency} tradeDate={tradeDate} />}
+    </Stack>
   );
 }

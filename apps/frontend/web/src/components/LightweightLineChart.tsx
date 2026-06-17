@@ -145,7 +145,7 @@ export function LightweightLineChart({
       if (!showSeriesLegend) return;
       rendered.forEach((item, index) => {
         const value = x === null ? item.latest.value : item.valueByX.get(x);
-        valueNodes[index].textContent = value === undefined ? "—" : valueFormatter(value);
+        valueNodes[index].textContent = value === undefined ? "-" : valueFormatter(value);
       });
     };
 

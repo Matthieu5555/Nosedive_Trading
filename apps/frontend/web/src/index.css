@@ -18,6 +18,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* The layout foundation: spacing/type tokens, the bundled numeric/maths @font-face, the layout-
+ * discipline baseline and the layout primitives. Imported before the design skin below so every
+ * token exists for every rule, and so the discipline baseline (overflow containment) is app-wide.
+ * This is the single owner of spacing/sizing/overflow the rest of the file now defers to. */
+@import "./styles/foundation.css";
+
 /* Map Tailwind color/radius tokens onto the EXISTING palette. `@theme inline` makes the
  * generated utilities reference var(--bg) etc. directly, so changing a :root var below
  * keeps utilities and legacy CSS perfectly in sync (single source of truth). */
@@ -53,6 +59,9 @@
   --amber: #e8c264;
   --blue: #79b8d6;
   --radius: 8px;
+  /* --font-numeric is now defined in styles/foundation.css, backed by a REAL bundled woff2 (DejaVu
+   * Sans Mono, subset). Every figure, Greek (δ, Δ, ρ̄, ν, θ), unit and tabular column resolves to
+   * that face, so numbers line up and maths glyphs never fall back to a mismatched system font. */
   /* One UI font stack for the whole app. No web font is bundled, so leading with an uninstalled
    * "Basis Grotesque"/"Inter" only made elements fall back inconsistently — every surface now
    * resolves to the same system font. Kept byte-identical to CHART_FONT_FAMILY in chartTheme.ts so
@@ -71,6 +80,33 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* ── Layout discipline (automatic) ────────────────────────────────────────────
+ * The baseline that makes "drop in an element and it behaves" the default, so the rules below
+ * (and any new component) don't each have to re-solve overflow:
+ *
+ *  1. Flex/grid children default to min-width/min-height:auto, which REFUSES to shrink below their
+ *     content — that is what pushes a long ticker or a wide table past the panel edge and blows the
+ *     page width out. Letting them shrink (min-width:0) inside our layout primitives means content
+ *     clips/wraps inside its box instead of spilling over a neighbour. Element rules that need a real
+ *     floor still set their own min-width and win by specificity.
+ *  2. Long unbroken strings (ids, symbols, URLs) wrap instead of running out of their container.
+ *  3. Media and embedded figures never exceed their column. */
+:where(.page, .market-scroll, .panel, .detail-grid, .market-grid, .risk-grid, .metric-grid) > * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.page :where(p, h1, h2, h3, h4, dt, dd, li, figcaption, blockquote) {
+  overflow-wrap: break-word;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
 }
 
 body {
@@ -445,7 +481,7 @@ h3 {
   display: block;
   margin-top: 6px;
   overflow-wrap: anywhere;
-  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  font-family: var(--font-numeric);
   font-size: 16px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
@@ -515,7 +551,7 @@ h3 {
   display: block;
   margin-top: 8px;
   overflow-wrap: anywhere;
-  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  font-family: var(--font-numeric);
   font-size: 19px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
@@ -1053,7 +1089,7 @@ h3 {
 
 .scenario-cell span {
   display: block;
-  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  font-family: var(--font-numeric);
   font-size: 16px;
 }
 
@@ -1085,7 +1121,7 @@ h3 {
 .surface-slices strong {
   display: block;
   margin: 6px 0;
-  font-family: "SFMono-Regular", Consolas, ui-monospace, monospace;
+  font-family: var(--font-numeric);
   font-size: 20px;
   font-weight: 400;
 }
@@ -1134,35 +1170,8 @@ h3 {
   color: var(--negative);
 }
 
-/* The global failure surface: a fixed strip pinned to the top of the viewport so an escaped error
-   is visible on every route and never scrolls out of view. Reuses the error palette above. */
-.global-error-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.global-error-banner-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba(239, 156, 146, 0.72);
-  background: rgba(239, 156, 146, 0.16);
-  color: var(--negative);
-  font-size: 13px;
-  backdrop-filter: blur(6px);
-}
-
-.global-error-banner-message {
-  overflow-wrap: anywhere;
-}
+/* The global failure surface is now the centered modal (.error-modal__*, defined in
+   styles/foundation.css), replacing the old top strip the owner called out as ugly. */
 
 @media (max-width: 980px) {
   .shell {
@@ -1323,7 +1332,7 @@ h3 {
    right), so a glance ranks the names without reading the numbers. */
 .signals-lede {
   max-width: 70ch;
-  margin: 12px 0 16px;
+  margin: 0;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1610,16 +1619,12 @@ h3 {
 
 .backtest-form {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  gap: var(--space-md);
 }
 
 .backtest-form fieldset {
-  flex: 1 1 240px;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
@@ -1664,32 +1669,9 @@ h3 {
   width: auto;
 }
 
-.backtest-actions {
-  flex: 1 1 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 4px;
-}
-
 .backtest-actions .hint {
   color: var(--muted);
   font-size: 12px;
-}
-
-.backtest-results {
-  margin-top: 20px;
-}
-
-.backtest-results > * + * {
-  margin-top: 16px;
-}
-
-.greeks-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 12px;
-  margin-top: 14px;
 }
 
 .chart-skeleton {

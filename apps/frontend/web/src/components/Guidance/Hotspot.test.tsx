@@ -7,9 +7,10 @@ import { Hotspot } from "./Hotspot";
 describe("Hotspot", () => {
   test("renders a quiet ⓘ trigger labelled by the metric, tooltip closed until asked", () => {
     render(<Hotspot label="Volatility surface" body="vol vs log-moneyness vs maturity" />);
-    expect(
-      screen.getByRole("button", { name: "Volatility surface" }),
-    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Volatility surface" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
@@ -22,7 +23,7 @@ describe("Hotspot", () => {
     );
   });
 
-  test("opening the hotspot never inserts a modal/dialog — the page stays interactive", async () => {
+  test("opening the hotspot never inserts a modal/dialog, the page stays interactive", async () => {
     const user = userEvent.setup();
     render(
       <>
@@ -36,7 +37,7 @@ describe("Hotspot", () => {
     expect(screen.getByRole("button", { name: "behind" })).toBeEnabled();
   });
 
-  test("an empty gloss renders nothing — no empty hotspot bubble", () => {
+  test("an empty gloss renders nothing, no empty hotspot bubble", () => {
     render(<Hotspot label="Inconnu" body="" />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(document.querySelector(".info-dot")).toBeNull();

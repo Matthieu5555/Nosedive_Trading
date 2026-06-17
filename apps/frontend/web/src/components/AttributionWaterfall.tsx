@@ -53,7 +53,7 @@ export function AttributionWaterfall({
     name: "PnL attribution",
   } as unknown as Data;
 
-  const label = `P&L attribution waterfall — ${kicker} (by-Greek dollar contributions + residual)`;
+  const label = `P&L attribution waterfall, ${kicker} (by-Greek dollar contributions + residual)`;
   const within = attribution.verdict?.within_tolerance;
   const layout: Partial<Layout> = {
     yaxis: { title: { text: `dollar PnL (${termUnit})` } },
@@ -75,7 +75,7 @@ export function AttributionWaterfall({
       </div>
       <p>
         Each bar is one Greek&apos;s dollar contribution to the scenario P&amp;L; the{" "}
-        <strong>residual</strong> is the leftover against the full reprice (the honesty meter) — its
+        <strong>residual</strong> is the leftover against the full reprice (the honesty meter), its
         own bar, never folded into a term. Bars in dollars: <strong>{termUnit}</strong>; residual:{" "}
         <strong>{residualUnit}</strong>.
       </p>

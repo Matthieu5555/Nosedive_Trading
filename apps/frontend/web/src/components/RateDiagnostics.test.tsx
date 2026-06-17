@@ -43,7 +43,7 @@ test("a null field shows an honest dash, never a fabricated rate", () => {
   render(<RateDiagnosticsPanel diagnostics={partial} maturityLabel="3m (0.250y)" />);
   const panel = screen.getByLabelText("Rate diagnostics");
   // Carry + dividend are null → two honest dashes; r still renders.
-  expect(within(panel).getAllByText("—").length).toBe(2);
+  expect(within(panel).getAllByText("-").length).toBe(2);
 });
 
 test("no diagnostics banked for the tenor reads as a labelled projection gap", () => {

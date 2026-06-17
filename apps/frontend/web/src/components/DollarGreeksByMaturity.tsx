@@ -1,6 +1,12 @@
-import { ALL_MATURITIES, type AnalyticsMaturity, type AnalyticsPoint, type OptionSide } from "../api";
+import {
+  ALL_MATURITIES,
+  type AnalyticsMaturity,
+  type AnalyticsPoint,
+  type OptionSide,
+} from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
+import { Scroll, Stack } from "./layout";
 
 // The always-present first-order Greeks (the second-order set below is additive-nullable and is
 // rendered by its own block, so it is deliberately excluded from this generic first-order indexing).
@@ -68,10 +74,10 @@ export function DollarGreeksByMaturity({
 
   if (maturities.length === 0) {
     return (
-      <section aria-label={label} className="greeks-by-maturity">
+      <Stack as="section" aria-label={label} className="greeks-by-maturity" gap="sm">
         <h3>Dollar Greeks by delta band</h3>
         <p>No projected analytics for this ticker/date yet.</p>
-      </section>
+      </Stack>
     );
   }
 
@@ -108,10 +114,10 @@ export function DollarGreeksByMaturity({
   }
 
   return (
-    <section aria-label={label} className="greeks-by-maturity">
+    <Stack as="section" aria-label={label} className="greeks-by-maturity" gap="sm">
       <div className="greeks-by-maturity-heading">
         <h3>
-          Dollar Greeks — {maturity.label}
+          Dollar Greeks, {maturity.label}
           {isAll ? " (front month)" : ""}
         </h3>
         <p className="panel-note">
@@ -122,11 +128,11 @@ export function DollarGreeksByMaturity({
       {rows.length === 0 ? (
         <p>No projected analytics for {maturity.label} yet.</p>
       ) : (
-        <div className="greeks-by-maturity-scroll">
-          <table aria-label={`Dollar Greeks — ${maturity.label}`}>
+        <Scroll className="greeks-by-maturity-scroll" label={`Dollar Greeks, ${maturity.label}`}>
+          <table aria-label={`Dollar Greeks, ${maturity.label}`}>
             <caption className="visually-hidden">
-              Dollar Greeks for {maturity.label}: each Greek as raw and {currency} value, one row per
-              delta band.
+              Dollar Greeks for {maturity.label}: each Greek as raw and {currency} value, one row
+              per delta band.
             </caption>
             <thead>
               <tr>
@@ -171,7 +177,7 @@ export function DollarGreeksByMaturity({
                       {point.delta_band}
                       {atm ? <span title="at-the-money"> ●</span> : null}
                       {flip ? <span title="sign flip"> ±</span> : null}
-                      {flagged ? <span title="railed slice — IV outside sane band"> ⚠</span> : null}
+                      {flagged ? <span title="railed slice, IV outside sane band"> ⚠</span> : null}
                     </th>
                     {GREEKS.map((greek) => {
                       const metric = point.metrics[greek.name];
@@ -185,12 +191,12 @@ export function DollarGreeksByMaturity({
               })}
             </tbody>
           </table>
-        </div>
+        </Scroll>
       )}
       {rows.length > 0 && (
         <SecondOrderGreeks rows={rows} maturityLabel={maturity.label} currency={currency} />
       )}
-    </section>
+    </Stack>
   );
 }
 
@@ -207,32 +213,42 @@ function SecondOrderGreeks({
   maturityLabel: string;
   currency: string;
 }) {
-  const label = `Second-order Greeks — ${maturityLabel}`;
+  const label = `Second-order Greeks, ${maturityLabel}`;
   const anyPresent = rows.some((point) =>
     SECOND_ORDER.some((greek) => point.metrics[greek.name]?.raw != null),
   );
 
   if (!anyPresent) {
     return (
-      <section aria-label={label} className="greeks-by-maturity greeks-second-order">
+      <Stack
+        as="section"
+        aria-label={label}
+        className="greeks-by-maturity greeks-second-order"
+        gap="sm"
+      >
         <h3>Second-order Greeks</h3>
         <p className="projection-gap" role="status">
-          Vanna / Volga / Charm were not banked for this close — nothing to show (older projection).
+          Vanna / Volga / Charm were not banked for this close, nothing to show (older projection).
         </p>
-      </section>
+      </Stack>
     );
   }
 
   return (
-    <section aria-label={label} className="greeks-by-maturity greeks-second-order">
+    <Stack
+      as="section"
+      aria-label={label}
+      className="greeks-by-maturity greeks-second-order"
+      gap="sm"
+    >
       <div className="greeks-by-maturity-heading">
-        <h3>Second-order Greeks — {maturityLabel}</h3>
+        <h3>Second-order Greeks, {maturityLabel}</h3>
         <p className="panel-note">
-          How the first-order Greeks themselves move · vanna (Δ vs vol), volga (vega vs vol), charm (Δ
-          vs time) · raw and {currency} value per delta band
+          How the first-order Greeks themselves move · vanna (Δ vs vol), volga (vega vs vol), charm
+          (Δ vs time) · raw and {currency} value per delta band
         </p>
       </div>
-      <div className="greeks-by-maturity-scroll">
+      <Scroll className="greeks-by-maturity-scroll" label={label}>
         <table aria-label={label}>
           <caption className="visually-hidden">
             Second-order Greeks for {maturityLabel}: vanna, volga and charm as raw and {currency}{" "}
@@ -284,8 +300,8 @@ function SecondOrderGreeks({
             })}
           </tbody>
         </table>
-      </div>
-    </section>
+      </Scroll>
+    </Stack>
   );
 }
 

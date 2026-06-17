@@ -49,7 +49,7 @@ const CLEAN_12M: AnalyticsMaturity = {
 describe("DollarGreeksByMaturity", () => {
   test("lays Greeks as columns and delta bands as rows, with raw + currency pairs", () => {
     render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />);
-    const table = screen.getByRole("table", { name: /Dollar Greeks — / });
+    const table = screen.getByRole("table", { name: /Dollar Greeks, / });
 
     for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
       expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
@@ -68,14 +68,14 @@ describe("DollarGreeksByMaturity", () => {
     const { rerender } = render(
       <DollarGreeksByMaturity maturities={maturities} maturityLabel="3m (0.250y)" currency="€" />,
     );
-    expect(screen.getByRole("table", { name: /Dollar Greeks — 3m/ })).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: /Dollar Greeks — 12m/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /Dollar Greeks, 3m/ })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: /Dollar Greeks, 12m/ })).not.toBeInTheDocument();
 
     rerender(
       <DollarGreeksByMaturity maturities={maturities} maturityLabel="12m (1.000y)" currency="€" />,
     );
-    expect(screen.getByRole("table", { name: /Dollar Greeks — 12m/ })).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: /Dollar Greeks — 3m/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /Dollar Greeks, 12m/ })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: /Dollar Greeks, 3m/ })).not.toBeInTheDocument();
   });
 
   test("the put/call switch keeps one wing (ATM shared) and highlights the ATM row", () => {
@@ -118,7 +118,7 @@ describe("DollarGreeksByMaturity", () => {
         currency="€"
       />,
     );
-    const table = screen.getByRole("table", { name: /Dollar Greeks — 12m/ });
+    const table = screen.getByRole("table", { name: /Dollar Greeks, 12m/ });
 
     // Calls + ATM survive; the put band is filtered out.
     expect(within(table).getByRole("rowheader", { name: /atm/i })).toBeInTheDocument();
@@ -133,7 +133,7 @@ describe("DollarGreeksByMaturity", () => {
     render(
       <DollarGreeksByMaturity maturities={ANALYTICS_AAA_DEGENERATE.maturities} currency="€" />,
     );
-    const table = screen.getByRole("table", { name: /Dollar Greeks — 10d/ });
+    const table = screen.getByRole("table", { name: /Dollar Greeks, 10d/ });
 
     expect(within(table).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /14dp/ })).toBeInTheDocument();
@@ -171,7 +171,7 @@ describe("DollarGreeksByMaturity", () => {
         currency="€"
       />,
     );
-    const table = screen.getByRole("table", { name: /Second-order Greeks — 12m/ });
+    const table = screen.getByRole("table", { name: /Second-order Greeks, 12m/ });
     for (const greek of ["vanna", "volga", "charm"]) {
       expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
     }
@@ -187,7 +187,7 @@ describe("DollarGreeksByMaturity", () => {
     render(
       <DollarGreeksByMaturity maturities={[CLEAN_12M]} maturityLabel="12m (1.000y)" currency="€" />,
     );
-    expect(screen.queryByRole("table", { name: /Second-order Greeks — / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: /Second-order Greeks, / })).not.toBeInTheDocument();
     expect(screen.getByText(/not banked for this close/i)).toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import type {
 import { AsyncBlock } from "../../components/AsyncBlock";
 import { PriceChart } from "../../components/charts";
 import { ConstituentTable } from "../../components/ConstituentTable";
+import { Scroll, Stack } from "../../components/layout";
 import { useFetch } from "../../hooks/useFetch";
 import { useConstituentHistoryBatch } from "./constituentHistory";
 
@@ -50,52 +51,56 @@ export function ConstituentsWorkspace({
   return (
     <div className="constituents-row">
       <article className="panel stocks-panel">
-        <div className="panel-heading">
-          <h2>Constituents</h2>
-          <span className="status">
-            {state.data ? `${state.data.n_constituents} members` : ""}
-          </span>
-        </div>
-        <AsyncBlock loading={state.loading} error={state.error}>
-          {state.data &&
-            (state.data.n_constituents === 0 ? (
-              <p>
-                No constituents for {state.data.index} as of {state.data.as_of}.
-              </p>
-            ) : (
-              <>
-                <UnderlyingDataSummary
-                  batch={histories.data}
-                  loading={histories.loading}
-                  error={histories.error}
-                  constituents={state.data.constituents}
-                />
-                <ConstituentTable
-                  constituents={state.data.constituents}
-                  selected={selected}
-                  onSelect={onSelect}
-                />
-              </>
-            ))}
-        </AsyncBlock>
+        <Stack gap="md">
+          <div className="panel-heading">
+            <h2>Constituents</h2>
+            <span className="status">
+              {state.data ? `${state.data.n_constituents} members` : ""}
+            </span>
+          </div>
+          <AsyncBlock loading={state.loading} error={state.error}>
+            {state.data &&
+              (state.data.n_constituents === 0 ? (
+                <p>
+                  No constituents for {state.data.index} as of {state.data.as_of}.
+                </p>
+              ) : (
+                <Stack gap="md">
+                  <UnderlyingDataSummary
+                    batch={histories.data}
+                    loading={histories.loading}
+                    error={histories.error}
+                    constituents={state.data.constituents}
+                  />
+                  <ConstituentTable
+                    constituents={state.data.constituents}
+                    selected={selected}
+                    onSelect={onSelect}
+                  />
+                </Stack>
+              ))}
+          </AsyncBlock>
+        </Stack>
       </article>
 
       <article
         className="panel component-panel"
         aria-label={selected ? `Price history for ${selected}` : "Component price history"}
       >
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">{index}</p>
-            <h2>{selected ?? "Pick a ticker"}</h2>
+        <Stack gap="md">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">{index}</p>
+              <h2>{selected ?? "Pick a ticker"}</h2>
+            </div>
+            <span className="status">selected member · daily OHLC</span>
           </div>
-          <span className="status">selected member · daily OHLC</span>
-        </div>
-        {selected === null ? (
-          <p>Select a constituent on the left to see its price history.</p>
-        ) : (
-          <SelectedComponentHistory symbol={selected} asOf={asOf} batchEntry={selectedHistory} />
-        )}
+          {selected === null ? (
+            <p>Select a constituent on the left to see its price history.</p>
+          ) : (
+            <SelectedComponentHistory symbol={selected} asOf={asOf} batchEntry={selectedHistory} />
+          )}
+        </Stack>
       </article>
     </div>
   );
@@ -119,7 +124,11 @@ function SelectedComponentHistory({
       loading={data === null && single.loading}
       error={data === null ? single.error : null}
     >
-      {data && <PriceChart data={data} />}
+      {data && (
+        <Scroll label={`${symbol} price chart`}>
+          <PriceChart data={data} />
+        </Scroll>
+      )}
     </AsyncBlock>
   );
 }

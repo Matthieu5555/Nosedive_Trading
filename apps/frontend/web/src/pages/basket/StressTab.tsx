@@ -1,3 +1,4 @@
+import { Cluster, Stack } from "../../components/layout";
 import { Metric } from "../../components/Metric";
 import { NamedScenarios } from "../../components/NamedScenarios";
 import { RateSweep, StressSurface } from "../../components/StressSurface";
@@ -30,23 +31,34 @@ export function StressTab({
   namedError,
 }: StressTabProps) {
   return (
-    <div className="basket-tab">
-      <p className="basket-tab__lead">
-        Shock the composed basket across a grid of spot and vol moves — and, on its own axis, a
-        parallel rate sweep. This is a full reprice per leg, so it reads the worst-case loss the
-        position carries today. Below the grid, replay the named historical crises as shock presets.
-      </p>
-      <div className="basket-actions">
-        <button type="button" onClick={onStress} disabled={loading || !canStress}>
-          {loading ? "Stressing…" : "Stress basket"}
-        </button>
-      </div>
+    <Stack gap="md">
+      <article className="panel" aria-label="Stress the basket">
+        <Stack gap="md">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Stress</p>
+              <h2>Shock the basket</h2>
+            </div>
+          </div>
+          <p className="basket-tab__lead">
+            Shock the composed basket across a grid of spot and vol moves, and, on its own axis, a
+            parallel rate sweep. This is a full reprice per leg, so it reads the worst-case loss the
+            position carries today. Below the grid, replay the named historical crises as shock
+            presets.
+          </p>
+          <Cluster gap="xs">
+            <button type="button" onClick={onStress} disabled={loading || !canStress}>
+              {loading ? "Stressing…" : "Stress basket"}
+            </button>
+          </Cluster>
 
-      {error !== null && (
-        <p role="alert" className="error">
-          Failed to stress basket: {error}
-        </p>
-      )}
+          {error !== null && (
+            <p role="alert" className="error">
+              Failed to stress basket: {error}
+            </p>
+          )}
+        </Stack>
+      </article>
       {stress !== null && (
         <div className="risk-grid">
           <article className="panel scenario-summary">
@@ -62,7 +74,10 @@ export function StressTab({
             <div className="quote-strip">
               <Metric
                 label="Worst PnL"
-                value={sciUnit(stress.worst_case.pnl, withCurrency(stress.worst_case.unit, currency))}
+                value={sciUnit(
+                  stress.worst_case.pnl,
+                  withCurrency(stress.worst_case.unit, currency),
+                )}
               />
               <Metric
                 label="Spot shock"
@@ -93,18 +108,25 @@ export function StressTab({
         </div>
       )}
 
-      <div className="risk-grid">
-        <h3>Shock presets — named historical crises</h3>
-        {namedError !== null && (
-          <p role="alert" className="error">
-            Failed to load shock presets: {namedError}
-          </p>
-        )}
-        {namedLoading && <p role="status">Loading shock presets…</p>}
-        {!namedLoading && namedError === null && (
-          <NamedScenarios scenarios={namedScenarios} currency={currency} />
-        )}
-      </div>
-    </div>
+      <article className="panel" aria-label="Shock presets">
+        <Stack gap="sm">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Presets</p>
+              <h2>Shock presets, named historical crises</h2>
+            </div>
+          </div>
+          {namedError !== null && (
+            <p role="alert" className="error">
+              Failed to load shock presets: {namedError}
+            </p>
+          )}
+          {namedLoading && <p role="status">Loading shock presets…</p>}
+          {!namedLoading && namedError === null && (
+            <NamedScenarios scenarios={namedScenarios} currency={currency} />
+          )}
+        </Stack>
+      </article>
+    </Stack>
   );
 }

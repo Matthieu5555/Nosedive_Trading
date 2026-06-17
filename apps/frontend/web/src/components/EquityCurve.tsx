@@ -2,6 +2,7 @@ import type { Data, Layout } from "plotly.js";
 
 import type { BacktestDay } from "../api";
 import { sciUnit, withCurrency } from "../lib/format";
+import { Stack } from "./layout";
 import { Metric } from "./Metric";
 import { Plot } from "./Plot";
 
@@ -19,13 +20,15 @@ export function EquityCurve({
   if (days.length === 0) {
     return (
       <article className="panel" aria-label="Cumulative P&L (empty)">
-        <div className="panel-heading">
-          <div>
-            <p className="panel-kicker">{kicker}</p>
-            <h2>Cumulative P&amp;L</h2>
+        <Stack gap="md">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">{kicker}</p>
+              <h2>Cumulative P&amp;L</h2>
+            </div>
           </div>
-        </div>
-        <p role="status">No days in this backtest window.</p>
+          <p role="status">No days in this backtest window.</p>
+        </Stack>
       </article>
     );
   }
@@ -62,31 +65,31 @@ export function EquityCurve({
 
   return (
     <article className="panel" aria-label="Cumulative P&L">
-      <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">{kicker}</p>
-          <h2>Cumulative P&amp;L</h2>
+      <Stack gap="md">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">{kicker}</p>
+            <h2>Cumulative P&amp;L</h2>
+          </div>
+          <span className={lastNet < 0 ? "status negative" : "status"}>{days.length} days</span>
         </div>
-        <span className={lastNet < 0 ? "status negative" : "status"}>
-          {days.length} days
-        </span>
-      </div>
-      <p>
-        The running total of the line&apos;s P&amp;L, day by day. <strong>Gross</strong> is before
-        trading costs; <strong>net</strong> is what the book actually keeps after commission and
-        slippage. The gap between the two lines is the cost drag. P&amp;L unit: <strong>{unit}</strong>
-        .
-      </p>
-      <div className="quote-strip">
-        <Metric label="Ending gross" value={sciUnit(lastGross, unit)} />
-        <Metric label="Ending net" value={sciUnit(lastNet, unit)} />
-      </div>
-      <Plot
-        label={`Cumulative P&L — ${kicker} (gross vs net, by trade date)`}
-        data={[grossTrace, netTrace]}
-        layout={layout}
-        height={360}
-      />
+        <p>
+          The running total of the line&apos;s P&amp;L, day by day. <strong>Gross</strong> is before
+          trading costs; <strong>net</strong> is what the book actually keeps after commission and
+          slippage. The gap between the two lines is the cost drag. P&amp;L unit:{" "}
+          <strong>{unit}</strong>.
+        </p>
+        <div className="quote-strip">
+          <Metric label="Ending gross" value={sciUnit(lastGross, unit)} />
+          <Metric label="Ending net" value={sciUnit(lastNet, unit)} />
+        </div>
+        <Plot
+          label={`Cumulative P&L, ${kicker} (gross vs net, by trade date)`}
+          data={[grossTrace, netTrace]}
+          layout={layout}
+          height={360}
+        />
+      </Stack>
     </article>
   );
 }

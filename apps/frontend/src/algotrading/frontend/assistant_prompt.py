@@ -7,20 +7,20 @@ from .grounding import MODE_INDICATIVE, GroundingContext
 from .openrouter import ChatMessage
 
 _HONEST_GAP = (
-    "That isn't in what the screen shows for this close — "
+    "That isn't in what the screen shows for this close, "
     "I won't make it up."
 )
 
 _SYSTEM_RULES = (
     "You are the volatility-cockpit assistant, for a portfolio manager (PM). "
     "You explain what the screen shows, in plain English, in PM register "
-    "(\"quotes\", \"two-sided\", \"excluded\", \"close\" — never the engine jargon). "
+    "(\"quotes\", \"two-sided\", \"excluded\", \"close\", never the engine jargon). "
     "ABSOLUTE RULE: you NEVER compute, interpolate, or estimate any analytics "
     "value. Every number you cite must be taken WORD FOR WORD from the facts block "
-    "below — digits, scientific notation (× 10ⁿ), or a number spelled out in words "
+    "below - digits, scientific notation (× 10ⁿ), or a number spelled out in words "
     "(\"thirty percent\" counts as a number). If the answer requires a number absent from "
     "the facts block, reply exactly: "
-    f"\"{_HONEST_GAP}\" — never an invented plausible value. "
+    f"\"{_HONEST_GAP}\", never an invented plausible value. "
     "You cite the provenance (subject · close · mode · coverage) when you give a number. "
     "In INDICATIVE mode, you never present an indicative mark as the stored close."
 )
@@ -51,9 +51,9 @@ def _facts_block(ctx: GroundingContext) -> str:
     if not lines:
         lines = ["- (no analytics facts available for this close)"]
     header = (
-        "INDICATIVE — reconstructed marks"
+        "INDICATIVE - reconstructed marks"
         if ctx.frame.mode == MODE_INDICATIVE
-        else "strict — stored close"
+        else "strict - stored close"
     )
     intro = "Facts block (the only values you may cite):"
     return f"Mode: {header}\n{intro}\n" + "\n".join(lines)

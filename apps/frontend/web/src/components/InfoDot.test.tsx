@@ -68,7 +68,7 @@ describe("InfoDot", () => {
     expect(screen.getByRole("button", { name: "behind" })).toBeEnabled();
   });
 
-  test("an empty body renders nothing — no empty bubble (help is silent, not loud)", () => {
+  test("an empty body renders nothing, no empty bubble (help is silent, not loud)", () => {
     const { container } = render(<InfoDot label="Unknown" body="" />);
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByRole("button")).toBeNull();

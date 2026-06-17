@@ -11,7 +11,6 @@ import {
   withCurrency,
 } from "./format";
 
-
 describe("sci", () => {
   it("renders the owner's worked example at 6 sig figs with trailing zeros stripped", () => {
     expect(sci(0.58)).toBe("5.8 × 10⁻¹");
@@ -138,7 +137,7 @@ describe("asOfClose", () => {
     expect(asOfClose("2026-06-17")).toBe("close 2026-06-17");
   });
 
-  it("never invents a date — an absent as-of is labelled, not blank", () => {
+  it("never invents a date, an absent as-of is labelled, not blank", () => {
     expect(asOfClose(null, "17:30 CET")).toBe("date unresolved");
   });
 });

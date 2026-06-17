@@ -1,5 +1,6 @@
 import type { AvailableDate, QcVerdict, RecordedDatesResponse } from "../../api";
 import { number } from "../../lib/format";
+import { Scroll, Stack } from "../layout";
 import { Metric } from "../Metric";
 
 function QcBadge({ qc }: { qc: QcVerdict }) {
@@ -36,27 +37,24 @@ export function FreshnessPanel({ recorded }: { recorded: RecordedDatesResponse }
   if (latest === null) {
     return (
       <p className="panel-note" role="status">
-        No recorded analytics for {recorded.index} yet — nothing has computed risk on this index.
+        No recorded analytics for {recorded.index} yet, nothing has computed risk on this index.
       </p>
     );
   }
 
   const recent = available.slice(0, 5);
   return (
-    <div className="ops-freshness">
+    <Stack className="ops-freshness" gap="md">
       <div className="metric-grid">
         <Metric label="Risk last computed for" value={latest.date} />
         <Metric label="Latest fetch landed at" value={fetchTime(latest.recorded_ts)} />
-        <Metric
-          label="Clean, gap-free days recorded"
-          value={`${number(recorded.count, 0)} days`}
-        />
+        <Metric label="Clean, gap-free days recorded" value={`${number(recorded.count, 0)} days`} />
       </div>
       <p className="panel-note">
-        Latest snapshot quality: <QcBadge qc={latest.qc} /> — a failing badge means the day landed
+        Latest snapshot quality: <QcBadge qc={latest.qc} />, a failing badge means the day landed
         but did not pass quality control.
       </p>
-      <div className="ops-table-wrap">
+      <Scroll className="ops-table-wrap" label="Recorded analytics dates">
         <table className="ops-table">
           <thead>
             <tr>
@@ -71,7 +69,7 @@ export function FreshnessPanel({ recorded }: { recorded: RecordedDatesResponse }
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
+      </Scroll>
+    </Stack>
   );
 }

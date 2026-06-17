@@ -4,6 +4,7 @@ import { type AnalyticsMaturity, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
 import { GreeksShapeCurves, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
+import { Grid, Stack } from "./layout";
 import { PriceStructure } from "./PriceStructure";
 import { RateDiagnosticsPanel } from "./RateDiagnostics";
 
@@ -18,7 +19,7 @@ function ConvexityReadout({ maturity }: { maturity: AnalyticsMaturity }) {
     atm !== null && ivPut !== null && ivCall !== null ? ivPut + ivCall - 2 * atm : null;
   const value =
     convexity === null
-      ? "—"
+      ? "-"
       : `${convexity * 100 > 0 ? "+" : ""}${(convexity * 100).toFixed(1)} vp`;
   return (
     <p className="smile-convexity" aria-label="Convexity 25Δ">
@@ -66,77 +67,79 @@ export function TenorPanel({
 
   return (
     <article className="panel tenor-panel" aria-label="Tenor view">
-      <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">tenor</p>
-          <h2>Smile & Greeks</h2>
+      <Stack gap="md">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">tenor</p>
+            <h2>Smile & Greeks</h2>
+          </div>
+          <label className="selector-field">
+            <span className="visually-hidden">Tenor</span>
+            <select
+              aria-label="Tenor"
+              value={tenor}
+              onChange={(event) => setTenor(event.target.value)}
+            >
+              {TENOR_GRID.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                  {capturedByTenor.has(label) ? "" : " (not captured)"}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <label className="selector-field">
-          <span className="visually-hidden">Tenor</span>
-          <select
-            aria-label="Tenor"
-            value={tenor}
-            onChange={(event) => setTenor(event.target.value)}
-          >
-            {TENOR_GRID.map((label) => (
-              <option key={label} value={label}>
-                {label}
-                {capturedByTenor.has(label) ? "" : " (not captured)"}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
-      {selected === null ? (
-        // A grid tenor beyond the captured span: a labelled projection gap, never a blank or a
-        // fabricated curve.
-        <p className="projection-gap" role="status">
-          {tenor} is not captured for this close — no smile or Greeks to show (projection gap).
-        </p>
-      ) : (
-        <div className="tenor-panel__body">
-          <div className="tenor-panel__smile">
-            <SmileChart
-              maturities={maturities}
-              maturityLabel={selected.label}
-              subject={subject}
-              asOf={asOf}
-              closeInstant={closeInstant}
-              mode={mode}
-              coverage={coverage}
-            />
-            <ConvexityReadout maturity={selected} />
-          </div>
-          <PriceStructure
-            maturities={maturities}
-            maturityLabel={selected.label}
-            currency={currency}
-          />
-          <RateDiagnosticsPanel
-            diagnostics={selected.rate_diagnostics}
-            maturityLabel={selected.label}
-            currency={currency}
-          />
-          <div className="tenor-panel__greeks">
-            <DollarGreeksByMaturity
+        {selected === null ? (
+          // A grid tenor beyond the captured span: a labelled projection gap, never a blank or a
+          // fabricated curve.
+          <p className="projection-gap" role="status">
+            {tenor} is not captured for this close, no smile or Greeks to show (projection gap).
+          </p>
+        ) : (
+          <Stack className="tenor-panel__body" gap="lg">
+            <Stack className="tenor-panel__smile" gap="2xs">
+              <SmileChart
+                maturities={maturities}
+                maturityLabel={selected.label}
+                subject={subject}
+                asOf={asOf}
+                closeInstant={closeInstant}
+                mode={mode}
+                coverage={coverage}
+              />
+              <ConvexityReadout maturity={selected} />
+            </Stack>
+            <PriceStructure
               maturities={maturities}
               maturityLabel={selected.label}
               currency={currency}
             />
-            <GreeksShapeCurves
-              maturities={maturities}
+            <RateDiagnosticsPanel
+              diagnostics={selected.rate_diagnostics}
               maturityLabel={selected.label}
-              subject={subject}
-              asOf={asOf}
-              closeInstant={closeInstant}
-              mode={mode}
-              coverage={coverage}
               currency={currency}
             />
-          </div>
-        </div>
-      )}
+            <Grid min="340px" gap="lg">
+              <DollarGreeksByMaturity
+                maturities={maturities}
+                maturityLabel={selected.label}
+                currency={currency}
+              />
+              <GreeksShapeCurves
+                maturities={maturities}
+                maturityLabel={selected.label}
+                subject={subject}
+                asOf={asOf}
+                closeInstant={closeInstant}
+                mode={mode}
+                coverage={coverage}
+                currency={currency}
+              />
+            </Grid>
+          </Stack>
+        )}
+      </Stack>
     </article>
   );
 }

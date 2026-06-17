@@ -64,7 +64,7 @@ export function CombinedBookView({
     }
   }
 
-  const greeksLabel = `Combined + per-layer dollar Greeks — ${book.book_id} (book-additive sum)`;
+  const greeksLabel = `Combined + per-layer dollar Greeks, ${book.book_id} (book-additive sum)`;
   const surface = book.surface;
   const hasSurface = surface.spot_axis.length > 0 && surface.vol_axis.length > 0;
 
@@ -76,10 +76,10 @@ export function CombinedBookView({
     name: "combined stressed PnL",
   };
   const surfaceLabel =
-    "Combined stressed PnL surface — joint full reprice of the book over spot × vol";
+    "Combined stressed PnL surface, joint full reprice of the book over spot × vol";
 
   return (
-    <section aria-label={`Combined book view — ${book.book_id}`}>
+    <section aria-label={`Combined book view, ${book.book_id}`}>
       <article className="panel">
         <div className="panel-heading">
           <div>
@@ -91,8 +91,8 @@ export function CombinedBookView({
           </span>
         </div>
         <p>
-          The book&apos;s combined Greeks are the additive sum across all layers. Dollar numbers carry
-          their own unit string — nothing is re-derived on the front.
+          The book&apos;s combined Greeks are the additive sum across all layers. Dollar numbers
+          carry their own unit string, nothing is re-derived on the front.
           {book.diversification_ratio !== null && (
             <>
               {" "}
@@ -120,7 +120,7 @@ export function CombinedBookView({
             <tbody>
               <tr aria-label="combined book Greeks">
                 <th scope="row">Combined (book)</th>
-                <td>—</td>
+                <td>-</td>
                 {DOLLAR_GREEKS.map((greek) => {
                   const metric = dollarOf(book.combined, greek);
                   return (
@@ -129,7 +129,7 @@ export function CombinedBookView({
                     </td>
                   );
                 })}
-                <td>—</td>
+                <td>-</td>
               </tr>
               {book.layers.map((layer, index) => (
                 <tr key={index} aria-label={`layer ${layer.layer_label}`}>
@@ -182,7 +182,7 @@ export function CombinedBookView({
       ) : (
         <article className="panel" aria-label="Combined PnL surface (empty)">
           <p role="status">
-            No combined PnL surface — the book has no resolved positions to reprice.
+            No combined PnL surface, the book has no resolved positions to reprice.
           </p>
         </article>
       )}

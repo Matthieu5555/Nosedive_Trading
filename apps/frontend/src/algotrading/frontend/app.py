@@ -74,6 +74,7 @@ def create_app(
     from .routers import constituents as constituents_router  # noqa: PLC0415
     from .routers import coverage as coverage_router  # noqa: PLC0415
     from .routers import health as health_router  # noqa: PLC0415
+    from .routers import ibkr as ibkr_router  # noqa: PLC0415
     from .routers import indices as indices_router  # noqa: PLC0415
     from .routers import positions as positions_router  # noqa: PLC0415
     from .routers import price_history as price_history_router  # noqa: PLC0415
@@ -89,6 +90,7 @@ def create_app(
     app.include_router(surfaces_router.router)
     app.include_router(risk_router.router)
     app.include_router(run_router.router)
+    app.include_router(ibkr_router.router)
     app.include_router(config_router.router)
     app.include_router(indices_router.router)
     app.include_router(price_history_router.router)

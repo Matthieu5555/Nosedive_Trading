@@ -30,12 +30,12 @@ function legColumns(onRemove: (index: number) => void): ColumnDef<BasketLegInput
     {
       accessorKey: "tenor_label",
       header: "Tenor",
-      cell: (info) => info.getValue<string | null>() ?? "—",
+      cell: (info) => info.getValue<string | null>() ?? "-",
     },
     {
       accessorKey: "delta_band",
       header: "Band",
-      cell: (info) => info.getValue<string | null>() ?? "—",
+      cell: (info) => info.getValue<string | null>() ?? "-",
     },
     {
       id: "remove",
@@ -132,7 +132,7 @@ export function BasketLegGrid({
           ))}
           {legs.length === 0 && (
             <tr>
-              <td colSpan={7}>No legs yet — add one or pick a template.</td>
+              <td colSpan={7}>No legs yet, add one or pick a template.</td>
             </tr>
           )}
         </tbody>

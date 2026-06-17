@@ -9,7 +9,6 @@ import {
   UnknownMetricError,
 } from "./explain";
 
-
 describe("EXPLAIN map", () => {
   it("has one entry per declared metric id and each is fully populated", () => {
     const expected = [
@@ -93,7 +92,7 @@ describe("whereFrom is a pure function of context", () => {
       value: 0.02,
     };
     expect(EXPLAIN.iv_rank.whereFrom(ctx)).toBe(
-      `recorded signal · 1m · close 2026-06-17 17:30 CET · indicative mark — not the stored close`,
+      `recorded signal · 1m · close 2026-06-17 17:30 CET · indicative mark, not the stored close`,
     );
   });
 
@@ -138,7 +137,7 @@ describe("whereFrom is a pure function of context", () => {
     );
   });
 
-  it("does not look ahead — it only formats the as-of it is handed", () => {
+  it("does not look ahead, it only formats the as-of it is handed", () => {
     const ctx: ExplainContext = {
       underlying: "SX5E",
       asOf: "2026-06-10",
@@ -153,7 +152,7 @@ describe("whereFrom is a pure function of context", () => {
   });
 });
 
-describe("explainWithContext — the grounded assistant seam", () => {
+describe("explainWithContext, the grounded assistant seam", () => {
   it("assembles label + what + how + where-from + the live value through sciUnit", () => {
     const out = explainWithContext("atm_level", {
       underlying: "SX5E",

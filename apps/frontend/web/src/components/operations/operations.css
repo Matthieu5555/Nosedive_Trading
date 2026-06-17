@@ -1,0 +1,73 @@
+/* IBKR connection panel. References shared .ops-pill / .ops-light tones from index.css; only the
+   panel's own layout lives here so index.css (owned by another stream) stays untouched. */
+
+.ibkr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ibkr-panel__headline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ibkr-panel__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ibkr-panel__state {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.ibkr-panel__account {
+  font-variant-numeric: tabular-nums;
+}
+
+.ibkr-panel__detail {
+  margin: 0;
+}
+
+.ibkr-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ibkr-panel__connect,
+.ibkr-panel__refresh {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 7px 14px;
+  border: 0.5px solid var(--border-strong);
+  background: transparent;
+  color: inherit;
+}
+
+.ibkr-panel__connect:disabled,
+.ibkr-panel__refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ibkr-panel__hint {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+/* Spacing inside the operations panels is now owned by the layout Stacks (gap), not by per-element
+   margins. Zero the legacy top/edge margins on the children so the Stack gap is the single source of
+   vertical rhythm and spacing does not double up. The metric-grid / ops-table-wrap / ops-backlog
+   visual rules themselves still live in index.css; we only neutralise their margins here. */
+.l-stack > .metric-grid,
+.l-stack > .ops-table-wrap,
+.l-stack > .ops-backlog {
+  margin: 0;
+}

@@ -98,7 +98,7 @@ def build_book(
             )
 
     if not legs:
-        raise ValueError("no resolvable cells supplied — cannot build a book")
+        raise ValueError("no resolvable cells supplied - cannot build a book")
 
     return Basket(
         basket_id=basket_id,

@@ -105,7 +105,5 @@ test("a fetch error renders a labelled alert on the page, not a blank page", asy
   // With every fetch stubbed to fail, the page now surfaces each failure as its own alert (the
   // index list and delta-band axis included — no silent swallowing). Target the attribution alert
   // specifically rather than assuming it is the only one on the page.
-  await waitFor(() =>
-    expect(screen.getByText(/Failed to load attribution/i)).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText(/Failed to load attribution/i)).toBeInTheDocument());
 });

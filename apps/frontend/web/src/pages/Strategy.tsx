@@ -8,6 +8,7 @@ import { AsyncBlock } from "../components/AsyncBlock";
 import { BacktestForm } from "../components/BacktestForm";
 import { BacktestResults } from "../components/BacktestResults";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Stack } from "../components/layout";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
 
@@ -38,7 +39,7 @@ export function StrategyPage() {
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === ranIndex)?.currency);
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">Test a strategy on the days you have captured</p>
@@ -88,9 +89,9 @@ export function StrategyPage() {
 
       {result === null && error === null && !running && (
         <div className="state-panel" role="status">
-          No backtest run yet — configure the line above and press Run.
+          No backtest run yet, configure the line above and press Run.
         </div>
       )}
-    </section>
+    </Stack>
   );
 }

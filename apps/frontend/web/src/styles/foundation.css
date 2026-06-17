@@ -1,0 +1,192 @@
+/*
+ * Layout foundation — the single owner of spacing, sizing, overflow and the numeric/maths font.
+ *
+ * Everything a caller could otherwise get wrong by hand (a margin, a gap, a width that escapes a
+ * panel, a font stack that resolves to nothing) is decided HERE, once, as a system property. Pages
+ * compose the layout primitives (Stack / Cluster / Grid / Scroll, see src/components/layout) and
+ * never type a raw px margin again. This is the deep module behind the owner's demand: "I want deep
+ * modules that manage spacing, never things spaced at the whim of an LLM."
+ *
+ * Imported first from src/index.css (before the design skin) so the tokens below exist for every
+ * rule and every component, and so the layout-discipline baseline applies app-wide.
+ */
+
+/* ── The bundled numeric / maths font ─────────────────────────────────────────
+ * Self-hosted (DejaVu Sans Mono, subset to digits + Greek + maths operators + units, libre-
+ * licensed), so figures, units and the Greek glyphs (δ Δ ρ̄ ν θ σ) resolve to a REAL face on every
+ * machine — never the prior "SFMono-Regular, Consolas" stack that exists on no Linux box and fell
+ * back to a proportional system font. No CDN at runtime: the woff2 ships in the bundle. */
+@font-face {
+  font-family: "Numeric Mono";
+  src: url("../assets/fonts/numeric-mono.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Numeric Mono";
+  src: url("../assets/fonts/numeric-mono-bold.woff2") format("woff2");
+  font-weight: 600 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── Spacing scale (4px base) ────────────────────────────────────────────
+   * The ONLY legal spacing values in the app. Every gap, every stack rhythm, every panel pad is
+   * one of these. A component that wants "a bit more room" picks the next step, it does not invent
+   * a px value. Named by t-shirt size so call sites read as intent, not arithmetic. */
+  --space-0: 0;
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* The page rhythm and the panel inner pad, expressed in the scale so a single edit re-tunes the
+   * whole app and nothing is hand-picked per element. */
+  --page-gap: var(--space-md);
+  --panel-pad: var(--space-md);
+  --panel-gap: var(--space-md);
+
+  /* ── Type size scale ─────────────────────────────────────────────────────
+   * A bounded set of font sizes; UI text picks a step, never a raw px. */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+
+  /* The maths/numeric font token, now backed by a real bundled face. Every figure, unit and Greek
+   * glyph resolves here; the system mono are only the last-resort fallbacks. */
+  --font-numeric: "Numeric Mono", ui-monospace, "DejaVu Sans Mono", monospace;
+
+  /* Layering: the centered error modal sits above page content and above the (now-deprecated) top
+   * banner, but below nothing else. One scale so the two never fight. */
+  --z-content: 1;
+  --z-sticky: 20;
+  --z-banner: 800;
+  --z-modal: 1000;
+}
+
+/* ── Layout-discipline baseline (app-wide, automatic) ─────────────────────────
+ * Makes "drop an element in and it cannot break the layout" the default, so no component has to
+ * re-solve overflow by hand. This is the systemic answer to "the market screen is the only one you
+ * can scroll right" and "stuff overflows the greeks tab": the containment lives at the source. */
+
+/* 1. Flex/grid children refuse to shrink below content by default (min-width:auto), which is what
+ *    lets a wide table or a long ticker push the page sideways. Inside our layout regions, let them
+ *    shrink so content wraps/clips in its box instead of spilling over a neighbour or the page. */
+:where(.l-stack, .l-cluster, .l-grid, .l-scroll, .page, .panel) > * {
+  min-width: 0;
+}
+
+/* 2. Any wide canvas/SVG/table-bearing element a chart library injects is capped to its column, so
+ *    a Plotly modebar or a WebGL scene can never paint past its figure and widen the document. */
+:where(.l-scroll, .panel, .l-grid, .l-stack) :where(canvas, svg, img, video, iframe) {
+  max-width: 100%;
+}
+
+/* ── Layout primitives ────────────────────────────────────────────────────────
+ * The classes the primitive COMPONENTS (src/components/layout) emit. Callers never write these
+ * directly — they write <Stack gap="md">; the component picks the class + the gap var. */
+
+/* Stack: vertical rhythm. One gap, from the scale, owns ALL spacing between children — the children
+ * carry no margins of their own. This is the single owner that replaces the basket's 3+ competing
+ * margin sources (16px here, 14px there, panel pad, page gap). */
+.l-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--l-gap, var(--space-md));
+}
+
+/* Cluster / Inline: horizontal grouping that WRAPS instead of colliding or overflowing. Items keep
+ * the gap on both axes when they wrap, so two controls can never end up stuck together. */
+.l-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: var(--l-align, center);
+  justify-content: var(--l-justify, flex-start);
+  gap: var(--l-gap, var(--space-sm));
+}
+
+/* Grid: auto-fit responsive columns with minmax(0, …) so a cell can NEVER overflow its track (the
+ * 0 floor is the fix for grid cells that otherwise refuse to shrink and blow the row wide). */
+.l-grid {
+  display: grid;
+  gap: var(--l-gap, var(--space-md));
+  grid-template-columns: repeat(auto-fit, minmax(var(--l-min, 240px), 1fr));
+}
+
+/* Scroll: contains a wide table or chart AT THE SOURCE. The wide thing scrolls inside this box; the
+ * page width stays bounded. This is the primitive that wraps every bare <table> and every chart so
+ * the Market/Signals horizontal-scroll bug cannot recur anywhere. */
+.l-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+/* A table inside a scroller sizes to content (not 100% of the now-scrollable box) so a narrow grid
+ * doesn't stretch and a wide one scrolls rather than overflows. */
+.l-scroll > table {
+  width: auto;
+  min-width: 100%;
+}
+
+/* ── Centered error / 404 modal (replaces the top strip) ──────────────────────
+ * The owner: "THE 404 NOT FOUND AT THE TOP IS UGLY, IT'S IN FRONT OF THE BANNER. I want a rectangle
+ * centered in the middle of the screen with the Dismiss button directly below it." This is that:
+ * a centered card, message then Dismiss stacked under it, layered above content. */
+.error-modal__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  background: rgba(8, 9, 8, 0.62);
+  backdrop-filter: blur(3px);
+}
+.error-modal__card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-md);
+  width: min(440px, 100%);
+  padding: var(--space-lg);
+  border: 1px solid rgba(239, 156, 146, 0.6);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  text-align: center;
+}
+.error-modal__title {
+  margin: 0;
+  color: var(--negative);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.error-modal__message {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+.error-modal__dismiss {
+  align-self: center;
+  min-width: 120px;
+}
+.error-modal__more {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}

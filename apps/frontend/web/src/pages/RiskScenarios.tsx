@@ -6,6 +6,7 @@ import { Label } from "@/ui/label";
 import { ApiError } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { AttributionWaterfall } from "../components/AttributionWaterfall";
+import { Cluster, Grid, Stack } from "../components/layout";
 import { NamedScenarios } from "../components/NamedScenarios";
 import { Reconciliation } from "../components/Reconciliation";
 import { RateSweep, StressSurface } from "../components/StressSurface";
@@ -29,14 +30,14 @@ export function RiskScenariosPage() {
   const kicker = portfolio || "All portfolios";
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
-          <p className="eyebrow">How does the book hold up — and does it match the broker?</p>
+          <p className="eyebrow">How does the book hold up, and does it match the broker?</p>
           <h1>Risk Scenarios</h1>
         </div>
-        <div className="control-row">
-          <div className="flex flex-col items-start gap-1">
+        <Cluster gap="sm" align="end">
+          <Stack gap="3xs" align="flex-start">
             <Label htmlFor="risk-portfolio">Portfolio</Label>
             <select
               id="risk-portfolio"
@@ -56,8 +57,8 @@ export function RiskScenariosPage() {
                 Could not load the portfolio list: {portfolios.error.message}
               </p>
             )}
-          </div>
-          <div className="flex flex-col items-start gap-1">
+          </Stack>
+          <Stack gap="3xs" align="flex-start">
             <Label htmlFor="recon-account">Broker account</Label>
             <input
               id="recon-account"
@@ -66,15 +67,15 @@ export function RiskScenariosPage() {
               value={account}
               onChange={(event) => setAccount(event.target.value)}
             />
-          </div>
-        </div>
+          </Stack>
+        </Cluster>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Named historical scenarios</CardTitle>
           <CardDescription>
-            Replay labelled crises (2008, COVID-2020, …) against today&apos;s book — one compound
+            Replay labelled crises (2008, COVID-2020, …) against today&apos;s book, one compound
             spot/vol/rate shock each, full-repriced. Empty until a scenario catalogue is configured.
           </CardDescription>
         </CardHeader>
@@ -126,7 +127,7 @@ export function RiskScenariosPage() {
             {noBrokerAccount(reconciliation.isError ? reconciliation.error : null) && (
               <article className="panel" aria-label="Broker reconciliation (no account)">
                 <p role="status">
-                  No broker account snapshot has been captured yet — nothing to reconcile against.
+                  No broker account snapshot has been captured yet, nothing to reconcile against.
                 </p>
               </article>
             )}
@@ -139,7 +140,7 @@ export function RiskScenariosPage() {
           <CardTitle>Persisted scenario surface</CardTitle>
           <CardDescription>
             The cron-written ±spot × ±vol surface per configured portfolio. Empty until a portfolio
-            is configured and a run lands — to stress a basket on demand, compose it on the Basket
+            is configured and a run lands, to stress a basket on demand, compose it on the Basket
             tab and use “Stress basket”.
           </CardDescription>
         </CardHeader>
@@ -152,7 +153,7 @@ export function RiskScenariosPage() {
           </AsyncBlock>
         </CardContent>
       </Card>
-    </section>
+    </Stack>
   );
 }
 
@@ -168,13 +169,13 @@ function reconciliationError(error: Error | null): string | null {
 
 function ScenarioBoard({ data }: { data: ScenariosResponse }) {
   return (
-    <div className="risk-grid">
+    <Grid min="280px" gap="md">
       <StressSurface
         surface={data.surface}
         kicker={data.portfolio_id ?? "All portfolios"}
         emptyMessage="No stress surface persisted yet for this selection."
       />
       {data.rate && data.rate.length > 0 && <RateSweep rates={data.rate} />}
-    </div>
+    </Grid>
   );
 }

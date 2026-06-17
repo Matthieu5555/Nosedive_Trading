@@ -24,7 +24,7 @@ import {
 import { jsonGet, notMocked, server } from "../test/server";
 import { MarketPage } from "./Market";
 
-test("leads with the index selector and an as-of dropdown — no entity/side/maturity strip", async () => {
+test("leads with the index selector and an as-of dropdown, no entity/side/maturity strip", async () => {
   render(<MarketPage />);
 
   expect(await screen.findByLabelText("Index")).toBeInTheDocument();
@@ -109,7 +109,7 @@ test("the rate diagnostics render r(T) + carry/dividend for the selected tenor",
   // The 3m slice carries rate_diagnostics: forward 4812.5, r 2.54%, carry −1.31%, dividend 3.85%.
   // r(T) is the explicit, displayed interest-rate input (the owner's ask), with its annualized unit.
   const rates = await screen.findByLabelText("Rate diagnostics");
-  expect(within(rates).getByText(/Rate diagnostics — 3m/i)).toBeInTheDocument();
+  expect(within(rates).getByText(/Rate diagnostics, 3m/i)).toBeInTheDocument();
   expect(within(rates).getByText(/2\.540% \/yr \(annualized, continuous\)/)).toBeInTheDocument();
   expect(within(rates).getByText(/-1\.310% \/yr/)).toBeInTheDocument();
   expect(within(rates).getByText(/3\.850% \/yr/)).toBeInTheDocument();
@@ -126,11 +126,11 @@ test("the rate diagnostics show an honest gap when no forward was banked for the
   expect(within(rates).getByText(/No forward\/rate diagnostic banked/i)).toBeInTheDocument();
 });
 
-test("a scorecard with no data honestly shows '—' (never fabricated)", async () => {
+test("a scorecard with no data honestly shows '-' (never fabricated)", async () => {
   // The default ANALYTICS_AAA has a single put band (−0.3), so the ±25Δ wings can't be bracketed.
   render(<MarketPage />);
   const skew = await screen.findByLabelText("Skew 25Δ");
-  expect(within(skew).getByText("—")).toBeInTheDocument();
+  expect(within(skew).getByText("-")).toBeInTheDocument();
 });
 
 test("one tenor selector lists the pinned grid and drives the smile + greeks table", async () => {
@@ -146,7 +146,7 @@ test("one tenor selector lists the pinned grid and drives the smile + greeks tab
   }
   // The default tenor (3m) is captured, so its smile and Greeks table render.
   expect(await screen.findByLabelText(/smile 3m/i)).toBeInTheDocument();
-  expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
+  expect(await screen.findByRole("table", { name: /Dollar Greeks, 3m/i })).toBeInTheDocument();
 });
 
 test("a tenor beyond the captured span renders as a labelled projection gap", async () => {
@@ -179,7 +179,7 @@ test("the dispersion strip reads the realized-vol ρ̄ signal (no per-member fan
   expect(await screen.findByLabelText("Implied correlation")).toHaveTextContent(/ρ̄ = 50.00%/);
 });
 
-test("never calls /api/analytics for a constituent symbol — index-keyed only", async () => {
+test("never calls /api/analytics for a constituent symbol, index-keyed only", async () => {
   const underlyings: string[] = [];
   server.use(
     http.get("/api/analytics", ({ request }) => {
@@ -277,7 +277,7 @@ test("monetized Greeks render in the index's quote currency (€ for SX5E)", asy
   );
   render(<MarketPage />);
 
-  const greeks = await screen.findByRole("table", { name: /Dollar Greeks — 3m/i });
+  const greeks = await screen.findByRole("table", { name: /Dollar Greeks, 3m/i });
   expect(within(greeks).getByText("€ per 1% move")).toBeInTheDocument();
   expect(within(greeks).getByText("€ per €1 of underlying")).toBeInTheDocument();
 });
@@ -315,11 +315,11 @@ test("selecting a constituent swaps the member candlestick (master-detail)", asy
   expect(await screen.findByLabelText("Price history for BBB")).toBeInTheDocument();
 });
 
-test("the price-structure block reads bid / ask / volume per strike — never a mid", async () => {
+test("the price-structure block reads bid / ask / volume per strike, never a mid", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_QUOTED));
   render(<MarketPage />);
 
-  const block = await screen.findByLabelText(/Price structure — 3m/i);
+  const block = await screen.findByLabelText(/Price structure, 3m/i);
   // The header advertises bid/ask/volume, the columns an operator reads for the spread + size.
   expect(within(block).getByRole("columnheader", { name: /bid/i })).toBeInTheDocument();
   expect(within(block).getByRole("columnheader", { name: /ask/i })).toBeInTheDocument();
@@ -335,14 +335,14 @@ test("the price-structure block reads bid / ask / volume per strike — never a 
   expect(atmRow).toHaveTextContent("1,234"); // volume, thousands-separated
 });
 
-test("a strike with no quotes shows '—' for bid/ask/volume (honest gap, no fabricated mid)", async () => {
+test("a strike with no quotes shows '-' for bid/ask/volume (honest gap, no fabricated mid)", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_QUOTED));
   render(<MarketPage />);
 
-  const block = await screen.findByLabelText(/Price structure — 3m/i);
+  const block = await screen.findByLabelText(/Price structure, 3m/i);
   // The 8×10¹ (80) strike / 30dp band has null bid/ask/volume → honest dashes, never a mid.
   const noQuoteRow = within(block).getByRole("row", { name: /30dp/i });
-  expect(within(noQuoteRow).getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  expect(within(noQuoteRow).getAllByText("-").length).toBeGreaterThanOrEqual(3);
 });
 
 test("the tenor panel shows Greek shape curves beside the Greeks table (complementary)", async () => {
@@ -350,7 +350,7 @@ test("the tenor panel shows Greek shape curves beside the Greeks table (compleme
   render(<MarketPage />);
 
   // The §3.6 profiles: delta S-curve + gamma/vega bells vs strike, alongside the raw/$ table.
-  expect(await screen.findByRole("table", { name: /Dollar Greeks — 3m/i })).toBeInTheDocument();
+  expect(await screen.findByRole("table", { name: /Dollar Greeks, 3m/i })).toBeInTheDocument();
   const curves = await screen.findByLabelText(/Greeks 3m/i);
   expect(within(curves).getByTestId("plot-types").textContent).toMatch(/scatter,scatter,scatter/);
 });
@@ -395,7 +395,7 @@ test("the capture coverage panel mounts collapsed and expands on demand", async 
   const toggle = await screen.findByRole("button", { name: /show/i });
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   await user.click(toggle);
-  expect(await screen.findByText(/Capture coverage — SPX/i)).toBeInTheDocument();
+  expect(await screen.findByText(/Capture coverage, SPX/i)).toBeInTheDocument();
 });
 
 // --- §2b self-describing labels: one state writes the surface's identity sentence ----------------
@@ -419,7 +419,7 @@ test("the surface heading is the self-describing subject, not a generic noun", a
   expect(screen.queryByRole("heading", { name: "Volatility surface" })).not.toBeInTheDocument();
   // ✅ subject heading.
   expect(
-    await screen.findByRole("heading", { name: "Volatility surface — SPX" }),
+    await screen.findByRole("heading", { name: "Volatility surface, SPX" }),
   ).toBeInTheDocument();
 });
 
@@ -427,7 +427,7 @@ test("the surface caption carries as-of · mode · coverage, degrading honestly 
   // SPX has no registered close instant → date-only as-of; coverage is not yet on the payload →
   // 'coverage unavailable', never a fabricated fraction. Mode defaults to 'strict'.
   render(<MarketPage />);
-  const surface = await screen.findByLabelText("Volatility surface — SPX");
+  const surface = await screen.findByLabelText("Volatility surface, SPX");
   expect(
     within(surface).getByText(/close 2026-05-29 · strict · coverage unavailable/),
   ).toBeInTheDocument();
@@ -435,7 +435,7 @@ test("the surface caption carries as-of · mode · coverage, degrading honestly 
   expect(within(surface).queryByText(/\d+\/\d+ quotes/)).not.toBeInTheDocument();
 });
 
-test("an SX5E surface carries the registry-resolved close instant — never 22:00", async () => {
+test("an SX5E surface carries the registry-resolved close instant, never 22:00", async () => {
   // The close instant is the BFF-resolved /api/analytics `close_instant` (from the index registry),
   // not a front-side hard-coded "17:30 CET" map: the front renders exactly what the payload carries.
   server.use(
@@ -449,7 +449,7 @@ test("an SX5E surface carries the registry-resolved close instant — never 22:0
     jsonGet("/api/signals", SIGNALS_SX5E),
   );
   render(<MarketPage />);
-  const surface = await screen.findByLabelText("Volatility surface — SX5E");
+  const surface = await screen.findByLabelText("Volatility surface, SX5E");
   // The instant arrives with the analytics payload (not synchronously off a front-side map), so wait.
   // Caption and figure caption both carry it — the self-describing guarantee means they agree, so
   // matching all is correct (findByText would reject the legitimate duplicate).
@@ -486,20 +486,20 @@ test("switching the index rewrites the heading and the caption together (no stal
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await screen.findByRole("heading", { name: "Volatility surface — SPX" });
+  await screen.findByRole("heading", { name: "Volatility surface, SPX" });
   await user.selectOptions(screen.getByLabelText("Index"), "SX5E");
 
   // The heading AND the caption both follow the new state in the same paint.
-  const surface = await screen.findByLabelText("Volatility surface — SX5E");
+  const surface = await screen.findByLabelText("Volatility surface, SX5E");
   expect(
-    await screen.findByRole("heading", { name: "Volatility surface — SX5E" }),
+    await screen.findByRole("heading", { name: "Volatility surface, SX5E" }),
   ).toBeInTheDocument();
   expect(
     (await within(surface).findAllByText(/close 2026-06-17 17:30 CET/)).length,
   ).toBeGreaterThan(0);
   // The old subject left every label — no contradiction lingers.
   expect(
-    screen.queryByRole("heading", { name: "Volatility surface — SPX" }),
+    screen.queryByRole("heading", { name: "Volatility surface, SPX" }),
   ).not.toBeInTheDocument();
 });
 
@@ -518,12 +518,12 @@ test("a market-closed surface (no maturities) names its subject and reads as sta
   );
   render(<MarketPage />);
   const empty = await screen.findByText(
-    /No two-sided quote for SX5E on 2026-06-17 — market probably closed\./,
+    /No two-sided quote for SX5E on 2026-06-17, market probably closed\./,
   );
   // Empty self-describes and reads as a non-error status (Principle 3: empty ≠ error).
   expect(empty).toBeInTheDocument();
   expect(empty).toHaveAttribute("role", "status");
-  const surface = await screen.findByLabelText("Volatility surface — SX5E");
+  const surface = await screen.findByLabelText("Volatility surface, SX5E");
   expect(within(surface).queryByRole("alert")).not.toBeInTheDocument();
 });
 
@@ -550,7 +550,7 @@ test("the empty index selector anchors a next-step guidance hint that clears onc
   expect(screen.queryByText(/Choose an index to begin/i)).not.toBeInTheDocument();
 });
 
-test("the index selector is driven by /api/indices — a parked index is not offered", async () => {
+test("the index selector is driven by /api/indices, a parked index is not offered", async () => {
   server.use(
     jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50" }] }),
     jsonGet("/api/recorded-dates", { index: "SX5E", count: 0, dates: [], available: [] }),

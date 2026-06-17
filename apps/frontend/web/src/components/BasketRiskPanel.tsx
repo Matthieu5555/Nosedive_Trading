@@ -24,7 +24,7 @@ export function BasketRiskPanel({
   // currency). Defaults to "$" so a USD/unknown-currency view is unchanged.
   currency?: string;
 }) {
-  const totalsLabel = `Basket dollar Greeks — ${result.basket_id} (book-additive sum)`;
+  const totalsLabel = `Basket dollar Greeks, ${result.basket_id} (book-additive sum)`;
   const perLegLabel = "Per-leg contribution to each dollar Greek";
 
   // The per-leg dollar-delta contribution bar (the one place a chart beats a table).
@@ -36,7 +36,14 @@ export function BasketRiskPanel({
   };
 
   return (
-    <section aria-label={totalsLabel}>
+    <section className="panel" aria-label={totalsLabel}>
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">{result.basket_id}</p>
+          <h2>Basket dollar Greeks</h2>
+        </div>
+        <span className="status">book-additive sum</span>
+      </div>
       <table aria-label={totalsLabel}>
         <caption>{totalsLabel}</caption>
         <thead>

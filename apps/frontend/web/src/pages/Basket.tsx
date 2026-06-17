@@ -17,6 +17,7 @@ import type {
 import { composeBook, fetchAttribution, priceBasket, stressBasket } from "../api";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { BasketLegGrid } from "../components/BasketLegGrid";
+import { Cluster, Stack } from "../components/layout";
 import { TicketPanel } from "../components/TicketPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
@@ -169,7 +170,7 @@ export function BasketPage() {
   }
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">Compose a book, then shock it</p>
@@ -177,8 +178,8 @@ export function BasketPage() {
         </div>
       </div>
       <p>
-        Compose a book — legs and layered sub-strategies — read it, shock it across spot/vol/rate
-        and the named crises, then explain its P&amp;L by Greek. The underlying and date below are
+        Compose a book, legs and layered sub-strategies, read it, shock it across spot/vol/rate and
+        the named crises, then explain its P&amp;L by Greek. The underlying and date below are
         shared across every block.
       </p>
 
@@ -193,135 +194,153 @@ export function BasketPage() {
         </p>
       )}
 
-      <div className="basket-controls">
-        <label>
-          Underlying{" "}
-          <select
-            aria-label="underlying"
-            value={underlying}
-            disabled={indexOptions.length === 0}
-            onChange={(e) => setUnderlying(e.target.value)}
-          >
-            {indexOptions.map((item) => (
-              <option key={item.symbol} value={item.symbol}>
-                {item.name} ({item.symbol})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Trade date (empty = latest){" "}
-          <input
-            aria-label="trade date"
-            type="date"
-            value={tradeDate}
-            onChange={(e) => setTradeDate(e.target.value)}
-          />
-        </label>
-        <label>
-          Tenor{" "}
-          <input aria-label="tenor" value={tenor} onChange={(e) => setTenor(e.target.value)} />
-        </label>
-      </div>
+      <Stack gap="md">
+        <article className="panel" aria-label="Compose the basket">
+          <Stack gap="md">
+            <div className="panel-heading">
+              <div>
+                <p className="panel-kicker">{underlying || "Basket"}</p>
+                <h2>Compose the basket</h2>
+              </div>
+              <span className="status">shared underlying &amp; date</span>
+            </div>
 
-      <div className="basket-templates" role="group" aria-label="templates">
-        {TEMPLATES.map((name) => (
-          <button
-            key={name}
-            type="button"
-            aria-label={`template ${name}`}
-            onClick={() => applyTemplate(name)}
-          >
-            {TEMPLATE_LABELS[name]}
-          </button>
-        ))}
-      </div>
+            <Cluster gap="sm" align="end">
+              <label>
+                Underlying{" "}
+                <select
+                  aria-label="underlying"
+                  value={underlying}
+                  disabled={indexOptions.length === 0}
+                  onChange={(e) => setUnderlying(e.target.value)}
+                >
+                  {indexOptions.map((item) => (
+                    <option key={item.symbol} value={item.symbol}>
+                      {item.name} ({item.symbol})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Trade date (empty = latest){" "}
+                <input
+                  aria-label="trade date"
+                  type="date"
+                  value={tradeDate}
+                  onChange={(e) => setTradeDate(e.target.value)}
+                />
+              </label>
+              <label>
+                Tenor{" "}
+                <input
+                  aria-label="tenor"
+                  value={tenor}
+                  onChange={(e) => setTenor(e.target.value)}
+                />
+              </label>
+            </Cluster>
 
-      <BasketLegGrid
-        legs={legs}
-        defaultUnderlying={underlying}
-        defaultTenor={tenor}
-        bands={deltaBands.data?.delta_bands ?? []}
-        onAdd={addLeg}
-        onRemove={removeLeg}
-      />
+            <Cluster gap="xs" role="group" aria-label="templates">
+              {TEMPLATES.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-label={`template ${name}`}
+                  onClick={() => applyTemplate(name)}
+                >
+                  {TEMPLATE_LABELS[name]}
+                </button>
+              ))}
+            </Cluster>
 
-      {legs.length > 0 && (
-        <TicketPanel
-          basketId={`basket-${underlying}-${tradeDate || "latest"}`}
-          underlying={underlying}
-          tradeDate={tradeDate}
-          legs={legs}
-        />
-      )}
+            <BasketLegGrid
+              legs={legs}
+              defaultUnderlying={underlying}
+              defaultTenor={tenor}
+              bands={deltaBands.data?.delta_bands ?? []}
+              onAdd={addLeg}
+              onRemove={removeLeg}
+            />
+          </Stack>
+        </article>
 
-      <Tabs defaultValue="compose" className="market-tabs">
-        <div className="market-tabs__bar max-w-full overflow-x-auto">
-          <TabsList className="market-tabs__list max-w-none">
-            <TabsTrigger value="compose">① Compose</TabsTrigger>
-            <TabsTrigger value="book">② The Book</TabsTrigger>
-            <TabsTrigger value="stress">③ Stress</TabsTrigger>
-            <TabsTrigger value="attribution">④ Attribution</TabsTrigger>
-          </TabsList>
-        </div>
-
-        <TabsContent value="compose">
-          <BuildPriceTab
-            canPrice={legs.length > 0}
-            loading={loading}
-            error={error}
-            result={result}
-            currency={currency}
-            onPrice={price}
-          />
-          <ComposeTab
-            subStrategies={subStrategies.data?.sub_strategies ?? []}
-            subStrategiesLoading={subStrategies.loading}
-            subStrategiesError={subStrategies.error}
-            layers={layers}
-            bands={deltaBands.data?.delta_bands ?? []}
-            loading={composeLoading}
-            error={composeError}
-            book={book}
-            currency={currency}
+        {legs.length > 0 && (
+          <TicketPanel
+            basketId={`basket-${underlying}-${tradeDate || "latest"}`}
+            underlying={underlying}
             tradeDate={tradeDate}
-            onAddLayer={addLayer}
-            onRemoveLayer={removeLayer}
-            onMoveLayer={moveLayer}
-            onCompose={runCompose}
+            legs={legs}
           />
-        </TabsContent>
+        )}
 
-        <TabsContent value="book">
-          <BookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
-        </TabsContent>
+        <Tabs defaultValue="compose" className="market-tabs">
+          <div className="market-tabs__bar max-w-full overflow-x-auto">
+            <TabsList className="market-tabs__list max-w-none">
+              <TabsTrigger value="compose">① Compose</TabsTrigger>
+              <TabsTrigger value="book">② The Book</TabsTrigger>
+              <TabsTrigger value="stress">③ Stress</TabsTrigger>
+              <TabsTrigger value="attribution">④ Attribution</TabsTrigger>
+            </TabsList>
+          </div>
 
-        <TabsContent value="stress">
-          <StressTab
-            canStress={legs.length > 0}
-            loading={stressLoading}
-            error={stressError}
-            stress={stress}
-            currency={currency}
-            onStress={runStress}
-            namedScenarios={namedScenarios.data?.named ?? []}
-            namedLoading={namedScenarios.loading}
-            namedError={namedScenarios.error}
-          />
-        </TabsContent>
+          <TabsContent value="compose">
+            <BuildPriceTab
+              canPrice={legs.length > 0}
+              loading={loading}
+              error={error}
+              result={result}
+              currency={currency}
+              onPrice={price}
+            />
+            <ComposeTab
+              subStrategies={subStrategies.data?.sub_strategies ?? []}
+              subStrategiesLoading={subStrategies.loading}
+              subStrategiesError={subStrategies.error}
+              layers={layers}
+              bands={deltaBands.data?.delta_bands ?? []}
+              loading={composeLoading}
+              error={composeError}
+              book={book}
+              currency={currency}
+              tradeDate={tradeDate}
+              onAddLayer={addLayer}
+              onRemoveLayer={removeLayer}
+              onMoveLayer={moveLayer}
+              onCompose={runCompose}
+            />
+          </TabsContent>
 
-        <TabsContent value="attribution">
-          <AttributionTab
-            portfolioId={portfolioId}
-            onPortfolioId={setPortfolioId}
-            tradeDate={tradeDate}
-            loading={attributionLoading}
-            error={attributionError}
-            attribution={attribution}
-            onLoad={loadAttribution}
-          />
-        </TabsContent>
-      </Tabs>
-    </section>
+          <TabsContent value="book">
+            <BookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
+          </TabsContent>
+
+          <TabsContent value="stress">
+            <StressTab
+              canStress={legs.length > 0}
+              loading={stressLoading}
+              error={stressError}
+              stress={stress}
+              currency={currency}
+              onStress={runStress}
+              namedScenarios={namedScenarios.data?.named ?? []}
+              namedLoading={namedScenarios.loading}
+              namedError={namedScenarios.error}
+            />
+          </TabsContent>
+
+          <TabsContent value="attribution">
+            <AttributionTab
+              portfolioId={portfolioId}
+              onPortfolioId={setPortfolioId}
+              tradeDate={tradeDate}
+              loading={attributionLoading}
+              error={attributionError}
+              attribution={attribution}
+              onLoad={loadAttribution}
+            />
+          </TabsContent>
+        </Tabs>
+      </Stack>
+    </Stack>
   );
 }

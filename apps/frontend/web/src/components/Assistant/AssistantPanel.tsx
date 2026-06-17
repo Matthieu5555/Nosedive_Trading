@@ -110,7 +110,7 @@ export function AssistantPanel({
       } catch (err) {
         if (controller.signal.aborted) return;
         const detail = err instanceof ApiError ? err.detail : "The assistant is unavailable.";
-        setError(`Assistant unavailable — ${detail}`);
+        setError(`Assistant unavailable, ${detail}`);
       } finally {
         if (!controller.signal.aborted) setThinking(false);
       }

@@ -7,6 +7,7 @@ import { AsyncBlock } from "../../components/AsyncBlock";
 import { BookSummary } from "../../components/BookSummary";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { FillsLedger } from "../../components/FillsLedger";
+import { Stack } from "../../components/layout";
 import { PositionsTable } from "../../components/PositionsTable";
 import { useFetch } from "../../hooks/useFetch";
 
@@ -35,7 +36,7 @@ export function BookSection({
   const fills = useFetch<FillsResponse>(underlying ? `/api/positions/fills${query}` : "");
 
   return (
-    <div className="basket-tab">
+    <Stack gap="md">
       <p className="basket-tab__lead">
         The book the stress acts on: its total market value and additive dollar Greeks, every open
         leg, and the append-only fills ledger it is accounted from. Booked from fills for the chosen
@@ -47,7 +48,7 @@ export function BookSection({
           <CardHeader>
             <CardTitle>Book summary</CardTitle>
             <CardDescription>
-              The book&apos;s total market value and its additive dollar Greeks — summed across
+              The book&apos;s total market value and its additive dollar Greeks, summed across
               priced legs, accounted from booked fills.
             </CardDescription>
           </CardHeader>
@@ -66,7 +67,7 @@ export function BookSection({
           <CardHeader>
             <CardTitle>Open positions</CardTitle>
             <CardDescription>
-              One row per live contract — quantity, mark, market value and the per-leg dollar Greeks.
+              One row per live contract, quantity, mark, market value and the per-leg dollar Greeks.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -81,7 +82,7 @@ export function BookSection({
                       </h4>
                       <p>
                         These legs are booked from fills but have no banked pricing yet, so their
-                        mark, market value and Greeks are zeroed — shown, never hidden.
+                        mark, market value and Greeks are zeroed, shown, never hidden.
                       </p>
                       <ul>
                         {positions.data.unpriced_contract_keys.map((key) => (
@@ -102,7 +103,7 @@ export function BookSection({
           <CardHeader>
             <CardTitle>Fills ledger</CardTitle>
             <CardDescription>
-              The append-only execution blotter — every booked fill with its venue timestamp. This is
+              The append-only execution blotter, every booked fill with its venue timestamp. This is
               the source of record the book is accounted from.
             </CardDescription>
           </CardHeader>
@@ -113,6 +114,6 @@ export function BookSection({
           </CardContent>
         </Card>
       </ErrorBoundary>
-    </div>
+    </Stack>
   );
 }

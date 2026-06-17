@@ -1,5 +1,6 @@
 import { type Signal, SIGNAL_CAPTIONS, type SignalsResponse } from "../api";
 import { sciUnit } from "../lib/format";
+import { Scroll, Stack } from "./layout";
 
 interface BarSpec {
   leftPct: number;
@@ -86,35 +87,39 @@ function KindPanel({ kind, rows }: { kind: string; rows: Signal[] }) {
   const scale = panelScale(kind, rows);
   return (
     <article className="panel signal-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="panel-kicker">{kind.replaceAll("_", " ")}</p>
-          <h2>{label}</h2>
+      <Stack gap="md">
+        <div className="panel-heading">
+          <div>
+            <p className="panel-kicker">{kind.replaceAll("_", " ")}</p>
+            <h2>{label}</h2>
+          </div>
+          {unit && <span className="signal-unit">{unit}</span>}
         </div>
-        {unit && <span className="signal-unit">{unit}</span>}
-      </div>
-      {caption && <p className="panel-note signal-caption">{caption}</p>}
-      <table role="table" aria-label={`${label} signals`}>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col">Tenor</th>
-            <th scope="col">Value</th>
-            <th scope="col">
-              {isFixedSymmetric(kind) ? "−1 … 0 … +1" : isRank(kind) ? "0 … 100%" : "magnitude"}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((signal) => (
-            <SignalRow
-              key={`${signal.subject}-${signal.tenor_label}`}
-              signal={signal}
-              scale={scale}
-            />
-          ))}
-        </tbody>
-      </table>
+        {caption && <p className="panel-note signal-caption">{caption}</p>}
+        <Scroll label={`${label} signals`}>
+          <table role="table" aria-label={`${label} signals`}>
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Tenor</th>
+                <th scope="col">Value</th>
+                <th scope="col">
+                  {isFixedSymmetric(kind) ? "−1 … 0 … +1" : isRank(kind) ? "0 … 100%" : "magnitude"}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((signal) => (
+                <SignalRow
+                  key={`${signal.subject}-${signal.tenor_label}`}
+                  signal={signal}
+                  scale={scale}
+                />
+              ))}
+            </tbody>
+          </table>
+        </Scroll>
+      </Stack>
     </article>
   );
 }
@@ -129,10 +134,10 @@ export function SignalsView({ data }: { data: SignalsResponse }) {
     );
   }
   return (
-    <div className="signals-stack">
+    <Stack gap="md">
       <p className="signals-asof">
         {data.n_signals} signal{data.n_signals === 1 ? "" : "s"} for {data.underlying}
-        {data.trade_date ? ` — as of ${data.trade_date}` : ""}
+        {data.trade_date ? `, as of ${data.trade_date}` : ""}
         {data.snapshot_ts ? ` (snapshot ${data.snapshot_ts})` : ""}
       </p>
       {data.kinds.map((kind) => {
@@ -140,6 +145,6 @@ export function SignalsView({ data }: { data: SignalsResponse }) {
         if (rows.length === 0) return null;
         return <KindPanel key={kind} kind={kind} rows={rows} />;
       })}
-    </div>
+    </Stack>
   );
 }

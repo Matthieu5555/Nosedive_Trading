@@ -92,7 +92,7 @@ test("an unhandled promise rejection is captured with its reason", () => {
   expect(latest.map((e) => e.message)).toEqual(["Unhandled error: await nobody caught"]);
 });
 
-test("installGlobalErrorListeners is idempotent — listeners attach exactly once", () => {
+test("installGlobalErrorListeners is idempotent, listeners attach exactly once", () => {
   const target = new EventTarget() as unknown as Window;
   const spy = vi.spyOn(target, "addEventListener");
 

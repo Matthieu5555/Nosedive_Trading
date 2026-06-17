@@ -6,6 +6,7 @@ import {
   fetchReconciliation,
   getJson,
   type HealthResponse,
+  type IbkrStatus,
   type Job,
   postJson,
   type ProvidersResponse,
@@ -29,6 +30,7 @@ export interface JobsResponse {
 
 const HEALTH_REFRESH_MS = 30_000;
 const JOBS_REFRESH_MS = 4_000;
+const IBKR_STATUS_REFRESH_MS = 20_000;
 
 export function useHealth() {
   return useQuery({
@@ -82,6 +84,33 @@ export function useLaunchRun() {
         jobs: [job, ...(prev?.jobs ?? []).filter((existing) => existing.job_id !== job.job_id)],
       }));
       void client.invalidateQueries({ queryKey: ["operations", "jobs"] });
+    },
+  });
+}
+
+const IBKR_STATUS_KEY = ["operations", "ibkr-status"] as const;
+
+export function useIbkrStatus() {
+  return useQuery({
+    queryKey: IBKR_STATUS_KEY,
+    queryFn: ({ signal }) => getJson<IbkrStatus>("/api/ibkr/status", signal),
+    refetchInterval: IBKR_STATUS_REFRESH_MS,
+  });
+}
+
+// Open the brokerage session (ssodh/init) when already authenticated at the SSO layer. A not-ready
+// path comes back as a 409 ApiError the panel surfaces verbatim (with the scripts/ibkr_login.py
+// hint); a success returns the fresh status, which we also push into the status query cache so the
+// pill updates immediately without waiting for the next poll.
+export function useIbkrConnect() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => postJson<IbkrStatus>("/api/ibkr/connect", {}),
+    onSuccess: (status) => {
+      client.setQueryData<IbkrStatus>(IBKR_STATUS_KEY, status);
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: IBKR_STATUS_KEY });
     },
   });
 }

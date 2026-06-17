@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 
 import { Metric } from "./Metric";
 
-describe("Metric — the number law (never a naked number)", () => {
+describe("Metric, the number law (never a naked number)", () => {
   test("a numeric value + unit routes through the sci/unit idiom", () => {
     // Oracle (lib/format.sciUnit): 0.58 → "5.8 × 10⁻¹" with its unit appended. Derived by hand from
     // the documented rule (analytics-display memory), not copied from the component.
@@ -20,7 +20,7 @@ describe("Metric — the number law (never a naked number)", () => {
 
   test("a null/undefined numeric value reads the honest em-dash, never blank", () => {
     render(<Metric label="Net P&L" value={null} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("-")).toBeInTheDocument();
   });
 
   test("a pre-formatted string value (existing callers) renders verbatim", () => {

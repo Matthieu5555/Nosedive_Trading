@@ -26,7 +26,7 @@ function mainNav() {
   return screen.getByRole("navigation", { name: "Main" });
 }
 
-test("the top nav is exactly the seven English tabs — Market active on load", async () => {
+test("the top nav is exactly the seven English tabs, Market active on load", async () => {
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Market", level: 1 })).toBeInTheDocument();
@@ -96,3 +96,12 @@ for (const r of REDIRECTS) {
     await waitFor(() => expect(window.location.pathname).toBe(r.to));
   });
 }
+
+test("the floating assistant launcher rides along on a non-Market route", async () => {
+  window.history.pushState({}, "", "/operations");
+  render(<App />);
+
+  // It is mounted globally outside <Routes>, so it shows up on Operations just as on Market.
+  expect(await screen.findByRole("heading", { name: "Operations", level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask the assistant" })).toBeInTheDocument();
+});

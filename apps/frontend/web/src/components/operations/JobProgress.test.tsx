@@ -49,7 +49,7 @@ describe("JobProgress", () => {
     expect(screen.getByText("in progress…")).toBeInTheDocument();
     const bar = screen.getByRole("progressbar");
     expect(bar).not.toHaveAttribute("aria-valuenow");
-    // No fabricated percent anywhere — the indeterminate case never claims progress.
+    // No fabricated percent anywhere, the indeterminate case never claims progress.
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
@@ -59,7 +59,7 @@ describe("JobProgress", () => {
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  test("a stage_total of 0 is not trusted — degrades to indeterminate, never divides by zero", () => {
+  test("a stage_total of 0 is not trusted, degrades to indeterminate, never divides by zero", () => {
     render(<JobProgress job={job({ stage: "x", stage_index: 0, stage_total: 0 })} />);
     expect(screen.getByText("in progress…")).toBeInTheDocument();
   });

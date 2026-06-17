@@ -28,7 +28,7 @@ const columns: ColumnDef<Constituent>[] = [
 
     cell: (info) => {
       const value = info.getValue<number | null>();
-      return value === null ? "—" : sciUnit(value, UNITS.price);
+      return value === null ? "-" : sciUnit(value, UNITS.price);
     },
   },
 ];

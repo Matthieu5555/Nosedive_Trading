@@ -63,19 +63,19 @@ function signal(value: number, tenor = "3m"): Signal {
   };
 }
 
-describe("asOfCloseLine — renders the BFF-resolved close instant, not a front-side map", () => {
+describe("asOfCloseLine, renders the BFF-resolved close instant, not a front-side map", () => {
   test("a resolved instant is paired with the as-of date", () => {
     expect(asOfCloseLine("2026-06-17", "17:30 CET")).toBe("as of 2026-06-17 17:30 CET (close)");
   });
 
-  test("renders exactly the threaded instant — never the 22:00 XEUR futures close", () => {
+  test("renders exactly the threaded instant, never the 22:00 XEUR futures close", () => {
     const line = asOfCloseLine("2026-06-17", "17:30 CET");
     expect(line).toContain("17:30 CET");
     expect(line).not.toContain("22:00");
     expect(line).not.toContain("00:00");
   });
 
-  test("an absent instant degrades to date-only — never a guessed time", () => {
+  test("an absent instant degrades to date-only, never a guessed time", () => {
     expect(asOfCloseLine("2026-06-17", null)).toBe("as of 2026-06-17");
     expect(asOfCloseLine("2026-06-17")).toBe("as of 2026-06-17");
   });
@@ -86,7 +86,7 @@ describe("asOfCloseLine — renders the BFF-resolved close instant, not a front-
   });
 });
 
-describe("Scorecards — provenance line binds to live state", () => {
+describe("Scorecards, provenance line binds to live state", () => {
   test("the as-of line states subject + the resolved close instant", () => {
     render(
       <Scorecards

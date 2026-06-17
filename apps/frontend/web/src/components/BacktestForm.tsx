@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { BacktestRunRequest, IndexOption } from "../api";
+import { Cluster, Grid, Stack } from "./layout";
 
 export const DEFAULT_BACKTEST: BacktestRunRequest = {
   index: "",
@@ -52,7 +53,9 @@ export function BacktestForm({
   const [contractsPerDay, setContractsPerDay] = useState(
     String(DEFAULT_BACKTEST.put_line.contracts_per_day),
   );
-  const [maxRvMinusIv, setMaxRvMinusIv] = useState(String(DEFAULT_BACKTEST.put_line.max_rv_minus_iv));
+  const [maxRvMinusIv, setMaxRvMinusIv] = useState(
+    String(DEFAULT_BACKTEST.put_line.max_rv_minus_iv),
+  );
 
   const [commission, setCommission] = useState(
     String(DEFAULT_BACKTEST.costs?.commission_per_contract ?? 0),
@@ -61,9 +64,7 @@ export function BacktestForm({
   const [includeStress, setIncludeStress] = useState(true);
 
   const effectiveIndex =
-    index && indexOptions.some((o) => o.symbol === index)
-      ? index
-      : (indexOptions[0]?.symbol ?? "");
+    index && indexOptions.some((o) => o.symbol === index) ? index : (indexOptions[0]?.symbol ?? "");
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -93,142 +94,144 @@ export function BacktestForm({
 
   return (
     <form className="backtest-form" onSubmit={submit} aria-label="Backtest configuration">
-      <fieldset>
-        <legend>Window &amp; index</legend>
-        <label>
-          Index{" "}
-          <select
-            aria-label="backtest index"
-            value={effectiveIndex}
-            disabled={indexOptions.length === 0}
-            onChange={(event) => setIndex(event.target.value)}
-          >
-            {indexOptions.map((item) => (
-              <option key={item.symbol} value={item.symbol}>
-                {item.name} ({item.symbol})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Start date{" "}
-          <input
-            aria-label="start date"
-            type="date"
-            value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
-          />
-        </label>
-        <label>
-          End date{" "}
-          <input
-            aria-label="end date"
-            type="date"
-            value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
-          />
-        </label>
-        <label>
-          Reference tenor{" "}
-          <input
-            aria-label="reference tenor"
-            value={referenceTenor}
-            onChange={(event) => setReferenceTenor(event.target.value)}
-          />
-        </label>
-        <label>
-          Provider{" "}
-          <input
-            aria-label="provider"
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-          />
-        </label>
-      </fieldset>
+      <Grid min="240px" gap="md">
+        <Stack as="fieldset" gap="2xs">
+          <legend>Window &amp; index</legend>
+          <label>
+            Index{" "}
+            <select
+              aria-label="backtest index"
+              value={effectiveIndex}
+              disabled={indexOptions.length === 0}
+              onChange={(event) => setIndex(event.target.value)}
+            >
+              {indexOptions.map((item) => (
+                <option key={item.symbol} value={item.symbol}>
+                  {item.name} ({item.symbol})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Start date{" "}
+            <input
+              aria-label="start date"
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+            />
+          </label>
+          <label>
+            End date{" "}
+            <input
+              aria-label="end date"
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+            />
+          </label>
+          <label>
+            Reference tenor{" "}
+            <input
+              aria-label="reference tenor"
+              value={referenceTenor}
+              onChange={(event) => setReferenceTenor(event.target.value)}
+            />
+          </label>
+          <label>
+            Provider{" "}
+            <input
+              aria-label="provider"
+              value={provider}
+              onChange={(event) => setProvider(event.target.value)}
+            />
+          </label>
+        </Stack>
 
-      <fieldset>
-        <legend>Short put line</legend>
-        <label>
-          Put tenor{" "}
-          <input
-            aria-label="put tenor"
-            value={putTenor}
-            onChange={(event) => setPutTenor(event.target.value)}
-          />
-        </label>
-        <label>
-          Put delta band{" "}
-          <input
-            aria-label="put delta band"
-            value={putDeltaBand}
-            onChange={(event) => setPutDeltaBand(event.target.value)}
-          />
-        </label>
-        <label>
-          Line capacity (max open){" "}
-          <input
-            aria-label="line capacity"
-            type="number"
-            value={lineCapacity}
-            onChange={(event) => setLineCapacity(event.target.value)}
-          />
-        </label>
-        <label>
-          Contracts per day{" "}
-          <input
-            aria-label="contracts per day"
-            type="number"
-            step="0.5"
-            value={contractsPerDay}
-            onChange={(event) => setContractsPerDay(event.target.value)}
-          />
-        </label>
-        <label>
-          Max realized − implied to sell{" "}
-          <input
-            aria-label="max rv minus iv"
-            type="number"
-            step="0.01"
-            value={maxRvMinusIv}
-            onChange={(event) => setMaxRvMinusIv(event.target.value)}
-          />
-        </label>
-      </fieldset>
+        <Stack as="fieldset" gap="2xs">
+          <legend>Short put line</legend>
+          <label>
+            Put tenor{" "}
+            <input
+              aria-label="put tenor"
+              value={putTenor}
+              onChange={(event) => setPutTenor(event.target.value)}
+            />
+          </label>
+          <label>
+            Put delta band{" "}
+            <input
+              aria-label="put delta band"
+              value={putDeltaBand}
+              onChange={(event) => setPutDeltaBand(event.target.value)}
+            />
+          </label>
+          <label>
+            Line capacity (max open){" "}
+            <input
+              aria-label="line capacity"
+              type="number"
+              value={lineCapacity}
+              onChange={(event) => setLineCapacity(event.target.value)}
+            />
+          </label>
+          <label>
+            Contracts per day{" "}
+            <input
+              aria-label="contracts per day"
+              type="number"
+              step="0.5"
+              value={contractsPerDay}
+              onChange={(event) => setContractsPerDay(event.target.value)}
+            />
+          </label>
+          <label>
+            Max realized − implied to sell{" "}
+            <input
+              aria-label="max rv minus iv"
+              type="number"
+              step="0.01"
+              value={maxRvMinusIv}
+              onChange={(event) => setMaxRvMinusIv(event.target.value)}
+            />
+          </label>
+        </Stack>
 
-      <fieldset>
-        <legend>Costs &amp; stress (optional)</legend>
-        <label>
-          Commission / contract{" "}
-          <input
-            aria-label="commission per contract"
-            type="number"
-            step="0.5"
-            value={commission}
-            onChange={(event) => setCommission(event.target.value)}
-          />
-        </label>
-        <label>
-          Slippage rate{" "}
-          <input
-            aria-label="slippage rate"
-            type="number"
-            step="0.0001"
-            value={slippage}
-            onChange={(event) => setSlippage(event.target.value)}
-          />
-        </label>
-        <label className="checkbox-label">
-          <input
-            aria-label="include stress grid"
-            type="checkbox"
-            checked={includeStress}
-            onChange={(event) => setIncludeStress(event.target.checked)}
-          />{" "}
-          Include default crash-stress grid
-        </label>
-      </fieldset>
+        <Stack as="fieldset" gap="2xs">
+          <legend>Costs &amp; stress (optional)</legend>
+          <label>
+            Commission / contract{" "}
+            <input
+              aria-label="commission per contract"
+              type="number"
+              step="0.5"
+              value={commission}
+              onChange={(event) => setCommission(event.target.value)}
+            />
+          </label>
+          <label>
+            Slippage rate{" "}
+            <input
+              aria-label="slippage rate"
+              type="number"
+              step="0.0001"
+              value={slippage}
+              onChange={(event) => setSlippage(event.target.value)}
+            />
+          </label>
+          <label className="checkbox-label">
+            <input
+              aria-label="include stress grid"
+              type="checkbox"
+              checked={includeStress}
+              onChange={(event) => setIncludeStress(event.target.checked)}
+            />{" "}
+            Include default crash-stress grid
+          </label>
+        </Stack>
+      </Grid>
 
-      <div className="backtest-actions">
+      <Cluster className="backtest-actions" gap="sm">
         <button type="submit" disabled={running || indexOptions.length === 0 || datesMissing}>
           {running ? "Running backtest…" : "Run backtest"}
         </button>
@@ -237,7 +240,7 @@ export function BacktestForm({
             Pick a start and end date to run.
           </span>
         )}
-      </div>
+      </Cluster>
     </form>
   );
 }

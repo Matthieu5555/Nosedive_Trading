@@ -702,7 +702,7 @@ def ticket_to_dict(ticket: OrderTicket) -> dict[str, object]:
         "n_legs": len(ticket.legs),
         "gated": {
             "transmit": False,
-            "reason": "3B — sign-and-send is behind an explicit owner gate",
+            "reason": "3B - sign-and-send is behind an explicit owner gate",
         },
     }
 

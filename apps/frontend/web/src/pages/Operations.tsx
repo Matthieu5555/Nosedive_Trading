@@ -6,7 +6,9 @@ import { Label } from "@/ui/label";
 import type { IndicesResponse } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Cluster, Stack } from "../components/layout";
 import { FreshnessPanel } from "../components/operations/FreshnessPanel";
+import { IbkrConnectionPanel } from "../components/operations/IbkrConnectionPanel";
 import { RunControlPanel } from "../components/operations/RunControlPanel";
 import { SystemHealthPanel } from "../components/operations/SystemHealthPanel";
 import { useHealth, useRecordedDates } from "../hooks/queries";
@@ -28,7 +30,7 @@ export function OperationsPage() {
   const recorded = useRecordedDates(index);
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">
@@ -75,11 +77,27 @@ export function OperationsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>IBKR connection</CardTitle>
+          <CardDescription>
+            The live IBKR Client-Portal session behind a real run. See the honest gateway state,
+            open the brokerage session once authenticated, and refresh on demand. Logging in itself
+            runs from a shell, not the web app.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ErrorBoundary label="IBKR connection">
+            <IbkrConnectionPanel />
+          </ErrorBoundary>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Risk &amp; analytics freshness</CardTitle>
           <CardDescription>
             When risk and analytics last computed, and how many clean days are on record.
           </CardDescription>
-          <div className="control-row">
+          <Cluster gap="sm" align="end">
             <div className="control-field">
               <Label htmlFor="ops-index">Index</Label>
               <select
@@ -96,7 +114,7 @@ export function OperationsPage() {
                 ))}
               </select>
             </div>
-          </div>
+          </Cluster>
         </CardHeader>
         <CardContent>
           <ErrorBoundary label="Freshness">
@@ -109,6 +127,6 @@ export function OperationsPage() {
           </ErrorBoundary>
         </CardContent>
       </Card>
-    </section>
+    </Stack>
   );
 }

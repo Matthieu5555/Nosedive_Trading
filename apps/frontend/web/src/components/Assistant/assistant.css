@@ -2,6 +2,16 @@
    accent, no second palette. The boldness on Onglet 1 is spent on the coverage headline / the
    INDICATIF badge, never on the assistant chrome, which stays quiet. */
 
+/* The dock is the fixed anchor the floating assistant lives in: bottom-right on every page, above
+   page content but below the global error banner (z 1000). Both the launcher and the open panel are
+   positioned by this wrapper, so the assistant never collides with or gets clipped by page content. */
+.assistant-dock {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 900;
+}
+
 .assistant-launch,
 .assistant-action {
   border: 1px solid var(--border-strong);
@@ -11,6 +21,15 @@
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
+}
+
+/* In the dock the launcher is a solid pill that reads on any page background, not the quiet inline
+   chip it was as a Market sub-control. */
+.assistant-dock .assistant-launch {
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
 
 .assistant-launch:hover,
@@ -33,6 +52,40 @@
   padding: 14px;
   background: var(--panel);
   color: var(--text);
+}
+
+/* The floating open panel: a comfortable ~380px column anchored to the dock's bottom-right corner,
+   capped to the viewport height with an internal scrolling thread so it can never overflow the
+   screen. The shadow lifts it off the page content; z-index stays under the global error banner. */
+.assistant-dock .assistant-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  z-index: 900;
+}
+
+/* The thread is the one part that grows with the conversation, so it takes the scroll; the head,
+   actions and form stay pinned. */
+.assistant-dock .assistant-thread {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* On narrow screens the panel goes near-fullscreen so the thread and the input are usable. */
+@media (max-width: 560px) {
+  .assistant-dock .assistant-panel {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 20px);
+  }
 }
 
 .assistant-panel__head {

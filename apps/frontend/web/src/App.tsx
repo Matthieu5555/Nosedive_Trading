@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-do
 
 import { Badge } from "@/ui/badge";
 
+import { AssistantProvider } from "./components/Assistant/AssistantContext";
+import { FloatingAssistant } from "./components/Assistant/FloatingAssistant";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
@@ -67,6 +69,8 @@ function AppShell() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      {/* Mounted outside <Routes> so it persists across navigation and floats on every page. */}
+      <FloatingAssistant />
     </div>
   );
 }
@@ -74,7 +78,9 @@ function AppShell() {
 export function App() {
   return (
     <BrowserRouter>
-      <AppShell />
+      <AssistantProvider>
+        <AppShell />
+      </AssistantProvider>
     </BrowserRouter>
   );
 }

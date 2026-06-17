@@ -32,8 +32,7 @@ const GROUNDED: AssistantResponse = {
 };
 
 const HONEST_GAP: AssistantResponse = {
-  answer:
-    "That isn't in what the screen shows for this close — I won't make it up.",
+  answer: "That isn't in what the screen shows for this close, I won't make it up.",
   citations: [],
   grounded: false,
   frame: FRAME,
@@ -44,7 +43,7 @@ function open() {
 }
 
 describe("AssistantPanel", () => {
-  test("is closed by default — only a non-blocking launch button, never a modal wall", () => {
+  test("is closed by default, only a non-blocking launch button, never a modal wall", () => {
     const rendered = render(<AssistantPanel underlying="SX5E" asOf="2026-06-17" />);
     expect(screen.getByRole("button", { name: "Ask the assistant" })).toHaveAttribute(
       "aria-expanded",

@@ -33,6 +33,8 @@ export default tseslint.config(
       "test-results/**",
       // Untracked local screenshot scratch scripts at the web root (also gitignored); not app source.
       "shot*.mjs",
+      // Dev-only Playwright diagnostics (drive the live server, use browser globals); not app source.
+      "scripts/**",
       // Generated from the BFF OpenAPI schema by `npm run gen:api`; owns its own shape.
       "src/api/schema.d.ts",
     ],

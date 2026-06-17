@@ -12,6 +12,7 @@ import { AsyncBlock } from "../components/AsyncBlock";
 import { BookSummary } from "../components/BookSummary";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { FillsLedger } from "../components/FillsLedger";
+import { Cluster, Stack } from "../components/layout";
 import { PositionsTable } from "../components/PositionsTable";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
@@ -56,13 +57,13 @@ export function PositionsPage() {
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">What I own, what it&apos;s worth, what my risk is</p>
           <h1>Positions</h1>
         </div>
-        <div className="control-row">
+        <Cluster className="control-row" gap="sm">
           <select
             aria-label="Underlying"
             value={index}
@@ -87,83 +88,86 @@ export function PositionsPage() {
               </option>
             ))}
           </select>
-        </div>
+        </Cluster>
       </div>
 
       <AsyncBlock loading={indices.loading} error={indices.error}>
-        <ErrorBoundary label="Book summary">
-          <Card>
-            <CardHeader>
-              <CardTitle>Book summary</CardTitle>
-              <CardDescription>
-                The book&apos;s total market value and its additive dollar Greeks — summed across
-                priced legs, accounted from booked fills.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AsyncBlock loading={positions.loading} error={positions.error}>
-                {positions.data?.book && (
-                  <BookSummary book={positions.data.book} currency={currency} />
-                )}
-              </AsyncBlock>
-            </CardContent>
-          </Card>
-        </ErrorBoundary>
+        <Stack gap="md">
+          <ErrorBoundary label="Book summary">
+            <Card>
+              <CardHeader>
+                <CardTitle>Book summary</CardTitle>
+                <CardDescription>
+                  The book&apos;s total market value and its additive dollar Greeks, summed across
+                  priced legs, accounted from booked fills.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AsyncBlock loading={positions.loading} error={positions.error}>
+                  {positions.data?.book && (
+                    <BookSummary book={positions.data.book} currency={currency} />
+                  )}
+                </AsyncBlock>
+              </CardContent>
+            </Card>
+          </ErrorBoundary>
 
-        <ErrorBoundary label="Open positions">
-          <Card>
-            <CardHeader>
-              <CardTitle>Open positions</CardTitle>
-              <CardDescription>
-                One row per live contract — quantity, mark, market value and the per-leg dollar
-                Greeks.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AsyncBlock loading={positions.loading} error={positions.error}>
-                {positions.data && (
-                  <>
-                    <PositionsTable lines={positions.data.lines ?? []} currency={currency} />
-                    {(positions.data.unpriced_contract_keys?.length ?? 0) > 0 && (
-                      <div role="alert" className="gaps" aria-label="unpriced legs">
-                        <h4>
-                          Booked but unpriced legs ({positions.data.unpriced_contract_keys.length})
-                        </h4>
-                        <p>
-                          These legs are booked from fills but have no banked pricing yet, so their
-                          mark, market value and Greeks are zeroed — shown, never hidden.
-                        </p>
-                        <ul>
-                          {positions.data.unpriced_contract_keys.map((key) => (
-                            <li key={key}>{key}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                )}
-              </AsyncBlock>
-            </CardContent>
-          </Card>
-        </ErrorBoundary>
+          <ErrorBoundary label="Open positions">
+            <Card>
+              <CardHeader>
+                <CardTitle>Open positions</CardTitle>
+                <CardDescription>
+                  One row per live contract, quantity, mark, market value and the per-leg dollar
+                  Greeks.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AsyncBlock loading={positions.loading} error={positions.error}>
+                  {positions.data && (
+                    <>
+                      <PositionsTable lines={positions.data.lines ?? []} currency={currency} />
+                      {(positions.data.unpriced_contract_keys?.length ?? 0) > 0 && (
+                        <div role="alert" className="gaps" aria-label="unpriced legs">
+                          <h4>
+                            Booked but unpriced legs ({positions.data.unpriced_contract_keys.length}
+                            )
+                          </h4>
+                          <p>
+                            These legs are booked from fills but have no banked pricing yet, so
+                            their mark, market value and Greeks are zeroed, shown, never hidden.
+                          </p>
+                          <ul>
+                            {positions.data.unpriced_contract_keys.map((key) => (
+                              <li key={key}>{key}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </AsyncBlock>
+              </CardContent>
+            </Card>
+          </ErrorBoundary>
 
-        <ErrorBoundary label="Fills ledger">
-          <Card>
-            <CardHeader>
-              <CardTitle>Fills ledger</CardTitle>
-              <CardDescription>
-                The append-only execution blotter — every booked fill with its venue timestamp. This
-                is the source of record the book is accounted from.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AsyncBlock loading={fills.loading} error={fills.error}>
-                {fills.data && <FillsLedger fills={fills.data.fills ?? []} currency={currency} />}
-              </AsyncBlock>
-            </CardContent>
-          </Card>
-        </ErrorBoundary>
+          <ErrorBoundary label="Fills ledger">
+            <Card>
+              <CardHeader>
+                <CardTitle>Fills ledger</CardTitle>
+                <CardDescription>
+                  The append-only execution blotter, every booked fill with its venue timestamp.
+                  This is the source of record the book is accounted from.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AsyncBlock loading={fills.loading} error={fills.error}>
+                  {fills.data && <FillsLedger fills={fills.data.fills ?? []} currency={currency} />}
+                </AsyncBlock>
+              </CardContent>
+            </Card>
+          </ErrorBoundary>
+        </Stack>
       </AsyncBlock>
-    </section>
+    </Stack>
   );
 }

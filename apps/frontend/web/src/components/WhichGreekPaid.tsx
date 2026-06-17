@@ -64,7 +64,7 @@ export function WhichGreekPaid({
         </span>
       </div>
       <p>
-        Each bar is one Greek&apos;s share of the whole backtest&apos;s P&amp;L — the plain-English
+        Each bar is one Greek&apos;s share of the whole backtest&apos;s P&amp;L, the plain-English
         answer to <em>where did the return come from</em>. Green paid, red cost. The largest bar is
         what drove the result; for a short-put line that is normally <strong>theta</strong> (carry
         earned) against <strong>gamma</strong>/<strong>vega</strong> (the tail paid for it). P&amp;L
@@ -81,7 +81,7 @@ export function WhichGreekPaid({
         </li>
       </ul>
       <Plot
-        label={`Which Greek paid — ${kicker} (cumulative by-Greek P&L contributions)`}
+        label={`Which Greek paid, ${kicker} (cumulative by-Greek P&L contributions)`}
         data={[bars]}
         layout={layout}
         height={360}

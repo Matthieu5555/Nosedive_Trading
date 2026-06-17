@@ -13,11 +13,12 @@ import {
 import { statusLabel } from "../../lib/format";
 import { AsyncBlock } from "../AsyncBlock";
 import { InfoDot } from "../InfoDot";
+import { Cluster, Scroll, Stack } from "../layout";
 import { JobNotice } from "./JobNotice";
 import { JobProgress } from "./JobProgress";
 
 const LAUNCH_GLOSS =
-  "Replay the last captured day as a new surface — writes nothing to disk until validated.";
+  "Replay the last captured day as a new surface, writes nothing to disk until validated.";
 
 const JOB_STATE_CLASS: Record<Job["state"], string> = {
   queued: "ops-pill--warn",
@@ -27,14 +28,14 @@ const JOB_STATE_CLASS: Record<Job["state"], string> = {
 };
 
 function clockTime(ts: string | null): string {
-  if (!ts) return "—";
+  if (!ts) return "-";
   const match = ts.match(/T(\d{2}:\d{2}:\d{2})/);
   return match ? match[1] : ts;
 }
 
 function ProviderOption({ provider }: { provider: Provider }) {
   const runnable = provider.status === "ready";
-  const suffix = runnable ? "" : ` — ${statusLabel(provider.status)}`;
+  const suffix = runnable ? "" : `, ${statusLabel(provider.status)}`;
   return (
     <option value={provider.provider} disabled={!runnable}>
       {provider.provider}
@@ -54,7 +55,7 @@ function JobRow({ job }: { job: Job }) {
       <td>{clockTime(job.started_at)}</td>
       <td>{clockTime(job.finished_at)}</td>
       <td className="ops-job-message">
-        {job.state === "running" ? <JobProgress job={job} /> : job.message || "—"}
+        {job.state === "running" ? <JobProgress job={job} /> : job.message || "-"}
       </td>
     </tr>
   );
@@ -69,7 +70,7 @@ function JobsTable({ data }: { data: JobsResponse }) {
     );
   }
   return (
-    <div className="ops-table-wrap">
+    <Scroll className="ops-table-wrap" label="Run job history">
       <table className="ops-table">
         <thead>
           <tr>
@@ -87,7 +88,7 @@ function JobsTable({ data }: { data: JobsResponse }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </Scroll>
   );
 }
 
@@ -131,12 +132,12 @@ export function RunControlPanel() {
         : null;
 
   return (
-    <div className="ops-run">
+    <Stack className="ops-run" gap="md">
       <AsyncBlock
         loading={providers.isPending || underlyings.isPending}
         error={providers.isError ? providers.error.message : null}
       >
-        <div className="ops-run__controls control-row">
+        <Cluster className="ops-run__controls" gap="sm" align="end">
           <div className="control-field">
             <Label htmlFor="ops-provider">Data provider</Label>
             <select
@@ -165,7 +166,7 @@ export function RunControlPanel() {
               ))}
             </select>
           </div>
-          <div className="ops-launch-wrap">
+          <Cluster className="ops-launch-wrap" gap="2xs" align="center">
             <button
               type="button"
               className="ops-launch"
@@ -176,8 +177,8 @@ export function RunControlPanel() {
               {launch.isPending ? "Launching…" : "Launch run"}
             </button>
             <InfoDot label="What does this button do?" body={LAUNCH_GLOSS} />
-          </div>
-        </div>
+          </Cluster>
+        </Cluster>
       </AsyncBlock>
 
       {selected && selected.status !== "ready" && <p className="panel-note">{selected.note}</p>}
@@ -192,6 +193,6 @@ export function RunControlPanel() {
       <AsyncBlock loading={jobs.isPending} error={jobs.isError ? jobs.error.message : null}>
         {jobs.data && <JobsTable data={jobs.data} />}
       </AsyncBlock>
-    </div>
+    </Stack>
   );
 }

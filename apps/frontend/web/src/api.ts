@@ -87,6 +87,19 @@ export interface ProvidersResponse {
   providers: Provider[];
 }
 
+// The honest IBKR Client-Portal session state, mirroring routers/ibkr.py::_status_payload. The BFF
+// probes /iserver/auth/status WITHOUT ever triggering a browser login; every transport error
+// degrades to a labelled state here, never a 500. `configured` is false when no gateway env is set
+// (the default offline case); `detail` always carries the next operator step in plain language.
+export interface IbkrStatus {
+  configured: boolean;
+  authenticated: boolean;
+  established: boolean;
+  competing: boolean;
+  account: string | null;
+  detail: string;
+}
+
 // One capture/recompute run as the BFF job ledger sees it. `stage`/`stage_index`/`stage_total` are
 // additive-nullable: the BFF sets them as the engine walks its named stages (resolve → collect → fit
 // → summarize); a payload that predates the passthrough, or a job that hasn't reported a stage yet,

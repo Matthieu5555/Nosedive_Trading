@@ -63,7 +63,7 @@ const FILLS: FillsResponse = {
   ],
 };
 
-test("② The Book folds in the Positions content — book summary, open legs and fills ledger", async () => {
+test("② The Book folds in the Positions content, book summary, open legs and fills ledger", async () => {
   server.use(jsonGet("/api/positions", POSITIONS), jsonGet("/api/positions/fills", FILLS));
   render(<BookSection underlying="SPX" tradeDate="" currency="$" />);
 

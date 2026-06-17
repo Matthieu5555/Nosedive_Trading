@@ -7,7 +7,7 @@ import {
   type RecordedDatesResponse,
   type SignalsResponse,
 } from "../api";
-import { AssistantPanel } from "../components/Assistant/AssistantPanel";
+import { EMPTY_FRAME, useSetAssistantFrame } from "../components/Assistant/AssistantContext";
 import { AsyncBlock } from "../components/AsyncBlock";
 import {
   describeSurface,
@@ -19,6 +19,7 @@ import {
 import { CoveragePanel } from "../components/CoverageTable";
 import { DispersionStrip } from "../components/DispersionStrip";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Cluster, Scroll, Stack } from "../components/layout";
 import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
@@ -80,14 +81,30 @@ export function MarketPage() {
 
   const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
 
+  // Feed the globally-mounted floating assistant the live Market frame, so while the user is on this
+  // page the assistant grounds on exactly the subject, close and mode the charts are showing. On
+  // unmount we clear it back to empty, so navigating away leaves the assistant in its honest "Choose
+  // an index and a close" state rather than a stale frame.
+  const setAssistantFrame = useSetAssistantFrame();
+  useEffect(() => {
+    setAssistantFrame({
+      underlying: index,
+      asOf: effectiveAsOf,
+      runId: effectiveRunId,
+      mode: surfaceMode,
+      focusedElementId: null,
+    });
+    return () => setAssistantFrame(EMPTY_FRAME);
+  }, [setAssistantFrame, index, effectiveAsOf, effectiveRunId, surfaceMode]);
+
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">Form a view on what the market is pricing</p>
           <h1>Market</h1>
         </div>
-        <div className="control-row">
+        <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Index"
             value={index}
@@ -115,7 +132,7 @@ export function MarketPage() {
             value={selectedFetchKey}
             onChange={(key) => setSelectedKey(key)}
           />
-        </div>
+        </Cluster>
       </div>
 
       <AsyncBlock
@@ -165,12 +182,11 @@ export function MarketPage() {
               degenerate: surfaceMissing,
             });
             return (
-              <div className="market-scroll">
+              <Stack gap="md">
                 <div className="market-scroll__status">
                   <span className="status">
                     {index} · {descriptor.asOfPhrase} <QcBadge qc={qc} />
                   </span>
-                  <AssistantPanel underlying={index} asOf={effectiveAsOf} runId={effectiveRunId} />
                 </div>
 
                 <ErrorBoundary label="Scorecards">
@@ -199,23 +215,29 @@ export function MarketPage() {
                 </ErrorBoundary>
 
                 <article className="panel" aria-label={`${index} daily history`}>
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{index}</p>
-                      <h2>Daily price — {index}</h2>
+                  <Stack gap="md">
+                    <div className="panel-heading">
+                      <div>
+                        <p className="panel-kicker">{index}</p>
+                        <h2>Daily price, {index}</h2>
+                      </div>
+                      <span className="status">{descriptor.asOfPhrase} · OHLC</span>
                     </div>
-                    <span className="status">{descriptor.asOfPhrase} · OHLC</span>
-                  </div>
-                  <ErrorBoundary label="Price">
-                    <AsyncBlock
-                      loading={price.loading}
-                      error={price.error}
-                      height={440}
-                      subject={`the ${index} price`}
-                    >
-                      {price.data && <PriceChart data={price.data} />}
-                    </AsyncBlock>
-                  </ErrorBoundary>
+                    <ErrorBoundary label="Price">
+                      <AsyncBlock
+                        loading={price.loading}
+                        error={price.error}
+                        height={440}
+                        subject={`the ${index} price`}
+                      >
+                        {price.data && (
+                          <Scroll label={`${index} daily price chart`}>
+                            <PriceChart data={price.data} />
+                          </Scroll>
+                        )}
+                      </AsyncBlock>
+                    </ErrorBoundary>
+                  </Stack>
                 </article>
 
                 <ErrorBoundary label="Constituents">
@@ -228,54 +250,56 @@ export function MarketPage() {
                 </ErrorBoundary>
 
                 <article className="panel" aria-label={descriptor.subjectHeading}>
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{index}</p>
-                      <h2>
-                        {descriptor.subjectHeading}
-                        {surfaceMode === "indicative" && (
-                          <span
-                            className="qc-badge qc-badge--indicative"
-                            role="status"
-                            aria-label="Indicative mode — not the stored close"
-                          >
-                            INDICATIVE — not the stored close
-                          </span>
-                        )}
-                      </h2>
+                  <Stack gap="md">
+                    <div className="panel-heading">
+                      <div>
+                        <p className="panel-kicker">{index}</p>
+                        <h2>
+                          {descriptor.subjectHeading}
+                          {surfaceMode === "indicative" && (
+                            <span
+                              className="qc-badge qc-badge--indicative"
+                              role="status"
+                              aria-label="Indicative mode, not the stored close"
+                            >
+                              INDICATIVE, not the stored close
+                            </span>
+                          )}
+                        </h2>
+                      </div>
+                      <div className="panel-heading__controls">
+                        <span className="status" data-tone={descriptor.tone}>
+                          {descriptor.caption}
+                        </span>
+                        <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
+                      </div>
                     </div>
-                    <div className="panel-heading__controls">
-                      <span className="status" data-tone={descriptor.tone}>
-                        {descriptor.caption}
-                      </span>
-                      <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
-                    </div>
-                  </div>
-                  <ErrorBoundary label="3D surface">
-                    <AsyncBlock
-                      loading={analytics.loading}
-                      error={analytics.error}
-                      height={480}
-                      subject={`the ${index} surface`}
-                    >
-                      {analytics.data &&
-                        (surfaceMissing ? (
-                          <p className="state-panel" role="status">
-                            {descriptor.emptyCopy}
-                          </p>
-                        ) : (
-                          <VolSurface
-                            surface={analytics.data.surface}
-                            maturities={analytics.data.maturities}
-                            subject={index}
-                            asOf={effectiveAsOf}
-                            closeInstant={instant}
-                            mode={surfaceMode}
-                            coverage={surfaceCoverage}
-                          />
-                        ))}
-                    </AsyncBlock>
-                  </ErrorBoundary>
+                    <ErrorBoundary label="3D surface">
+                      <AsyncBlock
+                        loading={analytics.loading}
+                        error={analytics.error}
+                        height={480}
+                        subject={`the ${index} surface`}
+                      >
+                        {analytics.data &&
+                          (surfaceMissing ? (
+                            <p className="state-panel" role="status">
+                              {descriptor.emptyCopy}
+                            </p>
+                          ) : (
+                            <VolSurface
+                              surface={analytics.data.surface}
+                              maturities={analytics.data.maturities}
+                              subject={index}
+                              asOf={effectiveAsOf}
+                              closeInstant={instant}
+                              mode={surfaceMode}
+                              coverage={surfaceCoverage}
+                            />
+                          ))}
+                      </AsyncBlock>
+                    </ErrorBoundary>
+                  </Stack>
                 </article>
 
                 <ErrorBoundary label="Tenor view">
@@ -300,56 +324,60 @@ export function MarketPage() {
                 </ErrorBoundary>
 
                 <article className="panel" aria-label="Dispersion">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{index}</p>
-                      <h2>Dispersion (ρ̄) — {index}</h2>
+                  <Stack gap="md">
+                    <div className="panel-heading">
+                      <div>
+                        <p className="panel-kicker">{index}</p>
+                        <h2>Dispersion (ρ̄), {index}</h2>
+                      </div>
+                      <span className="status">
+                        {descriptor.asOfPhrase} · realized-vol diagnostic
+                      </span>
                     </div>
-                    <span className="status">
-                      {descriptor.asOfPhrase} · realized-vol diagnostic
-                    </span>
-                  </div>
-                  <ErrorBoundary label="Dispersion">
-                    <AsyncBlock loading={signals.loading} error={signals.error}>
-                      {signals.data && (
-                        <DispersionStrip
-                          index={index}
-                          signal={signals.data.by_kind?.implied_correlation?.[0] ?? null}
-                        />
-                      )}
-                    </AsyncBlock>
-                  </ErrorBoundary>
+                    <ErrorBoundary label="Dispersion">
+                      <AsyncBlock loading={signals.loading} error={signals.error}>
+                        {signals.data && (
+                          <DispersionStrip
+                            index={index}
+                            signal={signals.data.by_kind?.implied_correlation?.[0] ?? null}
+                          />
+                        )}
+                      </AsyncBlock>
+                    </ErrorBoundary>
+                  </Stack>
                 </article>
 
                 <article className="panel" aria-label="Capture coverage">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="panel-kicker">{index}</p>
-                      <h2>Capture coverage</h2>
+                  <Stack gap="md">
+                    <div className="panel-heading">
+                      <div>
+                        <p className="panel-kicker">{index}</p>
+                        <h2>Capture coverage</h2>
+                      </div>
+                      <button
+                        type="button"
+                        aria-expanded={coverageOpen}
+                        onClick={() => setCoverageOpen((open) => !open)}
+                      >
+                        {coverageOpen ? "Hide" : "Show"}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      aria-expanded={coverageOpen}
-                      onClick={() => setCoverageOpen((open) => !open)}
-                    >
-                      {coverageOpen ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                  {coverageOpen && (
-                    <ErrorBoundary label="Capture coverage">
-                      <CoveragePanel
-                        underlying={index}
-                        tradeDate={effectiveAsOf}
-                        runId={effectiveRunId ?? undefined}
-                      />
-                    </ErrorBoundary>
-                  )}
+                    {coverageOpen && (
+                      <ErrorBoundary label="Capture coverage">
+                        <CoveragePanel
+                          underlying={index}
+                          tradeDate={effectiveAsOf}
+                          runId={effectiveRunId ?? undefined}
+                        />
+                      </ErrorBoundary>
+                    )}
+                  </Stack>
                 </article>
-              </div>
+              </Stack>
             );
           })()}
       </AsyncBlock>
-    </section>
+    </Stack>
   );
 }
 
@@ -372,19 +400,19 @@ function SurfaceModeToggle({
         type="button"
         className="mode-toggle__option"
         aria-pressed={mode === "strict"}
-        title="Two-sided only — the canonical stored close"
+        title="Two-sided only, the canonical stored close"
         onClick={() => onChange("strict")}
       >
-        Strict — two-sided only
+        Strict, two-sided only
       </button>
       <button
         type="button"
         className="mode-toggle__option"
         aria-pressed={mode === "indicative"}
-        title="Includes one-sided marks — estimate, never the stored close"
+        title="Includes one-sided marks, estimate, never the stored close"
         onClick={() => onChange("indicative")}
       >
-        Indicative — includes one-sided marks
+        Indicative, includes one-sided marks
       </button>
     </div>
   );

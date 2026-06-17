@@ -31,7 +31,7 @@ export interface CoverageData {
   delta_band_status: QcStatus;
 }
 
-const STATUS_GLYPH: Record<QcStatus, string> = { pass: "✓", fail: "✗", unknown: "—" };
+const STATUS_GLYPH: Record<QcStatus, string> = { pass: "✓", fail: "✗", unknown: "-" };
 
 function StatusBadge({ status, label }: { status: QcStatus; label: string }) {
   return (
@@ -44,7 +44,7 @@ function StatusBadge({ status, label }: { status: QcStatus; label: string }) {
 // The strike span is two analytics quantities (strikes): each endpoint in scientific notation,
 // the "$" unit shown once after the range since both endpoints share it.
 function span(min: number | null, max: number | null): string {
-  if (min === null || max === null) return "—";
+  if (min === null || max === null) return "-";
   return `${sci(min)}–${sci(max)} ${UNITS.strike}`;
 }
 
@@ -53,7 +53,7 @@ export function CoverageTable({ data }: { data: CoverageData }) {
   return (
     <section aria-label="Capture coverage">
       <header>
-        Capture coverage — {data.underlying} {data.trade_date ?? "(no data)"}{" "}
+        Capture coverage, {data.underlying} {data.trade_date ?? "(no data)"}{" "}
         <StatusBadge status={data.qc_status} label="QC" />{" "}
         <StatusBadge status={data.delta_band_status} label="30Δ band" />
       </header>
@@ -100,8 +100,8 @@ export function CoverageTable({ data }: { data: CoverageData }) {
           {data.tenors.map((row) => (
             <tr key={row.tenor} data-status={row.status}>
               <td>{row.tenor}</td>
-              <td>{row.measured ?? "—"}</td>
-              <td>{row.floor ?? "—"}</td>
+              <td>{row.measured ?? "-"}</td>
+              <td>{row.floor ?? "-"}</td>
               <td>
                 <StatusBadge status={row.status} label={row.tenor} />
               </td>

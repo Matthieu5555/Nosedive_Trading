@@ -1,5 +1,6 @@
 import type { HealthResponse } from "../../api";
 import { number, statusLabel } from "../../lib/format";
+import { Stack } from "../layout";
 import { Metric } from "../Metric";
 
 type Tone = "ok" | "warn" | "bad";
@@ -39,7 +40,7 @@ export function SystemHealthPanel({ health }: { health: HealthResponse }) {
   const headline = health.is_healthy ? "Healthy" : "Needs attention";
   const headlineTone: Tone = health.is_healthy ? "ok" : "bad";
   return (
-    <div className="ops-health">
+    <Stack className="ops-health" gap="md">
       <div className="ops-health__headline">
         <span className={`ops-light ops-light--${headlineTone}`} aria-hidden="true" />
         <div>
@@ -58,10 +59,7 @@ export function SystemHealthPanel({ health }: { health: HealthResponse }) {
         <StatusMetric label="Surfaces building" value={health.surfaces_building} />
         <StatusMetric label="Quality control" value={health.qc_status} />
         <StatusMetric label="Stress scenarios" value={health.scenarios_current} />
-        <Metric
-          label="Market events stored"
-          value={`${number(health.events_total, 0)} events`}
-        />
+        <Metric label="Market events stored" value={`${number(health.events_total, 0)} events`} />
       </div>
 
       {health.backlog.length > 0 && (
@@ -69,6 +67,6 @@ export function SystemHealthPanel({ health }: { health: HealthResponse }) {
           Waiting to compute: {health.backlog.map(statusLabel).join(", ")}.
         </p>
       )}
-    </div>
+    </Stack>
   );
 }

@@ -45,6 +45,15 @@ export const server = setupServer(
   jsonGet("/api/signals/underlyings", SIGNAL_UNDERLYINGS),
   jsonGet("/api/signals", SIGNALS_SX5E),
   jsonGet("/api/compose/sub-strategies", { n_sub_strategies: 2, sub_strategies: ["SPX", "SX5E"] }),
+  jsonGet("/api/ibkr/status", {
+    configured: false,
+    authenticated: false,
+    established: false,
+    competing: false,
+    account: null,
+    detail:
+      "IBKR gateway is not configured. Set IBKR_CP_GATEWAY=1 in the repo .env, then run scripts/ibkr_login.py from a shell.",
+  }),
 
   http.all("/api/*", notMocked),
 );

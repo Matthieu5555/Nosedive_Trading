@@ -26,10 +26,7 @@ describe("Skeleton", () => {
 describe("ChartSkeleton", () => {
   test("names its subject when given one", () => {
     render(<ChartSkeleton subject="the SX5E surface" />);
-    expect(screen.getByRole("status")).toHaveAttribute(
-      "aria-label",
-      "Loading the SX5E surface…",
-    );
+    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "Loading the SX5E surface…");
   });
 
   test("falls back to the plain label without a subject", () => {

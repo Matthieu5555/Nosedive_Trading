@@ -7,7 +7,7 @@ export function BookSummary({ book, currency = "$" }: { book: BookGreeks; curren
   return (
     <div className="table-wrap">
       <table aria-label={label}>
-        <caption>{label} — the additive sum across priced legs</caption>
+        <caption>{label}, the additive sum across priced legs</caption>
         <thead>
           <tr>
             <th>Measure</th>

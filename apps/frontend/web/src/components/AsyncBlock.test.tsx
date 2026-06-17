@@ -53,10 +53,7 @@ describe("AsyncBlock loading branch", () => {
       </AsyncBlock>,
     );
     advance(SKELETON_DELAY_MS);
-    expect(screen.getByRole("status")).toHaveAttribute(
-      "aria-label",
-      "Loading the SX5E surface…",
-    );
+    expect(screen.getByRole("status")).toHaveAttribute("aria-label", "Loading the SX5E surface…");
   });
 
   test("is never blank in either loading phase", () => {

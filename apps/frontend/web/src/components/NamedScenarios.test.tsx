@@ -63,5 +63,5 @@ test("a null rate shock renders as a dash, not the literal 'null'", () => {
   render(<NamedScenarios scenarios={noRate} />);
   const table = screen.getByRole("table", { name: /Named historical scenarios/i });
   const cells = within(table).getAllByRole("cell");
-  expect(cells.some((cell) => cell.textContent === "—")).toBe(true);
+  expect(cells.some((cell) => cell.textContent === "-")).toBe(true);
 });

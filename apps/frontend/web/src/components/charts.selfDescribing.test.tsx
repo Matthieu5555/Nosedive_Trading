@@ -145,7 +145,7 @@ const SX5E_ANALYTICS: AnalyticsResponse = {
 const COVERAGE_STRICT: SurfaceCoverage = { resting: 1706, total: 2412 };
 const COVERAGE_INDICATIVE: SurfaceCoverage = { resting: 2280, total: 2412, indicative: 574 };
 
-describe("describeSurface — hand-built oracle (subject · as-of · mode · coverage)", () => {
+describe("describeSurface, hand-built oracle (subject · as-of · mode · coverage)", () => {
   test("strict names every fact; partial coverage (1706/2412) raises the voice to partial", () => {
     const d = describeSurface({
       subject: "SX5E",
@@ -155,7 +155,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: COVERAGE_STRICT,
     });
     expect(d.title).toBe(
-      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · 1,706/2,412 quotes`,
+      `Volatility surface, SX5E · close 2026-06-17 17:30 CET · strict · 1,706/2,412 quotes`,
     );
     // 1706 < 2412 is partial coverage: the headline raises its voice (spec: recede only when full).
     expect(d.tone).toBe("partial");
@@ -170,7 +170,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: { resting: 2412, total: 2412 },
     });
     expect(d.title).toBe(
-      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · 2,412/2,412 quotes`,
+      `Volatility surface, SX5E · close 2026-06-17 17:30 CET · strict · 2,412/2,412 quotes`,
     );
     expect(d.tone).toBe("full");
   });
@@ -184,7 +184,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: COVERAGE_INDICATIVE,
     });
     expect(d.title).toBe(
-      `Volatility surface — SX5E · close 2026-06-17 17:30 CET · INDICATIVE · 2,280/2,412 (574 indicative marks)`,
+      `Volatility surface, SX5E · close 2026-06-17 17:30 CET · INDICATIVE · 2,280/2,412 (574 indicative marks)`,
     );
     expect(d.tone).toBe("partial");
   });
@@ -199,12 +199,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       degenerate: true,
     });
     expect(d.title).toBe(
-      "Volatility surface — SX5E · close 2026-06-17 17:30 CET · indicative — market probably closed",
+      "Volatility surface, SX5E · close 2026-06-17 17:30 CET · indicative, market probably closed",
     );
     expect(d.tone).toBe("degenerate");
   });
 
-  test("missing coverage degrades to coverage unavailable — never a fabricated fraction", () => {
+  test("missing coverage degrades to coverage unavailable, never a fabricated fraction", () => {
     const d = describeSurface({
       subject: "SX5E",
       asOf: "2026-06-17",
@@ -213,12 +213,12 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
       coverage: null,
     });
     expect(d.title).toBe(
-      "Volatility surface — SX5E · close 2026-06-17 17:30 CET · strict · coverage unavailable",
+      "Volatility surface, SX5E · close 2026-06-17 17:30 CET · strict · coverage unavailable",
     );
     expect(d.title).not.toMatch(/\//);
   });
 
-  test("unknown close instant renders the date only — never 22:00", () => {
+  test("unknown close instant renders the date only, never 22:00", () => {
     const d = describeSurface({
       subject: "SX5E",
       asOf: "2026-06-17",
@@ -237,7 +237,7 @@ describe("describeSurface — hand-built oracle (subject · as-of · mode · cov
   });
 });
 
-describe("VolSurface — one state drives every label, no contradiction", () => {
+describe("VolSurface, one state drives every label, no contradiction", () => {
   test("dense surface figcaption carries subject · as-of · mode · coverage", () => {
     render(
       <VolSurface
@@ -250,7 +250,7 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
     const label = fig.getAttribute("aria-label") || "";
     expect(label).toMatch(/SX5E/);
     expect(label).toMatch(/close 2026-06-17 17:30 CET/);
@@ -269,7 +269,7 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    expect(screen.getByLabelText(/Volatility surface — SX5E/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Volatility surface, SX5E/i)).toBeTruthy();
 
     rerender(
       <VolSurface
@@ -281,8 +281,8 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
         maturities={SX5E_ANALYTICS.maturities}
       />,
     );
-    expect(screen.queryByLabelText(/Volatility surface — SX5E/i)).toBeNull();
-    expect(screen.getByLabelText(/Volatility surface — DAX/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/Volatility surface, SX5E/i)).toBeNull();
+    expect(screen.getByLabelText(/Volatility surface, DAX/i)).toBeTruthy();
   });
 
   test("indicative + partial never says strict and never says full coverage", () => {
@@ -298,7 +298,7 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const label =
-      screen.getByLabelText(/Volatility surface — SX5E/i).getAttribute("aria-label") || "";
+      screen.getByLabelText(/Volatility surface, SX5E/i).getAttribute("aria-label") || "";
     expect(label).toMatch(/INDICATIVE/);
     expect(label).not.toMatch(/· strict ·/);
     expect(label).not.toMatch(/complète/i);
@@ -316,7 +316,7 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const layout =
-      within(screen.getByLabelText(/Volatility surface — SX5E/i)).getByTestId("plot-layout")
+      within(screen.getByLabelText(/Volatility surface, SX5E/i)).getByTestId("plot-layout")
         .textContent || "";
     // log-moneyness (ln(K/F)), maturity (y), implied vol (Vol) — the UNITS tokens on the titles.
     expect(layout).toMatch(/log-moneyness \(ln\(K\/F\)\)/);
@@ -336,16 +336,15 @@ describe("VolSurface — one state drives every label, no contradiction", () => 
       />,
     );
     const tpl =
-      within(screen.getByLabelText(/Volatility surface — SX5E/i)).getByTestId(
-        "plot-hovertemplates",
-      ).textContent || "";
+      within(screen.getByLabelText(/Volatility surface, SX5E/i)).getByTestId("plot-hovertemplates")
+        .textContent || "";
     expect(tpl).toMatch(/log-moneyness %\{x:\.3f\} ln\(K\/F\)/);
     expect(tpl).toMatch(/maturity %\{y:\.2f\} y/);
     expect(tpl).toMatch(/implied vol %\{z:\.1%\} · two-sided/);
   });
 });
 
-describe("VolSurface empty state — self-describing, not a generic blank", () => {
+describe("VolSurface empty state, self-describing, not a generic blank", () => {
   test("empty surface names its subject and as-of and reads as status", () => {
     render(
       <VolSurface
@@ -357,7 +356,7 @@ describe("VolSurface empty state — self-describing, not a generic blank", () =
         maturities={[]}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
     const status = within(fig).getByRole("status");
     expect(status.textContent).toBe("No surface for SX5E on 2026-06-17.");
     expect(status.textContent).not.toMatch(/No surface to plot/i);
@@ -375,11 +374,11 @@ describe("VolSurface empty state — self-describing, not a generic blank", () =
       />,
     );
     const fig = screen.getByLabelText(/market probably closed/i);
-    expect(fig.getAttribute("aria-label")).toMatch(/Volatility surface — SX5E/);
+    expect(fig.getAttribute("aria-label")).toMatch(/Volatility surface, SX5E/);
   });
 });
 
-describe("SmileChart — shares the identity sentence; tooltip carries provenance", () => {
+describe("SmileChart, shares the identity sentence; tooltip carries provenance", () => {
   test("title names subject·as-of·mode and the selected tenor", () => {
     render(
       <SmileChart
@@ -393,7 +392,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
       />,
     );
     const label =
-      screen.getByLabelText(/Volatility surface — SX5E/i).getAttribute("aria-label") || "";
+      screen.getByLabelText(/Volatility surface, SX5E/i).getAttribute("aria-label") || "";
     expect(label).toMatch(/SX5E/);
     expect(label).toMatch(/close 2026-06-17 17:30 CET/);
     expect(label).toMatch(/smile 1m/);
@@ -403,10 +402,8 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
     render(
       <SmileChart subject="SX5E" asOf="2026-06-17" mode="strict" coverage={null} maturities={[]} />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
-    expect(within(fig).getByRole("status").textContent).toBe(
-      "No surface for SX5E on 2026-06-17.",
-    );
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
+    expect(within(fig).getByRole("status").textContent).toBe("No surface for SX5E on 2026-06-17.");
   });
 
   test("legend still names the real series (puts/calls), never Series 1", () => {
@@ -420,7 +417,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
     expect(within(fig).getByTestId("plot-types").textContent).toMatch(/scatter/);
     const tpl = within(fig).getByTestId("plot-hovertemplates").textContent || "";
     // The wing series carry their real name in the hovertemplate, never a "Series N".
@@ -440,7 +437,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
     // The template feeds per-point provenance through its %{text} slot…
     const tpl = within(fig).getByTestId("plot-hovertemplates").textContent || "";
     expect(tpl).toMatch(/implied vol %\{y:\.1%\} · %\{text\}/);
@@ -452,7 +449,7 @@ describe("SmileChart — shares the identity sentence; tooltip carries provenanc
   });
 });
 
-describe("GreeksShapeCurves — identity sentence + currencied strike axis", () => {
+describe("GreeksShapeCurves, identity sentence + currencied strike axis", () => {
   test("title names subject·as-of and the selected tenor", () => {
     render(
       <GreeksShapeCurves
@@ -465,7 +462,7 @@ describe("GreeksShapeCurves — identity sentence + currencied strike axis", () 
         maturityLabel={SX5E_MATURITY.label}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
     const label = fig.getAttribute("aria-label") || "";
     expect(label).toMatch(/Greeks 1m/);
     // strike ($) re-currencied to € via withCurrency for an EUR index.
@@ -483,9 +480,7 @@ describe("GreeksShapeCurves — identity sentence + currencied strike axis", () 
         maturities={[]}
       />,
     );
-    const fig = screen.getByLabelText(/Volatility surface — SX5E/i);
-    expect(within(fig).getByRole("status").textContent).toBe(
-      "No surface for SX5E on 2026-06-17.",
-    );
+    const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
+    expect(within(fig).getByRole("status").textContent).toBe("No surface for SX5E on 2026-06-17.");
   });
 });

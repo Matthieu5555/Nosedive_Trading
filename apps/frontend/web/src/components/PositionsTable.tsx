@@ -1,6 +1,7 @@
 import type { PositionLine } from "../api";
 import { POSITION_GREEK_ORDER } from "../api";
 import { sci, sciUnit, withCurrency } from "../lib/format";
+import { Scroll } from "./layout";
 
 function contractLabel(line: PositionLine): string {
   if (line.strike === null && line.option_right === null) return line.underlying;
@@ -17,7 +18,7 @@ export function PositionsTable({
   lines: PositionLine[];
   currency?: string;
 }) {
-  const label = "Open positions — one row per live contract";
+  const label = "Open positions, one row per live contract";
   if (lines.length === 0) {
     return (
       <div className="state-panel" role="status">
@@ -26,7 +27,7 @@ export function PositionsTable({
     );
   }
   return (
-    <div className="table-wrap">
+    <Scroll label={label}>
       <table aria-label={label}>
         <caption>{label}</caption>
         <thead>
@@ -57,6 +58,6 @@ export function PositionsTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </Scroll>
   );
 }

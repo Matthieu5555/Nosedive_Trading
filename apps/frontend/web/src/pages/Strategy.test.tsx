@@ -128,7 +128,7 @@ test("the equity curve plots both the gross and net cumulative lines", async () 
   await runDefaultBacktest(user);
 
   const equity = await screen.findByRole("article", { name: "Cumulative P&L" });
-  const plot = within(equity).getByLabelText(/Cumulative P&L —/i);
+  const plot = within(equity).getByLabelText(/Cumulative P&L,/i);
   // Two scatter traces (gross + net).
   expect(within(plot).getByTestId("plot-types")).toHaveTextContent("scatter,scatter");
   // Ending net 2100 -> 2.1e3.

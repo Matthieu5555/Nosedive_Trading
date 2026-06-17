@@ -12,12 +12,12 @@ import { number } from "../lib/format";
 // A rate fraction (0.025) as an annualized percentage with its unit ("2.500% /yr (…)"). The unit
 // travels from the BFF on `rate_unit`; null reads "—".
 function ratePercent(value: number | null, unit: string): string {
-  if (value === null || !Number.isFinite(value)) return "—";
+  if (value === null || !Number.isFinite(value)) return "-";
   return `${(value * 100).toFixed(3)}% ${unit}`;
 }
 
 function forwardPrice(value: number | null, currency: string): string {
-  if (value === null || !Number.isFinite(value)) return `— ${currency}`;
+  if (value === null || !Number.isFinite(value)) return `, ${currency}`;
   return `${number(value, 2)} ${currency}`;
 }
 
@@ -33,7 +33,7 @@ export function RateDiagnosticsPanel({
   if (!diagnostics) {
     return (
       <section aria-label="Rate diagnostics" className="rate-diagnostics">
-        <h3>Rate diagnostics — {maturityLabel}</h3>
+        <h3>Rate diagnostics, {maturityLabel}</h3>
         <p className="panel-note" role="status">
           No forward/rate diagnostic banked for this tenor (projection gap).
         </p>
@@ -46,7 +46,7 @@ export function RateDiagnosticsPanel({
     {
       label: "Forward",
       value: forwardPrice(diagnostics.forward_price, currency),
-      hint: "PCP forward F(T) — backed out of put–call parity",
+      hint: "PCP forward F(T), backed out of put–call parity",
     },
     {
       label: "Interest rate r(T)",
@@ -56,7 +56,7 @@ export function RateDiagnosticsPanel({
     {
       label: "Implied carry q(T)",
       value: ratePercent(diagnostics.implied_carry, unit),
-      hint: "q = r − ln(F/S)/T — the rate-adjusted cost of carry",
+      hint: "q = r − ln(F/S)/T, the rate-adjusted cost of carry",
     },
     {
       label: "Implied dividend",
@@ -68,7 +68,7 @@ export function RateDiagnosticsPanel({
   return (
     <section aria-label="Rate diagnostics" className="rate-diagnostics">
       <div className="price-structure-heading">
-        <h3>Rate diagnostics — {maturityLabel}</h3>
+        <h3>Rate diagnostics, {maturityLabel}</h3>
         <p className="panel-note">
           The interest rate is an explicit input, not an implicit constant: r(T) drives the forward
           and splits the carry into rate vs dividend (blueprint Eq 5).

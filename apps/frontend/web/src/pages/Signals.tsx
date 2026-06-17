@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { SignalsResponse, SignalUnderlyingsResponse } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Cluster, Stack } from "../components/layout";
 import { SignalsView } from "../components/SignalsView";
 import { useFetch } from "../hooks/useFetch";
 
@@ -36,13 +37,13 @@ export function SignalsPage() {
     !underlyings.loading && !underlyings.error && underlyingOptions.length === 0;
 
   return (
-    <section className="page">
+    <Stack as="section" className="page" gap="md">
       <div className="page-header">
         <div>
           <p className="eyebrow">Strategy signal layer</p>
           <h1>Signals</h1>
         </div>
-        <div className="control-row">
+        <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Underlying"
             value={underlying}
@@ -61,7 +62,7 @@ export function SignalsPage() {
             value={tradeDate}
             onChange={(event) => setTradeDate(event.target.value)}
           />
-        </div>
+        </Cluster>
       </div>
 
       <p className="panel-note signals-lede">
@@ -71,7 +72,7 @@ export function SignalsPage() {
         read it.
       </p>
 
-      {/* The underlyings list gates the page — if it fails there is no selector, so its error must
+      {/* The underlyings list gates the page. If it fails there is no selector, so its error must
           front the page rather than leave a dead, disabled dropdown. */}
       <AsyncBlock loading={underlyings.loading} error={underlyings.error}>
         {noUnderlyings ? (
@@ -86,6 +87,6 @@ export function SignalsPage() {
           </ErrorBoundary>
         )}
       </AsyncBlock>
-    </section>
+    </Stack>
   );
 }

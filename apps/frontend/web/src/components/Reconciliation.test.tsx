@@ -11,7 +11,11 @@ const AGREES: ReconciliationResponse = {
   book_source_ts: "2026-06-12T16:30:00+00:00",
   threshold_version: "recon-1",
   ok: true,
-  positions: { counts: { match: 2, break: 0, broker_only: 0, book_only: 0 }, n_lines: 2, lines: [] },
+  positions: {
+    counts: { match: 2, break: 0, broker_only: 0, book_only: 0 },
+    n_lines: 2,
+    lines: [],
+  },
   cash: { counts: { match: 0, break: 0, broker_only: 1, book_only: 0 }, n_lines: 1, lines: [] },
   fills: { counts: { match: 2, break: 0, broker_only: 0, book_only: 0 }, n_lines: 2, lines: [] },
 };

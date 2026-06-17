@@ -122,7 +122,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
         <span className="status">preview · paper</span>
       </div>
       <p>
-        Build an order ticket from the composed basket above. <strong>Preview only</strong> — the
+        Build an order ticket from the composed basket above. <strong>Preview only</strong>, the
         ticket is the object a live send would sign; nothing is transmitted here.
       </p>
 
@@ -185,7 +185,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
         <>
           <table aria-label="order ticket legs">
             <caption>
-              Ticket — {ticket.source_basket_id} → {ticket.target_broker.toUpperCase()} (
+              Ticket, {ticket.source_basket_id} → {ticket.target_broker.toUpperCase()} (
               {ticket.time_in_force.toUpperCase()}, {ticket.mode})
             </caption>
             <thead>
@@ -211,7 +211,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
           <div className="ticket-book" role="group" aria-label="book position">
             <p>
               <strong>Book this ticket</strong> into the paper position book. This is the{" "}
-              <strong>password write barrier</strong> — booking mutates the book and requires the
+              <strong>password write barrier</strong>, booking mutates the book and requires the
               gate password. It is <strong>paper</strong>: nothing is transmitted to a broker.
             </p>
             <label>
@@ -253,7 +253,7 @@ export function TicketPanel({ basketId, underlying, tradeDate, legs }: TicketPan
             <button type="button" disabled aria-label="Send order to broker">
               Send to broker
             </button>
-            <span>Live sending is off — {ticket.gated.reason}</span>
+            <span>Live sending is off, {ticket.gated.reason}</span>
           </div>
         </>
       )}

@@ -17,7 +17,7 @@ export function asOfCloseLine(
 // One vol-point figure (a difference of two implied vols) in trader units: vol points = IV × 100,
 // signed, one decimal. "+1.8 vp" / "−0.4 vp". A null reads "—" (the honest gap).
 function volPoints(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "—";
+  if (value === null || !Number.isFinite(value)) return "-";
   const vp = value * 100;
   const sign = vp > 0 ? "+" : "";
   return `${sign}${vp.toFixed(1)} vp`;
@@ -25,7 +25,7 @@ function volPoints(value: number | null): string {
 
 // An absolute level (ATM IV, IV-rank, correlation) as a percent, one decimal: "18.4%". Null "—".
 function levelPercent(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "—";
+  if (value === null || !Number.isFinite(value)) return "-";
   return `${(value * 100).toFixed(1)}%`;
 }
 
@@ -105,7 +105,7 @@ export function Scorecards({
       // Term-structure slope: longer-dated IV − shorter-dated, in vol points. Positive (upward) is
       // the calm norm; negative (backwardation) flags near-term stress — §4.2 "signal fort".
       label: "Term-structure slope",
-      value: termStructureSlope ? volPoints(termStructureSlope.value) : "—",
+      value: termStructureSlope ? volPoints(termStructureSlope.value) : "-",
       hint: termStructureSlope
         ? `far − near IV · ${termStructureSlope.tenor_label} (signal) · < 0 = backwardation`
         : "far − near IV · signal not recorded",
@@ -114,7 +114,7 @@ export function Scorecards({
     {
       // IV-rank: where today's IV sits in its 1-year range, 0–100%. A pure level (not signed).
       label: "IV-rank",
-      value: ivRank ? levelPercent(ivRank.value) : "—",
+      value: ivRank ? levelPercent(ivRank.value) : "-",
       hint: ivRank
         ? `today's IV in its 1-year range · ${ivRank.tenor_label} (signal)`
         : "today's IV in its 1-year range · signal not recorded",
@@ -129,7 +129,7 @@ export function Scorecards({
       // RV−IV: positive means the market moved more than options priced (vol cheap → buy). Read
       // straight off the persisted signal; the unit string travels with it from the BFF.
       label: "RV − IV",
-      value: ivVsRealized ? volPoints(ivVsRealized.value) : "—",
+      value: ivVsRealized ? volPoints(ivVsRealized.value) : "-",
       hint: ivVsRealized
         ? `realized − implied · ${ivVsRealized.tenor_label} (signal) · > 0 = vol cheap`
         : "realized − implied · signal not recorded",
@@ -140,7 +140,7 @@ export function Scorecards({
       // (TARGET §3 S1 / R3). Today a hybrid implied-index / realized-constituent read — labelled
       // honestly until constituent IVs land.
       label: "ρ̄",
-      value: impliedCorrelation ? levelPercent(impliedCorrelation.value) : "—",
+      value: impliedCorrelation ? levelPercent(impliedCorrelation.value) : "-",
       hint: impliedCorrelation
         ? `implied correlation · ${impliedCorrelation.tenor_label} (signal) · hybrid read`
         : "implied correlation · signal not recorded",
@@ -154,7 +154,7 @@ export function Scorecards({
           {underlying ? <strong>{underlying}</strong> : null}
           {underlying && asOfLine ? " · " : null}
           {asOfLine}
-          <InfoDot label="Scorecards — where these numbers come from" body={provenanceBody} />
+          <InfoDot label="Scorecards, where these numbers come from" body={provenanceBody} />
         </p>
       )}
       <div className="scorecards">

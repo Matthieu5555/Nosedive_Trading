@@ -1,5 +1,6 @@
 import type { BasketRiskResponse } from "../../api";
 import { BasketRiskPanel } from "../../components/BasketRiskPanel";
+import { Cluster, Stack } from "../../components/layout";
 
 type BuildPriceTabProps = {
   canPrice: boolean;
@@ -19,23 +20,33 @@ export function BuildPriceTab({
   onPrice,
 }: BuildPriceTabProps) {
   return (
-    <div className="basket-tab">
-      <p className="basket-tab__lead">
-        Price the composed basket off the Market analytics. Every number is the book-additive sum
-        of the per-position dollar Greeks — never a fresh pricing pass.
-      </p>
-      <div className="basket-actions">
-        <button type="button" onClick={onPrice} disabled={loading || !canPrice}>
-          {loading ? "Pricing…" : "Price basket"}
-        </button>
-      </div>
+    <Stack gap="md">
+      <article className="panel" aria-label="Price the basket">
+        <Stack gap="sm">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Price</p>
+              <h2>Price the basket</h2>
+            </div>
+          </div>
+          <p className="basket-tab__lead">
+            Price the composed basket off the Market analytics. Every number is the book-additive
+            sum of the per-position dollar Greeks, never a fresh pricing pass.
+          </p>
+          <Cluster gap="xs">
+            <button type="button" onClick={onPrice} disabled={loading || !canPrice}>
+              {loading ? "Pricing…" : "Price basket"}
+            </button>
+          </Cluster>
 
-      {error !== null && (
-        <p role="alert" className="error">
-          Failed to price basket: {error}
-        </p>
-      )}
+          {error !== null && (
+            <p role="alert" className="error">
+              Failed to price basket: {error}
+            </p>
+          )}
+        </Stack>
+      </article>
       {result !== null && <BasketRiskPanel result={result} currency={currency} />}
-    </div>
+    </Stack>
   );
 }

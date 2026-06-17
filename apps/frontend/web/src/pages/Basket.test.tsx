@@ -212,7 +212,7 @@ test("the booking home's send affordance is disabled and 3B-gated; nothing can t
   expect(screen.getByText(/Live sending is off/)).toBeInTheDocument();
 });
 
-test("the retired Orders sketch renders nowhere — no hardcoded strike 5350, no Submit (sketch)", async () => {
+test("the retired Orders sketch renders nowhere, no hardcoded strike 5350, no Submit (sketch)", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/ticket/preview", TICKET));
   render(<BasketPage />);
@@ -223,6 +223,6 @@ test("the retired Orders sketch renders nowhere — no hardcoded strike 5350, no
 
   expect(screen.queryByText("5350")).not.toBeInTheDocument();
   expect(screen.queryByText(/Submit \(sketch/i)).not.toBeInTheDocument();
-  expect(screen.queryByText(/Execution sketch — read-only/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Execution sketch, read-only/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/Indicative only/i)).not.toBeInTheDocument();
 });

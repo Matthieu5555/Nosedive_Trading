@@ -27,7 +27,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-test("a crash in one scroll panel is contained — the page chrome still renders", async () => {
+test("a crash in one scroll panel is contained, the page chrome still renders", async () => {
   render(<MarketPage />);
 
   expect(await screen.findByText(/Scorecards failed to render\./i)).toBeInTheDocument();

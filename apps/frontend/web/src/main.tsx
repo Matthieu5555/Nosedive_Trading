@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { GlobalErrorBanner } from "./components/GlobalErrorBanner";
+import { ErrorModal } from "./components/ErrorModal";
 import { queryClient } from "./lib/queryClient";
 import { installGlobalErrorListeners } from "./lib/runtimeErrors";
 
@@ -23,9 +23,9 @@ installGlobalErrorListeners();
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      {/* The always-on failure surface: sits above the shell so any escaped error is visible on
-          every route. */}
-      <GlobalErrorBanner />
+      {/* The always-on failure surface: a centered modal (not a top strip) so an escaped error is
+          unmistakable on every route and never buried behind the sticky topbar. */}
+      <ErrorModal />
       {/* A root boundary so a crash in the shell itself (topbar/nav, before the per-route
           boundaries) degrades to a labelled tile instead of a blank white screen. */}
       <ErrorBoundary label="Application">

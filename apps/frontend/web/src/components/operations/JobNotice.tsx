@@ -13,7 +13,7 @@ function noticeFor(job: Job): Notice {
     return {
       job_id: job.job_id,
       tone: "done",
-      text: `${job.underlying} capture complete — surface ready.`,
+      text: `${job.underlying} capture complete, surface ready.`,
     };
   }
   return {

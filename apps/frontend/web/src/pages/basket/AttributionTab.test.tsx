@@ -66,7 +66,9 @@ test("each second-order term carries its own unit label", () => {
 
   const legend = screen.getByRole("list", { name: /attribution terms/i });
   // Vanna's dollar contribution rendered via the sig-fig formatter, with its $ unit.
-  const vanna = within(legend).getByText(/^Vanna:/).closest("li");
+  const vanna = within(legend)
+    .getByText(/^Vanna:/)
+    .closest("li");
   expect(vanna).not.toBeNull();
   expect(within(vanna as HTMLElement).getByText("2.5 × 10¹")).toBeInTheDocument();
   expect(vanna?.textContent).toContain("$");

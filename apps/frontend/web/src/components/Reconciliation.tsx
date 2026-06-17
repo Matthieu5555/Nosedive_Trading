@@ -6,6 +6,7 @@ import type {
   ReconPositionLine,
 } from "../api";
 import { sci } from "../lib/format";
+import { Scroll, Stack } from "./layout";
 import { Metric } from "./Metric";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -27,7 +28,7 @@ function CountStrip({ counts }: { counts: ReconCounts }) {
 }
 
 function qty(value: number | null): string {
-  return value === null ? "—" : sci(value);
+  return value === null ? "-" : sci(value);
 }
 
 export function Reconciliation({ report }: { report: ReconciliationResponse }) {
@@ -35,7 +36,12 @@ export function Reconciliation({ report }: { report: ReconciliationResponse }) {
   const fillBreaks = report.fills.lines.filter((line) => line.status !== "match");
 
   return (
-    <article className="panel reconciliation" aria-label="Broker reconciliation">
+    <Stack
+      as="article"
+      gap="md"
+      className="panel reconciliation"
+      aria-label="Broker reconciliation"
+    >
       <div className="panel-heading">
         <div>
           <p className="panel-kicker">Account {report.account_id}</p>
@@ -52,109 +58,109 @@ export function Reconciliation({ report }: { report: ReconciliationResponse }) {
         line the other does not. Snapshot as of {report.as_of_ts}.
       </p>
 
-      <section aria-label="Position reconciliation">
+      <Stack as="section" gap="sm" aria-label="Position reconciliation">
         <h3>Positions</h3>
         <CountStrip counts={report.positions.counts} />
         {positionBreaks.length === 0 ? (
           <p role="status">Every broker position matches a book position.</p>
         ) : (
-          <div className="table-wrap">
-          <table aria-label="Position breaks">
-            <thead>
-              <tr>
-                <th scope="col">Contract</th>
-                <th scope="col">Broker qty</th>
-                <th scope="col">Book qty</th>
-                <th scope="col">Difference</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {positionBreaks.map((line: ReconPositionLine) => (
-                <tr key={`pos-${line.join_key}`}>
-                  <th scope="row">
-                    {line.broker_contract_key ?? line.book_contract_key ?? line.join_key}
-                  </th>
-                  <td>{qty(line.broker_quantity)}</td>
-                  <td>{qty(line.book_quantity)}</td>
-                  <td className="negative">{qty(line.quantity_diff)}</td>
-                  <td>{STATUS_LABEL[line.status] ?? line.status}</td>
+          <Scroll label="Position breaks">
+            <table aria-label="Position breaks">
+              <thead>
+                <tr>
+                  <th scope="col">Contract</th>
+                  <th scope="col">Broker qty</th>
+                  <th scope="col">Book qty</th>
+                  <th scope="col">Difference</th>
+                  <th scope="col">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+              </thead>
+              <tbody>
+                {positionBreaks.map((line: ReconPositionLine) => (
+                  <tr key={`pos-${line.join_key}`}>
+                    <th scope="row">
+                      {line.broker_contract_key ?? line.book_contract_key ?? line.join_key}
+                    </th>
+                    <td>{qty(line.broker_quantity)}</td>
+                    <td>{qty(line.book_quantity)}</td>
+                    <td className="negative">{qty(line.quantity_diff)}</td>
+                    <td>{STATUS_LABEL[line.status] ?? line.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Scroll>
         )}
-      </section>
+      </Stack>
 
-      <section aria-label="Fill reconciliation">
+      <Stack as="section" gap="sm" aria-label="Fill reconciliation">
         <h3>Fills</h3>
         <CountStrip counts={report.fills.counts} />
         {fillBreaks.length === 0 ? (
           <p role="status">Every broker fill matches a booked fill.</p>
         ) : (
-          <div className="table-wrap">
-          <table aria-label="Fill breaks">
-            <thead>
-              <tr>
-                <th scope="col">Contract</th>
-                <th scope="col">Broker qty</th>
-                <th scope="col">Book qty</th>
-                <th scope="col">Difference</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {fillBreaks.map((line: ReconFillLine) => (
-                <tr key={`fill-${line.join_key}`}>
-                  <th scope="row">
-                    {line.broker_contract_key ?? line.book_contract_key ?? line.join_key}
-                  </th>
-                  <td>{qty(line.broker_signed_quantity)}</td>
-                  <td>{qty(line.book_signed_quantity)}</td>
-                  <td className="negative">{qty(line.quantity_diff)}</td>
-                  <td>{STATUS_LABEL[line.status] ?? line.status}</td>
+          <Scroll label="Fill breaks">
+            <table aria-label="Fill breaks">
+              <thead>
+                <tr>
+                  <th scope="col">Contract</th>
+                  <th scope="col">Broker qty</th>
+                  <th scope="col">Book qty</th>
+                  <th scope="col">Difference</th>
+                  <th scope="col">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+              </thead>
+              <tbody>
+                {fillBreaks.map((line: ReconFillLine) => (
+                  <tr key={`fill-${line.join_key}`}>
+                    <th scope="row">
+                      {line.broker_contract_key ?? line.book_contract_key ?? line.join_key}
+                    </th>
+                    <td>{qty(line.broker_signed_quantity)}</td>
+                    <td>{qty(line.book_signed_quantity)}</td>
+                    <td className="negative">{qty(line.quantity_diff)}</td>
+                    <td>{STATUS_LABEL[line.status] ?? line.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Scroll>
         )}
-      </section>
+      </Stack>
 
-      <section aria-label="Cash reconciliation">
+      <Stack as="section" gap="sm" aria-label="Cash reconciliation">
         <h3>Cash (broker only)</h3>
         <p>
-          Cash is informational — our fills-based book carries no cash leg, so every line is
+          Cash is informational, our fills-based book carries no cash leg, so every line is
           broker-only.
         </p>
         {report.cash.lines.length === 0 ? (
           <p role="status">No broker cash balances captured.</p>
         ) : (
-          <div className="table-wrap">
-          <table aria-label="Broker cash balances">
-            <thead>
-              <tr>
-                <th scope="col">Currency</th>
-                <th scope="col">Cash balance</th>
-                <th scope="col">Settled cash</th>
-                <th scope="col">Net liquidation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.cash.lines.map((line: ReconCashLine) => (
-                <tr key={`cash-${line.currency}`}>
-                  <th scope="row">{line.currency}</th>
-                  <td>{qty(line.broker_cash_balance)}</td>
-                  <td>{qty(line.broker_settled_cash)}</td>
-                  <td>{qty(line.broker_net_liquidation)}</td>
+          <Scroll label="Broker cash balances">
+            <table aria-label="Broker cash balances">
+              <thead>
+                <tr>
+                  <th scope="col">Currency</th>
+                  <th scope="col">Cash balance</th>
+                  <th scope="col">Settled cash</th>
+                  <th scope="col">Net liquidation</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+              </thead>
+              <tbody>
+                {report.cash.lines.map((line: ReconCashLine) => (
+                  <tr key={`cash-${line.currency}`}>
+                    <th scope="row">{line.currency}</th>
+                    <td>{qty(line.broker_cash_balance)}</td>
+                    <td>{qty(line.broker_settled_cash)}</td>
+                    <td>{qty(line.broker_net_liquidation)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Scroll>
         )}
-      </section>
-    </article>
+      </Stack>
+    </Stack>
   );
 }

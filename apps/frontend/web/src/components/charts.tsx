@@ -121,12 +121,12 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
   // badge; this owns the word). On a degenerate close the mode word gives way to the plain-words
   // alarm "indicative — marché probablement fermé".
   const modeClause = degenerate
-    ? "indicative — market probably closed"
+    ? "indicative, market probably closed"
     : mode === "indicative"
       ? `INDICATIVE · ${coveragePhrase}`
       : `strict · ${coveragePhrase}`;
 
-  const subjectHeading = `${SURFACE_SUBJECT} — ${subject}`;
+  const subjectHeading = `${SURFACE_SUBJECT}, ${subject}`;
   const caption = `${asOfPhrase} · ${modeClause}`;
   const title = `${subjectHeading} · ${caption}`;
 
@@ -135,7 +135,7 @@ export function describeSurface(state: SurfaceDescriptorState): SurfaceDescripto
   // thing in PM register ("aucune cotation deux-faces") + the loud market-closed cause — the exact
   // canary the legibility theme exists to surface.
   const emptyCopy = degenerate
-    ? `No two-sided quote for ${subject} on ${date} — market probably closed.`
+    ? `No two-sided quote for ${subject} on ${date}, market probably closed.`
     : `No surface for ${subject} on ${date}.`;
 
   return {
@@ -164,7 +164,7 @@ function pointProvenance(point: AnalyticsPoint): string {
 }
 
 export function PriceChart({ data }: { data: PriceHistoryResponse }) {
-  const label = `${data.underlying} — daily price (OHLC candlestick)`;
+  const label = `${data.underlying}, daily price (OHLC candlestick)`;
   if (data.n_bars === 0) {
     return (
       <figure aria-label={label} className="plot">
@@ -227,8 +227,8 @@ function atmRidgeTrace(cleaned: ReturnType<typeof cleanDenseSurface>): Data | nu
 // The figure caption is the descriptor's identity sentence + the one-line how-to-read gloss, with
 // the existing "⚠ {note}" flagged-fit suffix preserved. The identity LEADS; the gloss follows.
 function surfaceLabel(descriptor: SurfaceDescriptor, note: string | null): string {
-  const base = `${descriptor.title} — ${SURFACE_HOW_TO_READ}`;
-  return note ? `${base} — ⚠ ${note}` : base;
+  const base = `${descriptor.title}, ${SURFACE_HOW_TO_READ}`;
+  return note ? `${base}, ⚠ ${note}` : base;
 }
 
 // Shared props that carry the live state into every chart on the nappe block, so the descriptor is
@@ -474,7 +474,7 @@ export function SmileChart({
   const baseDescriptor = describeSurface({ subject, asOf, closeInstant, mode, coverage });
 
   if (sorted.length === 0) {
-    const label = `${baseDescriptor.title} — smile — ${SMILE_HOW_TO_READ}`;
+    const label = `${baseDescriptor.title}, smile, ${SMILE_HOW_TO_READ}`;
     return (
       <figure aria-label={label} className="plot">
         <figcaption>{label}</figcaption>
@@ -487,8 +487,8 @@ export function SmileChart({
   const degenerate = maturity.surface_slice?.degenerate ?? false;
   const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
   const nDropped = clean.nDroppedNonFinite + clean.nDroppedAbsurd + clean.nDroppedDuplicate;
-  const dropNote = nDropped > 0 ? ` — ${nDropped} pt${nDropped === 1 ? "" : "s"} flagged` : "";
-  const label = `${baseDescriptor.title} — smile ${maturity.label} (${SMILE_HOW_TO_READ})${
+  const dropNote = nDropped > 0 ? `, ${nDropped} pt${nDropped === 1 ? "" : "s"} flagged` : "";
+  const label = `${baseDescriptor.title}, smile ${maturity.label} (${SMILE_HOW_TO_READ})${
     degenerate ? " ⚠ degenerate fit" : ""
   }${dropNote}`;
 
@@ -564,7 +564,7 @@ export function GreeksShapeCurves({
     xaxis: { title: { text: axisStrike(currency) }, tickformat: ".2s" },
   };
   if (maturities.length === 0) {
-    const label = `${baseDescriptor.title} — Greeks — ${GREEKS_SHAPE_HOW_TO_READ}`;
+    const label = `${baseDescriptor.title}, Greeks, ${GREEKS_SHAPE_HOW_TO_READ}`;
     return (
       <figure aria-label={label} className="plot">
         <figcaption>{label}</figcaption>
@@ -580,7 +580,7 @@ export function GreeksShapeCurves({
     : (maturities.find((m) => m.label === maturityLabel) ?? frontMaturity);
 
   const points: AnalyticsPoint[] = [...maturity.points].sort((a, b) => a.strike - b.strike);
-  const label = `${baseDescriptor.title} — Greeks ${maturity.label} (${GREEKS_SHAPE_HOW_TO_READ})`;
+  const label = `${baseDescriptor.title}, Greeks ${maturity.label} (${GREEKS_SHAPE_HOW_TO_READ})`;
   if (points.length === 0) {
     return (
       <figure aria-label={label} className="plot">

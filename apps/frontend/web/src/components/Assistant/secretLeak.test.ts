@@ -14,12 +14,7 @@ const SRC_ROOT = `${WEB_ROOT}/src`;
 const DIST_ROOT = `${WEB_ROOT}/dist`;
 const SELF = `${SRC_ROOT}/components/Assistant/secretLeak.test.ts`;
 
-const FORBIDDEN = [
-  "OPENROUTER_API_KEY",
-  "openrouter.ai",
-  "/chat/completions",
-  "sk-or-",
-];
+const FORBIDDEN = ["OPENROUTER_API_KEY", "openrouter.ai", "/chat/completions", "sk-or-"];
 
 function walk(root: string): string[] {
   let entries: string[];

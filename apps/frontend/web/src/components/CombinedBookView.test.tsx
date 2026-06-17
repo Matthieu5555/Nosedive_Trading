@@ -8,12 +8,7 @@ import type { AttributionResponse, ComposeGreeks, ComposeResponse } from "../api
 import { jsonGet, server } from "../test/server";
 import { CombinedBookView } from "./CombinedBookView";
 
-function greeks(
-  level: string,
-  label: string,
-  index: number,
-  delta: number | null,
-): ComposeGreeks {
+function greeks(level: string, label: string, index: number, delta: number | null): ComposeGreeks {
   return {
     level,
     layer_label: label,

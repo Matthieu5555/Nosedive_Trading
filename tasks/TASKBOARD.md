@@ -52,7 +52,6 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 | A-docs stream-A | `.agent/decisions/0053-*` + `0054-*` (DOCS-ONLY) — blueprint amendment text proposed inside each ADR | 2026-06-17 | FuturesPoint ADR (1D) + rates-curve `r(T)` ingest ADR (R1), both **status=Proposed**; no code/config touched |
 | A1 stream-A | `packages/infra/.../universe/chain_planning.py` + `packages/infra-ibkr/.../collectors/cp_rest_close_capture.py` + `cp_rest_chain_window.py`; `StrikeSelectionConfig` + `configs/universe.yaml` | 2026-06-17 | capture-selection seam: T-capture-tenor-bracket-rewire then infra-strike-window-pct-clip (serialized, same module) |
 | A2 stream-A | `infra/qc/checks.py` (`check_surface_fit_error`), `infra/surfaces/fit.py` (`degeneracy_reasons`), `core/config/platform_config.py` (FitToleranceQcConfig), `configs/{qc,pricing}.yaml`, `routers/analytics.py` (served-axis dedup) + findings doc | 2026-06-17 | infra-surface-fit-quality lane 1/3 — benign-a_lower QC fix + thin-slice routing + settled-close findings; does NOT touch web (lane 2 = A6) |
-| A-test stream-A | NEW test files only: `apps/frontend/tests/test_onglet1_contracts.py`, `apps/frontend/tests/test_coverage_api.py` (+gaps), `apps/frontend/web/e2e/onglet1-read-flow.spec.ts` | 2026-06-17 | CONTRACT tests locking Onglet-1 BFF read seams (quote.path, rate-identity, forward_curve round-trip, coverage empty-tenor) + Playwright e2e read flow; does NOT edit `navigation.spec.ts` |
 
 ## Layer ownership (planning pass, 2026-06-13)
 

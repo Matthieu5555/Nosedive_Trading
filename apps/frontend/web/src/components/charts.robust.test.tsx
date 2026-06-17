@@ -14,9 +14,15 @@ const DEGEN_MATURITY: AnalyticsMaturity = DEGEN.maturities[0];
 
 describe("VolSurface dense nappe robustness", () => {
   test("clamps out-of-band cells to null, collapses duplicate columns, and flags the slice", () => {
-    render(<VolSurface surface={DEGEN.surface} maturities={DEGEN.maturities} />);
+    render(
+      <VolSurface
+        subject={DEGEN.underlying}
+        surface={DEGEN.surface}
+        maturities={DEGEN.maturities}
+      />,
+    );
 
-    const fig = screen.getByLabelText(/Implied-volatility surface/i);
+    const fig = screen.getByLabelText(/Nappe de volatilité — AAA/i);
     expect(fig.getAttribute("aria-label")).toMatch(/1 slice flagged/i);
 
     const z = JSON.parse(within(fig).getByTestId("plot-z").textContent || "[]") as (
@@ -33,8 +39,14 @@ describe("VolSurface dense nappe robustness", () => {
 describe("SmileChart robustness", () => {
   test("drops absurd/NaN/duplicate points and notes the count, plotting both cleaned wings", () => {
     // Pin to the single tenor; the degenerate-fit flag and the dropped-point note ride the label.
-    render(<SmileChart maturities={[DEGEN_MATURITY]} maturityLabel={DEGEN_MATURITY.label} />);
-    const fig = screen.getByLabelText(/Smile — 10d/i);
+    render(
+      <SmileChart
+        subject={DEGEN.underlying}
+        maturities={[DEGEN_MATURITY]}
+        maturityLabel={DEGEN_MATURITY.label}
+      />,
+    );
+    const fig = screen.getByLabelText(/smile 10d/i);
 
     expect(fig.getAttribute("aria-label")).toMatch(/degenerate fit/i);
     expect(fig.getAttribute("aria-label")).toMatch(/flagged/i);

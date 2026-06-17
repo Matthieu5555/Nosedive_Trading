@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 
 from algotrading.core.config import SurfaceConfig
@@ -96,13 +96,22 @@ def fit_slice(
     if len(ks) >= config.min_points_per_slice:
         svi_fit: SviFit = fit_svi(ks, ws, config=config)
         breaches = butterfly_violations(svi_fit.params, _arb_grid(ks))
-        return SliceFit(
+        svi_slice = SliceFit(
             underlying=underlying, maturity_years=maturity_years, expiry_date=expiry_date,
             day_count=day_count, method=config.model, svi=svi_fit.params, rmse=svi_fit.rmse,
             n_points=svi_fit.n_points, arb_free=not breaches, bound_hits=svi_fit.bound_hits,
             butterfly_violations=breaches, nonparametric_ks=ks, nonparametric_ws=ws,
             raw_points=points, converged=svi_fit.converged,
         )
+        if _should_reroute_railed_dense(svi_slice, config=config):
+            # Lane 3 (ADR 0056): a genuinely railed/degenerate SVI on a DENSE slice serves the
+            # smooth nonparametric fallback instead of the railed SVI. Flag-not-reject is preserved
+            # — every diagnostic (svi params, bound_hits, arb_free, rmse, converged) is carried
+            # unchanged for QC/audit; only the SERVED curve (`method`) switches to the fallback.
+            # Opt-in, default OFF (byte-identical goldens) — blueprint 04.H "[longer-term] improve
+            # fallback interpolation path".
+            return _reroute_railed_to_fallback(svi_slice, config=config)
+        return svi_slice
 
     if len(ks) >= 1:
         return SliceFit(
@@ -119,6 +128,67 @@ def fit_slice(
         arb_free=True, bound_hits=(), butterfly_violations=(), nonparametric_ks=(),
         nonparametric_ws=(), raw_points=points,
     )
+
+
+def genuine_degeneracy_reasons(fit: SliceFit) -> tuple[str, ...]:
+    """The non-benign reasons an SVI slice is degenerate, exactly as ``check_surface_fit_error``.
+
+    A bound hit is genuine unless it is the benign ``a_lower`` parametrization sink (svi_a→0 with a
+    positive minimum total variance — the Lane-1 false positive). A surviving butterfly arbitrage or
+    a non-converged fit is always genuine. Benign-only slices return ``()``.
+    """
+    minimum_total_variance = (
+        fit.svi.minimum_total_variance() if fit.svi is not None else None
+    )
+    reasons: list[str] = []
+    if not fit.arb_free:
+        reasons.append("arb_violation")
+    genuine_bound_hits = [
+        name
+        for name in fit.bound_hits
+        if not is_benign_a_floor(name, minimum_total_variance=minimum_total_variance)
+    ]
+    if genuine_bound_hits:
+        reasons.append(f"bound_hit:{','.join(genuine_bound_hits)}")
+    if fit.converged is False:
+        reasons.append("not_converged")
+    return tuple(reasons)
+
+
+def _should_reroute_railed_dense(fit: SliceFit, *, config: SurfaceConfig) -> bool:
+    """Lane 3 routing predicate: reroute a railed SVI slice to the fallback iff opt-in AND dense.
+
+    Both gates must hold (blueprint 04.H "[longer-term] improve fallback interpolation path"):
+
+    (a) the SVI is genuinely railed/degenerate — a real bound hit that is NOT the benign ``a_lower``
+        false positive Lane 1 exempts (e.g. svi_rho pinned to its bound), a surviving arb violation,
+        or a non-converged fit; AND
+    (b) the slice is DENSE ENOUGH to fit (``n_points >= reroute_point_floor``), so the rail is a
+        model misfit, not a thinness artifact — a genuinely thin slice already falls back via the
+        existing sparse-slice path, untouched by this routing.
+
+    Gated behind ``reroute_railed_dense_slice`` (default OFF) so canonical goldens stay
+    byte-identical until enabled: flipping it changes served IV values (a hashed config behaviour).
+    """
+    if not config.reroute_railed_dense_slice:
+        return False
+    if fit.method != METHOD_SVI:
+        return False
+    if fit.n_points < config.reroute_point_floor:
+        return False
+    return bool(genuine_degeneracy_reasons(fit))
+
+
+def _reroute_railed_to_fallback(fit: SliceFit, *, config: SurfaceConfig) -> SliceFit:
+    """Serve the nonparametric fallback curve for a railed dense slice, keeping every SVI flag.
+
+    Flag-not-reject is preserved: ``svi`` params, ``bound_hits``, ``arb_free``, ``rmse`` and
+    ``converged`` are all carried through unchanged for QC/audit (the slice still FAILS
+    ``surface_fit_error`` on its genuine reason). Only ``method`` switches to the fallback so the
+    SERVED curve — ``total_variance`` and the projected grid — comes from the smooth interpolation
+    rather than the railed SVI.
+    """
+    return replace(fit, method=config.fallback_model)
 
 
 def interpolate_total_variance(

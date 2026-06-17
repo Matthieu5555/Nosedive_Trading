@@ -54,6 +54,19 @@ surface:                       # SVI calibration (SurfaceConfig)
   min_points_per_slice: 5            # distinct strikes required before SVI is trusted; below it
                                      # the slice routes to the nonparametric fallback. Floored at
                                      # 5 = SVI's parameter count; raise to demand more points.
+  reroute_railed_dense_slice: false  # Lane 3 (ADR 0056) — route a GENUINELY railed/degenerate SVI
+                                     # on a DENSE slice to the smooth nonparametric fallback instead
+                                     # of serving the railed SVI. "Genuine" = a non-benign bound hit
+                                     # (e.g. svi_rho pinned to its bound — NOT the benign a_lower
+                                     # parametrization sink Lane 1 exempts), a surviving butterfly
+                                     # arb, or non-convergence. "Dense" = n_points >= the floor below.
+                                     # Flag-not-reject is preserved (all SVI diagnostics still flag
+                                     # the slice in QC); only the SERVED curve changes. Default OFF:
+                                     # flipping it changes served IV values, so it is a hashed config
+                                     # behaviour, never a silent default flip. blueprint 04.H
+                                     # "[longer-term] improve fallback interpolation path".
+  reroute_min_points: null           # dense-enough floor for the reroute above; null = reuse
+                                     # min_points_per_slice. >= 5. Only read when the reroute is ON.
   moneyness_buckets: [-0.2, -0.1, 0.0, 0.1, 0.2]   # log-moneyness grid the regularized surface is
                                      # projected/persisted onto (one grid cell per bucket). Strictly
                                      # increasing + symmetric about 0.0 (the ATM forward) so the

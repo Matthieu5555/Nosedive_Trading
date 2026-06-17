@@ -300,7 +300,16 @@ class SurfaceConfig(_ConfigModel):
     model: str = "svi"
     fallback_model: str = "nonparametric"
     min_points_per_slice: int = Field(default=5, ge=5)
+    reroute_railed_dense_slice: bool = False
+    reroute_min_points: int | None = Field(default=None, ge=5)
     moneyness_buckets: _FloatTuple = (-0.2, -0.1, 0.0, 0.1, 0.2)
+
+    @property
+    def reroute_point_floor(self) -> int:
+        """Dense-enough threshold for the railed-slice reroute (defaults to the SVI-trust floor)."""
+        if self.reroute_min_points is None:
+            return self.min_points_per_slice
+        return self.reroute_min_points
 
     @model_validator(mode="after")
     def _check_bound_pairs(self) -> SurfaceConfig:

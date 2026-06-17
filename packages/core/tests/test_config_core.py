@@ -79,10 +79,10 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "084dded3a6a9d16fb61dc4f868ba1a6aa00adfad1da749012d271f4e55af183d"
+        "ef7fa60a875fd948cbd101c6ee7f30f04e398c12e208127ee23d2d32a0a6afed"
     )
     assert config_hashes(config) == {
-        "pricing": "6facb682ac9d3b91f90d3301fa559182bebcc97956e3e0806ebcc7cb281729c0",
+        "pricing": "9083222ce26b63f5a935f8ad1667b5e0bcbb91c8cedb14b195941bdeeeb4b31e",
         "qc": "5ee4c4ee5fb3b4b07b94a00ad3d71277abec90bd3fc570b4ba1f643ca1238a12",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
         "universe": "4833799bb76dcaaafeda85c23557159ab638407ca7122ac3d9796fd93d96e3e1",
@@ -188,6 +188,19 @@ def test_moneyness_buckets_folds_into_the_pricing_hash() -> None:
     moved = base.model_copy(update={"surface": _surface_with_grid((-0.1, 0.0, 0.1))})
     base_h, moved_h = config_hashes(base), config_hashes(moved)
     assert moved_h["pricing"] != base_h["pricing"]
+    assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
+        k: base_h[k] for k in ("universe", "qc", "scenarios")
+    }
+
+
+def test_lane3_reroute_knob_defaults_off_and_folds_into_the_pricing_hash() -> None:
+    """ADR 0056: the railed-dense reroute ships OFF and is a hashed config behaviour, not a flip."""
+    assert _surface().reroute_railed_dense_slice is False  # shipped default is OFF
+    base = _config()
+    flipped_surface = base.surface.model_copy(update={"reroute_railed_dense_slice": True})
+    moved = base.model_copy(update={"surface": flipped_surface})
+    base_h, moved_h = config_hashes(base), config_hashes(moved)
+    assert moved_h["pricing"] != base_h["pricing"]  # flipping it moves the pricing hash
     assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
         k: base_h[k] for k in ("universe", "qc", "scenarios")
     }

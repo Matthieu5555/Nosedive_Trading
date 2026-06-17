@@ -193,10 +193,10 @@ a versioned `AccountReconciliationTolerance` (`DEFAULT_ACCOUNT_RECON_TOLERANCE`)
 is pure and order-invariant (lines sort by join key); `BookFill` is a `Protocol` so infra
 stays blind to the execution-layer `Fill` type while still typing the seam. The BFF reads it
 back at `GET /api/reconciliation` (latest broker snapshot per account + the fills ledger) for
-the Operations / Risk recon view. The remaining §7.9 operational pieces — **margin
-forecasting** and recon-break **alert delivery** — are deferred follow-ups, not built here; the
-report's `ok` + break counts are the natural alert trigger when that lands. The **kill switch**
-(§6) now lives in `kill_switch.py` (below).
+the Operations / Risk recon view. The remaining §7.9 operational piece — recon-break **alert
+delivery** — is a deferred follow-up, not built here; the report's `ok` + break counts are the
+natural alert trigger when that lands. The **kill switch** (§6) lives in `kill_switch.py` and
+**margin forecasting** lives in `capacity.py` (both below).
 
 ## Kill switch (§6)
 
@@ -222,6 +222,50 @@ Thresholds are a versioned, validated config home — `KillSwitchThresholds` (py
 `vol_regime_ceiling=0.40`, owner-tunable seeds) and a `from_mapping` for YAML hydration — not `.py`
 literals (ADR 0028). The switch is book-level (infra/risk, blind to alpha); the strategy layer calls
 *down* into it, never the reverse.
+## Margin / assignment-capacity forecasting — S2's line capacity (InvWC)
+
+`capacity.py` sizes S2's short-put production line up front from the course's *Investing Working
+Capital* (InvWC) rule (Allocation Factory, course p.128–130, TARGET §3 / §5.9). S2's
+"line capacity" is not really a contract count — it **is** a margin number. A short index put, if
+assigned, obligates buying the underlying at the strike, so the capital reserved per open contract
+is the cash-secured assignment obligation `strike · multiplier` (independently derived here, not a
+copied figure; the broker's haircut version is `initial_margin_fraction · strike · multiplier`, and
+the collected premium optionally offsets it). The line may grow only until that reserved capital
+exhausts the InvWC pool: the 30-open rolling line the course quotes is the *output* of the rule, not
+an input. This is why margin forecasting gates S2 going live (§5.9).
+
+The math is pure and config-driven (no `.py` literal thresholds). The InvWC pool, the margin
+fraction, the premium-offset flag, and a reserved `headroom_floor` live on a versioned
+`MarginCapacityConfig` (frozen, `from_mapping`-hydratable — the same versioned-typed-config pattern
+as `RiskParams`/`AttributionConfig`, ADR 0028). `forecast_capacity(open_lines, *, config,
+next_line=…)` reads the open short-put book (`ShortPutLine` rows — open contracts, strike,
+multiplier, premium) and returns a `MarginCapacityForecast`: consumed margin, remaining headroom,
+how many more lines fit at the prospective strike (`additional_lines`), and the `at_capacity` /
+`over_capacity` flags. `line_initial_margin(…)` is the per-line obligation; `line_capacity_cap(*,
+config, representative_line)` is the front-loaded sizing call — it returns the integer line cap from
+an empty book, i.e. the number S2's `PutLineConfig.line_capacity` should be set to.
+
+**How S2 calls it (the up-front contract):** before booking, S2 derives its line-capacity cap once
+from the InvWC pool —
+
+```python
+from algotrading.infra.risk import (
+    MarginCapacityConfig, ProspectiveLine, ShortPutLine,
+    line_capacity_cap, forecast_capacity,
+)
+
+cap = line_capacity_cap(
+    config=MarginCapacityConfig.from_mapping(margin_section),
+    representative_line=ProspectiveLine(strike=4000.0, multiplier=10.0),
+)   # -> the int that becomes PutLineConfig.line_capacity
+```
+
+and, intraday, can re-check live headroom against the real open book before each sell —
+`forecast_capacity(open_lines, config=cfg, next_line=ProspectiveLine(strike, multiplier))`; a
+non-positive `additional_lines` / `over_capacity` is the same "do not open another line" signal as
+S2's existing count cap (`PutLineStrategy.line_at_capacity`), now backed by capital rather than a
+literal. The module is pure infra/risk math — it never books, never prices, never imports the
+strategy layer; S2 (the alpha layer) consumes it.
 
 ## Scenario stress (step 12)
 

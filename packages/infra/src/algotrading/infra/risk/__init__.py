@@ -53,6 +53,17 @@ from .book import (
     build_book_greeks,
 )
 from .bumps import BUMP_VERSION, DEFAULT_BUMPS, BumpSpec
+from .capacity import (
+    MARGIN_CAPACITY_VERSION,
+    MarginCapacityConfig,
+    MarginCapacityError,
+    MarginCapacityForecast,
+    ProspectiveLine,
+    ShortPutLine,
+    forecast_capacity,
+    line_capacity_cap,
+    line_initial_margin,
+)
 from .config import DEFAULT_GROUPING_KEYS, AttributionConfig, RiskParams
 from .greeks import (
     LotConsistencyError,
@@ -149,6 +160,15 @@ __all__ = [
     "BumpSpec",
     "DEFAULT_BUMPS",
     "BUMP_VERSION",
+    "MARGIN_CAPACITY_VERSION",
+    "MarginCapacityConfig",
+    "MarginCapacityError",
+    "MarginCapacityForecast",
+    "ProspectiveLine",
+    "ShortPutLine",
+    "forecast_capacity",
+    "line_capacity_cap",
+    "line_initial_margin",
     "PositionRisk",
     "position_risk",
     "net_lots",

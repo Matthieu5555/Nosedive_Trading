@@ -19,6 +19,90 @@ import { currencySymbol } from "../lib/format";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
+type SurfaceTone = "full" | "partial" | "degenerate";
+type SurfaceMode = "strict" | "indicative";
+
+interface CoverageFacts {
+  rested: number;
+  captured: number;
+  indicative: number;
+}
+
+interface SurfaceDescriptor {
+  subject: string;
+  asOfPhrase: string;
+  modeWord: string;
+  coveragePhrase: string;
+  tone: SurfaceTone;
+  caption: string;
+  emptyCopy: string;
+}
+
+const CLOSE_INSTANTS: Record<string, string> = {
+  SX5E: "17:30 CET",
+};
+
+function closeInstant(symbol: string): string | null {
+  return CLOSE_INSTANTS[symbol] ?? null;
+}
+
+function describeAsOf(asOf: string, instant: string | null): string {
+  return instant ? `clôture ${asOf} ${instant}` : `clôture ${asOf}`;
+}
+
+function describeCoverage(coverage: CoverageFacts | null, mode: SurfaceMode): string {
+  if (coverage === null) return "couverture indisponible";
+  const { rested, captured, indicative } = coverage;
+  if (mode === "indicative") {
+    return `${rested}/${captured} (${indicative} marques indicatives)`;
+  }
+  return `${rested}/${captured} cotations`;
+}
+
+function describeSurface(state: {
+  underlying: string;
+  asOf: string;
+  instant: string | null;
+  mode: SurfaceMode;
+  coverage: CoverageFacts | null;
+  degenerate: boolean;
+}): SurfaceDescriptor {
+  const { underlying, asOf, instant, mode, coverage, degenerate } = state;
+  const subject = `Nappe de volatilité — ${underlying}`;
+  const phrase = describeAsOf(asOf, instant);
+  const emptyCopy = `Aucune cotation deux-faces pour ${underlying} au ${asOf} — marché probablement fermé.`;
+
+  if (degenerate) {
+    const caption = `${phrase} · indicative — marché probablement fermé`;
+    return {
+      subject,
+      asOfPhrase: phrase,
+      modeWord: "indicative",
+      coveragePhrase: "marché probablement fermé",
+      tone: "degenerate",
+      caption,
+      emptyCopy,
+    };
+  }
+
+  const modeWord = mode === "indicative" ? "INDICATIF" : "strict";
+  const coveragePhrase = describeCoverage(coverage, mode);
+  const caption = `${phrase} · ${modeWord} · ${coveragePhrase}`;
+  const tone: SurfaceTone =
+    mode === "indicative" || (coverage !== null && coverage.rested < coverage.captured)
+      ? "partial"
+      : "full";
+  return {
+    subject,
+    asOfPhrase: phrase,
+    modeWord,
+    coveragePhrase,
+    tone,
+    caption,
+    emptyCopy,
+  };
+}
+
 export function MarketPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
@@ -77,6 +161,7 @@ export function MarketPage() {
             aria-label="Index"
             value={index}
             disabled={indexOptions.length === 0}
+            data-hint={index === "" ? "choose-index" : undefined}
             onChange={(event) => {
               setIndex(event.target.value);
               setSelectedKey(null);
@@ -89,6 +174,11 @@ export function MarketPage() {
               </option>
             ))}
           </select>
+          {index === "" && (
+            <span className="status" role="status" data-hint-for="choose-index">
+              Choisissez un indice pour commencer
+            </span>
+          )}
           <AsOfSelect
             recorded={recorded.data}
             value={selectedFetchKey}
@@ -111,11 +201,22 @@ export function MarketPage() {
               );
             }
             const qc = selectedFetch?.qc ?? "unknown";
+            const instant = closeInstant(index);
+            const surfaceMissing =
+              analytics.data !== null && analytics.data.maturities.length === 0;
+            const descriptor = describeSurface({
+              underlying: index,
+              asOf: effectiveAsOf,
+              instant,
+              mode: "strict",
+              coverage: null,
+              degenerate: surfaceMissing,
+            });
             return (
               <div className="market-scroll">
                 <div className="market-scroll__status">
                   <span className="status">
-                    {index} · as of {effectiveAsOf} <QcBadge qc={qc} />
+                    {index} · {descriptor.asOfPhrase} <QcBadge qc={qc} />
                   </span>
                 </div>
 
@@ -132,9 +233,7 @@ export function MarketPage() {
                           signals.data?.by_kind?.term_structure_slope?.[0] ?? null
                         }
                         ivRank={signals.data?.by_kind?.iv_rank?.[0] ?? null}
-                        impliedCorrelation={
-                          signals.data?.by_kind?.implied_correlation?.[0] ?? null
-                        }
+                        impliedCorrelation={signals.data?.by_kind?.implied_correlation?.[0] ?? null}
                       />
                     )}
                   </AsyncBlock>
@@ -144,9 +243,9 @@ export function MarketPage() {
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>Price</h2>
+                      <h2>Cours quotidien — {index}</h2>
                     </div>
-                    <span className="status">index daily OHLC</span>
+                    <span className="status">{descriptor.asOfPhrase} · OHLC</span>
                   </div>
                   <ErrorBoundary label="Price">
                     <AsyncBlock loading={price.loading} error={price.error}>
@@ -164,22 +263,29 @@ export function MarketPage() {
                   />
                 </ErrorBoundary>
 
-                <article className="panel" aria-label="Volatility surface">
+                <article className="panel" aria-label={descriptor.subject}>
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>Volatility nappe</h2>
+                      <h2>{descriptor.subject}</h2>
                     </div>
-                    <span className="status">all maturities</span>
+                    <span className="status" data-tone={descriptor.tone}>
+                      {descriptor.caption}
+                    </span>
                   </div>
                   <ErrorBoundary label="3D surface">
                     <AsyncBlock loading={analytics.loading} error={analytics.error}>
-                      {analytics.data && (
-                        <VolSurface
-                          surface={analytics.data.surface}
-                          maturities={analytics.data.maturities}
-                        />
-                      )}
+                      {analytics.data &&
+                        (surfaceMissing ? (
+                          <p className="state-panel" role="status">
+                            {descriptor.emptyCopy}
+                          </p>
+                        ) : (
+                          <VolSurface
+                            surface={analytics.data.surface}
+                            maturities={analytics.data.maturities}
+                          />
+                        ))}
                     </AsyncBlock>
                   </ErrorBoundary>
                 </article>
@@ -196,9 +302,11 @@ export function MarketPage() {
                   <div className="panel-heading">
                     <div>
                       <p className="panel-kicker">{index}</p>
-                      <h2>Dispersion (ρ̄)</h2>
+                      <h2>Dispersion (ρ̄) — {index}</h2>
                     </div>
-                    <span className="status">realized-vol diagnostic</span>
+                    <span className="status">
+                      {descriptor.asOfPhrase} · diagnostic vol réalisée
+                    </span>
                   </div>
                   <ErrorBoundary label="Dispersion">
                     <AsyncBlock loading={signals.loading} error={signals.error}>

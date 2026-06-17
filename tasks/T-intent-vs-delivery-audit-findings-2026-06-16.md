@@ -36,6 +36,17 @@ audit "missed the roots" by reading code, not data.
 
 ---
 
+## Remediation task status (2026-06-17)
+
+- **F1** → [T-capture-tenor-bracket-rewire](T-capture-tenor-bracket-rewire.md) **created** (P1/latent-P0,
+  on the board). Verified still live: `_selection_from_config` sets `max_expiries=64` only.
+- **F2** (long-end QC floor) — partially addressed by the ADR-0052 QC recalibration (`f1a6205`,
+  [archive/infra-qc-coverage-to-blueprint.md](archive/infra-qc-coverage-to-blueprint.md)); confirm
+  the LEAP two-sided-absence floor policy is covered there before closing.
+- **F3–F7** (all P2) — **tracked here**, no separate spec files (frugal). Pick up from this table;
+  promote to a `T-…` spec only when claimed. F6's recon-tolerance and F4's forward-cap are the
+  highest-value of the five.
+
 ## Checked and found clean (legible coverage)
 
 Two of these are **overturned false positives** from the lane agents — recorded so the

@@ -1,5 +1,11 @@
 # T-post-monday-restore-cleanup — purge the Friday-restore ledger + posterior data after Monday's close
 
+> **✅ DONE 2026-06-17.** Trigger met (real 06-15 + 06-16 closes banked). Removed the 5 synthetic
+> `trade_date=2026-06-12` stage-rows (single synthetic run_id `32592ce2…`, ts `12:31:34`) from
+> `data/_run_state.jsonl` (425→420 lines; backup `data/_run_state.jsonl.bak-pre-monday-cleanup`).
+> Step 2 (posterior data) was a **no-op** — no `version=` reconstruction sub-partitions exist on
+> disk for 06-12. Ledger now carries only real captured runs (06-15: 181, 06-16: 239).
+
 > **Trigger:** AFTER Monday's (2026-06-15) real SX5E close-capture is captured **and validated**.
 > Do **not** run before — it would delete the only front-visible state in the interim.
 

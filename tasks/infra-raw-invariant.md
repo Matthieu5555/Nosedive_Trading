@@ -1,13 +1,17 @@
 # T-raw-invariant — Enforce raw-before-derived + converge the persist entrypoints
 
-> **QUEUED — high care; blocked-by/sequenced-after QA-FIX.**
+> **READY (un-blocked 2026-06-17) — high care.** QA-FIX (`fix/live-spine-wiring`) **landed on
+> main** as `aca7369` ("raw is faithful — capture every observed row; two-sided gate moves to the
+> derived layer"); the sequencing blocker is cleared. That commit resolved the *quarantined-rows*
+> hole (ingestion-audit F1 = every observed row now reaches raw, gate is derived-only), but it did
+> **not** touch `persist_outputs`: the silent-empty *write* (`driver.py:821` `if not records: continue`)
+> is **still live** and now folds into this task's scope (the §4 delta QA-FIX was supposed to own
+> but did not).
 > [ADR 0040](../.agent/decisions/0040-ingestion-persistence-invariants.md) accepted (OQ-C
-> fail-hard-capture/flag-replay, OQ-D #3/#4 fold into QA-FIX). **Per OQ-D this task owns only
-> #1/#2** — the raw-present guard + entrypoint convergence; the silent-empty *write* (#3) and
-> per-run *completion* (#4) deltas go into QA-FIX's `storage/adapter.py` + `run_state.py` under the
-> QA-FIX owner. **Overlaps QA-FIX** (branch `fix/live-spine-wiring`, Matthieu 2026-06-08) on
-> `eod_runner.py`, `run_state.py`, `collectors/*`, `cp_rest_close_capture.py`, `storage/adapter.py`.
-> **Re-confirm scope at claim time and sequence after QA-FIX lands** — shared tree, do not collide.
+> fail-hard-capture/flag-replay). **This task now owns: the raw-present guard + entrypoint
+> convergence (#1/#2) AND the silent-empty-table write (#4 — zero-row sentinel/manifest instead of
+> `continue`).** Still touches `run_state.py`, `collectors/*`, `cp_rest_close_capture.py`,
+> `storage/adapter.py` — shared tree, claim explicit paths, do not collide.
 
 - **Owns (subject to QA-FIX boundary, OQ-D):** the persist boundary
   `packages/infra/src/algotrading/infra/actor/driver.py` (`persist_outputs`); the persist

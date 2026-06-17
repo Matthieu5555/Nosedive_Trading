@@ -15,6 +15,12 @@ P0 holes**, and nothing on the path **fails loud**. Fix the P0 cluster before th
 
 ## P0 — the raw-completeness + fail-loud cluster (do first)
 
+> **Status update 2026-06-17:** #1 **RESOLVED** by `aca7369` ("raw is faithful — capture every
+> observed row; two-sided gate moves to the derived layer", on main) — capture now sequences
+> `[*two_sided, *quarantined]` so every observed row reaches raw. #2 + #4 are owned (and #4 newly
+> folded) by [infra-raw-invariant](infra-raw-invariant.md), now **un-blocked** (QA-FIX landed).
+> #3 = [platform-capture-alert-wiring](platform-capture-alert-wiring.md) (still open, P0).
+
 | # | Finding | Evidence | Fix |
 |---|---|---|---|
 | 1 | **Quarantined rows never enter raw.** Rows failing the quote-integrity gate are logged then dropped — they never reach `raw_market_events`, so raw cannot reconstruct what IBKR actually returned. The "raw stays immutable" comment is vacuously true (the rows never existed in raw). | `cp_rest_close_capture.py:404-410`; `eod_stages.py:326` feeds only promoted `basket.events` | Write ALL snapshot rows to raw **before** the promotion gate; add a `promoted: bool` column (or a `raw_snapshot_rows` table). Gate filters for *derived*, never for *raw*. |

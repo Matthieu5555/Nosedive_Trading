@@ -1,5 +1,10 @@
 # frontend-second-order-greeks-panels — carry Vanna/Volga/Charm through to the front panels
 
+> **⛔ NOT launch-ready (2026-06-16) — re-scope first.** The page-1 landing (`c4ce734`) **deleted**
+> the front render targets this spec extended (`DollarGreeks`, `GreeksTermStructure`). The greeks now
+> live in the page-1 tenor panel (reading model). Re-scope onto the new greeks home before building —
+> do **not** pick it up autonomously as-is.
+
 > **Front slice (step 3) of [infra-second-order-greeks](archive/infra-second-order-greeks.md) (landed/archived 2026-06-14).**
 > Steps 1-2 (compute) landed: Vanna/Volga/Charm in `black76` / `dollar_greeks` /
 > `PricingResult` (raw + cash + unit strings), and attribution carrying Rho/Vanna/Volga +

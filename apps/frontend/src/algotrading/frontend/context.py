@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from algotrading.core.config import ConfigError
+from algotrading.core.config import ConfigError, ConfigFieldError
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.universe import enabled_indices, load_index_registry
 
@@ -16,7 +16,7 @@ _DEFAULT_WINDOW_DAYS = 30
 def _default_index(configs_dir: Path) -> str:
     try:
         registry = load_index_registry(configs_dir)
-    except ConfigError:
+    except (ConfigError, ConfigFieldError):
         return ""
     enabled = enabled_indices(registry)
     return enabled[0].symbol if enabled else ""

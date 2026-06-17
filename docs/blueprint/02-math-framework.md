@@ -145,3 +145,99 @@ The infrastructure may need to compute basket-level or index-level variance iden
 **Equation 23. Generic basket variance identity**
 
 $$\sigma_I^2 \approx \sum_i w_i^2 \sigma_i^2 + \sum_{i \neq j} w_i w_j\, \rho_{ij}\, \sigma_i \sigma_j$$
+
+## Tail risk, concentration, and liquidity
+
+> **RATIFIED CANON — owner override, 2026-06-17.** Until now the blueprint expressed
+> risk purely as Greeks (Eqs. 13–19) and scenario PnL; it carried no value-at-risk,
+> expected-shortfall, concentration, or liquidity measure. The `infra-tail-risk-var-es`
+> task spec's provenance note required that, *if this scope were ever pulled forward, the
+> definition be folded into the blueprint via an amendment first (ADR 0011) rather than
+> treated as already-blessed.* The owner overrode the deferral and directed BUILD; the
+> Surface & Analytics family tech lead therefore **ratifies the definitions below as
+> canon** under that full-authorization override, rather than leaving them as a pending
+> proposal. The math here matches the landed `risk/tail_risk.py`,
+> `risk/concentration.py`, and `risk/liquidity.py` exactly. This block adds desk-risk
+> reporting; it does not change any equation above.
+
+### Loss-sign convention
+
+All tail measures are stated in **loss space**: a loss is the negative of P&L,
+$\ell = -\,\text{PnL}$. A larger $\ell$ is a worse outcome. VaR and ES are reported as
+positive numbers for a genuine downside and may be negative when the entire scenario
+distribution is profitable (a "profit floor"). The P&L distribution is the per-scenario
+**portfolio total** taken off the **full-reprice** scenario engine (Eq. 11 family,
+`scenario_totals`), never the Greek-Taylor approximation of Eq. 19 — an option-heavy
+book with fat left tails (the S2 short-put line is the motivating case) must be
+revalued, not delta-normal-approximated.
+
+### Empirical tail-count rule
+
+For a sample of $n$ scenario P&Ls and confidence $\alpha \in (0,1)$, sort the losses
+$\ell_{(1)} \ge \ell_{(2)} \ge \dots \ge \ell_{(n)}$ in **descending** order (worst first).
+The tail count is
+
+$$m(\alpha, n) = \max\bigl(\lceil (1-\alpha)\, n \rceil,\ 1\bigr),$$
+
+with a $10^{-9}$ snap so an integer-valued $(1-\alpha)n$ is not pushed up by float
+noise. The tail is always at least one observation.
+
+**Equation 24. Value at Risk (empirical, full-reprice distribution)**
+
+$$\mathrm{VaR}(\alpha) = \ell_{(m(\alpha, n))}$$
+
+VaR is the loss at the tail boundary: the $m$-th worst loss. At $\alpha = 0.95$ over
+$n = 20$ scenarios, $m = 1$ and VaR is the single worst loss.
+
+**Equation 25. Expected Shortfall / CVaR (empirical, full-reprice distribution)**
+
+$$\mathrm{ES}(\alpha) = \frac{1}{m(\alpha, n)} \sum_{i=1}^{m(\alpha, n)} \ell_{(i)}$$
+
+ES (equivalently CVaR) is the **mean of the worst $m$ losses** — the average loss
+*given* we are in the tail. ES is the **headline** for this book: it sees the depth of
+the left tail that VaR's single boundary point hides, and by construction
+$\mathrm{ES}(\alpha) \ge \mathrm{VaR}(\alpha)$. Reported confidence levels are **95% and
+99%** (the landed `DEFAULT_CONFIDENCE_LEVELS`).
+
+### Concentration
+
+Concentration is measured over the canonical aggregation axes (underlying / maturity /
+instrument; Part III risk aggregation) for each signed net Greek $g \in \{\Delta,
+\Gamma, \mathcal{V}, \Theta\}$. Let $E_b$ be bucket $b$'s **net** exposure on greek $g$
+and define the **absolute share**
+
+$$s_b = \frac{|E_b|}{\sum_{b'} |E_{b'}|}.$$
+
+Absolute value is taken before normalising so that a large long in one bucket and a
+large short in another register as concentration, not as cancellation.
+
+**Equation 26. Herfindahl concentration of net Greek exposure**
+
+$$\mathrm{HHI}_g = \sum_b s_b^2 \in \left[\tfrac{1}{n},\ 1\right]$$
+
+$\mathrm{HHI}_g = 1$ means the whole net exposure on greek $g$ sits in one bucket;
+$\mathrm{HHI}_g = 1/n$ is a perfectly even split across $n$ buckets. The single largest
+share $\max_b s_b$ (**top share**) is reported alongside as the plain-language "how much
+sits in one name / one tenor" headline. A book with zero net exposure on a greek has
+undefined shares ($0/0$) and reports $\mathrm{HHI}=0$ explicitly rather than dividing.
+
+### Liquidity (exit-difficulty screen)
+
+Liquidity is screened as **position size vs captured traded option volume**. The only
+captured per-contract liquidity field is per-snapshot traded `volume`
+(`MarketStateSnapshot.volume`, nullable); there is **no `open_interest` field** in the
+contract registry, so the screen runs against traded volume only and never against open
+interest. Given a configured participation rate $p \in (0,1]$ (the maximum share of a
+session's tape the desk will be) and captured volume $V$,
+
+**Equation 27. Exit sessions and the inexitable flag**
+
+$$\text{ExitSessions} = \frac{|\text{position size}|}{p \cdot V}, \qquad
+\text{inexitable} \iff \text{ExitSessions} > \text{maxExitSessions}.$$
+
+A position needing more than `maxExitSessions` sessions to unwind at the allowed
+participation rate is flagged **inexitable**. A captured **zero**-volume session is a
+hard inexitable (you cannot exit into a market that did not trade). When captured volume
+is **absent** ($V$ is `None`), the screen returns **`unknown_volume`** and abstains — it
+never asserts a position is liquid on missing data, and the count of such positions is a
+surfaced coverage gap.

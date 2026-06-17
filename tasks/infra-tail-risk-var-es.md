@@ -45,3 +45,17 @@ Book/strategy VaR + ES off the full-reprice distribution (method documented, ora
 hand-checked tiny book); concentration metrics on the aggregation axes; a liquidity flag against
 captured volume; contract-typed and as-of; `check-lookahead-bias` clean on any historical path; gate
 green.
+
+## Tech-lead assessment (Surface & Analytics family, 2026-06-17) — deferred + amendment-gated, not started
+Confirmed the substrate is real and buildable: `risk/scenarios.py` (`full_reprice_pnl`,
+`scenario_line_pnls`, `scenario_totals`) and `risk/aggregation.py` (`aggregate_by_key`/`risk_aggregate`
+over grouping dimensions) are landed. **But this task is deliberately not actionable now:**
+- **Post-week by design** — board + spec header + TARGET §5.9 all class it "what sophisticated desks
+  *additionally* expect," explicitly deferred; nothing signals a pull-forward.
+- **Blueprint-amendment gated (ADR 0011).** Per this spec's own provenance note, VaR/ES is **not** in
+  the blueprint or the course transcripts; "if it is ever pulled forward, fold the VaR/ES definition
+  into the blueprint via an amendment first rather than treating it as already-blessed." That gate is
+  unmet — the same posture as the rates-curve ingest (ADR 0054).
+Verdict: **not started** — deferred and owner/amendment-gated. The concentration/liquidity sub-slices
+are bound to the same post-week umbrella and headline (VaR/ES), so they are not split off as separate
+authorized work.

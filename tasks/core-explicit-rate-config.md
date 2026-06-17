@@ -100,3 +100,21 @@ tenor and is null when unseeded. Gate green (2455 passed, 12 skipped).
 in the Onglet-1 ③ Panneau Ténor (payload shape above); the `r(T)` curve form; and the
 value-changing MVP default (`rate: 0.0`) once the owner wants the carry split to use a flat 0
 instead of the market rate.
+
+## Tech-lead assessment (Surface & Analytics family, 2026-06-17) — no actionable backend work left
+Measured the three open items against the references; each resolves to gated or out-of-scope:
+- **`r(T)` curve form — OWNER-GATED.** This is `infra-rates-curve-ingest` (R1), which the board marks
+  "needs an ADR + blueprint amendment first; not pickable yet," and whose design lives in **ADR 0054
+  (status: Proposed 2026-06-17, not yet ruled)**. The blueprint's own `r(T)` text
+  (`02-math-framework.md:49-51`) is a "proposed amendment — pending owner acceptance of ADR 0054 …
+  not yet ratified canon." The pillar set, interpolation convention, and per-currency source are
+  explicitly listed as owner rulings. Building it now would pre-empt an unratified ADR. **Not built.**
+- **Value-changing display default (`rate: null → 0.0`) — OWNER ECONOMIC RULING, not engineering.**
+  The spec itself gates it on "once the owner wants the carry split to use a flat 0." Flipping a
+  hashed economic input that moves the implied carry/dividend diagnostic for every run is an owner
+  decision, not a free flip. **Not changed.**
+- **Front display (A6) — OUT OF SCOPE.** Frontend is owner-owned (`apps/frontend/**`).
+
+The two landed steps (typed `ForwardConfig.rate` home + `forward_curve` `rate_diagnostics` BFF join)
+stand. Verdict: **nothing for an implementer to land in this family right now** — the remainder is
+owner-gated (ADR 0054) or frontend.

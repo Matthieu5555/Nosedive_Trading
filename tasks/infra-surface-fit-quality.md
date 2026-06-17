@@ -116,3 +116,14 @@ rail at the close too? Audit both halves **against the blueprint** (`docs/bluepr
 Depends on / informs [[frontend-page1-cdc-buildout]] phase 7 (the front must ALSO survive a
 degenerate slice gracefully, independently of this fix — lane 2 above). Related: `delta-window-fix`,
 the `core-pricing-config-completeness` surface model/fallback typing (ADR 0028).
+
+## Tech-lead assessment (Surface & Analytics family, 2026-06-17) — no backend work left
+Re-confirmed against the landed state and the findings doc:
+- **Lane 1 (upstream QC/data hygiene) — LANDED** (`cc28426`/`f1a6205`, findings doc); the benign
+  `a_lower` false positive is fixed in QC, the served `0.0`-delta axis de-duped, ρ-bound kept with
+  evidence. Settled-close SX5E fail rate 93%→26%, residual genuinely-thin ultra-short only.
+- **Lane 2 (front robustness — nappe clamp) — FRONTEND, OUT OF SCOPE** for this family. It landed
+  separately as `c894755` (Onglet-1 ③) under owner-owned `apps/frontend/**`.
+- **Lane 3 (fallback routing) — OWNER-GATED** (blueprint "future" column, explicitly not the
+  immediate fix).
+Verdict: **owner-domain / gated — nothing for this family to land.**

@@ -509,6 +509,42 @@ def test_one_sided_or_unmatched_quote_omits_cleanly(
     assert by_band["30dc"]["quote"] == {"bid": None, "ask": None, "volume": None}
 
 
+def test_off_grid_projected_strike_does_not_bind_a_far_listed_quote(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
+    far_put = round(put_strike * (1.0 + 0.05), 2)
+    near_put = round(put_strike * (1.0 + 0.001), 2)
+    snapshots = [
+        _quote_snapshot(seed, strike=far_put, right="P", bid=9.9, ask=10.1, volume=5.0),
+    ]
+    far_ctx = _analytics_store_with_quotes(tmp_path / "far", seed, snapshots)
+    with TestClient(create_app(far_ctx)) as client:
+        far_payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+    far_band = _points_by_band(far_payload)
+    assert far_band["30dp"]["quote"] == {"bid": None, "ask": None, "volume": None}, (
+        "a listed strike 5% off the projected delta-band strike must not be presented as its quote"
+    )
+
+    near_ctx = _analytics_store_with_quotes(
+        tmp_path / "near",
+        seed,
+        [_quote_snapshot(seed, strike=near_put, right="P", bid=4.1, ask=4.4, volume=12.0)],
+    )
+    with TestClient(create_app(near_ctx)) as client:
+        near_payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+    near_band = _points_by_band(near_payload)
+    assert near_band["30dp"]["quote"]["bid"] == pytest.approx(4.1), (
+        "a listed strike within 0.1% of the projected strike is the legitimate match"
+    )
+
+
 def test_smile_axis_dedups_the_atm_put_pillar_but_keeps_it_in_points(
     seed: ModuleType,
 ) -> None:

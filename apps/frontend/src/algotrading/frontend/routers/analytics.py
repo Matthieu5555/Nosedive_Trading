@@ -67,12 +67,17 @@ def _listed_options_by_expiry_right(
     return index
 
 
+_STRIKE_MATCH_REL_TOL = 0.005
+
+
 def _nearest_quote(
     listed: list[tuple[float, MarketStateSnapshot]], strike: float
 ) -> OptionQuote | None:
-    if not listed:
+    if not listed or strike <= 0.0:
         return None
-    _, snapshot = min(listed, key=lambda pair: abs(pair[0] - strike))
+    listed_strike, snapshot = min(listed, key=lambda pair: abs(pair[0] - strike))
+    if abs(listed_strike - strike) > _STRIKE_MATCH_REL_TOL * strike:
+        return None
     return OptionQuote(bid=snapshot.bid, ask=snapshot.ask, volume=snapshot.volume)
 
 

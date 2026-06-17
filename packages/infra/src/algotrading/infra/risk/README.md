@@ -194,9 +194,34 @@ is pure and order-invariant (lines sort by join key); `BookFill` is a `Protocol`
 stays blind to the execution-layer `Fill` type while still typing the seam. The BFF reads it
 back at `GET /api/reconciliation` (latest broker snapshot per account + the fills ledger) for
 the Operations / Risk recon view. The remaining §7.9 operational pieces — **margin
-forecasting**, the **kill switch**, and recon-break **alert delivery** — are deferred
-follow-ups, not built here; the report's `ok` + break counts are the natural alert trigger
-when that lands.
+forecasting** and recon-break **alert delivery** — are deferred follow-ups, not built here; the
+report's `ok` + break counts are the natural alert trigger when that lands. The **kill switch**
+(§6) now lives in `kill_switch.py` (below).
+
+## Kill switch (§6)
+
+`kill_switch.py` is the book-level safety switch a strategy defers its flatten decision to (S2's
+`decide_exit` hands the call here). It is **pure**: `kill_decision(state, *, thresholds)` takes a
+`BookRiskState` — the strategy label plus the two book-level inputs the trigger reads, a
+`drawdown_fraction` (the fraction of peak equity given back, `0.20` = down 20% from the peak) and a
+`vol_regime_level` (the current realized/implied vol regime) — and returns a named `KillDecision`:
+`FLATTEN` with the firing `KillTrigger`s and a reason, or `HOLD`. Two triggers fire it, the two
+S2's kill condition names: a **drawdown** trigger (`drawdown_fraction >= max_drawdown_fraction` —
+the short left tail hitting) and a **vol-regime** trigger (`vol_regime_level >= vol_regime_ceiling`
+— a vol spike compounding the tail). The comparison is `>=`, so the threshold value itself trips
+it.
+
+It is **fail-safe**, never a silent pass: a non-finite `drawdown_fraction` or `vol_regime_level`
+(NaN / ±inf — a corrupt P&L or vol reading) flattens with an explicit `NON_FINITE_*` trigger rather
+than reading the `nan >= threshold` comparison as `False` and holding (the same NaN-is-not-agreement
+guard the reconciliation modules use). Both triggers are evaluated every call, so a decision carries
+every reason it fired.
+
+Thresholds are a versioned, validated config home — `KillSwitchThresholds` (pydantic, `frozen`,
+`extra="forbid"`), with `DEFAULT_KILL_SWITCH_THRESHOLDS` (`max_drawdown_fraction=0.20`,
+`vol_regime_ceiling=0.40`, owner-tunable seeds) and a `from_mapping` for YAML hydration — not `.py`
+literals (ADR 0028). The switch is book-level (infra/risk, blind to alpha); the strategy layer calls
+*down* into it, never the reverse.
 
 ## Scenario stress (step 12)
 

@@ -61,6 +61,16 @@ from .greeks import (
     net_lots,
     position_risk,
 )
+from .kill_switch import (
+    DEFAULT_KILL_SWITCH_THRESHOLDS,
+    KILL_SWITCH_THRESHOLDS_VERSION,
+    BookRiskState,
+    KillAction,
+    KillDecision,
+    KillSwitchThresholds,
+    KillTrigger,
+    kill_decision,
+)
 from .multileg import (
     BasketGap,
     BasketRisk,
@@ -144,6 +154,14 @@ __all__ = [
     "net_lots",
     "central_difference_greeks",
     "LotConsistencyError",
+    "BookRiskState",
+    "KillAction",
+    "KillTrigger",
+    "KillDecision",
+    "KillSwitchThresholds",
+    "DEFAULT_KILL_SWITCH_THRESHOLDS",
+    "KILL_SWITCH_THRESHOLDS_VERSION",
+    "kill_decision",
     "NetSensitivities",
     "aggregate_lines",
     "aggregate_by_desk",

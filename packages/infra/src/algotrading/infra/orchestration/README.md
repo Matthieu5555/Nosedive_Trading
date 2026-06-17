@@ -39,6 +39,21 @@ so a session resolves to the jobs it fed.
   breach (`coverage_breach_alerts`, WS 1H — one alert per pinned tenor whose grid coverage
   fell below its floor, subject `underlying@tenor`; the orthogonal twin of missing
   partition — *present but too thin* vs *absent* — read off the QC report, not recomputed).
+  These are **detection only** — pure functions that build an `Alert`; they perform no delivery.
+- **alert_delivery** — **THE single alert-delivery seam.** Everything that detects an alert
+  routes it here; no other code path opens its own transport. The contract is the `AlertSink`
+  port — `deliver(alert, context) -> DeliveryResult` plus a `channel` name. Concrete sinks:
+  `WebhookAlertSink` (POSTs the formatted alert via `httpx`) and `JournaldAlertSink` (the honest
+  degrade). `resolve_alert_sink()` reads `$HOME/.env` and returns the webhook sink when
+  `ALGOTRADING_ALERT_WEBHOOK_URL` is set, else the journald sink — which logs at ERROR (fail-loud
+  preserved) and reports `delivered=False, degraded=True`, never a false claim of delivery. A
+  webhook transport/HTTP error returns `delivered=False, degraded=False` (surfaced, not swallowed).
+  `deliver_alerts(sink, alerts, context)` skips `None`s and returns one `DeliveryResult` per firing.
+  **Consumers — including other streams — import `AlertSink`/`resolve_alert_sink`/`deliver_alerts`
+  from here; do not fork a second channel.** Call sites take an `alert_sink: AlertSink | None`
+  injection seam (e.g. `default_stages_builder`); `None` falls back to `resolve_alert_sink()`.
+  Secrets never live in git or a `.py` literal — set `ALGOTRADING_ALERT_WEBHOOK_URL` (and optional
+  `ALGOTRADING_ALERT_WEBHOOK_TIMEOUT_SECONDS`) in `$HOME/.env` to go live; absent, it degrades.
 - **dashboard** — `build_dashboard`/`render_dashboard`: a pure status object answering
   is-data-flowing / are-surfaces-building / is-QC-passing / are-scenarios-current, with
   the last healthy run and current backlog first-class.
@@ -93,6 +108,9 @@ so a session resolves to the jobs it fed.
 `packages/infra/tests/test_orchestration.py` (behavior, not coverage: kill/restart
 idempotency, the five metrics, the alerts — including the WS 1H coverage-breach alert and
 its distinctness from missing-partition — dashboard, reconciliation, run-state),
+`test_alert_delivery.py` (the `AlertSink` port contract, the webhook adapter with a mocked
+`httpx` transport — formats + targets correctly, a 5xx and a transport error both surface as
+`delivered=False` not swallowed — and the no-credentials → journald degrade that says so honestly),
 `test_eod_run.py` (WS 1G: the runner builds+invokes `run_end_of_day` with a bound
 correlation id and injected clock, idempotent re-fire, missed-day catch-up, mid-run-kill
 restart convergence, non-zero failure exit, registry-driven enabled index set, holiday

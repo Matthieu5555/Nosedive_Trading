@@ -12,6 +12,7 @@ dependencies = [
     # source module imports pandas (the core is polars/pyarrow/duckdb/numpy), so the downgrade
     # from 3.x to 2.3.x is inert.
     "exchange-calendars>=4.13.2",
+    "httpx>=0.28.1",
     "nautilus-trader>=1.227",
     "numpy>=2.4.6",
     "pandas>=2.3",

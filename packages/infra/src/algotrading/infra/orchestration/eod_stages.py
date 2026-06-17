@@ -10,6 +10,7 @@ from algotrading.infra.connectivity import Clock
 from algotrading.infra.contracts import SURFACE_SIDE_COMBINED, ProjectedOptionAnalytics
 from algotrading.infra.storage import ParquetStore
 
+from .alert_delivery import AlertSink, deliver_alerts, resolve_alert_sink
 from .alerts import coverage_breach_alerts, qc_fail_alert
 from .eod_planning import EOD_JOB_NAME, FiredIndex
 from .jobs import (
@@ -187,6 +188,7 @@ def default_stages_builder(
     fired: Sequence[FiredIndex],
     *,
     basket_source: BasketSource = _empty_basket_source,
+    alert_sink: AlertSink | None = None,
 ) -> EodStages:
     from algotrading.infra.actor import (
         ActorOutputs,
@@ -199,6 +201,7 @@ def default_stages_builder(
     from algotrading.infra.signals import persist_signal_set, signal_config_for
 
     log = _LOGGER.bind(correlation_id=correlation_id, job=EOD_JOB_NAME)
+    sink = alert_sink if alert_sink is not None else resolve_alert_sink()
     trade_date = fired[0].as_of.date() if fired else clock.now().date()
     thresholds = thresholds_from_config(config.qc_threshold)
     qc_ts = clock.now()
@@ -338,20 +341,20 @@ def default_stages_builder(
             triage_row_count=len(triage),
             escalation=job.escalation,
         )
-        # Fail-loud alerting (platform-capture-alert-wiring): evaluate the named alert conditions
-        # over the report and log every firing one at ERROR, so the operator — and the systemd
-        # OnFailure= journald sink — reads *what* fired. The page escalation a qc_fail_alert
-        # reflects also maps to a non-zero exit in the runner (the exit that engages OnFailure=);
-        # these lines are the human-readable detail behind it. The alert builders are pure
-        # functions of the report, so this neither recomputes QC nor can drift from its verdict.
-        for alert in (qc_fail_alert(job.report), *coverage_breach_alerts(job.report)):
-            if alert is not None:
-                log.error(
-                    "orchestration.eod_run.alert",
-                    alert_kind=alert.kind,
-                    subject=alert.subject,
-                    detail=alert.detail,
-                )
+        results = deliver_alerts(
+            sink,
+            (qc_fail_alert(job.report), *coverage_breach_alerts(job.report)),
+            {"correlation_id": correlation_id, "trade_date": trade_date.isoformat()},
+        )
+        for result in results:
+            log.info(
+                "orchestration.eod_run.alert_delivery",
+                alert_kind=result.alert_kind,
+                channel=result.channel,
+                delivered=result.delivered,
+                degraded=result.degraded,
+                detail=result.detail,
+            )
         return job
 
     return EodStages(

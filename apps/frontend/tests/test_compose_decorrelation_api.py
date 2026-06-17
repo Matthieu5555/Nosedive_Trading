@@ -192,3 +192,46 @@ def test_decorrelation_nan_serializes_as_json_null_not_string(
             for cell in row:
                 assert cell is None or (isinstance(cell, float) and math.isfinite(cell))
     assert "NaN" not in json.dumps(block)
+
+
+def test_decorrelation_layer_order_matches_legacy_layers_block(
+    compose_client: TestClient,
+) -> None:
+    book = _compose(compose_client, [_LAYER_A, _LAYER_B])
+    legacy_order = [layer["layer_label"] for layer in book["layers"]]
+    block = book["decorrelation"]
+    assert block["layer_labels"] == legacy_order
+    assert block["layer_labels"] == ["vol-seller", "crash-hedge"]
+    n = len(legacy_order)
+    assert len(block["marginal_risk_contribution"]) == n
+    for matrix_key in ("stressed_pnl_correlation", "shared_tail_overlap", "factor_overlap"):
+        assert len(block[matrix_key]) == n
+        assert all(len(row) == n for row in block[matrix_key])
+
+
+def test_decorrelation_gating_leaks_no_fabricated_realized_values(
+    compose_client: TestClient,
+) -> None:
+    response = compose_client.post(
+        "/api/compose",
+        json={
+            "book_id": "BK-decorr",
+            "trade_date": _TRADE.isoformat(),
+            "layers": [_LAYER_A, _LAYER_B],
+        },
+    )
+    assert response.status_code == 200, response.text
+    block = response.json()["decorrelation"]
+    for fabricated_key in (
+        "realized_correlation",
+        "marginal_sharpe",
+        "marginal_sharpe_ratio",
+        "realized_pnl",
+    ):
+        assert fabricated_key not in block
+    assert isinstance(block["realized_correlation_unavailable_reason"], str)
+    assert block["realized_correlation_unavailable_reason"].strip()
+    assert isinstance(block["marginal_sharpe_unavailable_reason"], str)
+    assert block["marginal_sharpe_unavailable_reason"].strip()
+    for value in block["marginal_risk_contribution"]:
+        assert value is None or isinstance(value, float)

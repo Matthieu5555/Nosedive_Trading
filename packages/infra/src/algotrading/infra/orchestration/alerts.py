@@ -21,6 +21,7 @@ ALERT_ELEVATED_FAILURE_RATE = "elevated_failure_rate"
 ALERT_QC_FAIL = "qc_fail"
 ALERT_COVERAGE_BREACH = "coverage_breach"
 ALERT_DEGENERATE_CLOSE = "degenerate_close"
+ALERT_IBKR_REAUTH_NEEDED = "sso_reauth_needed"
 
 COLLECTOR_SILENCE_SECONDS = 120.0
 MAX_FAILURE_RATIO = 0.5
@@ -111,6 +112,34 @@ def qc_fail_alert(report: QcReport) -> Alert | None:
             detection_interval_seconds=0.0,
         )
     return None
+
+
+def ibkr_reauth_needed_alert(
+    *,
+    reason: str = "SSO expired or a competing session took the line",
+    detection_interval_seconds: float = 0.0,
+) -> Alert:
+    """The CP-gateway SSO session died and cannot be revived without a human SMS login.
+
+    This is clock 3 of the babysitter's three session clocks: idle-timeout (``tickle``) and
+    brokerage-session drop (``reauthenticate``) self-heal with no SMS, but SSO expiry (~daily)
+    needs a fresh browser login that fires an SMS 2FA code. The babysitter detects the
+    unrevivable state and raises this so the required manual re-login is a *pushed* alert, not a
+    line in a log nobody reads. Always returns an ``Alert`` (the caller has already established the
+    session is dead) — unlike the conditional builders, there is no "no alert" case here.
+
+    ``detection_interval_seconds`` lets the caller record how often it polls (the babysitter's
+    tickle cadence), so the delivered alert states the detection latency the same way the others do.
+    """
+    return Alert(
+        kind=ALERT_IBKR_REAUTH_NEEDED,
+        subject="ibkr-cp-gateway",
+        detail=(
+            f"CP-gateway session DOWN and not revivable ({reason}). "
+            "Re-run scripts/ibkr_login.py for a fresh SMS login before the next close."
+        ),
+        detection_interval_seconds=detection_interval_seconds,
+    )
 
 
 def degenerate_close_alert(

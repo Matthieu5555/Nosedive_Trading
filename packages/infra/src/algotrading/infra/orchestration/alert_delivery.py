@@ -36,6 +36,7 @@ _CRITICAL_KINDS = frozenset(
         "qc_fail",
         "elevated_failure_rate",
         "degenerate_close",
+        "sso_reauth_needed",
     }
 )
 

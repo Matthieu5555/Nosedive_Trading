@@ -28,7 +28,7 @@ AFTER_END = datetime(2026, 6, 16, 23, 30, tzinfo=UTC)  # strictly after the last
 _SESSION = cast(CpRestSession, object())  # heartbeat is injected as a no-op, so it is never touched
 
 
-def _noop_heartbeat(_session: object, *, alarmed: bool) -> bool:
+def _noop_heartbeat(_session: object, *, alarmed: bool, sink: object = None) -> bool:
     return alarmed
 
 

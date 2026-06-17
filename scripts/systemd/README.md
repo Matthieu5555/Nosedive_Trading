@@ -73,6 +73,12 @@ that lands, clock 3 is an operator action.
 
 ### Operator action for the SSO-expiry alarm
 
+> **Full recovery runbook:** [`RUNBOOK-reauth.md`](RUNBOOK-reauth.md) — the start-to-finish manual
+> SMS re-login, the dedicated **second username** (so a backfill never knocks the live feed off the
+> line), the pre-close verification, and the **OAuth-enrollment blocker** that keeps this manual.
+> The babysitter now also **delivers** this alarm through the C4 seam (an `sso_reauth_needed`
+> alert, classified critical) — the push that wakes you IS this event, not just the journald line.
+
 On the server (no GUI), get the gateway ready for data with one command:
 
     uv run --with selenium python scripts/ibkr_login.py

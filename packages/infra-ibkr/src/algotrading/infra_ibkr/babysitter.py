@@ -17,12 +17,16 @@ treated as healthy.
 
 The heartbeat self-heals what it can — idle timeout (``tickle``), brokerage-session drop
 (``reauthenticate`` without an SMS) — and on SSO expiry (~daily) logs a loud ``ALARM`` (also routed
-to journald via ``systemd-cat``) so an operator re-runs ``scripts/ibkr_gateway_login.py``.
+to journald via ``systemd-cat``) AND delivers it through the shared C4 alert-delivery seam
+(``infra.orchestration.alert_delivery``) so the required manual SMS re-login is a *pushed* alert,
+not just a line in ``/tmp/eod_babysitter.log`` nobody reads. The loud local log stays as the
+delivery-of-last-resort the seam already falls back to; the seam rides on top, never instead.
 
 Testability: :func:`_babysit` takes its clock (``now``), ``sleep``, the per-index ``fire`` callable,
-the ``heartbeat`` callable, and ``planned_fires`` as injected parameters (defaulting to the real
-ones), so the fire-loop and its exit code are driven deterministically in a test with no wall clock,
-no real sleep, and no subprocess — the same dependency-injection discipline ``eod_runner`` holds.
+the ``heartbeat`` callable, the alert ``sink``, and ``planned_fires`` as injected parameters
+(defaulting to the real ones), so the fire-loop, its exit code, AND the SSO-death alert emission are
+driven deterministically in a test with no wall clock, no real sleep, no subprocess, and a recording
+``AlertSink`` — the same dependency-injection discipline ``eod_runner`` holds.
 """
 
 from __future__ import annotations
@@ -36,6 +40,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from algotrading.core.paths import repo_root
+from algotrading.infra.orchestration.alert_delivery import (
+    AlertSink,
+    deliver_alerts,
+    resolve_alert_sink,
+)
+from algotrading.infra.orchestration.alerts import ibkr_reauth_needed_alert
 from algotrading.infra_ibkr.connectivity.cp_rest_session import CpRestSession
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
 from algotrading.infra_ibkr.session_factory import build_gateway_session
@@ -53,6 +63,39 @@ def _now_utc() -> datetime:
 
 def _log(msg: str) -> None:
     print(f"[{_now_utc():%Y-%m-%d %H:%M:%S}Z] {msg}", flush=True)
+
+
+def _default_sink() -> AlertSink:
+    """Resolve the C4 alert sink the same way the orchestration code does.
+
+    A factory (not a module-level singleton) so a missing webhook env var is re-read each call and
+    so importing the babysitter never touches the network/env at import time. Tests inject a
+    recording sink instead.
+    """
+    return resolve_alert_sink()
+
+
+def _deliver_reauth_alert(sink: AlertSink) -> None:
+    """Push the IBKR SSO-reauth-needed alert through the C4 seam — never raises.
+
+    The local loud ALARM (stdout + journald via :func:`_alarm_to_journald`) is the
+    delivery-of-last-resort and has already fired by the time this runs; this ADDS the real pushed
+    delivery on top. Alerting must never kill the keepalive loop, so any failure resolving the sink
+    or delivering is logged and swallowed — exactly the discipline :func:`_alarm_to_journald` holds.
+    """
+    try:
+        results = deliver_alerts(
+            sink,
+            (ibkr_reauth_needed_alert(detection_interval_seconds=_TICKLE_SECONDS),),
+            {"source": "eod_babysitter", "clock": "sso_expiry"},
+        )
+        for r in results:
+            _log(
+                f"reauth alert -> channel={r.channel} delivered={r.delivered} "
+                f"degraded={r.degraded} ({r.detail})"
+            )
+    except Exception as exc:  # noqa: BLE001 — alerting must never kill the loop
+        _log(f"(reauth-alert delivery failed, alarm stayed on stdout/journald: {exc})")
 
 
 def _alarm_to_journald(msg: str) -> None:
@@ -74,12 +117,22 @@ def _alarm_to_journald(msg: str) -> None:
         _log(f"(systemd-cat unavailable, alarm stayed on stdout: {exc})")
 
 
-def _heartbeat(session: CpRestSession, *, alarmed: bool) -> bool:
+def _heartbeat(
+    session: CpRestSession,
+    *,
+    alarmed: bool,
+    sink: AlertSink | None = None,
+) -> bool:
     """One keepalive cycle: tickle a healthy session, self-heal a lapsed one, alarm on SSO death.
 
-    Returns the new alarm state (True once the loud ALARM has been logged, so it is not
-    repeated every cycle). Never raises: a transport error (Gateway down/restarting) is logged
-    and retried on the next cycle.
+    Returns the new alarm state (True once the loud ALARM has been logged AND the reauth alert has
+    been delivered, so neither is repeated every cycle). Never raises: a transport error (Gateway
+    down/restarting) is logged and retried on the next cycle, and alert delivery is wrapped so a
+    delivery failure is logged, not fatal.
+
+    ``sink`` is the injected C4 alert sink; when ``None`` it is resolved the same way the
+    orchestration code resolves it (webhook if configured, journald otherwise). Tests inject a
+    recording sink to prove the SSO-death path emits the reauth alert.
     """
     try:
         if session.established():
@@ -108,6 +161,10 @@ def _heartbeat(session: CpRestSession, *, alarmed: bool) -> bool:
             )
             _log(alarm)
             _alarm_to_journald(alarm)
+            # On top of the loud local log, push the alert through the C4 delivery seam so the
+            # required manual SMS re-login reaches the operator (webhook/Telegram/email), not just
+            # a log line. Delivery is wrapped so it can never kill the loop.
+            _deliver_reauth_alert(sink if sink is not None else _default_sink())
         return True
     except CpRestTransportError as exc:
         _log(f"gateway unreachable: {exc}")
@@ -179,6 +236,7 @@ def _keepalive_forever(
     *,
     heartbeat: Callable[..., bool] = _heartbeat,
     sleep: Callable[[float], None] = time.sleep,
+    sink: AlertSink | None = None,
 ) -> int:
     """The --no-fire mode: heartbeat indefinitely (the old gateway_keepalive.py)."""
     _log(f"keepalive up — tickling every {_TICKLE_SECONDS}s.")
@@ -186,7 +244,7 @@ def _keepalive_forever(
     alarmed = False
     while True:
         cycle += 1
-        alarmed = heartbeat(session, alarmed=alarmed)
+        alarmed = heartbeat(session, alarmed=alarmed, sink=sink)
         if not alarmed and cycle % _HEARTBEAT_EVERY == 0:
             _log("ok — session alive (heartbeat).")
         sleep(_TICKLE_SECONDS)
@@ -200,6 +258,7 @@ def _babysit(
     heartbeat: Callable[..., bool] = _heartbeat,
     now: Callable[[], datetime] = _now_utc,
     sleep: Callable[[float], None] = time.sleep,
+    sink: AlertSink | None = None,
 ) -> int:
     """The fire mode: heartbeat until every enabled index's capture has fired.
 
@@ -218,7 +277,7 @@ def _babysit(
     failed: set[str] = set()
     alarmed = False
     while now() <= end:
-        alarmed = heartbeat(session, alarmed=alarmed)
+        alarmed = heartbeat(session, alarmed=alarmed, sink=sink)
         for name, ft in fires:
             if name not in done and now() >= ft:
                 if not fire(name):

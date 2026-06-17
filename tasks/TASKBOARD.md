@@ -50,6 +50,7 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
 | Claude (Matthieu) | `infra/surfaces/projection.py` + `infra/contracts/tables.py` (ProjectedOptionAnalytics) + BFF `serializers.py` analytics path + web `DollarGreeksByMaturity.tsx`/`api.ts` | 2026-06-17 | frontend-second-order-greeks-panels — Onglet-1 ③ remainder. **Measured: `/api/risk/metrics` (pricing_results) is empty per index close → spec's read-RiskMetricCell premise refuted.** Correct path = carry the *already-computed* Vanna/Volga/Charm (price_european emits them, projection drops them) through the analytics grid. Single Onglet-1 lane owner. |
+| Claude (cockpit-ux) | spec only now; then sequential batches across `apps/frontend/web` + `configs/scenarios.yaml` (see [frontend-cockpit-ux-overhaul](frontend-cockpit-ux-overhaul.md)) | 2026-06-17 | Cockpit UX/visual overhaul (owner-ratified A–E). ⚠️ **Batch ① & ③ touch `DollarGreeksByMaturity.tsx`/`Market.tsx`/`api.ts` — SERIALIZE behind the active `frontend-second-order-greeks-panels` lane above** (rebase onto its land; do not edit those files concurrently). Other batches (charts/CSS/Basket/Ordres/scenarios) are disjoint. |
 
 ## Layer ownership (planning pass, 2026-06-13)
 

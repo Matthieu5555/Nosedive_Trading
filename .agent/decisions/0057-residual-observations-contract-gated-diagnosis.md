@@ -1,4 +1,4 @@
-# 0056 — residual_observations contract + gated residual-diagnosis estimator
+# 0057 — residual_observations contract + gated residual-diagnosis estimator
 
 - **Status:** accepted
 - **Date:** 2026-06-17

@@ -44,6 +44,7 @@ from pathlib import Path
 import structlog
 from algotrading.core.config import config_hashes, load_platform_config
 from algotrading.core.paths import data_root, repo_root
+from algotrading.infra.contracts.tables import InstrumentMaster
 from algotrading.infra.orchestration.reconstruction import reconstruct_day
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.storage.partitioning import table_dir
@@ -178,6 +179,15 @@ def purge_partition_dirs(dirs: list[Path]) -> None:
             shutil.rmtree(source)
 
 
+def _distinct_masters(masters: list[InstrumentMaster]) -> list[InstrumentMaster]:
+    latest: dict[str, InstrumentMaster] = {}
+    for master in masters:
+        current = latest.get(master.instrument_key)
+        if current is None or master.as_of_date > current.as_of_date:
+            latest[master.instrument_key] = master
+    return [latest[key] for key in sorted(latest)]
+
+
 def rebuild_day(
     store: ParquetStore,
     trade_date: date,
@@ -217,7 +227,7 @@ def rebuild_day(
         backup_partition_dirs(purge_dirs, root, backup_dir)
     purge_partition_dirs(purge_dirs)
 
-    masters = store.read(INSTRUMENT_MASTER_TABLE)
+    masters = _distinct_masters(store.read(INSTRUMENT_MASTER_TABLE))
     instruments = [master.instrument for master in masters]
     positions = store.read(POSITIONS_TABLE, trade_date=trade_date)
     config = load_platform_config(configs_dir)

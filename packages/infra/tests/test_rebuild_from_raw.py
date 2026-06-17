@@ -194,3 +194,52 @@ def test_rebuilt_tables_are_all_non_raw() -> None:
 
     for table in rebuild.REBUILT_TABLES:
         assert spec_for_table(table).layer != rebuild.RAW_LAYER
+
+
+def _master(key: str, as_of_date: date, payload: str) -> object:
+    from algotrading.infra.contracts.instrument_key import InstrumentKey
+    from algotrading.infra.contracts.tables import InstrumentMaster
+
+    instrument = InstrumentKey(
+        underlying_symbol=key,
+        security_type="IND",
+        exchange="EUREX",
+        currency="EUR",
+        multiplier=10.0,
+        broker_contract_id=key,
+    )
+    return InstrumentMaster(
+        instrument_key=key,
+        as_of_date=as_of_date,
+        instrument=instrument,
+        raw_broker_payload=payload,
+    )
+
+
+def test_distinct_masters_collapses_duplicate_keys_keeping_latest_as_of() -> None:
+    older = _master("SX5E", date(2026, 6, 14), "payload-older")
+    newer = _master("SX5E", date(2026, 6, 16), "payload-newer")
+    single = _master("OESX", date(2026, 6, 15), "payload-single")
+
+    distinct = rebuild._distinct_masters([newer, single, older])
+
+    keys = [master.instrument_key for master in distinct]
+    assert len(keys) == 2
+    assert sorted(keys) == sorted(set(keys))
+
+    by_key = {master.instrument_key: master for master in distinct}
+    assert by_key["SX5E"].as_of_date == date(2026, 6, 16)
+    assert by_key["SX5E"].raw_broker_payload == "payload-newer"
+    assert by_key["OESX"].as_of_date == date(2026, 6, 15)
+
+
+def test_distinct_masters_is_idempotent_and_order_independent() -> None:
+    a = _master("SX5E", date(2026, 6, 14), "a")
+    b = _master("SX5E", date(2026, 6, 16), "b")
+
+    forward = rebuild._distinct_masters([a, b])
+    reverse = rebuild._distinct_masters([b, a])
+
+    assert [m.instrument_key for m in forward] == [m.instrument_key for m in reverse]
+    assert forward[0].as_of_date == reverse[0].as_of_date == date(2026, 6, 16)
+    assert rebuild._distinct_masters(forward) == forward

@@ -49,7 +49,12 @@ integration (1911 passed, 12 skipped; web lint + 82 vitest + 20 e2e green).
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| _none_ | — | — | — |
+| C1 stream-C | `apps/frontend/web/.../pages/Ordres.tsx` (+ subcomponents); moves `TicketPanel`, folds `Strategy` + `Reconciliation` | 2026-06-17 | Onglet-3 integrator; does NOT touch `routes.ts`/`App.tsx` (Stream A flips the shell) |
+| C2 stream-C | `packages/infra/.../infra/risk/` — new kill-switch module | 2026-06-17 | book-level flatten on drawdown/vol; new file, not the shared scenario files |
+| C3 stream-C | `packages/infra/.../infra/risk/` — new margin/capacity module | 2026-06-17 | InvWC margin forecast; gates S2 live; new file |
+| C4 stream-C | shared alert-delivery seam over `infra/orchestration/alerts.py` | 2026-06-17 | Telegram/email/webhook channel — built ONCE; Stream D consumes (do not duplicate) |
+| C5 stream-C | `packages/execution/.../booking/commit.py` (M2 fix) + security-review report | 2026-06-17 | close M2 (audit write-ahead of fills) + review §1/3/4/5 |
+| C6 stream-C | `packages/execution/.../execution/` — sign-and-send PAPER path | 2026-06-17 | SignedTicket/decision/audit; transmit gated OFF by default |
 
 ## Layer ownership (planning pass, 2026-06-13)
 

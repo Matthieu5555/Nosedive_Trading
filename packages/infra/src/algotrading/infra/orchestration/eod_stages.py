@@ -209,8 +209,29 @@ def default_stages_builder(
     baskets: dict[str, tuple[FiredIndex, IndexBasket]] = {}
     for fired_index in fired:
         basket = basket_source(fired_index, trade_date)
-        if basket is not None:
-            baskets[fired_index.entry.symbol] = (fired_index, basket)
+        if basket is None:
+            continue
+        symbol = fired_index.entry.symbol
+        # Overwrite-protection gate (T-restore-overwrite-last-wins C1.2). overwrite-last-wins
+        # is gated on a NON-EMPTY capture: an empty / closed-market / last-only re-fire (zero
+        # valid two-sided quotes) must never overwrite a slice already banked for this
+        # (trade_date, underlying). The boundary is ZERO valid two-sided quote — a thin-but-real
+        # basket (count > 0) is ADMITTED and flagged downstream (front clamp), never dropped
+        # (flag-not-reject). A first faithful land (no prior banked) is always admitted so raw
+        # stays Tier-1 faithful and the degenerate detector can page (ADR-0040 fail-loud).
+        if basket.two_sided_count == 0 and store.read(
+            _RAW_MARKET_EVENTS, trade_date=trade_date, underlying=symbol
+        ):
+            log.warning(
+                "orchestration.eod_run.rejected_empty_overwrite",
+                index=symbol,
+                trade_date=trade_date.isoformat(),
+                reason="re-fire carried zero valid two-sided quotes; banked slice retained "
+                "(overwrite-last-wins requires a non-empty capture) — raw + derived untouched; "
+                "run still pages degenerate via the QC seam if nothing else banked",
+            )
+            continue
+        baskets[symbol] = (fired_index, basket)
 
     def _universe_refresh() -> UniverseRefreshResult:
         masters = [
@@ -231,12 +252,16 @@ def default_stages_builder(
         subscribed = sorted(
             {key.canonical() for _fired, basket in baskets.values() for key in basket.instruments}
         )
-        existing_ids = {
-            event.event_id for event in store.read(_RAW_MARKET_EVENTS, trade_date=trade_date)
-        }
-        fresh = [event for event in events if event.event_id not in existing_ids]
-        if fresh:
-            store.write(_RAW_MARKET_EVENTS, fresh)
+        # Overwrite-last-wins: each admitted (trade_date, underlying) raw slot is REPLACED by
+        # the latest fire's events. Stable session_id + event_id (C1.1) make an identical
+        # re-fire a no-op in effect; a corrected re-fire wins — blueprint 01-arch:17 (a re-run
+        # is byte-for-byte idempotent OR intentionally versioned; version= stays the deliberate-
+        # replay hatch, never the routine). The admission gate above guarantees this delete can
+        # never wipe a banked slice for an empty / closed-market re-fire.
+        for symbol in baskets:
+            store.delete_partition(_RAW_MARKET_EVENTS, trade_date, symbol)
+        if events:
+            store.write(_RAW_MARKET_EVENTS, events)
         summary = summarize_session(
             events,
             session_id=correlation_id,
@@ -247,9 +272,9 @@ def default_stages_builder(
         log.info(
             "orchestration.eod_run.collection_landed",
             captured_indices=sorted(baskets),
-            raw_events_landed=len(fresh),
-            raw_events_total=len(events),
-            reason="captured close events landed to raw_market_events before analytics (1C)",
+            raw_events_landed=len(events),
+            reason="captured close events overwrite-landed to raw_market_events "
+            "(last-valid-wins, 1C)",
         )
         return CollectionResult(
             correlation_id=correlation_id, session_id=correlation_id, summary=summary

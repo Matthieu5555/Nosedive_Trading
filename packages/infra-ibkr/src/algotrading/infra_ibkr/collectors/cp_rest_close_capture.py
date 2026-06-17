@@ -602,7 +602,10 @@ def collect_target_basket(
             quarantined=list(promoted.drop_reasons),
         )
     return IndexBasket(
-        instruments=instruments, events=tuple(events), masters=masters
+        instruments=instruments,
+        events=tuple(events),
+        masters=masters,
+        two_sided_count=promoted.two_sided_count,
     )
 
 

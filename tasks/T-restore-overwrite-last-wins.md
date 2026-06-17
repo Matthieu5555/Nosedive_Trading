@@ -35,21 +35,28 @@ poll per fire), not a stream. So: **one validated close observation per `(instru
 accumulated.** This is the pre-mess design ("overwrite-by-re-run: replace tables + ledger gate"; the
 `data/_run_state.jsonl` ledger still on disk proves a gate existed).
 
-**🔒 OVERWRITE IS CONDITIONAL ON VALIDITY (the critical safety).** A capture replaces the canonical slot
-**only if it is at least as good** as the one already banked — **STRICT (owner-ruled 2026-06-17):**
+**🔒 OVERWRITE IS CONDITIONAL ON A NON-EMPTY CAPTURE (the critical safety).** A capture replaces the
+canonical slot only when it carries real data — **owner-ruled 2026-06-17, the boundary is ZERO VALID
+QUOTE, not "fewer than banked":**
 
-> overwrite **iff** the new fire is **valid** (non-empty **AND** passes quote-integrity —
-> `EMERGENCY-quote-integrity-gate` / `assess_quote`, `cp_rest_close_capture.py:13`) **AND** its
-> **completeness ≥ the banked close's completeness**.
+> overwrite **iff** the new fire carries **≥1 valid two-sided quote** (`basket.two_sided_count > 0`,
+> the collector's authoritative count — `cp_rest_close_capture.py`, predicate `is_valid_two_sided`).
+> A re-fire with **zero** valid two-sided quotes (genuinely **empty / market-closed / last-only**) is
+> **REJECTED at admission** when a slice is already banked for that `(trade_date, underlying)` — the
+> prior good close stays untouched.
 
-A failing / empty / corrupt / **thinner** fire is **REJECTED — the prior good close stays.** Last-wins
-must never mean "the worst fire wins." (Rationale: a later fire is **not** necessarily more complete —
-post-close staleness, a transient gateway drop, or the known `SPX-post-close-drop` can make it thinner;
-strict blocks a thinner-later fire from clobbering a richer earlier close.)
+**flag-not-reject — do NOT amputate thin-but-real slices.** A basket with **few but real** two-sided
+quotes (`count > 0`) **PASSES and overwrites**, and is **flagged downstream** (the front clamps a
+degenerate ultra-short slice — `infra-surface-fit-quality` lane 2). The gate must **never** drop a
+thin-but-real capture; the only rejection is the genuinely-empty re-fire. (We deliberately do **not**
+compare completeness `≥ banked` — that would amputate a legitimately thinner-but-real close.) A **first
+faithful land** (no prior banked) is always admitted so raw stays Tier-1 faithful and the degenerate
+detector can page (ADR-0040 fail-loud only-if-zero-options-first-run).
 
-**The run-state ledger GATE** (`data/_run_state.jsonl`, currently written but no longer gated-on)
-records the **validated** canonical close; a re-fire is admitted only when it clears the validity gate
-above, and then **replaces** (last-wins). This is the lost gate that prevented the 42 accumulation.
+**The admission gate** (`eod_stages.default_stages_builder`) reads the banked slice
+(`store.read(raw_market_events, trade_date, underlying)`); a re-fire is admitted unless it is
+zero-valid-over-a-banked-slice, and then `_collection` **replaces** (`delete_partition` + `write`,
+last-valid-wins). This restores the lost overwrite gate that prevented the 42 accumulation.
 
 ### Blueprint backing (the reconciliation — why overwrite-last-wins IS conform)
 
@@ -88,12 +95,13 @@ Restores overwrite-last-wins on the derived layer (lowest risk; do first).
 - **Stabilise `event_id`** on `(instrument_key, field_name, trade_date)` — drop the membership-ordinal
   `sequence` from the content hash (`market_fields.py`; `sequence=` at `cp_rest_close_capture.py:346,361`
   becomes inert, keep the column if useful). A re-poll of the same (instrument, field) is then ONE row.
-- **Overwrite-last-wins on the raw close slot** on a re-fetch that clears the validity gate: replace the
-  `(trade_date, underlying)` raw rows rather than the current append-only `event_id` set-difference
-  (`eod_stages.py:236-241`).
-- **Restore the run-state ledger gate** (`data/_run_state.jsonl`): record the validated canonical close;
-  admit a re-fire only when it passes **valid AND completeness ≥ banked** (§2); then replace. No gate
-  exists today in `scripts/eod_run.py` / `eod_stages.py` — every fire runs unconditionally.
+- **Overwrite-last-wins on the raw close slot** on a re-fetch that clears the admission gate: replace the
+  `(trade_date, underlying)` raw rows (`delete_partition` + `write`) rather than the prior append-only
+  `event_id` set-difference (first-wins) — `eod_stages._collection`.
+- **Admission gate** (`eod_stages.default_stages_builder`): thread `two_sided_count` onto `IndexBasket`
+  (set by `collect_live_basket`); reject a re-fire iff `two_sided_count == 0` **AND** a slice is already
+  banked for that `(trade_date, underlying)` (§2). Non-empty (incl. thin-but-real) and first-faithful-land
+  always admit. Loud `rejected_empty_overwrite` log; the QC degenerate seam still pages if nothing banked.
 
 ### C3 — Clean the corrupt 2026-06-16 slot (executes [T-clean-ingestion-2026-06-16](T-clean-ingestion-2026-06-16.md))
 The raw is not fire-tagged, so collapse to one observation per `(instrument, field)` keeping the **latest
@@ -104,9 +112,10 @@ The raw is not fire-tagged, so collapse to one observation per `(instrument, fie
 
 ## 4. Acceptance
 
-- A 2nd close fire for an already-captured day **replaces** (raw + derived) **iff** it is valid AND
-  completeness ≥ the banked close — verified by a re-fire test: (a) a richer/equal valid fire replaces
-  → **one** run; (b) an empty / failing / **thinner** fire is **rejected**, the prior close intact.
+- A 2nd close fire for an already-captured day **replaces** (raw + derived) **iff** it carries ≥1 valid
+  two-sided quote — verified by `test_overwrite_last_wins.py`: (a) a valid re-fire replaces → **one** slot,
+  latest values win; (b) a **zero-valid / last-only** fire is **rejected**, the prior close intact;
+  (c) a **thin-but-real** fire (count ≥ 1) **PASSES and overwrites** — never dropped (flag-not-reject).
 - `reconstruct_day` on a re-fired day no longer raises `DuplicateKeyInBatch`.
 - The front day-selector shows **one entry per `trade_date`**.
 - `version=` is absent from the close-capture routine path (replay-only).

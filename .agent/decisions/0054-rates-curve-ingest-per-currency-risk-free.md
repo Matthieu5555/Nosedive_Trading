@@ -1,7 +1,9 @@
 # 0054 — Per-currency risk-free rate-curve `r(T)` ingest; Rho against the external curve; implied−riskfree QC
 
-- **Status:** Proposed (2026-06-17). Drafted for owner review; not yet ruled.
-- **Date:** 2026-06-17.
+- **Status:** **Accepted (2026-06-17).** Ratified by the tech lead under a **full-authorization
+  owner override** on 2026-06-17 (the 5 open questions are ruled below, marked **RULED**, with the
+  history kept). Recorded as an override so the owner can review the economic calls after the fact.
+- **Date:** 2026-06-17 (Proposed and Accepted same day).
 - **Implements:** TARGET §4 ruling **R1** + §7.5 + §5.3, via `tasks/infra-rates-curve-ingest.md`
   (R1: "needs an ADR + blueprint amendment before build" — R1 changes a domain contract, ADR 0011).
 - **Builds on (landed):** [[0028-configuration-and-reproducibility-standard]] and the
@@ -88,15 +90,14 @@ and QC the implied−riskfree spread.**
    per-currency config knob (its provider is whatever the config names — it does not widen the
    trading universe or the live-broker set).
 
-### Proposed blueprint amendment (for owner acceptance — DRAFT, do not treat as merged)
+### Blueprint amendment (LANDED with this ratification)
 
-> Proposed per ADR 0011 as the amendment introducing the external rate curve. It is now present in
-> `docs/blueprint/` as a **clearly-fenced "Proposed amendment — pending owner acceptance" block**
-> (a clarifying paragraph under `02-math-framework.md` "Forward reconstruction and carry", which
-> already contemplates "the system may maintain a rate curve and derive an implied carry or
-> dividend yield", and two `09-data-dictionary.md` rows marked Proposed). It is **not ratified
-> canon** — the fenced markers say so explicitly, and on owner acceptance the markers are dropped so
-> the rows/paragraph become plain blueprint canon. The verbatim text follows.
+> Per ADR 0011 this is the amendment introducing the external rate curve. On this acceptance the
+> **fenced "Proposed amendment — pending owner acceptance" markers are dropped** (per ADR 0053's
+> "on owner acceptance the markers are dropped" pattern), so the clarifying paragraph under
+> `02-math-framework.md` "Forward reconstruction and carry" and the two `09-data-dictionary.md` rows
+> (`risk_free_rate`, `implied_riskfree_spread`) become **plain blueprint canon**. The verbatim text
+> follows.
 
 **Amendment to `02-math-framework.md` — Forward reconstruction and carry (clarifying paragraph):**
 
@@ -114,11 +115,40 @@ and QC the implied−riskfree spread.**
 > | `risk_free_rate` | Ingested per-currency risk-free rate at a pillar tenor (`rates` table), as-of dated. The Eq. 5 `r(T)` **input** and the **risk** rate Rho is bumped against — distinct from the parity-implied pricing-consistency rate. |
 > | `implied_riskfree_spread` | `implied_rate − risk_free_rate` per `(currency, tenor)`; a funding/dividend/borrow diagnostic and a QC gate on forward estimation. Beyond a configured bound it is a flagged triage record, never an exception. |
 
-## Open questions for the owner (must be ruled before build)
+## Open questions — RULED (tech-lead, full-authorization owner override, 2026-06-17)
 
-These are the forks this ADR does **not** settle on the owner's behalf. Each is recorded here
-rather than guessed; the Decision above fixes the *shape* (a per-currency as-of `r(T)` curve, two
-rates kept separate, a spread QC) but leaves the following economic/operational choices open.
+These were the forks this ADR did **not** settle on the owner's behalf. The history of each is kept
+below; each now carries its **RULED** answer (tech lead, 2026-06-17 owner override). The Decision
+above fixes the *shape* (a per-currency as-of `r(T)` curve, two rates kept separate, a spread QC);
+these rulings fix the economic/operational choices it left open.
+
+> **RULED 1 — Curve form.** Ship the **FULL per-tenor pillar curve `r(T)`** in v1
+> (contract `rates(currency, pillar_tenor, rate, as_of)`). The landed flat `ForwardConfig.rate`
+> scalar stays the degenerate/fallback one-pillar case.
+>
+> **RULED 2 — Pillars + interpolation.** EUR pillars = €STR O/N + Euribor 1m/3m/6m/12m + OIS
+> 18m/2y/3y, **config-named (typed config, never a `.py` literal)**. Interpolation = **linear in the
+> zero rate** between pillars; **flat extrapolation** beyond the ends. Goldens bake this in.
+>
+> **RULED 3 — Source + cadence.** Config names the **source per currency** (a typed config knob).
+> Cadence = **daily EOD as-of the close** (matches the option snapshot). Index-options-only /
+> IBKR-sole-broker scope (ADR 0042) holds: this is an ingested **reference** curve, not a tradable or
+> a new broker.
+>
+> **RULED 4 — Compounding/day-count.** Internal canonical convention is **continuous compounding /
+> ACT-365** (consistent with `maturity_years`). Sources publishing simple or money-market (ACT/360)
+> rates are **converted to continuous ACT-365 on ingest** — the conversion is explicit and tested.
+>
+> **RULED 5 — Spread-QC bound.** The implied−riskfree spread QC is **WARN-ONLY by default** (a
+> placeholder bound in typed config, "warn, do not fail"), tunable from banked history later.
+>
+> **Carry-split display default (from `core-explicit-rate-config`).** KEEP `rate: null` →
+> parity-implied `r = −ln(DF)/T` as the **stored/canonical default** (byte-identical, no silent value
+> change to canonical runs — flipping a hashed economic input silently is forbidden). The mechanism
+> is built so the carry split `q = r − ln(F/S)/T` genuinely **moves** when `rate` is set to **any**
+> explicit value **including 0.0** — a flat-0 display default is a real, available, tested behaviour,
+> just not the shipped yaml default. (This was already true of the landed `ForwardConfig.rate`; the
+> curve generalises it and the test suite pins the flat-0 carry-split behaviour explicitly.)
 
 1. **Curve form: per-tenor points `r(T)` vs a single flat short rate per currency.** The Decision
    assumes **per-tenor pillar points** (`rates(currency, pillar_tenor, rate, as_of)`), which is the
@@ -161,9 +191,10 @@ build must not invent silently. Until they are ruled, R1 stays Proposed/parked (
 
 ## Consequences
 
-- **R1 (`infra-rates-curve-ingest`) becomes pickable** once this ADR + the blueprint amendment are
-  **accepted** (Proposed → accepted on owner ruling). Until then it stays parked — no `rates`-table
-  code lands ahead of the amendment.
+- **R1 (`infra-rates-curve-ingest`) is unblocked and built.** This ADR + the blueprint amendment are
+  **Accepted** (2026-06-17, tech-lead owner override), so the `rates` table contract, the typed
+  `RatesConfig`, the `r(T)` curve evaluator, the external-curve Rho basis, the implied−riskfree
+  spread diagnostic + warn-only QC, and the additive BFF surface land **with** this ratification.
 - **Two rates by design.** The parity-implied (pricing-consistency) rate and the ingested (risk)
   rate coexist deliberately; a reader/agent must not "simplify" them into one. The separation is the
   decision, not an oversight.
@@ -173,5 +204,9 @@ build must not invent silently. Until they are ruled, R1 stays Proposed/parked (
 - **Additive, no migration.** The `rates` table is a new daily as-of input; existing partitions and
   contracts are untouched. `dollar_rho`'s unit convention (ADR 0036) is unchanged — only its basis
   moves.
-- **No code, config, or schema change is made by this ADR** — it records the decision and proposes
-  the amendment only.
+- **Config hash.** A new typed `rates` section lands in its **own** `config_hashes["rates"]` bundle
+  (NOT folded into `pricing`), so the existing `pricing`/`qc`/`scenarios`/`universe` bundle hashes
+  stay **byte-identical** and no forward/analytics golden moves on the rate curve's account. The
+  whole-config `config_hash` changes by design (a new section is present). Rho's *value* moves only
+  when it is bumped against the external curve rather than the implied rate — that is an opt-in, and
+  the canonical `rate: null` path stays byte-identical parity-implied.

@@ -20,6 +20,12 @@ from .cp_rest_oauth import (
     sign_request,
     signature_base_string,
 )
+from .cp_rest_order_submit import (
+    CpRestOrderSubmit,
+    OrderAck,
+    OrderSubmitError,
+    SupportsOrderPost,
+)
 from .cp_rest_session import CpRestSession, SessionNotEstablishedError
 from .cp_rest_transport import CpRestTransport, CpRestTransportError, OAuthSigner
 from .ibkr_transport_choice import DEFAULT_IBKR_TRANSPORT, IbkrTransport, select_ibkr_transport
@@ -52,4 +58,8 @@ __all__ = [
     "IbkrTransport",
     "DEFAULT_IBKR_TRANSPORT",
     "select_ibkr_transport",
+    "CpRestOrderSubmit",
+    "OrderAck",
+    "OrderSubmitError",
+    "SupportsOrderPost",
 ]

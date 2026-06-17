@@ -10,7 +10,6 @@ from algotrading.core.provenance import source_ref, stamp
 from algotrading.execution import Fill, FillError
 
 _FORBIDDEN = (
-    "transmit",
     "place_order",
     "submit_order",
     "send_order",
@@ -21,12 +20,14 @@ _FORBIDDEN = (
     "broker_client",
 )
 
+_LIVE_SINK_NAMES = ("LiveSubmitSink", "OrderSubmitter")
+
 
 def _public_names(module: object) -> set[str]:
     return {n for n in dir(module) if not n.startswith("_")}
 
 
-def test_the_package_exports_no_transmit_or_credential_symbol() -> None:
+def test_the_package_exports_no_unguarded_submit_or_credential_symbol() -> None:
     offenders = {
         name
         for name in _public_names(execution)
@@ -35,7 +36,7 @@ def test_the_package_exports_no_transmit_or_credential_symbol() -> None:
     assert offenders == set(), f"execution exposes a forbidden symbol: {offenders}"
 
 
-def test_no_submodule_exposes_a_transmit_or_credential_symbol() -> None:
+def test_no_submodule_exposes_an_unguarded_submit_or_credential_symbol() -> None:
     for info in pkgutil.walk_packages(execution.__path__, prefix="algotrading.execution."):
         module = importlib.import_module(info.name)
         offenders = {
@@ -44,6 +45,16 @@ def test_no_submodule_exposes_a_transmit_or_credential_symbol() -> None:
             if any(token in name.lower() for token in _FORBIDDEN)
         }
         assert offenders == set(), f"{info.name} exposes a forbidden symbol: {offenders}"
+
+
+def test_the_live_submit_sink_is_not_reachable_from_the_transmit_package_surface() -> None:
+    from algotrading.execution import transmit
+
+    surface = _public_names(transmit)
+    leaked = {name for name in _LIVE_SINK_NAMES if name in surface}
+    assert leaked == set(), (
+        f"the live submit sink must be imported by explicit path, never re-exported: {leaked}"
+    )
 
 
 def test_fills_are_paper_only_at_the_type_level() -> None:

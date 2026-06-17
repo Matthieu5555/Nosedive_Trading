@@ -4,9 +4,11 @@ The booking chain above `infra` — an upper layer in the import stack
 (`core ← infra ← infra-<broker> ← {strategy, execution} ← frontend`). It imports
 `infra`/`core` only and is never imported by them.
 
-**Paper, read-only.** Nothing here transmits an order, reads a credential, or connects to a
-broker. The password-gated *booking commit* (which mints fills) and the live broker *send*
-gate (3B) are two separate, later barriers — neither lives in this package.
+**Paper by default, fail-closed.** Nothing here transmits a live order or connects to a broker
+with the gate absent. Two separate barriers live in this package: the password-gated *booking
+commit* (which mints paper fills, `booking/`) and the owner-gated *sign-and-send* path (3B,
+`transmit/`). Both default to paper/blocked; the live branch of `transmit/` is structurally
+unreachable until an owner flag is set **and** a security review is recorded green.
 
 ## The fills-based position store (TARGET §5.1 / §5.5 / §6 / §7.1)
 
@@ -107,6 +109,53 @@ Place both lines in `$HOME/.env` (gitignored). The password itself never leaves 
 The BFF exposes this as `POST /api/booking/commit` (the ticket-preview body plus a `password`);
 the React Ticket panel adds the password prompt + **Book (paper)** affordance. The 3B sign-and-send
 affordance stays disabled and labelled. **No broker bytes leave the process.**
+
+## Read side — the fills ledger and the booked book over HTTP
+
+## The owner-gated sign-and-send path (`transmit/`, 3B — gated OFF by default)
+
+The one seam that could ever move real money — and by default it cannot. A built
+[3A ticket](../../packages/infra/src/algotrading/infra/orders/) is signed off out-of-band by an
+operator and then routed for transmission, but a live order leaves the process **only** behind
+two independent gates plus a recorded security review. Anything short of all three resolves to a
+named blocked decision. This lands the page-3 scaffold; transmission ships **off**.
+
+- **`SignedTicket` + the binding hash** (`transmit/binding.py`, `transmit/signing.py`) — a 3A
+  ticket plus an approval token, the approver, an issued-at and an **expiry**, and a
+  `binding_hash` over the *exact* ticket fields (symbol/side/qty/price-spec/tif/legs, canonical
+  SHA-256). The token is an HMAC over `(binding_hash, approver, expiry)` keyed by a secret read
+  from `$HOME/.env` (`EXECUTION_SIGNOFF_HMAC_KEY`) — never a literal, never committed. A token
+  thus proves *a human approved this exact ticket*; presenting it against any perturbed ticket
+  fails the binding check. `render_approval_request` produces the offline, channel-agnostic
+  approval request behind a `SignoffChannel` port — no live mailbox is wired this week.
+- **The owner gate** (`transmit/gate.py`) — one flag, `EXECUTION_TRANSMIT_ENABLED`, read from the
+  environment (`$HOME/.env`). Absent/blank → `absent` (fail-closed); unrecognized →
+  `GateUnparseable` (fail-closed); `paper`/`live` synonyms map explicitly. Live additionally
+  requires `EXECUTION_SECURITY_REVIEW=green` — the owner records this only after the
+  [security review](../../tasks/platform-security-review.md) passes; it is the single source of
+  truth for the recorded-green handshake, not a second one.
+- **The decision function** (`transmit/decision.py`) — one pure
+  `decide_transmission(SignedTicket, gate, now) -> TransmissionDecision`. It returns `SENT_LIVE`
+  **only** when the flag is `live` **and** the binding matches **and** the token verifies **and**
+  it is unexpired **and** the review is green; every other path is a named `BLOCKED_*`
+  (`BLOCKED_DEFAULT`, `BLOCKED_NO_SIGNOFF`, `BLOCKED_GATE_OFF`, `BLOCKED_EXPIRED`,
+  `BLOCKED_TICKET_MISMATCH`) or `SENT_PAPER`. On-the-second expiry is rejected.
+- **The send path + sinks** (`transmit/send.py`, `transmit/sink.py`, `transmit/live_sink.py`) —
+  `transmit(...)` evaluates the gate, records the decision, and routes to a sink. The **default
+  sink is `PaperSink`**: it records and short-circuits, no bytes leave the process. The live
+  `LiveSubmitSink` is **not** exported from the package surface — it must be imported by explicit
+  path and wired with a broker submitter, and it submits only on `SENT_LIVE`. The broker submit
+  verb is a **new, separate** method on the IBKR leaf
+  (`infra_ibkr.connectivity.CpRestOrderSubmit`), never folded into the read-only ingestion
+  transport (ADR 0024 §4 invariant preserved and tested).
+- **The transmit audit log** (`transmit/audit.py`) — every event (gate evaluated, decision,
+  transmit attempt) is one immutable, provenance-stamped `TransmitAudit` record in an append-only
+  log (`InMemory…` / `Jsonl…`); no mutate/delete; duplicate id rejected; `replay` is
+  reorder-stable; stamp hashes are stable across processes.
+
+The full decision table — flag × sign-off × security-review — is hand-written as the independent
+oracle in `tests/test_transmit_decision.py`; `tests/test_two_gates.py` pins that with the flag
+absent the broker submit method is never invoked.
 
 ## Read side — the fills ledger and the booked book over HTTP
 

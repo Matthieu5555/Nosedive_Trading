@@ -45,6 +45,13 @@ real deps):
   transport-seam protocol (`SupportsRestGet` / `SupportsRest`) every collector types its injected
   transport with is re-exported here; its one definition lives in
   `algotrading.infra.collectors.transport_seam` (audit M40, shared with the Saxo leaf).
+- `connectivity/cp_rest_order_submit.py` — `CpRestOrderSubmit`: the **separate, gated order-submit
+  verb** (`submit` POSTs `/iserver/account/{id}/orders`). It is a *new, explicit* class, deliberately
+  **not** a method on the read-only ingestion transport or the market-data adapter — folding order
+  submission into the read path would break the ADR 0024 §4 read-only invariant. Reached only by the
+  3B execution send path (`algotrading.execution.transmit`) behind its owner gate; nothing wires it
+  by default (`test_cp_rest_order_submit.py` pins both the order POST and that the ingestion adapter
+  still never touches an order endpoint).
 - `connectivity/cp_rest_session.py` — `CpRestSession`: the brokerage-session lifecycle TWS hid —
   `/iserver/auth/status` + a daemon-thread `/tickle` keepalive (~60 s; the session dies after ~5 min
   of silence). A dropped session fires `on_drop`, the engine's reconnect signal;

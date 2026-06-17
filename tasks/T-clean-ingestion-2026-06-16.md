@@ -8,6 +8,13 @@
 
 ## 0. ⛔ BLOCKER — recompute-from-raw is INCOMPLETE (fix before any recompute)
 
+> **Step 1 LANDED `b9e60e2` (2026-06-17).** `reconstruct_day`/`reconstruct_range` now thread
+> `provider=DEFAULT_PROVIDER` + `session_open=False` into `run_analytics`, and `_persist_outputs` /
+> `_record_count` include `projected_option_analytics` — so the vol-nappe projection + pricing
+> regenerate from raw (the 20,283-row → 0 collapse is fixed). Regression pins the seam. **Still
+> open: steps 2–3** (extend reconstruct to also run `persist_signal_set` + `run_qc`, then the
+> full row-count-match regression). Blocker is NOT fully cleared — do not recompute yet.
+
 A live verification on 2026-06-17 proved `rebuild_from_raw` / `reconstruct_day` does **not** reproduce
 the front's data from raw — recompute would silently **blank the vol nappe**:
 

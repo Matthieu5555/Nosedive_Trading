@@ -1,7 +1,8 @@
 import { Metric } from "../../components/Metric";
-import { StressSurface } from "../../components/StressSurface";
+import { NamedScenarios } from "../../components/NamedScenarios";
+import { RateSweep, StressSurface } from "../../components/StressSurface";
 import { sciUnit, UNITS, withCurrency } from "../../lib/format";
-import type { BasketScenariosResponse } from "../../stressApi";
+import type { BasketScenariosResponse, NamedScenario } from "../../stressApi";
 
 type StressTabProps = {
   canStress: boolean;
@@ -10,6 +11,11 @@ type StressTabProps = {
   stress: BasketScenariosResponse | null;
   currency: string;
   onStress: () => void;
+  // ③ Choquer shock presets: the named historical crises (2008, COVID, …) replayed against the
+  // book, folded in from the standalone Risk Scenarios page. Empty list → labelled empty state.
+  namedScenarios: NamedScenario[];
+  namedLoading: boolean;
+  namedError: string | null;
 };
 
 export function StressTab({
@@ -19,12 +25,16 @@ export function StressTab({
   stress,
   currency,
   onStress,
+  namedScenarios,
+  namedLoading,
+  namedError,
 }: StressTabProps) {
   return (
     <div className="basket-tab">
       <p className="basket-tab__lead">
-        Shock the composed basket across a grid of spot and vol moves. This is a full reprice per
-        leg, so it reads the worst-case loss the position carries today.
+        Shock the composed basket across a grid of spot and vol moves — and, on its own axis, a
+        parallel rate sweep. This is a full reprice per leg, so it reads the worst-case loss the
+        position carries today. Below the grid, replay the named historical crises as shock presets.
       </p>
       <div className="basket-actions">
         <button type="button" onClick={onStress} disabled={loading || !canStress}>
@@ -77,8 +87,24 @@ export function StressTab({
             kicker={`${stress.underlying} ${stress.trade_date}`}
             currency={currency}
           />
+          {stress.rate && stress.rate.length > 0 && (
+            <RateSweep rates={stress.rate} currency={currency} />
+          )}
         </div>
       )}
+
+      <div className="risk-grid">
+        <h3>Shock presets — named historical crises</h3>
+        {namedError !== null && (
+          <p role="alert" className="error">
+            Failed to load shock presets: {namedError}
+          </p>
+        )}
+        {namedLoading && <p role="status">Loading shock presets…</p>}
+        {!namedLoading && namedError === null && (
+          <NamedScenarios scenarios={namedScenarios} currency={currency} />
+        )}
+      </div>
     </div>
   );
 }

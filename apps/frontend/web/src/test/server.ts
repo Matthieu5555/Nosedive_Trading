@@ -44,6 +44,7 @@ export const server = setupServer(
   jsonGet("/api/ticket/options", { brokers: ["ibkr"], time_in_force: ["day", "gtc"] }),
   jsonGet("/api/signals/underlyings", SIGNAL_UNDERLYINGS),
   jsonGet("/api/signals", SIGNALS_SX5E),
+  jsonGet("/api/compose/sub-strategies", { n_sub_strategies: 2, sub_strategies: ["SPX", "SX5E"] }),
 
   http.all("/api/*", notMocked),
 );

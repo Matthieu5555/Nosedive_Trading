@@ -7,18 +7,24 @@ import type {
   BasketLegInput,
   BasketRequest,
   BasketRiskResponse,
+  ComposeLayerInput,
+  ComposeRequest,
+  ComposeResponse,
   DeltaBandsResponse,
   IndicesResponse,
+  SubStrategiesResponse,
 } from "../api";
-import { fetchAttribution, priceBasket, stressBasket } from "../api";
+import { composeBook, fetchAttribution, priceBasket, stressBasket } from "../api";
 import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
 import { BasketLegGrid } from "../components/BasketLegGrid";
 import { TicketPanel } from "../components/TicketPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
-import type { BasketScenariosResponse } from "../stressApi";
+import type { BasketScenariosResponse, ScenariosResponse } from "../stressApi";
 import { AttributionTab } from "./basket/AttributionTab";
 import { BuildPriceTab } from "./basket/BuildPriceTab";
+import { ComposeTab } from "./basket/ComposeTab";
+import { LeBookSection } from "./basket/LeBookSection";
 import { StressTab } from "./basket/StressTab";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
@@ -53,6 +59,17 @@ export function BasketPage() {
   const [attributionError, setAttributionError] = useState<string | null>(null);
   const [attributionLoading, setAttributionLoading] = useState(false);
 
+  // ① Composer — book composition (B1): layer decorrelated sub-strategies into one book.
+  const subStrategies = useFetch<SubStrategiesResponse>("/api/compose/sub-strategies");
+  const [layers, setLayers] = useState<ComposeLayerInput[]>([]);
+  const [book, setBook] = useState<ComposeResponse | null>(null);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeLoading, setComposeLoading] = useState(false);
+
+  // ③ Choquer — named historical crises, folded in from the standalone Risk Scenarios page as
+  // shock presets. The persisted Risk path serves the named scenarios; the basket reuses them.
+  const namedScenarios = useFetch<ScenariosResponse>("/api/risk/scenarios");
+
   function addLeg(leg: BasketLegInput) {
     setLegs((current) => [...current, leg]);
   }
@@ -61,6 +78,22 @@ export function BasketPage() {
   }
   function applyTemplate(name: TemplateName) {
     setLegs(buildTemplate(name, underlying, tenor));
+  }
+
+  function addLayer(layer: ComposeLayerInput) {
+    setLayers((current) => [...current, layer]);
+  }
+  function removeLayer(index: number) {
+    setLayers((current) => current.filter((_, i) => i !== index));
+  }
+  function moveLayer(index: number, direction: -1 | 1) {
+    setLayers((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   }
 
   function composedBasket(): BasketRequest {
@@ -98,6 +131,24 @@ export function BasketPage() {
     }
   }
 
+  async function runCompose() {
+    setComposeError(null);
+    setComposeLoading(true);
+    try {
+      const body: ComposeRequest = {
+        book_id: `book-${underlying}-${tradeDate || "latest"}`,
+        trade_date: tradeDate || undefined,
+        layers,
+      };
+      setBook(await composeBook(body));
+    } catch (err) {
+      setBook(null);
+      setComposeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setComposeLoading(false);
+    }
+  }
+
   async function loadAttribution() {
     setAttributionError(null);
     setAttributionLoading(true);
@@ -121,14 +172,14 @@ export function BasketPage() {
     <section className="page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Analytics</p>
+          <p className="eyebrow">Compose a book, then shock it</p>
           <h1>Basket Builder</h1>
         </div>
       </div>
       <p>
-        Compose a multi-leg position once, then move between building &amp; pricing it, stressing
-        it, and reading a book's P&amp;L attribution — the legs, underlying and date below are
-        shared across all three.
+        Compose a book — legs and layered sub-strategies — read it, shock it across spot/vol/rate and
+        the named crises, then explain its P&amp;L by Greek. The underlying and date below are shared
+        across every block.
       </p>
 
       {indices.error !== null && (
@@ -204,16 +255,17 @@ export function BasketPage() {
         />
       )}
 
-      <Tabs defaultValue="build" className="market-tabs">
+      <Tabs defaultValue="compose" className="market-tabs">
         <div className="market-tabs__bar">
           <TabsList className="market-tabs__list">
-            <TabsTrigger value="build">Build &amp; price</TabsTrigger>
-            <TabsTrigger value="stress">Stress</TabsTrigger>
-            <TabsTrigger value="attribution">Attribution</TabsTrigger>
+            <TabsTrigger value="compose">① Composer</TabsTrigger>
+            <TabsTrigger value="book">② Le book</TabsTrigger>
+            <TabsTrigger value="stress">③ Choquer</TabsTrigger>
+            <TabsTrigger value="attribution">④ Attribution</TabsTrigger>
           </TabsList>
         </div>
 
-        <TabsContent value="build">
+        <TabsContent value="compose">
           <BuildPriceTab
             canPrice={legs.length > 0}
             loading={loading}
@@ -222,6 +274,26 @@ export function BasketPage() {
             currency={currency}
             onPrice={price}
           />
+          <ComposeTab
+            subStrategies={subStrategies.data?.sub_strategies ?? []}
+            subStrategiesLoading={subStrategies.loading}
+            subStrategiesError={subStrategies.error}
+            layers={layers}
+            bands={deltaBands.data?.delta_bands ?? []}
+            loading={composeLoading}
+            error={composeError}
+            book={book}
+            currency={currency}
+            tradeDate={tradeDate}
+            onAddLayer={addLayer}
+            onRemoveLayer={removeLayer}
+            onMoveLayer={moveLayer}
+            onCompose={runCompose}
+          />
+        </TabsContent>
+
+        <TabsContent value="book">
+          <LeBookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
         </TabsContent>
 
         <TabsContent value="stress">
@@ -232,6 +304,9 @@ export function BasketPage() {
             stress={stress}
             currency={currency}
             onStress={runStress}
+            namedScenarios={namedScenarios.data?.named ?? []}
+            namedLoading={namedScenarios.loading}
+            namedError={namedScenarios.error}
           />
         </TabsContent>
 

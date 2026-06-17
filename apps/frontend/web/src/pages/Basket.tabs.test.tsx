@@ -10,15 +10,17 @@ import { BASKET_RISK_AAA } from "../test/fixtures";
 import { jsonGet, jsonPost, server } from "../test/server";
 import { BasketPage } from "./Basket";
 
-test("the page splits into Build & price / Stress / Attribution tabs, Build & price first", () => {
+test("the page splits into the four Onglet-2 blocks (compose → book → shock → explain), Composer first", () => {
   render(<BasketPage />);
 
   const tabs = screen.getAllByRole("tab");
-  expect(tabs.map((tab) => tab.textContent)).toEqual(["Build & price", "Stress", "Attribution"]);
-  expect(screen.getByRole("tab", { name: /build & price/i })).toHaveAttribute(
-    "data-state",
-    "active",
-  );
+  expect(tabs.map((tab) => tab.textContent)).toEqual([
+    "① Composer",
+    "② Le book",
+    "③ Choquer",
+    "④ Attribution",
+  ]);
+  expect(screen.getByRole("tab", { name: /composer/i })).toHaveAttribute("data-state", "active");
 });
 
 test("the leg composer (templates + grid + controls) is shared above the tabs", async () => {
@@ -33,13 +35,13 @@ test("the leg composer (templates + grid + controls) is shared above the tabs", 
   const legs = screen.getByRole("table", { name: /composed legs/i });
   expect(within(legs).getByText("atm")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("tab", { name: /^stress$/i }));
+  await user.click(screen.getByRole("tab", { name: /choquer/i }));
   expect(within(legs).getByText("atm")).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: /attribution/i }));
   expect(within(legs).getByText("atm")).toBeInTheDocument();
 });
 
-test("pricing happens on the Build & price tab and shows the book-additive totals", async () => {
+test("pricing happens on the Composer block and shows the book-additive totals", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
   render(<BasketPage />);

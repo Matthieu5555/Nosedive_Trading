@@ -894,3 +894,101 @@ export async function fetchReconciliation(
   const suffix = accountId ? `?account_id=${encodeURIComponent(accountId)}` : "";
   return getJson<ReconciliationResponse>(`/api/reconciliation${suffix}`, signal);
 }
+
+// --- 2D book composition (TARGET §5.8 / Onglet 2 ② Le book) ---------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/routers/compose.py. The operator composes a
+// named *book* from an ordered set of sub-strategies (each a 2A basket); the BFF resolves each
+// layer's legs, calls the landed pure build_book_greeks / book_stress_surface, and serializes the
+// result. No risk is recomputed on the front, no aggregation is forked: every dollar number is the
+// engine's own value rendered from its unit string (never re-derived). The HTTP shape is the seam —
+// keep both sides in lockstep.
+
+// One $-Greek: the engine's already-monetized value plus its unit string. `value` null only when a
+// metric predates the second-order set (still carries a unit). Rendered via sci/sciUnit on the
+// front, never re-derived.
+export interface ComposeDollarGreek {
+  value: number | null;
+  unit: string | null;
+}
+
+// One row of book Greeks — the combined "book" level or one "layer" level. `net_*` are the raw
+// additive sensitivities; `dollar_*` are the monetized + unit-tagged values. `layer_index`/
+// `layer_label` identify a layer (the combined book row carries the book-level label).
+export interface ComposeGreeks {
+  level: string;
+  layer_label: string;
+  layer_index: number;
+  net_delta: number;
+  net_gamma: number;
+  net_vega: number;
+  net_theta: number;
+  dollar_delta: ComposeDollarGreek;
+  dollar_gamma: ComposeDollarGreek;
+  dollar_vega: ComposeDollarGreek;
+  dollar_theta: ComposeDollarGreek;
+  dollar_rho: ComposeDollarGreek;
+}
+
+// A per-layer row: its combined Greeks plus how many of its legs resolved to banked analytics
+// (n_resolved of n_legs). The combined book Greeks equal the additive sum of these.
+export interface ComposeLayer extends ComposeGreeks {
+  n_legs: number;
+  n_resolved: number;
+}
+
+// The combined stressed PnL surface — the joint full-reprice of the union of all layers over the
+// same 2B spot × vol grid the basket stress uses. `pnl_grid[i][j]` is spot_axis[i] × vol_axis[j].
+export interface ComposeSurface {
+  scenario_version: string | null;
+  spot_axis: number[];
+  vol_axis: number[];
+  pnl_grid: (number | null)[][];
+}
+
+export interface ComposeResponse {
+  book_id: string;
+  valuation_ts: string;
+  composition_version: string;
+  config_hashes: Record<string, string>;
+  combined: ComposeGreeks;
+  layers: ComposeLayer[];
+  // Read-only diagnostic: the realised diversification of the operator's selection over the
+  // per-layer net vegas (null when < 2 layers or all vegas zero). Never feeds the Greeks/PnL.
+  diversification_ratio: number | null;
+  surface: ComposeSurface;
+}
+
+export interface SubStrategiesResponse {
+  n_sub_strategies: number;
+  sub_strategies: string[];
+}
+
+// One compose layer the operator builds: an ordered, labelled sub-strategy (a 2A basket) with its
+// legs. Sent as the request body to POST /api/compose.
+export interface ComposeLayerInput {
+  label: string;
+  basket_id: string;
+  underlying: string;
+  legs: BasketLegInput[];
+}
+
+export interface ComposeRequest {
+  book_id: string;
+  trade_date?: string;
+  layers: ComposeLayerInput[];
+}
+
+// List the available sub-strategies (the underlyings with banked analytics) the operator can layer.
+export async function fetchSubStrategies(signal?: AbortSignal): Promise<SubStrategiesResponse> {
+  return getJson<SubStrategiesResponse>("/api/compose/sub-strategies", signal);
+}
+
+// Compose a named book from an ordered set of sub-strategy layers. Returns the combined + per-layer
+// Greeks and the combined stressed PnL surface. A malformed composition is a labelled 400 the
+// ApiError surfaces, not a bare status line.
+export async function composeBook(
+  body: ComposeRequest,
+  signal?: AbortSignal,
+): Promise<ComposeResponse> {
+  return postJson<ComposeResponse>("/api/compose", body, signal);
+}

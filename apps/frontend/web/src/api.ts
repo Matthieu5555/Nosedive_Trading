@@ -212,12 +212,28 @@ export type SmileAxis =
       log_moneyness: number[];
     };
 
+// Per-tenor forward + interest-rate diagnostics (core-explicit-rate-config A6). The forward is the
+// PCP-observable forward; `implied_rate` is the interest rate the carry split uses (the explicit
+// config `rate` when set, else the parity-DF-implied r = −ln(DF)/T), and `implied_carry` /
+// `implied_dividend` are the carry split q = r − ln(F/S)/T (TARGET R1, blueprint Eq 5). Rates are
+// annualized continuous fractions; `rate_unit` carries the unit string from the BFF. The whole
+// object is null when no forward point was banked for the tenor (the surface-grid fallback path),
+// and any field is null where the diagnostic itself wasn't computed.
+export interface RateDiagnostics {
+  forward_price: number | null;
+  implied_rate: number | null;
+  implied_carry: number | null;
+  implied_dividend: number | null;
+  rate_unit: string;
+}
+
 export interface AnalyticsMaturity {
   maturity_years: number;
   tenor_label: string;
   label: string;
   smile: SmileAxis;
   surface_slice: SurfaceSlice | null;
+  rate_diagnostics?: RateDiagnostics | null;
   points: AnalyticsPoint[];
 }
 

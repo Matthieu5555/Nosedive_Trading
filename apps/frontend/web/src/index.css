@@ -701,9 +701,14 @@ h3 {
 /* ⓪ The scorecard band echoes the vol surface — a whisper-faint cold→hot gradient (the house Nappe
    colorscale: cyan → neutral → amber → coral) behind the cards, so the headline reads as a slice of
    the surface. The cards stay near-opaque; only a few % of the gradient bleeds through the edges. */
+.scorecards-band {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .scorecards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 1px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
@@ -718,10 +723,25 @@ h3 {
     ),
     var(--border);
 }
+@media (max-width: 1100px) {
+  .scorecards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
 @media (max-width: 800px) {
   .scorecards {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+/* The sign legend under the band so the trader never inverts a sign (cockpit-ux B). */
+.scorecards-legend {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.scorecards-legend .positive,
+.scorecards-legend .negative {
+  font-weight: 600;
 }
 .scorecard {
   display: flex;
@@ -766,6 +786,72 @@ h3 {
   .tenor-panel__greeks {
     grid-template-columns: 1fr;
   }
+}
+.tenor-panel__smile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* The 25Δ butterfly, demoted out of the headline scorecards into the smile block where curvature
+   is the natural read (cockpit-ux B; blueprint §3.2 niveau/pente/courbure). */
+.smile-convexity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+.smile-convexity__label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.smile-convexity__value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.smile-convexity__hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+/* The interest-rate / forward diagnostics per tenor (core-explicit-rate-config A6): r(T) is an
+   explicit, displayed input, with the carry split it drives. */
+.rate-diagnostics .panel-note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rate-diagnostics__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+@media (max-width: 800px) {
+  .rate-diagnostics__grid {
+    grid-template-columns: 1fr;
+  }
+}
+.rate-diagnostics__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rate-diagnostics__row dt {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.rate-diagnostics__row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.rate-diagnostics__hint {
+  color: var(--muted);
+  font-size: 11px;
 }
 .price-structure-scroll {
   max-height: 22rem;

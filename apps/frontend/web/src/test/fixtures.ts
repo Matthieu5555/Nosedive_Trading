@@ -217,9 +217,22 @@ export const SIGNALS_SX5E: SignalsResponse = {
   underlying: "SX5E",
   trade_date: "2026-05-29",
   snapshot_ts: "2026-05-29T17:30:00+00:00",
-  n_signals: 3,
-  kinds: ["iv_rank", "iv_vs_realized", "implied_correlation"],
+  n_signals: 4,
+  kinds: ["iv_rank", "iv_vs_realized", "term_structure_slope", "implied_correlation"],
   by_kind: {
+    term_structure_slope: [
+      {
+        signal_kind: "term_structure_slope",
+        label: "Term-structure slope",
+        subject: "SX5E",
+        tenor_label: "3m−1m",
+        value: 0.012,
+        unit: "vol points (annualized)",
+        snapshot_ts: "2026-05-29T17:30:00+00:00",
+        source_snapshot_ts: "2026-05-29T17:30:00+00:00",
+        provenance: PROV,
+      },
+    ],
     iv_rank: [
       {
         signal_kind: "iv_rank",
@@ -451,6 +464,13 @@ export const ANALYTICS_SCORECARD: AnalyticsResponse = {
         log_moneyness: [-0.2, -0.13, 0.0, 0.13, 0.2],
       },
       surface_slice: null,
+      rate_diagnostics: {
+        forward_price: 4812.5,
+        implied_rate: 0.0254,
+        implied_carry: -0.0131,
+        implied_dividend: 0.0385,
+        rate_unit: "/yr (annualized, continuous)",
+      },
       points: [
         _scorecardPoint("30dp", -0.3, 0.32),
         _scorecardPoint("20dp", -0.2, 0.28),

@@ -128,6 +128,13 @@ export function MarketPage() {
                       <Scorecards
                         maturities={analytics.data.maturities}
                         ivVsRealized={signals.data?.by_kind?.iv_vs_realized?.[0] ?? null}
+                        termStructureSlope={
+                          signals.data?.by_kind?.term_structure_slope?.[0] ?? null
+                        }
+                        ivRank={signals.data?.by_kind?.iv_rank?.[0] ?? null}
+                        impliedCorrelation={
+                          signals.data?.by_kind?.implied_correlation?.[0] ?? null
+                        }
                       />
                     )}
                   </AsyncBlock>

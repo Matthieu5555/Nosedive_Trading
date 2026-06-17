@@ -45,21 +45,83 @@ test("is one scrollable page (price → scorecards → nappe → tenor → dispe
   expect(screen.queryByRole("tab", { name: "Data quality" })).not.toBeInTheDocument();
 });
 
-test("renders the four scorecards with independently-derived numbers", async () => {
-  // A 3m slice with ±25Δ-bracketing bands: ATM 0.20, skew = 0.30 − 0.23 = +0.07 (+7.0 vp),
-  // convexity = 0.30 + 0.23 − 0.40 = +0.13 (+13.0 vp). RV−IV from the signal fixture is −0.018
-  // (−1.8 vp). The signals server mock returns SIGNALS_SX5E regardless of the index queried.
+test("renders the six headline scorecards with independently-derived numbers", async () => {
+  // A 3m slice with ±25Δ-bracketing bands: ATM 0.20, skew = 0.30 − 0.23 = +0.07 (+7.0 vp). The
+  // signals (SIGNALS_SX5E, returned regardless of index): RV−IV −0.018 (−1.8 vp), term-structure
+  // slope +0.012 (+1.2 vp), IV-rank 0.62 (62.0%), ρ̄ 0.5 (50.0%). Convexity is DEMOTED out of the
+  // headline into the smile block, so it is no longer a scorecard.
   server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   render(<MarketPage />);
 
+  const cards = await screen.findByLabelText("Volatility scorecards");
   const atm = await screen.findByLabelText("ATM level");
   expect(within(atm).getByText("20.0%")).toBeInTheDocument();
   expect(within(screen.getByLabelText("Skew 25Δ")).getByText("+7.0 vp")).toBeInTheDocument();
-  expect(
-    within(screen.getByLabelText("Convexity 25Δ")).getByText("+13.0 vp"),
-  ).toBeInTheDocument();
   // RV−IV is the persisted iv_vs_realized signal, not a recompute.
   expect(within(screen.getByLabelText("RV − IV")).getByText("-1.8 vp")).toBeInTheDocument();
+  // The three new persisted-signal cards.
+  expect(
+    within(screen.getByLabelText("Term-structure slope")).getByText("+1.2 vp"),
+  ).toBeInTheDocument();
+  expect(within(screen.getByLabelText("IV-rank")).getByText("62.0%")).toBeInTheDocument();
+  expect(within(screen.getByLabelText("ρ̄")).getByText("50.0%")).toBeInTheDocument();
+  // Convexity is no longer a headline card (it moved to the smile block).
+  expect(within(cards).queryByLabelText("Convexity 25Δ")).not.toBeInTheDocument();
+});
+
+test("the sign legend prints so the trader never inverts a sign", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  const legend = await screen.findByLabelText("Sign legend");
+  expect(legend).toHaveTextContent(/vol cheap \(buy\)/i);
+  expect(legend).toHaveTextContent(/vol rich \(sell\)/i);
+  expect(legend).toHaveTextContent(/backwardation = risk imminent/i);
+});
+
+test("a signed scorecard reads in the sign colour (green positive, coral negative)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  // Skew +7.0 vp is positive → the value carries the positive class; RV−IV −1.8 vp negative.
+  const skewValue = within(await screen.findByLabelText("Skew 25Δ")).getByText("+7.0 vp");
+  expect(skewValue).toHaveClass("positive");
+  const rvValue = within(screen.getByLabelText("RV − IV")).getByText("-1.8 vp");
+  expect(rvValue).toHaveClass("negative");
+});
+
+test("convexity is demoted into the smile block (curvature reads with the smile)", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  // The 3m slice: ATM 0.20, IV(25Δp) interp 0.30, IV(25Δc) interp 0.23 →
+  // convexity = 0.30 + 0.23 − 0.40 = +0.13 → +13.0 vp, now beside the smile, not in the headline.
+  const convexity = await screen.findByLabelText("Convexity 25Δ");
+  expect(within(convexity).getByText("+13.0 vp")).toBeInTheDocument();
+});
+
+test("the rate diagnostics render r(T) + carry/dividend for the selected tenor", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  render(<MarketPage />);
+
+  // The 3m slice carries rate_diagnostics: forward 4812.5, r 2.54%, carry −1.31%, dividend 3.85%.
+  // r(T) is the explicit, displayed interest-rate input (the owner's ask), with its annualized unit.
+  const rates = await screen.findByLabelText("Rate diagnostics");
+  expect(within(rates).getByText(/Rate diagnostics — 3m/i)).toBeInTheDocument();
+  expect(within(rates).getByText(/2\.540% \/yr \(annualized, continuous\)/)).toBeInTheDocument();
+  expect(within(rates).getByText(/-1\.310% \/yr/)).toBeInTheDocument();
+  expect(within(rates).getByText(/3\.850% \/yr/)).toBeInTheDocument();
+  // The forward renders as a plain price in the index currency.
+  expect(within(rates).getByText(/4,812\.5 /)).toBeInTheDocument();
+});
+
+test("the rate diagnostics show an honest gap when no forward was banked for the tenor", async () => {
+  // ANALYTICS_QUOTED's 3m slice has no rate_diagnostics field (undefined) → the projection-gap note.
+  server.use(jsonGet("/api/analytics", ANALYTICS_QUOTED));
+  render(<MarketPage />);
+
+  const rates = await screen.findByLabelText("Rate diagnostics");
+  expect(within(rates).getByText(/No forward\/rate diagnostic banked/i)).toBeInTheDocument();
 });
 
 test("a scorecard with no data honestly shows '—' (never fabricated)", async () => {

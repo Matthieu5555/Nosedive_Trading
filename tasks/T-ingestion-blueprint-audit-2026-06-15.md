@@ -19,7 +19,7 @@ P0 holes**, and nothing on the path **fails loud**. Fix the P0 cluster before th
 > observed row; two-sided gate moves to the derived layer", on main) — capture now sequences
 > `[*two_sided, *quarantined]` so every observed row reaches raw. #2 + #4 are owned (and #4 newly
 > folded) by [infra-raw-invariant](infra-raw-invariant.md), now **un-blocked** (QA-FIX landed).
-> #3 = [platform-capture-alert-wiring](platform-capture-alert-wiring.md) (still open, P0).
+> #3 = [platform-capture-alert-wiring](archive/platform-capture-alert-wiring.md) (**done & archived 2026-06-17**, Stream D `37ab66c`).
 
 | # | Finding | Evidence | Fix |
 |---|---|---|---|
@@ -52,7 +52,7 @@ P0 holes**, and nothing on the path **fails loud**. Fix the P0 cluster before th
 ## Already decided / tracked elsewhere (not new work here)
 
 - **ADR 0051 implementation** (remove constituent-option capture, ρ̄ → realized vol): `blueprint-return-dispersion-diagnostic.md` — ⏸ after tonight's close. (Audit cap-F1 re-confirms the lane is still wired in `live_capture.py:134` / `eod_run.py:61`.)
-- **#3 alerting** = `platform-capture-alert-wiring.md` (P0, already on the board).
+- **#3 alerting** = `platform-capture-alert-wiring.md` (**done & archived 2026-06-17**, Stream D `37ab66c`).
 - **#2/#4 raw invariant** = `infra-raw-invariant.md` (was QUEUED/parked — this audit promotes it to P0 and gives it teeth).
 
 ## What is CONFORM (no action — recorded so we don't re-audit)

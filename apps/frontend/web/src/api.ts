@@ -908,7 +908,7 @@ export async function fetchReconciliation(
   return getJson<ReconciliationResponse>(`/api/reconciliation${suffix}`, signal);
 }
 
-// --- 2D book composition (TARGET §5.8 / Onglet 2 ② Le book) ---------------------------------
+// --- 2D book composition (TARGET §5.8 / Tab 2 ② The Book) ---------------------------------
 // Mirrors apps/frontend/src/algotrading/frontend/routers/compose.py. The operator composes a
 // named *book* from an ordered set of sub-strategies (each a 2A basket); the BFF resolves each
 // layer's legs, calls the landed pure build_book_greeks / book_stress_surface, and serializes the

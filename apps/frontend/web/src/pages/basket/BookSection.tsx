@@ -10,11 +10,11 @@ import { FillsLedger } from "../../components/FillsLedger";
 import { PositionsTable } from "../../components/PositionsTable";
 import { useFetch } from "../../hooks/useFetch";
 
-// ② Le book — the composed/booked positions that are the *input* to the stress, folded in from
+// ② The Book — the composed/booked positions that are the *input* to the stress, folded in from
 // the standalone Positions page (book summary $Greeks, open legs, fills ledger). Driven by the
 // shared Basket underlying + trade date, so the book read and the stress share one context. The
-// broker reconciliation is deliberately NOT folded here — it lives on Onglet 3 (post-orders).
-export function LeBookSection({
+// broker reconciliation is deliberately NOT folded here — it lives on the Orders flow (post-orders).
+export function BookSection({
   underlying,
   tradeDate,
   currency,

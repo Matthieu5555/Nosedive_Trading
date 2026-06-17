@@ -117,7 +117,7 @@ test("no rate family in the basket payload renders no rate-sweep panel (backward
   expect(screen.queryByRole("table", { name: /rate-shock sweep/i })).not.toBeInTheDocument();
 });
 
-test("the named historical crises render as shock presets in ③ Choquer", () => {
+test("the named historical crises render as shock presets in ③ Stress", () => {
   render(
     <StressTab
       canStress

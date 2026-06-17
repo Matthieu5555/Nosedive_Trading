@@ -11,7 +11,7 @@ type StressTabProps = {
   stress: BasketScenariosResponse | null;
   currency: string;
   onStress: () => void;
-  // ③ Choquer shock presets: the named historical crises (2008, COVID, …) replayed against the
+  // ③ Stress shock presets: the named historical crises (2008, COVID, …) replayed against the
   // book, folded in from the standalone Risk Scenarios page. Empty list → labelled empty state.
   namedScenarios: NamedScenario[];
   namedLoading: boolean;

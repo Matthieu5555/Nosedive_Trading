@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 
 import type { FillsResponse, PositionsResponse } from "../../api";
 import { jsonGet, server } from "../../test/server";
-import { LeBookSection } from "./LeBookSection";
+import { BookSection } from "./BookSection";
 
 const POSITIONS: PositionsResponse = {
   source: "fills",
@@ -63,9 +63,9 @@ const FILLS: FillsResponse = {
   ],
 };
 
-test("② Le book folds in the Positions content — book summary, open legs and fills ledger", async () => {
+test("② The Book folds in the Positions content — book summary, open legs and fills ledger", async () => {
   server.use(jsonGet("/api/positions", POSITIONS), jsonGet("/api/positions/fills", FILLS));
-  render(<LeBookSection underlying="SPX" tradeDate="" currency="$" />);
+  render(<BookSection underlying="SPX" tradeDate="" currency="$" />);
 
   const summary = await screen.findByRole("table", { name: /Book dollar Greeks/i });
   expect(within(summary).getByText("2.5 × 10³")).toBeInTheDocument();
@@ -78,7 +78,7 @@ test("② Le book folds in the Positions content — book summary, open legs and
 });
 
 test("no underlying selected does not fetch the book (avoids an unkeyed read)", () => {
-  render(<LeBookSection underlying="" tradeDate="" currency="$" />);
+  render(<BookSection underlying="" tradeDate="" currency="$" />);
   // The section still renders its lead copy, but with no underlying it issues no positions read.
   expect(screen.getByText(/The book the stress acts on/i)).toBeInTheDocument();
 });

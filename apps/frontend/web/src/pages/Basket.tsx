@@ -22,9 +22,9 @@ import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
 import type { BasketScenariosResponse, ScenariosResponse } from "../stressApi";
 import { AttributionTab } from "./basket/AttributionTab";
+import { BookSection } from "./basket/BookSection";
 import { BuildPriceTab } from "./basket/BuildPriceTab";
 import { ComposeTab } from "./basket/ComposeTab";
-import { LeBookSection } from "./basket/LeBookSection";
 import { StressTab } from "./basket/StressTab";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
@@ -59,14 +59,14 @@ export function BasketPage() {
   const [attributionError, setAttributionError] = useState<string | null>(null);
   const [attributionLoading, setAttributionLoading] = useState(false);
 
-  // ① Composer — book composition (B1): layer decorrelated sub-strategies into one book.
+  // ① Compose — book composition (B1): layer decorrelated sub-strategies into one book.
   const subStrategies = useFetch<SubStrategiesResponse>("/api/compose/sub-strategies");
   const [layers, setLayers] = useState<ComposeLayerInput[]>([]);
   const [book, setBook] = useState<ComposeResponse | null>(null);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeLoading, setComposeLoading] = useState(false);
 
-  // ③ Choquer — named historical crises, folded in from the standalone Risk Scenarios page as
+  // ③ Stress — named historical crises, folded in from the standalone Risk Scenarios page as
   // shock presets. The persisted Risk path serves the named scenarios; the basket reuses them.
   const namedScenarios = useFetch<ScenariosResponse>("/api/risk/scenarios");
 
@@ -258,9 +258,9 @@ export function BasketPage() {
       <Tabs defaultValue="compose" className="market-tabs">
         <div className="market-tabs__bar max-w-full overflow-x-auto">
           <TabsList className="market-tabs__list max-w-none">
-            <TabsTrigger value="compose">① Composer</TabsTrigger>
-            <TabsTrigger value="book">② Le book</TabsTrigger>
-            <TabsTrigger value="stress">③ Choquer</TabsTrigger>
+            <TabsTrigger value="compose">① Compose</TabsTrigger>
+            <TabsTrigger value="book">② The Book</TabsTrigger>
+            <TabsTrigger value="stress">③ Stress</TabsTrigger>
             <TabsTrigger value="attribution">④ Attribution</TabsTrigger>
           </TabsList>
         </div>
@@ -293,7 +293,7 @@ export function BasketPage() {
         </TabsContent>
 
         <TabsContent value="book">
-          <LeBookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
+          <BookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
         </TabsContent>
 
         <TabsContent value="stress">

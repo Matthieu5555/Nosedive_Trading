@@ -62,3 +62,40 @@ correctly labelled, in dollars" gap this layer owns.
 Vanna/Volga/Charm (raw + cash, unit-tagged) render on the Onglet 1 ③ Panneau Ténor Greeks block;
 Rho/Vanna/Volga attribution terms render in the Onglet 2 ④ Attribution panel; small Greeks keep
 their sig-figs; no math re-implemented in the BFF; web gate green and the Python BFF tests green.
+
+---
+
+## Resolution — DONE & ARCHIVED 2026-06-17 (`ccef744`)
+
+The Onglet-1 ③ Panneau Ténor remainder landed. Two measured corrections to the spec
+as written:
+
+1. **The read-from-`RiskMetricCell` premise was dead.** Measured against the canonical
+   store, the `pricing_results` layer (what `/api/risk/metrics` reads) is **empty per
+   index close** — the risk views run only on a synthetic demo book built on the fly.
+   A front-only TenorPanel wiring would have rendered an empty table.
+2. **There was no "projection math-layer change" to make.** `price_european` already
+   computes vanna/volga/charm at projection time; `_build_cell` was silently dropping
+   them (never passed into `dollar_greeks`, no fields on `ProjectedOptionAnalytics`).
+
+So the fix was a no-new-math carry-through on the analytics grid, where the second-order
+Greeks belong beside the first-order ones they extend:
+
+- `ProjectedOptionAnalytics` gained additive-nullable `vanna/volga/charm`,
+  `dollar_vanna/volga/charm`, and their unit fields.
+- `surfaces/projection.py::_build_cell` passes the already-computed values through
+  `dollar_greeks(...)` and onto the cell (existing columns byte-identical; the
+  contracts-plane golden regenerated additive-only, new keys null).
+- The BFF analytics serializer surfaces `metrics.vanna/volga/charm` (raw + dollar +
+  unit), present-with-null for a close projected before the field existed.
+- `api.ts` adds an optional `NullableDollarMetric` trio; `DollarGreeksByMaturity.tsx`
+  renders a labelled second-order sub-table, or an explicit "not banked for this close"
+  note.
+
+Tests: projection presence + units; an **independent finite-difference** cross-check
+(vanna = ∂Δ/∂σ, volga = ∂vega/∂σ, charm = −∂Δ/∂T) + the $-monetization rule; BFF
+present/null serialization; web render present + gap. Full gate green
+(ruff/mypy/lint-imports/pytest; web lint/tsc/220 vitest).
+
+Both second-order panels now reach the operator's screen: Onglet-2 ④ Attribution
+(`b2f95bb`, earlier) and Onglet-1 ③ Panneau Ténor (`ccef744`, this).

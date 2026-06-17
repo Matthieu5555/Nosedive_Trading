@@ -1,65 +1,92 @@
-# T-clean-ingestion-2026-06-16 — re-derive (post-0052 QC) + prune the 2026-06-16 SX5E close
+# T-clean-ingestion-2026-06-16 — purge the constituent-option junk + full recompute-from-raw (06-15 & 06-16), re-capture 06-17 live
 
-**Status:** open — **P2 operational housekeeping** (2026-06-17). **Lane:** `platform-` (data ops).
-**Source:** the 2026-06-17 ingestion audit (yesterday's close) + [T-intent-vs-delivery-audit-findings-2026-06-16](T-intent-vs-delivery-audit-findings-2026-06-16.md).
-**Tool:** `scripts/rebuild_from_raw.py` (landed `ced031a`).
+**Status:** open — **P1 data cleanup, BLOCKED on a prerequisite bug** (see §0). **Lane:** `platform-` (data ops).
+**Owner ruling (2026-06-17, Vincent):** *"clean the raw of everything that isn't Stoxx50 options or daily bars, EMPTY all the computed layer, recompute from the cleaned raw, and re-capture today's live end-to-end."*
+**Depends on:** the recompute-from-raw bug in §0 being fixed FIRST. **Relates:** [ADR 0051](../.agent/decisions/0051-return-to-blueprint-dispersion-realized-vol-diagnostic.md) (index options only; constituent option capture retired), blueprint Part XV (raw Tier-1, all derived recomputable from raw), [T-restore-overwrite-last-wins](T-restore-overwrite-last-wins.md) (the C1/C2/C1.2 overwrite fix — **landed** `5a5abf4`).
 
-## Why
+---
 
-The banked **2026-06-16** SX5E close shows `qc=fail` — but that verdict is **PRE-0052** (run 15:05
-CEST, before the QC recalibration `f1a6205`/[ADR 0052](../.agent/decisions/0052-qc-coverage-floors-to-blueprint-interpolate-and-fallback.md)
-landed at 23:59). The current code would not reproduce it. There are also **42 stale `run=` partitions**
-(overwrite churn) for the day. **Raw is intact and complete** (verified — incl. the last-only LEAP
-events), so **everything here is recompute-from-raw; nothing is lost.**
+## 0. ⛔ BLOCKER — recompute-from-raw is INCOMPLETE (fix before any recompute)
 
-## Scope (blueprint: Part XV — raw is Tier-1, all derived recomputable from raw)
+A live verification on 2026-06-17 proved `rebuild_from_raw` / `reconstruct_day` does **not** reproduce
+the front's data from raw — recompute would silently **blank the vol nappe**:
 
-0. **Provisional archive (safety net — do this FIRST, before any mutation).** Snapshot **everything
-   that will be altered** to `data/_provisional_archive/2026-06-16-pre-cleanup/` (out of the canonical
-   read path): the 2026-06-16 derived partitions (`surface_grid`, `qc_results`, `option_quote_snapshot`,
-   `projected_option_analytics`) **and** the 42 stale `run=` partitions about to be pruned. (`rebuild_from_raw`
-   already backs up its own purge targets to `_rebuild_backups`, but this archive is **explicit and
-   complete** — it also covers the pruned runs, which the script's backup does not.) Recoverable until the
-   post-validation cleanup below.
-1. **Re-derive** the derived layer for `trade_date=2026-06-16` from raw via
-   `scripts/rebuild_from_raw.py` (no broker re-hit; raw byte-identical, hash-verified). One clean run.
-2. **Re-run QC** for 2026-06-16 under current (post-0052) code → a clean verdict replacing the
-   pre-0052 CRITICAL. ⚠️ `rebuild_from_raw`/`reconstruct_day` does **not** produce `qc_results` (out of
-   scope there) — run QC separately via the `run_qc` path. Sequence: re-derive → re-run QC.
-3. **Prune the 42 stale `run=` partitions** (surface_grid / qc_results / snapshot / analytics) for the
-   day, keeping only the re-derived clean run. Pure duplicates — housekeeping.
+- Original 2026-06-16 had **117,216** `projected_option_analytics` rows (SX5E = 20,283). A
+  `rebuild_from_raw` recompute produced **0** projected rows + **0** `pricing_results` (snapshot / iv /
+  surface rebuilt fine).
+- **Root cause:** `_build_projected_analytics` (`actor/driver.py:606`) early-returns `()` when
+  `provider is None`. The live eod passes `provider="IBKR"` (`eod_stages._analytics`); but
+  **`reconstruct_day` has no `provider` param at all** (`reconstruction/batch.py:52`) → `run_analytics`
+  gets `provider=None` → zero projected + zero pricing on **every** recompute.
+- **Also missing from reconstruct:** `strategy_signals` (ρ̄ / dispersion) and `qc_results` /
+  `triage_records` are **not produced by `reconstruct_day` at all** (only the 9 `REBUILT_TABLES`).
 
-## NOT in scope (blueprint-conform — do NOT do these)
+This violates blueprint Part XV ("all derived recomputed from raw"). **Fix required before recompute:**
 
-- **Do NOT remove the degenerate ultra-short slice** (~2-3d). Blueprint is **flag-not-reject**
-  (`04-implementation-guides:208`): the slice **stays, flagged**; the FRONT clamps it (that is
-  [infra-surface-fit-quality](infra-surface-fit-quality.md) lane 2, re-homing onto the Onglet-1 nappe).
-  This task does not touch surface content.
-- **Do NOT delete the last-only 2y/3y raw events** — valid `last` events, kept as the audit trail
-  (they correctly never reached `iv_points`/`surface_grid`).
+1. Thread `provider` (default `DEFAULT_PROVIDER = "IBKR"`) through `reconstruct_day` → `run_analytics`
+   so `projected_option_analytics` + `pricing_results` regenerate. Verify `_persist_outputs` writes them.
+2. Decide + implement signals/qc on recompute: either (a) extend the reconstruct path to also run
+   `persist_signal_set` + `run_qc` for the day, or (b) document that recompute covers analytics only and
+   signals/qc are regenerated by a separate explicit step. (a) is the blueprint-true "recompute from raw".
+3. Regression test: recompute a known day from raw → `projected_option_analytics` row count matches the
+   live run (non-zero), within reconstruct's collapse semantics. **This deserves its own ADR/bug task.**
 
-## Caution — no precipitation
+---
 
-Everything is recompute-from-raw → reversible, nothing lost. **`rebuild_from_raw --dry-run` first**
-(reports targets, touches nothing). Validate the re-derived run + the new QC verdict **before** pruning.
-The only genuinely unobtainable data is two-sided 2y/3y LEAP quotes the broker never made.
+## 1. Approach (owner-ruled, blueprint-conform)
 
-## Acceptance
+**One clean rule for the raw:** keep only **(a) SX5E option-chain events** and **(b) constituent
+`daily_bar` prices** (the realized-vol input for Eq. 23 / ρ̄). Everything else in the close-capture
+lane is ADR-0044/0045 junk (constituent option chains, pre-0051) → **purge**.
 
-- 2026-06-16 has **one** clean run with a **post-0052 QC verdict** (the pre-0052 CRITICAL gone).
-- The 42 stale `run=` partitions pruned; raw byte-identical (rebuild's hash-verify passes).
-- The degenerate ultra-short slice is still present-and-flagged (untouched); its front clamp is
-  tracked separately under `infra-surface-fit-quality` lane 2.
+1. **Clean the RAW** of all non-{SX5E-options, daily_bar} partitions for the junk days.
+2. **EMPTY the entire computed layer** (snapshot + derived + analytics + signals + qc) for those days —
+   no surgical per-partition keep; wipe and recompute.
+3. **Recompute** from the cleaned raw (needs §0 fixed).
+4. **Re-capture 2026-06-17 live end-to-end** (the cron re-fetches at close anyway) — doubles as the
+   live ingestion test of the landed overwrite-last-wins fix.
 
-## ⚠️ Post-validation cleanup (REQUIRED follow-up — do NOT skip)
+## 2. Scope — which days, which junk (mapped 2026-06-17, nothing mutated yet)
 
-The provisional archive (Step 0) is a **rollback net only**. Once the re-derived run + the post-0052
-QC verdict are **validated by the owner** (the front nappe reads clean, the QC verdict is sane), the
-archive must be **deleted** so it does not become stale shadow data:
+`raw_market_events` by `trade_date`:
+- **06-12**: `SX5E` only → already clean, no action.
+- **06-15**: 9 underlyings (ALV ASML ENR MC SAP SIE SU TTE + SX5E) → **8 constituent junk** → clean.
+- **06-16**: **49** underlyings (SX5E + 48 constituents) → the big junk day → clean.
+- **06-17**: `SX5E` only (ADR-0051-correct scope) → raw clean, but **2-fire accumulation** (captured
+  pre-C1.1) → re-capture live e2e supersedes it.
 
-- [ ] Owner validates the re-derived 2026-06-16 run + QC verdict.
-- [ ] **Delete `data/_provisional_archive/2026-06-16-pre-cleanup/`** and the `rebuild_from_raw`
-      `_rebuild_backups` entry for the day.
-- [ ] Confirm the canonical read path holds exactly **one** clean run; close this task.
+**Junk footprint to purge (verified on a temp copy — full-clean validated):**
+- `raw/raw_market_events` — 48 (06-16) / 8 (06-15) constituent `underlying=` partitions.
+- `raw/instrument_master` — constituent option masters for the junk days.
+- `reference/discovery_conid_cache` — constituent conid caches for the junk days.
+- `qc/constituent_capture_outcomes` — **entire table is ADR-0051-RETIRED** → delete it wholesale (all dates).
+- All computed: `snapshot/market_state_snapshots`, `derived/*` (forward_curve, iv_points, surface_*,
+  pricing_results, risk_aggregates, scenario_results), `analytics/projected_option_analytics`,
+  `signals/strategy_signals` (**provider-nested**: `provider=IBKR/trade_date=…`), `qc/qc_results`,
+  `qc/triage_records` — wipe each `trade_date=DAY` dir (incl. all 42 `run=` + constituent subdirs).
+- **KEEP / untouched:** `raw/daily_bar` (constituent **prices** = realized-vol input, separate backfill lane).
 
-Until this runs, the provisional archive is the recovery source — **do not delete it before owner sign-off.**
+## 3. Validated facts (temp sandbox `/tmp/c3_fix`, zero canonical touch)
+
+- Purge of all the above → 06-16 ends with **0 `run=`, 0 non-SX5E underlying** (excl. daily_bar), 0 retired table.
+- `rebuild_from_raw --index SX5E`: snapshot 132,669 → **2,369 rows, 0 dups, SX5E only**; `reconstruct_day`
+  ran clean (**no `DuplicateKeyInBatch`** — the prior failure was pre-C2, now resolved), raw hash-verified.
+- BUT `projected_option_analytics` + `pricing_results` came back **0** → the §0 blocker.
+
+## 4. Safety / order
+
+- **Provisional archive exists:** `data/_provisional_archive/2026-06-16-pre-cleanup/` (210M, covers raw 49
+  underlyings + all derived). **Archive 06-15 too** before mutating it.
+- **Owner gate:** no canonical `delete` until owner go (boundary set 2026-06-17).
+- **Order:** ① fix §0 bug (+ test) → ② archive 06-15 → ③ purge junk (06-15, 06-16) → ④ recompute
+  (analytics + signals + qc) → ⑤ re-capture 06-17 live e2e → ⑥ owner validates front nappe + ρ̄ + QC →
+  ⑦ **delete the provisional archives + `_rebuild_backups`** (no shadow data).
+
+## 5. Acceptance
+
+- 06-15 & 06-16 raw = **SX5E options only** (+ `daily_bar` untouched); zero constituent option junk anywhere.
+- Computed layer fully recomputed from raw, **including non-zero `projected_option_analytics`** (front
+  nappe reads), ρ̄ signals, and a current-code QC verdict; zero `run=` partitions; retired
+  `constituent_capture_outcomes` table gone.
+- 06-17 re-captured live end-to-end, one clean slot (overwrite-last-wins, no accumulation).
+- Provisional archives + rebuild backups deleted after owner sign-off.

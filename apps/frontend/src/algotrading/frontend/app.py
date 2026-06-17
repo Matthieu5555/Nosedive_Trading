@@ -57,6 +57,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     from .routers import backtest as backtest_router  # noqa: PLC0415
     from .routers import basket as basket_router  # noqa: PLC0415
     from .routers import booking as booking_router  # noqa: PLC0415
+    from .routers import compose as compose_router  # noqa: PLC0415
     from .routers import config as config_router  # noqa: PLC0415
     from .routers import constituents as constituents_router  # noqa: PLC0415
     from .routers import coverage as coverage_router  # noqa: PLC0415
@@ -91,6 +92,7 @@ def create_app(ctx: AppContext | None = None) -> FastAPI:
     app.include_router(positions_router.router)
     app.include_router(backtest_router.router)
     app.include_router(reconciliation_router.router)
+    app.include_router(compose_router.router)
 
     @app.get("/healthz", tags=["ops"])
     def liveness() -> JSONResponse:

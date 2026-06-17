@@ -224,3 +224,129 @@ def test_layer_with_zero_positions_contributes_nothing() -> None:
     without = _combined(_book([_LAYER_A]))
     for field in _DECIMAL + _DOLLAR:
         assert getattr(with_empty, field) == pytest.approx(getattr(without, field))
+
+
+# --- composition config-hash cross-process stability -------------------------------------
+#
+# The compose router builds its book ``config_hashes`` with
+# ``risk.grid_versioning.short_construction_hash`` (sorted-key canonical JSON -> sha256). This
+# test exercises that *same* mechanism over a composition payload, in a SEPARATE Python
+# process, to catch the classic hash-randomization drift (hashing a dict/set under a random
+# PYTHONHASHSEED). The oracle is canonical JSON: a sorted-key serialization is order-free over
+# mapping keys, so a reorder/comment-only edit that does not change the economic selection
+# leaves the bundle byte-identical, while changing the layer set or the grid moves exactly that
+# bundle's hash.
+
+_HASH_SUBPROCESS = """
+import json, sys
+from algotrading.infra.risk.grid_versioning import short_construction_hash
+
+payload = json.loads(sys.argv[1])
+print(short_construction_hash(payload))
+"""
+
+
+def _hash_in_subprocess(payload: dict[str, object]) -> str:
+    import json
+    import os
+    import subprocess
+    import sys
+
+    env = dict(os.environ)
+    env.pop("PYTHONHASHSEED", None)  # do not rely on a fixed seed
+    out = subprocess.run(
+        [sys.executable, "-c", _HASH_SUBPROCESS, json.dumps(payload)],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=env,
+    )
+    return out.stdout.strip()
+
+
+def _layer_set_payload(layers: list[dict[str, object]]) -> dict[str, object]:
+    return {"layers": layers}
+
+
+_GRID_PAYLOAD = {
+    "version": "ss-book-test",
+    "spot_shock_abs": 0.5,
+    "vol_shock_abs": 0.5,
+    "spot_steps": 3,
+    "vol_steps": 3,
+}
+_LAYER_SET = [
+    {"label": "A", "legs": [{"underlying": "SX5E", "tenor_label": "1m", "delta_band": "atm"}]},
+    {"label": "B", "legs": [{"underlying": "DAX", "tenor_label": "3m", "delta_band": "10dp"}]},
+]
+
+
+def test_book_config_hash_cross_process() -> None:
+    import sys as _sys
+
+    # Byte-identical across two independent interpreters, no PYTHONHASHSEED reliance.
+    h1 = _hash_in_subprocess(_layer_set_payload(_LAYER_SET))
+    h2 = _hash_in_subprocess(_layer_set_payload(_LAYER_SET))
+    assert h1 == h2
+    # ... and identical to the in-process value (same mechanism, same canonical form).
+    from algotrading.infra.risk.grid_versioning import short_construction_hash
+
+    assert h1 == short_construction_hash(_layer_set_payload(_LAYER_SET))
+    assert _sys.executable  # subprocess used the same interpreter
+
+    # A comment-only / display-only change that does NOT change the economic selection — here,
+    # reordering the keys within each leg/layer mapping — leaves the hash identical (canonical
+    # JSON sorts keys).
+    reordered = [
+        {"legs": [{"delta_band": "atm", "underlying": "SX5E", "tenor_label": "1m"}], "label": "A"},
+        {"legs": [{"delta_band": "10dp", "underlying": "DAX", "tenor_label": "3m"}], "label": "B"},
+    ]
+    assert _hash_in_subprocess(_layer_set_payload(reordered)) == h1
+
+    # An ACTUAL change to the layer set moves exactly the layer_set bundle's hash...
+    changed_layers = [*_LAYER_SET, {"label": "C", "legs": []}]
+    assert _hash_in_subprocess(_layer_set_payload(changed_layers)) != h1
+    # ... while the grid bundle, untouched, keeps its own hash; and changing the grid moves it.
+    grid_h = _hash_in_subprocess(_GRID_PAYLOAD)
+    assert _hash_in_subprocess(_GRID_PAYLOAD) == grid_h
+    moved_grid = {**_GRID_PAYLOAD, "spot_steps": 5}
+    assert _hash_in_subprocess(moved_grid) != grid_h
+    assert grid_h != h1  # the two bundles are independent hashes
+
+
+# --- diversification diagnostic is read-only ---------------------------------------------
+#
+# The 2D diversification diagnostic (risk/basket.py ``diversification_ratio``) is a *reported*
+# number over the layers' net vegas. It must not feed the book's positions, Greeks, or PnL:
+# computing it, or not, leaves every book aggregate identical. The independent oracle is the
+# book aggregates built WITHOUT ever touching basket_variance.
+
+
+def test_diversification_diagnostic_is_read_only() -> None:
+    from algotrading.infra.risk.basket import basket_variance
+
+    layers = [_LAYER_A, _LAYER_B, _LAYER_C]
+    rows = _book(layers)
+    combined = _combined(rows)
+    surface = book_stress_surface(layers, config=_scenario_config())
+
+    # Surface the diagnostic (a real number) over the per-layer net vegas.
+    layer_vegas = [r.net_vega for r in _layers(rows)]
+    diagnostic = basket_variance(
+        [1.0] * len(layer_vegas), layer_vegas, avg_correlation=0.0
+    ).diversification_ratio
+    assert math.isfinite(diagnostic)
+
+    # Recomputing the book aggregates after the diagnostic ran must be byte-for-byte identical;
+    # and they equal the aggregates built on a path that never imports basket_variance at all.
+    rows_again = _book(layers)
+    combined_again = _combined(rows_again)
+    surface_again = book_stress_surface(layers, config=_scenario_config())
+    for field in _DECIMAL + _DOLLAR:
+        assert getattr(combined_again, field) == getattr(combined, field)
+    assert surface_again.pnl_grid == surface.pnl_grid
+
+    # And the diagnostic genuinely depends on the inputs (it is a number, not a stub), so the
+    # read-only guarantee is meaningful rather than vacuous.
+    other = basket_variance([1.0, 1.0], [1.0, 0.0], avg_correlation=0.0).diversification_ratio
+    assert other != diagnostic

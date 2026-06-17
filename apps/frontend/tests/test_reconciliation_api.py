@@ -197,3 +197,153 @@ def test_reconciliation_endpoint_400_when_no_broker_account(tmp_path: Path) -> N
         resp = client.get("/api/reconciliation")
     assert resp.status_code == 400
     assert resp.json()["error"] == "no_broker_account"
+
+
+DEFAULT_QUANTITY_TOLERANCE_ABS = 1e-6
+
+
+def _build_client(
+    tmp_path: Path,
+    *,
+    broker_positions: list[tables.BrokerPosition],
+    broker_fills: list[tables.BrokerFill],
+    ledger_fills: tuple[Fill, ...],
+    cash: bool = True,
+) -> TestClient:
+    store_root = tmp_path / "data"
+    store = ParquetStore(store_root)
+    store.write("broker_positions", broker_positions)
+    if cash:
+        store.write(
+            "broker_cash_balances",
+            [
+                tables.BrokerCashBalance(
+                    as_of_ts=AS_OF,
+                    account_id=ACCOUNT,
+                    currency="EUR",
+                    cash_balance=100000.0,
+                    settled_cash=98000.0,
+                    net_liquidation=109310.0,
+                )
+            ],
+        )
+    if broker_fills:
+        store.write("broker_fills", broker_fills)
+    if ledger_fills:
+        ledger_path = store_root / "booking" / "fills.jsonl"
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        JsonlFillsLedger(ledger_path).append_many(ledger_fills)
+    ctx = AppContext(
+        store_root=store_root,
+        configs_dir=store_root.parent / "configs",
+        store=store,
+        default_underlying="SX5E",
+    )
+    return TestClient(create_app(ctx))
+
+
+def test_reconciliation_endpoint_flags_position_break_when_diff_exceeds_tolerance(
+    tmp_path: Path,
+) -> None:
+    with _build_client(
+        tmp_path,
+        broker_positions=[
+            _broker_position(conid=CALL_CONID, contract_key=CALL_KEY, quantity=5.0)
+        ],
+        broker_fills=[],
+        ledger_fills=(
+            _fill(fill_id="f-1", contract_key=CALL_KEY, signed_qty="3", conid=CALL_CONID),
+            _fill(fill_id="f-2", contract_key=CALL_KEY, signed_qty="5", conid=CALL_CONID),
+        ),
+    ) as client:
+        body = client.get("/api/reconciliation").json()
+    assert body["ok"] is False
+    assert body["positions"]["counts"]["break"] == 1
+    assert body["positions"]["counts"]["match"] == 0
+    line = {ln["join_key"]: ln for ln in body["positions"]["lines"]}[str(CALL_CONID)]
+    assert line["status"] == "break"
+    assert line["broker_quantity"] == pytest.approx(5.0)
+    assert line["book_quantity"] == pytest.approx(8.0)
+    assert line["quantity_diff"] == pytest.approx(-3.0)
+
+
+def test_reconciliation_endpoint_flags_book_only_position(tmp_path: Path) -> None:
+    with _build_client(
+        tmp_path,
+        broker_positions=[
+            _broker_position(conid=CALL_CONID, contract_key=CALL_KEY, quantity=5.0)
+        ],
+        broker_fills=[],
+        ledger_fills=(
+            _fill(fill_id="f-1", contract_key=CALL_KEY, signed_qty="5", conid=CALL_CONID),
+            _fill(fill_id="f-2", contract_key=PUT_KEY, signed_qty="-4", conid=PUT_CONID),
+        ),
+    ) as client:
+        body = client.get("/api/reconciliation").json()
+    assert body["ok"] is False
+    assert body["positions"]["counts"]["book_only"] == 1
+    assert body["positions"]["counts"]["match"] == 1
+    line = {ln["join_key"]: ln for ln in body["positions"]["lines"]}[str(PUT_CONID)]
+    assert line["status"] == "book_only"
+    assert line["broker_quantity"] is None
+    assert line["book_quantity"] == pytest.approx(-4.0)
+
+
+def test_reconciliation_endpoint_flags_broker_only_fill(tmp_path: Path) -> None:
+    with _build_client(
+        tmp_path,
+        broker_positions=[
+            _broker_position(conid=CALL_CONID, contract_key=CALL_KEY, quantity=5.0)
+        ],
+        broker_fills=[
+            _broker_fill(conid=CALL_CONID, contract_key=CALL_KEY, side="BUY", quantity=5.0),
+            _broker_fill(conid=PUT_CONID, contract_key=PUT_KEY, side="SELL", quantity=4.0),
+        ],
+        ledger_fills=(
+            _fill(fill_id="f-1", contract_key=CALL_KEY, signed_qty="5", conid=CALL_CONID),
+        ),
+    ) as client:
+        body = client.get("/api/reconciliation").json()
+    assert body["ok"] is False
+    assert body["fills"]["counts"]["broker_only"] == 1
+    assert body["fills"]["counts"]["match"] == 1
+    line = {ln["join_key"]: ln for ln in body["fills"]["lines"]}[str(PUT_CONID)]
+    assert line["status"] == "broker_only"
+    assert line["broker_signed_quantity"] == pytest.approx(-4.0)
+    assert line["book_signed_quantity"] is None
+
+
+@pytest.mark.parametrize(
+    ("broker_quantity", "book_quantity"),
+    [
+        (2e-6, 1e-6),
+        (3e-6, 1e-6),
+    ],
+)
+def test_reconciliation_endpoint_position_tolerance_boundary(
+    tmp_path: Path, broker_quantity: float, book_quantity: float
+) -> None:
+    expected_status = (
+        "break"
+        if abs(broker_quantity - book_quantity) > DEFAULT_QUANTITY_TOLERANCE_ABS
+        else "match"
+    )
+    with _build_client(
+        tmp_path,
+        broker_positions=[
+            _broker_position(conid=CALL_CONID, contract_key=CALL_KEY, quantity=broker_quantity)
+        ],
+        broker_fills=[],
+        ledger_fills=(
+            _fill(
+                fill_id="f-1",
+                contract_key=CALL_KEY,
+                signed_qty=str(Decimal(repr(book_quantity))),
+                conid=CALL_CONID,
+            ),
+        ),
+    ) as client:
+        body = client.get("/api/reconciliation").json()
+    line = {ln["join_key"]: ln for ln in body["positions"]["lines"]}[str(CALL_CONID)]
+    assert line["status"] == expected_status
+    assert body["positions"]["counts"][expected_status] == 1

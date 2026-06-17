@@ -13,8 +13,11 @@
 | `reference_type` | Label describing whether `reference_spot` came from mid, last, close, or fallback. |
 | `maturity_years` | Year fraction between valuation time and expiry under the chosen day-count convention. |
 | `tenor_grid` | The ordered standard maturities analytics project the surface/Greeks onto (P0.1 / OQ-4): `10d`, `1m`, `3m`, `6m`, `12m`, `18m`, `2y`, `3y`. Year fractions under ACT/365: `10/365`, `1/12`, `3/12`, `6/12`, `1`, `1.5`, `2`, `3`. This is the authoritative copy (ADR 0011); `configs/universe.yaml` mirrors it and a test pins their ordered equality. |
-| `forward_price` | Chosen forward estimate for a specific maturity. |
+| `forward_price` | Chosen forward estimate for a specific maturity. The **primary**, derived term structure (put–call parity, Equations 2–4). |
 | `implied_carry` | Carry or dividend-like quantity implied by spot and forward. |
+| `futures_price` | Captured listed-futures price mapped onto a pinned tenor; a **secondary**, independently-sourced term-structure estimate (Equation F1). Captured raw — never displaces, smooths, or seeds `forward_price`. |
+| `listed_contract_id` | Identifier of the listed futures contract backing a pinned tenor. The listed expiry differs from the pinned tenor and is mapped onto it by a documented roll rule (typed config); recorded per row for audit. |
+| `forward_futures_spread` | `futures_price − forward_price` per `(underlying, tenor)`; the forward-vs-futures reconciliation diagnostic. Within the configured per-tenor tolerance $\tau(T)$ it is the expected confirming case; beyond it, a flagged triage record (feeds QC), never an exception or a correction to `forward_price`. |
 | `log_moneyness` | $\ln(\text{strike} / \text{forward\_price})$. |
 | `mid_option_price` | $(\text{bid} + \text{ask}) / 2$ for the accepted option quote. |
 | `implied_vol` | Volatility solved from price and model assumptions. |

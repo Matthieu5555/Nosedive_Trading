@@ -36,6 +36,16 @@ $$q(T) = r(T) - \frac{1}{T}\ln\!\left(\frac{F(T)}{S_0}\right)$$
 
 The junior developer should implement both a point estimate and a diagnostics bundle. The diagnostics bundle must include the list of strikes used, call and put mids, weight per strike, parity residual per strike, the chosen forward, and a quality label. This is necessary because forward errors contaminate every later quantity: moneyness, IV, surface shape, deltas, and scenario PnL.
 
+### Listed-futures cross-check (secondary term structure)
+
+Where listed-futures data is obtainable, the system may capture the exchange-listed futures term structure as a **secondary** estimate of the same forward. A listed future $\Phi(T)$ and the option-implied forward $F(T)$ carry the same information about where the index is expected to settle, so the parity-reconstructed $F(T)$ of Equations 2–4 **remains the primary forward** for all pricing, IV, moneyness, and carry. The captured future is an **independent confirmation**: it is reconciled against $F(T)$ within a documented tolerance and is **never** used to displace, smooth, or seed $F(T)$. The captured future is mapped from the discrete listed expiry onto the pinned analytics tenor (the `tenor_grid`, Part IX) by a documented roll rule that is validated typed config, not invented in code.
+
+**Equation F1. Forward–futures consistency (cross-check, not a substitution)**
+
+$$\left| \Phi(T) - F(T) \right| \le \tau(T)$$
+
+A breach is a **labelled diagnostic** — a forward-estimation or data-quality signal that feeds QC — not a correction to $F(T)$. $\tau(T)$ is a configured per-tenor tolerance. A tenor with no obtainable listed contract is a coverage gap, not a defect: the derived forward already covers it.
+
 ## Log-moneyness and total variance
 
 Quotes should be mapped into log-moneyness relative to forward, not spot. This is more stable across maturities and aligns naturally with total-variance parameterizations. For each accepted option quote, compute k = ln(K/F(T)). Also convert total variance w = sigma^2 T. Interpolate and smooth in total variance space whenever possible. A surface represented as total variance is usually easier to compare across maturities and easier to constrain for basic static arbitrage conditions.

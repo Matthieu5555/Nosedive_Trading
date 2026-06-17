@@ -1,10 +1,20 @@
 # 0053 — `FuturesPoint`: captured listed-futures term structure as a secondary leg; forward-vs-futures cross-check
 
-- **Status:** Proposed (2026-06-17). Drafted for owner review; not yet ruled.
+- **Status:** Proposed (2026-06-17). The owner has ruled **GO** on the *initiative* (pursue
+  listed-futures capture, §`tasks/1D-futures-term-structure.md`); this ADR stays **Proposed** for the
+  `FuturesPoint` **contract shape, the cross-check, and the roll convention**, which are the open
+  design choices still awaiting a domain ruling (see "Open owner questions" below). The blueprint
+  amendment that introduces the futures *product* — its executable consequence of the GO — **has
+  landed** in `docs/blueprint/` with this commit (Equation F1 + `02-math-framework.md` paragraph +
+  three `09-data-dictionary.md` rows). No `FuturesPoint` **code** lands until the contract questions
+  are ruled.
 - **Date:** 2026-06-17.
 - **Owner ruling it implements:** the 2026-06-17 **GO** on `tasks/1D-futures-term-structure.md` —
   pursue listed-futures capture **opportunistically**, where IBKR data is obtainable, as a
-  secondary cross-check that never displaces the derived forward.
+  secondary cross-check that never displaces the derived forward. The GO **supersedes the ADR-0037
+  forward-only deferral for the capture decision** and reframes the blueprint amendment from a gate
+  that kept 1D parked into **a step to execute** — which is why the amendment is merged here rather
+  than left as a draft awaiting acceptance.
 - **Supersedes, for the capture decision only:** [[0037-futures-capture-deferred-forward-only]].
   ADR 0037 deferred futures entirely and noted that a greenlight "would have required" a blueprint
   amendment + a `FuturesPoint`-or-extend decision. This ADR is that greenlight: it lifts the
@@ -113,39 +123,59 @@ displaced as primary.**
 6. **Off the critical path.** 1A→1I ship and pass with forward-only; 1D is a **parallel** cross-check
    and must never become a dependency of any of them. Its absence is not a defect in the main path.
 
-### Proposed blueprint amendment (for owner acceptance — DRAFT, do not treat as merged)
+### Blueprint amendment (LANDED with this commit, per the owner GO)
 
-> The text below is **proposed**, per ADR 0011, as the amendment that introduces the futures product
-> into the blueprint. It is **not** yet merged into `docs/blueprint/`. On owner acceptance it lands
-> as: a new **Equation (F1)** and a paragraph under `02-math-framework.md` ("Forward reconstruction
-> and carry"), and three new rows in the `09-data-dictionary.md` table.
+Per ADR 0011 the blueprint is the amendable domain contract, and the 2026-06-17 GO makes introducing
+the futures **product** a step to execute. The amendment is therefore **merged into `docs/blueprint/`
+in this same change**:
 
-**Amendment to `02-math-framework.md` — Forward reconstruction and carry (new paragraph + identity):**
+- `02-math-framework.md` — a new **"Listed-futures cross-check (secondary term structure)"**
+  subsection under "Forward reconstruction and carry", carrying **Equation F1** (forward–futures
+  consistency, `|Φ(T) − F(T)| ≤ τ(T)`) and the primary/secondary statement: $F(T)$ stays primary, the
+  captured future is an independent confirmation, never a substitution.
+- `09-data-dictionary.md` — three new rows: `futures_price` (secondary, captured raw),
+  `listed_contract_id` (listed contract behind a pinned tenor, mapped by a documented roll rule), and
+  `forward_futures_spread` (the reconciliation diagnostic with its tolerance behaviour).
 
-> The system may, where listed-futures data is obtainable, capture the exchange-listed futures
-> term structure as a **secondary** estimate of the same forward. A listed future `Φ(T)` and the
-> option-implied forward `F(T)` carry the same information about the index's expected settlement, so
-> the **parity-reconstructed `F(T)` remains the primary forward** for all pricing, IV, moneyness,
-> and carry; the captured future is an **independent confirmation**, reconciled within a documented
-> tolerance and never used to displace, smooth, or seed `F(T)`. The captured future is mapped from
-> the discrete listed expiry onto the pinned analytics tenor by a documented roll rule.
->
-> **Equation F1. Forward–futures consistency (cross-check, not a substitution).**
-> $$\left| \Phi(T) - F(T) \right| \le \tau(T)$$
-> A breach is a labelled diagnostic (a forward-estimation or data-quality signal), not a correction
-> to `F(T)`; `τ(T)` is a configured per-tenor tolerance.
+This amendment introduces the *product* and the *cross-check identity*. It deliberately does **not**
+freeze the contract field list, the exact roll rule, or `τ(T)`'s shape — those are the open design
+choices below, and the blueprint will gain the concrete roll-rule paragraph and any field-name
+adjustments when the contract is ruled accepted.
 
-**Amendment to `09-data-dictionary.md` — new rows:**
+## Open owner questions (this ADR stays Proposed until these are ruled)
 
-> | `futures_price` | Captured listed-futures price for a pinned tenor; a **secondary** term-structure source. Never displaces `forward_price`. |
-> | `listed_contract_id` | Identifier of the listed futures contract backing a pinned tenor; the listed expiry differs from the pinned tenor and is mapped by a documented roll rule. |
-> | `forward_futures_spread` | `futures_price − forward_price` per `(underlying, tenor)`; a reconciliation diagnostic. Beyond a configured tolerance it is a flagged triage record (feeds QC), never an exception. |
+1. **ADR numbering vs. the ledger.** This futures ADR already occupies **0053**, drafted Proposed on
+   2026-06-17 (commit `e0ee028`). The 1D spec's task 1 asks for "a new ADR by the next free number".
+   Rather than mint a confusing duplicate (e.g. 0056) describing the same decision, this change
+   **finalises 0053 in place** and lands the blueprint half. *Question for the owner:* confirm that
+   reusing 0053 (vs. superseding it with a fresh number) is the intended bookkeeping. **Recommend:**
+   keep 0053 — one decision, one ADR.
+2. **Roll convention.** Which listed contract backs each pinned tenor — front-month vs. nearest-expiry
+   ≥ tenor, and the roll trigger (calendar days to expiry, or first-notice/last-trade for Eurex
+   OESX/FESX). The amendment commits only to "a documented roll rule in typed config"; the rule itself
+   is unspecified and is a genuine domain choice (a 10d tenor with no listed contract within days is
+   the sharp case). **Recommend:** nearest listed expiry ≥ pinned tenor, roll N business days before
+   last-trade, N in config — but this is the owner's to set.
+3. **Per-tenor tolerance `τ(T)`.** Absolute price, fraction of $F(T)$, or basis-points of forward; and
+   whether it widens at the short end (10d, where the listed↔pinned expiry gap is proportionally
+   largest) and the long end (18m–3y, thin Eurex liquidity). The blueprint states `τ(T)` exists and is
+   config; its functional form is open. **Recommend:** bps-of-forward, term-dependent, seeded
+   loosely and tightened against banked spread once data exists.
+4. **`FuturesPoint` vs. extending `ForwardCurvePoint`.** The ADR recommends a **separate**
+   `FuturesPoint` (the primary/secondary invariant lives in the *shape*, two tables, not in a
+   convention on one record). D1 already reserves the name. *Confirm* the separate-table choice before
+   the contract code is written.
+5. **Settlement / day-count alignment.** Index futures are cash-settled; the contract carries
+   `settlement_type` and `day_count` (ACT/365, matching the forward) — confirm ACT/365 is right for the
+   futures leg rather than the exchange's own convention, since the cross-check compares like-for-like.
 
 ## Consequences
 
-- **1D becomes pickable** once this ADR + the blueprint amendment are **accepted** (status moves
-  Proposed → accepted on owner ruling). Until then no `FuturesPoint` contract code lands — task 1 of
-  the 1D spec is a stop-or-go, not a formality.
+- **The blueprint amendment is landed; the contract is still gated.** The owner GO unblocked the
+  *amendment*, which is merged here, so the "is the futures product in the blueprint?" gate is cleared.
+  The remaining gate is narrower: no `FuturesPoint` **contract code** lands until the five open
+  questions above (chiefly the roll rule, `τ(T)`, and the separate-table confirmation) are ruled and
+  this ADR moves Proposed → accepted. Task 1 of the 1D spec is a stop-or-go on those, not a formality.
 - **The contract surface widens additively only.** A new `FuturesPoint` table + registry entry +
   three data-dictionary rows; `ForwardCurvePoint` is untouched, so no existing golden or fixture
   moves on its account. The primary/secondary domain invariant is encoded in the *shape* (two

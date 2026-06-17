@@ -42,7 +42,7 @@ anything other than that architectural exception, **fix the code, not the doc**.
 |---|---|---|
 | [`00-overview.md`](00-overview.md) | — | Cover, document overview, deliverables, 16-step roadmap at a glance |
 | [`01-architecture.md`](01-architecture.md) | I | System architecture and engineering principles |
-| [`02-math-framework.md`](02-math-framework.md) | II | Mathematical framework (Equations 1–23) |
+| [`02-math-framework.md`](02-math-framework.md) | II | Mathematical framework (Equations 1–23; Eq. F1 forward–futures cross-check, ADR 0053 amendment) |
 | [`03-roadmap-16-steps.md`](03-roadmap-16-steps.md) | III | Sixteen-step implementation roadmap (Steps 1–16) |
 | [`04-implementation-guides.md`](04-implementation-guides.md) | IV | Detailed implementation guides (incl. Eq 24, MAD z-score) |
 | [`05-math-notes.md`](05-math-notes.md) | V | Expanded mathematical notes (Eq 25) |

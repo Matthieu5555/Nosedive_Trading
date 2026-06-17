@@ -240,3 +240,163 @@ posture, not a vuln.
 **Every finding has an owning task; none is left orphaned.** M2 → closed here; M1 →
 `apps/frontend` dep bump / dep-scan lane; M3/L1/L2 → the infra-ibkr auth package
 (pairs with `ibkr-unattended-reauth`); L3 → the frontend BFF README.
+
+---
+
+## §2 — order seam (reviewed 2026-06-17, C6 landed)
+
+When the archived refresh above was written, the 3B sign-and-send step did not
+exist, so §2 was deferred. It has since landed (commit `5c63a61`, *3B sign-and-send
+paper path — gated, fail-closed*). This section closes §2 against that landed seam.
+It is a **read-only review corroborated by measurement** — no switch was flipped, no
+env var set. Verified against the worktree off `main` at `37ab66c`: the security-
+invariant suite is green (`uv run pytest` over `test_transmit_send.py`,
+`test_transmit_decision.py`, `test_transmit_signing.py`, `test_transmit_gate.py`,
+`test_transmit_audit.py`, `test_two_gates.py`, `test_booking_commit.py`,
+`test_cp_rest_order_submit.py`, `test_cp_rest_adapter.py` → **105 passed**, exit 0).
+
+### Headline
+
+**No CRITICAL, no HIGH. Nothing in the landed seam blocks paper operation, and
+nothing transmits to a live broker by default.** Every §2 invariant the spec named
+holds with file:line evidence below. The 3B live gate may open **only** when the
+owner sets it — and that owner action is, by construction, the single remaining gate
+(M2 already closed). No finding here BLOCKS a future live flip; the items below are
+the conditions on that flip, not defects against it.
+
+### Transmission disabled by default — structurally blocked, submit never invoked
+
+With `EXECUTION_TRANSMIT_ENABLED` absent, `load_transmit_gate` returns
+`TransmitGate(mode=MODE_ABSENT, …)` (`transmit/gate.py:52-53`), and
+`decide_transmission` short-circuits to `BLOCKED_DEFAULT` at
+`transmit/decision.py:39-40` — *before* any binding, token, or sink check. The sink
+is handed the blocked decision and `LiveSubmitSink.handle` returns early at
+`transmit/live_sink.py:43-48` without ever calling `_submitter.submit`. The default
+sink is `PaperSink` regardless (`transmit/send.py:84`), which never holds a submitter.
+Pinned by `test_transmit_send.py::test_flag_absent_blocks_default_and_never_calls_the_submit_method`
+(`:71-87`): a spy `OrderSubmitter` wired into a real `LiveSubmitSink`, gate loaded
+from `{}`, asserts `decision is BLOCKED_DEFAULT` **and** `spy.calls == []`. **Measured
+green.** This is the cited fail-closed-by-default proof.
+
+### The owner gate is two-factor in spirit, checked at the SEND boundary, one source of truth
+
+`decide_transmission` (`transmit/decision.py:30-55`) is one pure function gating the
+send, and `transmit/send.py:101-117` calls it *before* `resolved_sink.handle`, so the
+adjudication is the send boundary. A live send requires **all** of, in this order:
+- the owner **config flag** `EXECUTION_TRANSMIT_ENABLED=live` (`gate.py:58`,
+  `decision.py:52`);
+- the **email sign-off token** — an HMAC-SHA256 over the canonical binding hash +
+  approver + expiry (`signing.py:100-117`), verified constant-time with
+  `hmac.compare_digest` against the `EXECUTION_SIGNOFF_SECRET`-keyed expectation
+  (`signing.py:120-136`); checked at `decision.py:44-45`;
+- the binding actually matches the exact 3A ticket (`binds_ticket`, `decision.py:42`)
+  and is unexpired (`signoff_unexpired`, `decision.py:46-47`);
+- **and** the single recorded-green handshake `EXECUTION_SECURITY_REVIEW=green`
+  (`gate.py:66-67` sets `security_review_green`; `decision.py:53-54` returns
+  `BLOCKED_GATE_OFF` unless it is true).
+
+The flag-without-review path is `BLOCKED_GATE_OFF`, so the recorded-green handshake
+is a hard, separate factor — **confirmed there is ONE source of truth for it**: the
+`EXECUTION_SECURITY_REVIEW=green` env value, read once in `load_transmit_gate`
+(`gate.py:8,66`) and consulted once in `decide_transmission`. This *is* the
+"recorded-green security-review handshake" the 3B task references; no second source
+was created. **Not bypassable by calling the seam directly**: the only path to a live
+submit is `LiveSubmitSink.handle`, which itself re-checks `decision is SENT_LIVE`
+(`live_sink.py:43`) before touching the submitter — a caller who constructs a
+`LiveSubmitSink` and feeds it any non-`SENT_LIVE` decision gets a no-op. The decision
+table is pinned end-to-end by `test_transmit_decision.py` (hand-written oracle) and
+the three `test_transmit_send.py` cases (absent→blocked, paper→no-bytes, live+green→
+exactly one submit call with the right binding hash).
+
+### Audit-log completeness — write-ahead, append-only, reorder-stable
+
+`transmit` records every transition to the audit log **before** the side effect:
+`gate_evaluated` (seq 0) and `decision` (seq 1) are appended (`send.py:88-115`)
+*before* `resolved_sink.handle(...)` (`send.py:117`), and `transmit_attempt` (seq 2)
+captures the outcome. The log is append-only — the `TransmitAuditLog` Protocol
+exposes only `append`/`read` (`audit.py:79-84`), both JSONL/in-memory impls open in
+append mode and reject a duplicate `event_id` (`audit.py:67-72,97-99,120-126`), and
+`replay` sorts by `(binding_hash, sequence)` so the trail is reorder-stable
+(`audit.py:75-76`). `test_transmit_audit.py` covers append-only / reorder-stable /
+cross-process hash stability; `test_transmit_send.py::test_transmit_writes_a_stamped_audit_trail`
+(`:134-148`) asserts the exact event order `["gate_evaluated","decision","transmit_attempt"]`
+with a non-empty stamp on each. On the **booking** side, M2's write-ahead discipline
+holds: `commit.py:215` appends the audit *before* `ledger.append_many(fills)` at
+`commit.py:216`, pinned by `test_the_commit_path_persists_the_audit_before_the_fills`.
+
+### No credentials in the app; routes through the NEW separate IBKR leaf verb (ADR 0024 §4)
+
+The live submit is a distinct class `CpRestOrderSubmit` with its own `submit` verb
+(`infra-ibkr/.../connectivity/cp_rest_order_submit.py:24-41`), POSTing to
+`/iserver/account/{account_id}/orders` over an injected `SupportsOrderPost` transport
+— it holds **no credential**, only an account id. It is a *separate* method/class
+from the read-only ingestion adapter, exactly as ADR 0024 §4 requires (read-only
+invariant: "REST order endpoints never called"). The ingestion read-only invariant is
+**still asserted and still green**:
+- `test_cp_rest_order_submit.py::test_the_ingestion_adapter_still_never_touches_an_order_path`
+  (`:43-55`) drives the real `CpRestMarketDataAdapter.snapshot()` and asserts no
+  `order` substring appears in any GET or POST path (cites ADR 0024 §4);
+- `…::test_order_submit_is_not_a_method_on_the_ingestion_adapter` (`:58-61`) and
+  `…::test_submit_is_a_distinct_class_from_the_ingestion_adapter` (`:64-68`) pin the
+  separation at the type level;
+- the original `test_cp_rest_adapter.py::test_snapshot_is_read_only` (`:67-72`) still
+  asserts `post_paths == []` and no `order` path on the ingestion surface.
+
+The execution package does not re-export the live sink or the submitter: `transmit`
+is **absent** from `packages/execution/__init__.py.__all__`, so reaching the live
+submit requires an explicit `from algotrading.execution.transmit.live_sink import …`.
+The seam is also **not wired into the BFF** — the `/api/ticket` and `/api/book`
+routes carry `gated: {transmit: false}` and never import `transmit`
+(grep-confirmed), so there is no HTTP path to a send at all today.
+
+### Scrutiny of C6's narrowing of `test_two_gates.py` — tightened, not gutted
+
+C6 (`5c63a61`) made exactly two changes to this guard (verified via `git show`):
+1. it **removed the string `"transmit"` from `_FORBIDDEN`**, and
+2. it **added** `test_the_live_submit_sink_is_not_reachable_from_the_transmit_package_surface`
+   plus the `_LIVE_SINK_NAMES = ("LiveSubmitSink", "OrderSubmitter")` set.
+
+The removal was *necessary and correct*, not a hole: the package now legitimately
+contains a `transmit` submodule, so a blanket `"transmit" in name.lower()` ban would
+have been a false positive that forces hiding the whole gated seam — it never
+protected against a *live submit* path, only against the literal token. The
+protection that matters was **tightened**: the credential/submit token ban
+(`place_order`, `submit_order`, `send_order`, `credential`, `api_key`, `secret`,
+`oauth`, `broker_client`) is **unchanged** and still runs over both the top package
+(`test_…package_exports_no_unguarded_submit_or_credential_symbol`, `:30-36`) and
+**every** submodule via `pkgutil.walk_packages` (`:39-47`) — so an unguarded
+`submit_order`/`credential` symbol anywhere under `algotrading.execution` still fails
+the build. The new test is **real and meaningful**: it imports the actual
+`algotrading.execution.transmit` package and asserts neither `LiveSubmitSink` nor
+`OrderSubmitter` is in its public surface — i.e. the only money-moving sink is
+reachable solely by explicit deep import, never via the package façade. Measured: the
+file's four tests pass. **No hole introduced** — the narrowing swapped a
+coarse string match (that would now misfire) for a precise reachability assertion on
+the exact dangerous symbols, while leaving the credential/submit ban fully intact.
+
+### Depth-review note (the write barrier as one module)
+
+A separate `review-module-depth` pass over the booking→fills→audit chain + the
+transmit seam found the interface **deep and fail-closed**, with no defect worth a
+code change. Two **advisory** observations, neither blocking: (a) `transmit()` takes
+seven keyword dependencies including a `mint_event_id: Callable[[int], str]` the
+caller must supply — depth is fine but a small `TransmitContext` would reduce the
+orchestration surface for future callers; (b) the JSONL audit/ledger reload-on-init
+silently truncates trailing blank lines (`audit.py:114`, `ledger.py:86`) which is
+benign but means a partially-written final record is dropped rather than flagged.
+Both are advisory; filed as observations, not defects.
+
+### §2 verdict — does anything BLOCK a future live flip?
+
+**No. Nothing in the landed seam blocks a future live flip, and the review found no
+defect against it.** The seam is fail-closed by default and correctly gated. The live
+flip is itself the gate: it opens only when the **owner** sets
+`EXECUTION_TRANSMIT_ENABLED=live`, provisions `EXECUTION_SIGNOFF_SECRET` and a valid
+per-ticket sign-off token, and records the green handshake
+`EXECUTION_SECURITY_REVIEW=green`. With **this** recorded-green §2 review and M2
+already closed, that owner action is the **single remaining gate** — there is no
+hidden code prerequisite left. **The 3B live gate may open once the owner sets it.**
+(Operationally, before a first live flip the owner should also pin a non-loopback
+guard / TLS default per the still-advisory M3/L1 *if* a credentialed remote IBKR
+endpoint is ever used; the local Gateway path that 3B's submit transport rides
+carries no secret, so M3/L1 remain advisory, not blocking.)

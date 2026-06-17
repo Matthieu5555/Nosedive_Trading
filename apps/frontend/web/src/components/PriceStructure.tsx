@@ -101,10 +101,10 @@ export function PriceStructure({
                 <tr key={`${point.delta_band}-${point.strike}`}>
                   <th scope="row">{sci(point.strike)}</th>
                   <td>{point.delta_band}</td>
-                  <td>{quoteCell(point.bid, priceUnit)}</td>
-                  <td>{quoteCell(point.ask, priceUnit)}</td>
-                  <td>{spreadCell(point.bid, point.ask, priceUnit)}</td>
-                  <td>{volumeCell(point.volume)}</td>
+                  <td>{quoteCell(point.quote?.bid, priceUnit)}</td>
+                  <td>{quoteCell(point.quote?.ask, priceUnit)}</td>
+                  <td>{spreadCell(point.quote?.bid, point.quote?.ask, priceUnit)}</td>
+                  <td>{volumeCell(point.quote?.volume)}</td>
                   <td>{quoteCell(point.price, priceUnit)}</td>
                 </tr>
               ))}

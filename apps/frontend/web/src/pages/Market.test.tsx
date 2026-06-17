@@ -258,11 +258,13 @@ test("the price-structure block reads bid / ask / volume per strike — never a 
   expect(within(block).getByRole("columnheader", { name: /bid/i })).toBeInTheDocument();
   expect(within(block).getByRole("columnheader", { name: /ask/i })).toBeInTheDocument();
   expect(within(block).getByRole("columnheader", { name: /volume/i })).toBeInTheDocument();
-  // The ATM strike (1×10²) carries bid 4.1, ask 4.5, volume 1234 — shown in sci-notation + unit
-  // (house formatting), not averaged to a mid. The row name concatenates every cell.
+  // The ATM strike (1×10²) carries quote.{bid 4.1, ask 4.5, volume 1234} — the nested shape the
+  // BFF emits — shown in sci-notation + unit (house formatting), not averaged to a mid. The row
+  // name concatenates every cell, including the bid/ask-derived spread (4.5 − 4.1 = 4 × 10⁻¹).
   const atmRow = within(block).getByRole("row", { name: /atm/i });
   expect(atmRow).toHaveTextContent("4.1 × 10⁰ $");
   expect(atmRow).toHaveTextContent("4.5 × 10⁰ $");
+  expect(atmRow).toHaveTextContent("4 × 10⁻¹ $");
   expect(atmRow).toHaveTextContent("1.234 × 10³");
 });
 

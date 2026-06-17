@@ -480,9 +480,7 @@ const _quotedPoint = (
   implied_vol: iv,
   total_variance: 0,
   price: bid !== null && ask !== null ? (bid + ask) / 2 : 1.0,
-  bid,
-  ask,
-  volume,
+  quote: { bid, ask, volume },
   metrics: {
     delta: { raw: target, dollar: target * 100, unit: "$ per $1 of underlying" },
     gamma: { raw: 0.01, dollar: 4.0, unit: "$ per 1% move" },

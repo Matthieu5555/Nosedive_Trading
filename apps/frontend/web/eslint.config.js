@@ -15,6 +15,7 @@
 // Formatting itself is owned by Prettier (`npm run format`), not ESLint.
 
 import js from "@eslint/js";
+import noRawSpacing from "./eslint-rules/no-raw-spacing.js";
 import boundaries from "eslint-plugin-boundaries";
 import importPlugin from "eslint-plugin-import";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -141,6 +142,19 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  // ── Spacing guardrail (the one scale) ──────────────────────────────────────
+  // The console has exactly one spacing scale: the `--space-*` CSS vars, mirrored as named Tailwind
+  // utilities (p-md, gap-sm, …). This rule makes the call site unable to express an off-scale value —
+  // it bans raw px in inline `style={{ padding: … }}` spacing props and arbitrary Tailwind spacing
+  // classes like `p-[18px]`/`gap-[6px]`. Same spirit as boundaries: the structure can't drift because
+  // the syntax to drift it is rejected. (Legacy numeric utilities p-2/gap-4 are a separate migration.)
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { "no-raw-spacing": noRawSpacing },
+    rules: {
+      "no-raw-spacing/no-raw-spacing": "error",
     },
   },
   // Tests get a little extra latitude (non-null assertions, etc. are fine in fixtures).

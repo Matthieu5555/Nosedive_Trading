@@ -1989,3 +1989,78 @@ h3 {
     outline-offset: 2px;
   }
 }
+
+/* WIP — the disabled / work-in-progress look, owned by components/wip. The wrapper stays interactive
+   for layout (it can carry the corner badge), but its content veil is dimmed, grayscaled and inert:
+   visible so the user sees the shape of what's coming, untouchable so nothing half-built fires. */
+.wip {
+  position: relative;
+}
+
+.wip__content {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+  pointer-events: none;
+  user-select: none;
+}
+
+.wip__badge {
+  position: absolute;
+  top: var(--space-2xs);
+  right: var(--space-2xs);
+  z-index: 2;
+}
+
+/* The amber "WIP" pill. Same shape as a Badge but its own class so the nav and the overlay share one
+   look. cursor: help signals the title tooltip carries the why. */
+.wip__tag {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--amber);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: help;
+}
+
+/* A greyed, non-navigable tab. Reuses .nav-button geometry; kills the hover affordance and dims it,
+   then sits the WIP tag beside the label. */
+.nav-button.is-wip-nav {
+  gap: 6px;
+  color: var(--faint);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.nav-button.is-wip-nav:hover {
+  border-color: transparent;
+  color: var(--faint);
+}
+
+/* The whole-page stand-in for a wip tab reached by URL. Centered, calm, says what and why. */
+.wip-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-3xl) var(--space-lg);
+  text-align: center;
+}
+
+.wip-placeholder__title {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-lg);
+}
+
+.wip-placeholder__reason {
+  margin: 0;
+  max-width: 52ch;
+  color: var(--muted);
+  font-size: var(--text-md);
+  line-height: 1.5;
+}

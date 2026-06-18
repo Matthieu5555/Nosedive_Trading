@@ -6,6 +6,7 @@ import { Badge } from "@/ui/badge";
 import { AssistantProvider } from "./components/Assistant/AssistantContext";
 import { FloatingAssistant } from "./components/Assistant/FloatingAssistant";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { featureStatus, WipPlaceholder, WipTag } from "./components/wip";
 import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { OperationsPage } from "./pages/Operations";
@@ -51,29 +52,57 @@ function AppShell() {
           <span>AlgoTrading</span>
         </div>
         <nav className="nav" aria-label="Main">
-          {ROUTES.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              data-tour-id={NAV_TOUR_ID[item.path]}
-              className={({ isActive }) => (isActive ? "nav-button active" : "nav-button")}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {ROUTES.map((item) => {
+            // A wip tab is shown but not navigable: a greyed, aria-disabled label with a WIP tag,
+            // not a NavLink. The route below still resolves by URL to a placeholder.
+            const flag = featureStatus(item.path);
+            if (flag.status === "wip") {
+              return (
+                <span
+                  key={item.path}
+                  className="nav-button is-wip-nav"
+                  aria-disabled="true"
+                  data-tour-id={NAV_TOUR_ID[item.path]}
+                  title={flag.reason ?? "Work in progress"}
+                >
+                  {item.label}
+                  <WipTag reason={flag.reason} />
+                </span>
+              );
+            }
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                data-tour-id={NAV_TOUR_ID[item.path]}
+                className={({ isActive }) => (isActive ? "nav-button active" : "nav-button")}
+              >
+                {item.label}
+              </NavLink>
+            );
+          })}
         </nav>
         <Badge className="session-pill">Paper</Badge>
       </header>
       <main className="main">
         <Routes>
-          {ROUTES.map((item) => (
-            <Route
-              key={item.path}
-              path={item.path}
-              element={<Guarded label={item.label}>{PAGES[item.path]}</Guarded>}
-            />
-          ))}
+          {ROUTES.map((item) => {
+            const flag = featureStatus(item.path);
+            const page =
+              flag.status === "wip" ? (
+                <WipPlaceholder title={item.heading} reason={flag.reason} />
+              ) : (
+                PAGES[item.path]
+              );
+            return (
+              <Route
+                key={item.path}
+                path={item.path}
+                element={<Guarded label={item.label}>{page}</Guarded>}
+              />
+            );
+          })}
           {/* The short-lived 3-tab consolidation used French paths; forward them to their 7-tab
               homes so any open bookmark still lands somewhere sensible. Orders folded into Strategy. */}
           <Route path="/risque" element={<Navigate to="/basket" replace />} />

@@ -4,12 +4,26 @@ import { type FormEvent, useCallback, useRef, useState } from "react";
 
 import { ApiError } from "../../api";
 import { EXPLAIN, explainEntry } from "../../lib/explain";
+import type { GuideStep } from "./assistantApi";
 import {
   askAssistant,
   type AssistantFrame,
   type AssistantMode,
   type AssistantResponse,
 } from "./assistantApi";
+
+// The slice of the guide loop the panel renders and drives. The loop itself (route watching,
+// askGuide, click listeners, Spotlight mount) lives in FloatingAssistant, which has the router and a
+// mount point that survives a panel collapse. The panel only reads this view and calls back.
+export interface TourView {
+  active: boolean;
+  thinking: boolean;
+  step: GuideStep | null;
+  error: string | null;
+  start: (goal: string) => void;
+  next: () => void;
+  stop: () => void;
+}
 
 interface AssistantPanelProps {
   underlying: string;
@@ -19,9 +33,21 @@ interface AssistantPanelProps {
   // The element the user is hovering / has selected on the page (a chart, a scorecard). When set,
   // the "What's this?" shortcut asks the assistant about exactly that element via the copy map.
   focusedElementId?: string | null;
+  // The guide loop lives one level up in FloatingAssistant (it needs the router's useLocation, and
+  // its Spotlight must survive a panel collapse). The panel only renders the loop's view and calls
+  // back to start / advance / stop it, so the panel stays router-free for its direct-render tests.
+  // When tour is undefined (no provider, as in the legacy unit tests), the guide affordances simply
+  // don't render and every existing behavior is untouched.
+  tour?: TourView;
 }
 
 type Turn = { kind: "question"; text: string } | { kind: "answer"; response: AssistantResponse };
+
+// "how do i ..." anywhere in the text (case-insensitive) reads as a guide intent rather than a
+// grounded question. Kept deliberately loose, the manual "Show me how" entry point covers the rest.
+function isGuideIntent(text: string): boolean {
+  return /how do i/i.test(text);
+}
 
 function frameCaption(frame: AssistantFrame): string {
   const parts = [frame.underlying];
@@ -72,8 +98,10 @@ export function AssistantPanel({
   runId,
   mode = "strict",
   focusedElementId,
+  tour,
 }: AssistantPanelProps) {
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
@@ -118,9 +146,37 @@ export function AssistantPanel({
     [ready, asOf, underlying, runId, mode],
   );
 
+  // A guide intent ("how do i ...") starts a tour instead of asking a grounded question. The goal is
+  // echoed into the thread as the user's question so the conversation reads naturally, then the loop
+  // (owned by FloatingAssistant) drives the steps. With no tour provider the input falls back to a
+  // normal ask, so the panel still works standalone.
+  const startGuideOrAsk = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (tour && isGuideIntent(trimmed)) {
+        setTurns((prev) => [...prev, { kind: "question", text: trimmed }]);
+        setQuestion("");
+        setError(null);
+        void tour.start(trimmed);
+        return;
+      }
+      void ask(trimmed);
+    },
+    [tour, ask],
+  );
+
+  const refresh = useCallback(() => {
+    abortRef.current?.abort();
+    setTurns([]);
+    setError(null);
+    setThinking(false);
+    tour?.stop();
+  }, [tour]);
+
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    void ask(question);
+    startGuideOrAsk(question);
   }
 
   function onWhatIsThis() {
@@ -145,19 +201,45 @@ export function AssistantPanel({
   }
 
   const focusedEntry = focusedElementId ? explainEntry(focusedElementId) : null;
+  const tourActive = tour?.active ?? false;
+  const tourError = tour?.error ?? null;
 
   return (
-    <aside className="assistant-panel" aria-label="Assistant">
+    <aside
+      className={expanded ? "assistant-panel assistant-panel--expanded" : "assistant-panel"}
+      aria-label="Assistant"
+    >
       <div className="assistant-panel__head">
         <h2>Assistant</h2>
-        <button
-          type="button"
-          className="assistant-panel__close"
-          aria-label="Close the assistant"
-          onClick={() => setOpen(false)}
-        >
-          ×
-        </button>
+        <div className="assistant-panel__head-controls">
+          <button
+            type="button"
+            className="assistant-panel__icon"
+            aria-label="Clear the conversation"
+            title="Clear the conversation"
+            onClick={refresh}
+          >
+            ↺
+          </button>
+          <button
+            type="button"
+            className="assistant-panel__icon"
+            aria-label={expanded ? "Return to corner" : "Expand the assistant"}
+            aria-pressed={expanded}
+            title={expanded ? "Return to corner" : "Expand the assistant"}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "⤡" : "⤢"}
+          </button>
+          <button
+            type="button"
+            className="assistant-panel__close"
+            aria-label="Close the assistant"
+            onClick={() => setOpen(false)}
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {!ready ? (
@@ -187,6 +269,17 @@ export function AssistantPanel({
             >
               {focusedEntry ? `What is: ${focusedEntry.label}?` : "What's this?"}
             </button>
+            {tour && (
+              <button
+                type="button"
+                className="assistant-action"
+                disabled={tourActive}
+                title="Ask the assistant to walk you through a task"
+                onClick={() => startGuideOrAsk(question.trim() || "How do I read this screen?")}
+              >
+                Show me how
+              </button>
+            )}
           </div>
 
           <div className="assistant-thread">
@@ -199,14 +292,33 @@ export function AssistantPanel({
                 <AnswerTurn key={`a${i}`} response={turn.response} />
               ),
             )}
-            {thinking && (
+
+            {tour?.step && (
+              <div className="assistant-answer assistant-answer--guide">
+                <p className="assistant-answer__text" role="status" aria-live="polite">
+                  {tour.step.say}
+                </p>
+              </div>
+            )}
+            {tourActive && tour && (
+              <div className="assistant-guide-controls">
+                <button type="button" className="assistant-action" onClick={() => void tour.next()}>
+                  Next
+                </button>
+                <button type="button" className="assistant-action" onClick={() => tour.stop()}>
+                  Stop tour
+                </button>
+              </div>
+            )}
+
+            {(thinking || tour?.thinking) && (
               <p className="assistant-thinking" role="status" aria-live="polite" aria-busy="true">
                 The assistant is thinking…
               </p>
             )}
-            {error && (
+            {(error || tourError) && (
               <p className="assistant-error state-panel state-panel-error" role="alert">
-                {error}
+                {error ?? tourError}
               </p>
             )}
           </div>

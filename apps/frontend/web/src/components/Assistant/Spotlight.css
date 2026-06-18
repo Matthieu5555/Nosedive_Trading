@@ -1,0 +1,57 @@
+/* Spotlight — the guided-tour highlight. Rides the existing tokens (var(--*) from index.css :root),
+   no new palette. The dim is plain translucent black, the ring borrows the assistant accent (amber)
+   so the highlight reads on any page background without introducing a colour the app doesn't already
+   own. */
+
+/* The root is a fixed full-viewport layer. It sits ABOVE page content but BELOW the global error
+   banner (1000) and just above the assistant dock (900), so a tour highlight is never hidden by page
+   chrome yet never covers a fatal error. The root itself paints nothing and catches nothing:
+   pointer-events pass straight through to whatever is beneath, including the highlighted element. */
+.tour-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  pointer-events: none;
+}
+
+/* The four dim panels frame the hole around the highlighted rect. They are positioned inline by the
+   component from the live rect; here we only give them their look. pointer-events:none means even the
+   dim never swallows a click, so a stray panel edge can't block the action the tour is asking for. */
+.tour-spotlight__dim {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+/* The ring is a non-interactive outline laid exactly on the element's rect, pulsing gently so the eye
+   finds it. It draws inside its own box via box-shadow + border so it never adds layout or covers the
+   element it frames. */
+.tour-spotlight__ring {
+  position: fixed;
+  border: 2px solid var(--amber);
+  border-radius: var(--radius);
+  pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+  animation: tour-spotlight-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-spotlight-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(0, 0, 0, 0.35),
+      0 0 0 4px rgba(232, 194, 100, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(0, 0, 0, 0.35),
+      0 0 0 9px rgba(232, 194, 100, 0);
+  }
+}
+
+/* Respect a user's reduced-motion preference: keep the ring, drop the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight__ring {
+    animation: none;
+  }
+}

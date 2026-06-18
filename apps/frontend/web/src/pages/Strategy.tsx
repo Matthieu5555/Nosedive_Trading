@@ -60,7 +60,7 @@ export function StrategyPage() {
         </p>
       )}
 
-      <Card>
+      <Card data-tour-id="strategy.setup">
         <CardHeader>
           <CardTitle>Backtest setup</CardTitle>
           <CardDescription>

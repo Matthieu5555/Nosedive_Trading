@@ -66,6 +66,7 @@ export function PositionsPage() {
         <Cluster className="control-row" gap="sm">
           <select
             aria-label="Underlying"
+            data-tour-id="positions.underlying"
             value={index}
             disabled={indexOptions.length === 0}
             onChange={(event) => setIndex(event.target.value)}

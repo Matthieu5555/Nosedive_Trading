@@ -108,6 +108,7 @@ export function MarketPage() {
         <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Index"
+            data-tour-id="market.index-picker"
             value={index}
             disabled={indexOptions.length === 0}
             data-hint={index === "" ? "choose-index" : undefined}
@@ -215,7 +216,11 @@ export function MarketPage() {
                   </AsyncBlock>
                 </ErrorBoundary>
 
-                <article className="panel" aria-label={`${index} daily history`}>
+                <article
+                  className="panel"
+                  aria-label={`${index} daily history`}
+                  data-tour-id="market.price"
+                >
                   <Stack gap="md">
                     <div className="panel-heading">
                       <h2>Daily price, {index}</h2>
@@ -247,7 +252,11 @@ export function MarketPage() {
                   />
                 </ErrorBoundary>
 
-                <article className="panel" aria-label={descriptor.subjectHeading}>
+                <article
+                  className="panel"
+                  aria-label={descriptor.subjectHeading}
+                  data-tour-id="market.surface"
+                >
                   <Stack gap="md">
                     <div className="panel-heading">
                       <div>
@@ -320,7 +329,7 @@ export function MarketPage() {
                   </AsyncBlock>
                 </ErrorBoundary>
 
-                <article className="panel" aria-label="Dispersion">
+                <article className="panel" aria-label="Dispersion" data-tour-id="market.dispersion">
                   <Stack gap="md">
                     <div className="panel-heading">
                       <Cluster gap="2xs" align="center">
@@ -347,7 +356,11 @@ export function MarketPage() {
                   </Stack>
                 </article>
 
-                <article className="panel" aria-label="Capture coverage">
+                <article
+                  className="panel"
+                  aria-label="Capture coverage"
+                  data-tour-id="market.coverage"
+                >
                   <Stack gap="md">
                     <div className="panel-heading">
                       <h2>Capture coverage</h2>
@@ -392,7 +405,12 @@ function SurfaceModeToggle({
   onChange: (mode: SurfaceMode) => void;
 }) {
   return (
-    <div className="mode-toggle" role="group" aria-label="Surface mode">
+    <div
+      className="mode-toggle"
+      role="group"
+      aria-label="Surface mode"
+      data-tour-id="market.mode-toggle"
+    >
       <button
         type="button"
         className="mode-toggle__option"

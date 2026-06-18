@@ -66,7 +66,7 @@ export function TenorPanel({
   const selected = capturedByTenor.get(tenor) ?? null;
 
   return (
-    <article className="panel tenor-panel" aria-label="Tenor view">
+    <article className="panel tenor-panel" aria-label="Tenor view" data-tour-id="market.smile">
       <Stack gap="md">
         <div className="panel-heading">
           <div>

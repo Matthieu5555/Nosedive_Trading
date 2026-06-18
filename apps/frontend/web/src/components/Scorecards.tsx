@@ -148,7 +148,11 @@ export function Scorecards({
   ];
 
   return (
-    <section className="scorecards-band" aria-label="Volatility scorecards">
+    <section
+      className="scorecards-band"
+      aria-label="Volatility scorecards"
+      data-tour-id="market.scorecard"
+    >
       {(asOfLine || underlying) && (
         <p className="scorecards-legend" aria-label="Scorecard provenance">
           {underlying ? <strong>{underlying}</strong> : null}

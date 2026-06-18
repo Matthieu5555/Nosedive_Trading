@@ -19,6 +19,19 @@ function Guarded({ label, children }: { label: string; children: ReactNode }) {
   return <ErrorBoundary label={label}>{children}</ErrorBoundary>;
 }
 
+// Inert map from route path to its guided-tour anchor id, so the nav .map can place a stable
+// data-tour-id per NavLink without a per-link literal. Adds no behavior; the tour loop relies on
+// these ids being present on every page.
+const NAV_TOUR_ID: Record<string, string> = {
+  "/": "nav.market",
+  "/basket": "nav.basket",
+  "/signals": "nav.signals",
+  "/strategy": "nav.strategy",
+  "/risk": "nav.risk",
+  "/positions": "nav.positions",
+  "/operations": "nav.operations",
+};
+
 const PAGES: Record<string, ReactNode> = {
   "/": <MarketPage />,
   "/basket": <BasketPage />,
@@ -43,6 +56,7 @@ function AppShell() {
               key={item.path}
               to={item.path}
               end={item.end}
+              data-tour-id={NAV_TOUR_ID[item.path]}
               className={({ isActive }) => (isActive ? "nav-button active" : "nav-button")}
             >
               {item.label}

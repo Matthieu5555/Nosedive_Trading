@@ -210,6 +210,7 @@ export function BasketPage() {
                 Underlying{" "}
                 <select
                   aria-label="underlying"
+                  data-tour-id="basket.underlying"
                   value={underlying}
                   disabled={indexOptions.length === 0}
                   onChange={(e) => setUnderlying(e.target.value)}
@@ -240,7 +241,7 @@ export function BasketPage() {
               </label>
             </Cluster>
 
-            <Cluster gap="xs" role="group" aria-label="templates">
+            <Cluster gap="xs" role="group" aria-label="templates" data-tour-id="basket.templates">
               {TEMPLATES.map((name) => (
                 <button
                   key={name}
@@ -275,7 +276,7 @@ export function BasketPage() {
 
         <Tabs defaultValue="compose" className="market-tabs">
           <div className="market-tabs__bar max-w-full overflow-x-auto">
-            <TabsList className="market-tabs__list max-w-none">
+            <TabsList className="market-tabs__list max-w-none" data-tour-id="basket.tabs">
               <TabsTrigger value="compose">① Compose</TabsTrigger>
               <TabsTrigger value="book">② The Book</TabsTrigger>
               <TabsTrigger value="stress">③ Stress</TabsTrigger>

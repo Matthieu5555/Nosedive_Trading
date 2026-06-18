@@ -46,6 +46,7 @@ export function SignalsPage() {
         <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Underlying"
+            data-tour-id="signals.underlying"
             value={underlying}
             disabled={underlyingOptions.length === 0}
             onChange={(event) => setUnderlying(event.target.value)}

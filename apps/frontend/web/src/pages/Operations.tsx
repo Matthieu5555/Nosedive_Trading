@@ -41,7 +41,7 @@ export function OperationsPage() {
         </div>
       </div>
 
-      <Card>
+      <Card data-tour-id="operations.health">
         <CardHeader>
           <Cluster gap="2xs" align="center">
             <CardTitle>System health</CardTitle>

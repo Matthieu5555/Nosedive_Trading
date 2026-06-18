@@ -88,6 +88,16 @@
   }
 }
 
+/* The expand toggle blows the docked column up to near-fullscreen, anchored to the same corner so the
+   × still returns it to the dock. It rides the same tokens, just more room for a long thread or a
+   guided tour. The narrow-screen rule above already covers small viewports, so this only widens it
+   where there is room. */
+.assistant-dock .assistant-panel--expanded {
+  width: min(900px, calc(100vw - 40px));
+  height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
+}
+
 .assistant-panel__head {
   display: flex;
   align-items: center;
@@ -99,6 +109,28 @@
   font-size: 14px;
 }
 
+/* The head controls (clear, expand, close) sit together on the right of the head. They stay quiet
+   icon buttons, the same muted-to-text hover the launcher pills use, never a second accent. */
+.assistant-panel__head-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.assistant-panel__icon {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.assistant-panel__icon:hover {
+  color: var(--text);
+}
+
 .assistant-panel__close {
   border: none;
   background: transparent;
@@ -106,6 +138,22 @@
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+}
+
+.assistant-panel__close:hover {
+  color: var(--text);
+}
+
+/* A guide step reads like a quiet assistant message, distinguished from a grounded answer only by a
+   slightly different left rule so a tour step never looks like a quoted fact. */
+.assistant-answer--guide {
+  border-left-color: var(--muted);
+}
+
+.assistant-guide-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .assistant-actions {

@@ -16,6 +16,7 @@ from ..assistant_prompt import (
 )
 from ..deps import CtxDep
 from ..grounding import MODE_INDICATIVE, MODE_STRICT, build_grounding_context
+from ..guide_prompt import CatalogEntry, build_guide_messages, parse_guide_step
 from ..openrouter import OpenRouterClient, OpenRouterError
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant"])
@@ -29,6 +30,20 @@ class AssistantRequest(BaseModel):
     mode: str | None = None
     element_id: str | None = None
     gloss: bool = False
+
+
+class GuideCatalogEntry(BaseModel):
+    id: str
+    label: str
+    description: str
+    route: str
+
+
+class GuideRequest(BaseModel):
+    goal: str
+    route: str
+    completed: list[str] = []
+    catalog: list[GuideCatalogEntry] = []
 
 
 def _openrouter_client(request: Request) -> OpenRouterClient:
@@ -117,3 +132,31 @@ def post_assistant_stream(
             yield honest_gap_answer()
 
     return StreamingResponse(_events(), media_type="text/plain")
+
+
+@router.post("/guide")
+def post_assistant_guide(client: ClientDep, body: GuideRequest) -> JSONResponse:
+    catalog = [
+        CatalogEntry(
+            id=entry.id,
+            label=entry.label,
+            description=entry.description,
+            route=entry.route,
+        )
+        for entry in body.catalog
+    ]
+    catalog_ids = {entry.id for entry in catalog}
+    messages = build_guide_messages(body.goal, body.route, body.completed, catalog)
+
+    try:
+        raw_step = client.complete(messages)
+    except OpenRouterError as exc:
+        return JSONResponse(
+            {
+                "error": "assistant_unavailable",
+                "detail": exc.detail,
+            },
+            status_code=502,
+        )
+
+    return JSONResponse(parse_guide_step(raw_step, catalog_ids))

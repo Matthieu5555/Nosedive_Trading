@@ -45,6 +45,7 @@ export function RiskScenariosPage() {
             <select
               id="risk-portfolio"
               aria-label="Portfolio"
+              data-tour-id="risk.portfolio"
               value={portfolio}
               onChange={(event) => setPortfolio(event.target.value)}
             >
@@ -74,7 +75,7 @@ export function RiskScenariosPage() {
         </Cluster>
       </div>
 
-      <Card>
+      <Card data-tour-id="risk.scenarios">
         <CardHeader>
           <CardTitle>Named historical scenarios</CardTitle>
           <CardDescription>
@@ -109,7 +110,11 @@ export function RiskScenariosPage() {
             subject="the P&L attribution"
           >
             {attribution.data && (
-              <AttributionWaterfall attribution={attribution.data} kicker={attributionScope} embedded />
+              <AttributionWaterfall
+                attribution={attribution.data}
+                kicker={attributionScope}
+                embedded
+              />
             )}
           </AsyncBlock>
         </CardContent>

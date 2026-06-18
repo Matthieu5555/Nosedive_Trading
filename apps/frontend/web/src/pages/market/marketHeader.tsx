@@ -70,6 +70,7 @@ export function AsOfSelect({
   return (
     <select
       aria-label="As-of fetch"
+      data-tour-id="market.as-of"
       value={effective}
       disabled={available.length === 0}
       onChange={(event) => onChange(event.target.value)}

@@ -26,24 +26,24 @@ function mainNav() {
   return screen.getByRole("navigation", { name: "Main" });
 }
 
-test("the top nav is exactly the seven English tabs, Market active on load", async () => {
+test("the top nav is exactly the seven English tabs, Operations active on load", async () => {
   render(<App />);
 
-  expect(await screen.findByRole("heading", { name: "Market", level: 1 })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Operations", level: 1 })).toBeInTheDocument();
 
   const links = within(mainNav())
     .getAllByRole("link")
     .map((link) => link.textContent);
   expect(links).toEqual([
-    "Market",
-    "Basket",
-    "Signals",
-    "Strategy",
-    "Risk Scenarios",
-    "Positions",
     "Operations",
+    "Market",
+    "Positions",
+    "Basket",
+    "Risk Scenarios",
+    "Strategy",
+    "Signals",
   ]);
-  expect(within(mainNav()).getByRole("link", { name: "Market" })).toHaveAttribute(
+  expect(within(mainNav()).getByRole("link", { name: "Operations" })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -56,21 +56,21 @@ test("the French 3-tab labels are gone from the main nav", () => {
   }
 });
 
-// label → { path, heading } for each tab that navigates to its own route.
+// label → { path, heading } for each tab that navigates away from the Operations landing route.
 const TABS = [
-  { label: "Basket", path: "/basket", heading: "Basket Builder" },
-  { label: "Signals", path: "/signals", heading: "Signals" },
-  { label: "Strategy", path: "/strategy", heading: "Strategy" },
-  { label: "Risk Scenarios", path: "/risk", heading: "Risk Scenarios" },
+  { label: "Market", path: "/market", heading: "Market" },
   { label: "Positions", path: "/positions", heading: "Positions" },
-  { label: "Operations", path: "/operations", heading: "Operations" },
+  { label: "Basket", path: "/basket", heading: "Basket Builder" },
+  { label: "Risk Scenarios", path: "/risk", heading: "Risk Scenarios" },
+  { label: "Strategy", path: "/strategy", heading: "Strategy" },
+  { label: "Signals", path: "/signals", heading: "Signals" },
 ] as const;
 
 for (const tab of TABS) {
   test(`${tab.label} routes to ${tab.path} and shows its heading`, async () => {
     const user = userEvent.setup();
     render(<App />);
-    await screen.findByRole("heading", { name: "Market", level: 1 });
+    await screen.findByRole("heading", { name: "Operations", level: 1 });
 
     await user.click(within(mainNav()).getByRole("link", { name: tab.label }));
     expect(await screen.findByRole("heading", { name: tab.heading, level: 1 })).toBeInTheDocument();
@@ -83,8 +83,9 @@ const REDIRECTS = [
   { from: "/risque", to: "/basket", heading: "Basket Builder" },
   { from: "/ordres", to: "/strategy", heading: "Strategy" },
   { from: "/orders", to: "/strategy", heading: "Strategy" },
-  { from: "/market", to: "/", heading: "Market" },
-  { from: "/does-not-exist", to: "/", heading: "Market" },
+  // Operations now owns the index route, so its old path forwards home.
+  { from: "/operations", to: "/", heading: "Operations" },
+  { from: "/does-not-exist", to: "/", heading: "Operations" },
 ] as const;
 
 for (const r of REDIRECTS) {
@@ -97,11 +98,11 @@ for (const r of REDIRECTS) {
   });
 }
 
-test("the floating assistant launcher rides along on a non-Market route", async () => {
-  window.history.pushState({}, "", "/operations");
+test("the floating assistant launcher rides along on a non-home route", async () => {
+  window.history.pushState({}, "", "/market");
   render(<App />);
 
-  // It is mounted globally outside <Routes>, so it shows up on Operations just as on Market.
-  expect(await screen.findByRole("heading", { name: "Operations", level: 1 })).toBeInTheDocument();
+  // It is mounted globally outside <Routes>, so it shows up on Market just as on Operations.
+  expect(await screen.findByRole("heading", { name: "Market", level: 1 })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Ask the assistant" })).toBeInTheDocument();
 });

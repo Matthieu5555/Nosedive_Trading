@@ -78,66 +78,66 @@ const NAV_ANCHORS: readonly TourAnchor[] = [
 const MARKET_ANCHORS: readonly TourAnchor[] = [
   {
     id: "market.index-picker",
-    route: "/",
+    route: "/market",
     label: "Index picker",
     description: "Choose which index you are looking at, like the Euro Stoxx 50.",
   },
   {
     id: "market.ticker-picker",
-    route: "/",
+    route: "/market",
     label: "Ticker picker",
     description:
       "Pick the ticker the whole page follows, the index itself or any of its members like ASML.",
   },
   {
     id: "market.as-of",
-    route: "/",
+    route: "/market",
     label: "As-of picker",
     description:
       "Choose which captured close you are reading, the date the numbers are taken from.",
   },
   {
     id: "market.scorecard",
-    route: "/",
+    route: "/market",
     label: "Indicator scorecards",
     description:
       "The headline indicators at a glance: how rich vol is, the term-structure slope, and more.",
   },
   {
     id: "market.price",
-    route: "/",
+    route: "/market",
     label: "Daily price chart",
     description: "The daily open, high, low and close history for the chosen index.",
   },
   {
     id: "market.surface",
-    route: "/",
+    route: "/market",
     label: "Volatility surface",
     description: "The 3D implied-volatility surface, vol against moneyness and maturity.",
   },
   {
     id: "market.mode-toggle",
-    route: "/",
+    route: "/market",
     label: "Strict and indicative toggle",
     description:
       "Switch the surface between strict, two-sided quotes only, and indicative, which adds one-sided marks as an estimate.",
   },
   {
     id: "market.smile",
-    route: "/",
+    route: "/market",
     label: "Smile and Greeks",
     description: "The smile, implied vol across strikes, with the option Greeks beside it.",
   },
   {
     id: "market.dispersion",
-    route: "/",
+    route: "/market",
     label: "Dispersion strip",
     description:
       "How tightly the index members are expected to move together, the dispersion read.",
   },
   {
     id: "market.coverage",
-    route: "/",
+    route: "/market",
     label: "Capture coverage panel",
     description: "Open this to see how much of the option chain the surface actually rests on.",
   },
@@ -213,7 +213,7 @@ const POSITIONS_ANCHORS: readonly TourAnchor[] = [
 const OPERATIONS_ANCHORS: readonly TourAnchor[] = [
   {
     id: "operations.health",
-    route: "/operations",
+    route: "/",
     label: "System health panel",
     description: "One glance at whether services are up and today's data and risk all completed.",
   },

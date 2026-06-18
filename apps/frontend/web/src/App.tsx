@@ -24,23 +24,23 @@ function Guarded({ label, children }: { label: string; children: ReactNode }) {
 // data-tour-id per NavLink without a per-link literal. Adds no behavior; the tour loop relies on
 // these ids being present on every page.
 const NAV_TOUR_ID: Record<string, string> = {
-  "/": "nav.market",
+  "/": "nav.operations",
+  "/market": "nav.market",
   "/basket": "nav.basket",
   "/signals": "nav.signals",
   "/strategy": "nav.strategy",
   "/risk": "nav.risk",
   "/positions": "nav.positions",
-  "/operations": "nav.operations",
 };
 
 const PAGES: Record<string, ReactNode> = {
-  "/": <MarketPage />,
+  "/": <OperationsPage />,
+  "/market": <MarketPage />,
   "/basket": <BasketPage />,
   "/signals": <SignalsPage />,
   "/strategy": <StrategyPage />,
   "/risk": <RiskScenariosPage />,
   "/positions": <PositionsPage />,
-  "/operations": <OperationsPage />,
 };
 
 function AppShell() {
@@ -104,11 +104,12 @@ function AppShell() {
             );
           })}
           {/* The short-lived 3-tab consolidation used French paths; forward them to their 7-tab
-              homes so any open bookmark still lands somewhere sensible. Orders folded into Strategy. */}
+              homes so any open bookmark still lands somewhere sensible. Orders folded into Strategy.
+              "/operations" forwards to "/" since Operations now owns the index route. */}
           <Route path="/risque" element={<Navigate to="/basket" replace />} />
           <Route path="/ordres" element={<Navigate to="/strategy" replace />} />
           <Route path="/orders" element={<Navigate to="/strategy" replace />} />
-          <Route path="/market" element={<Navigate to="/" replace />} />
+          <Route path="/operations" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

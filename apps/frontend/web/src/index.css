@@ -180,11 +180,15 @@ select {
   font: inherit;
 }
 
+/* One control language across the app: interactive controls (buttons, selects, inputs)
+   wear the calm 10px pill from the surface controls, never the old full-round 999px.
+   Round is reserved for status indicators (.status / .qc-badge / .ops-pill / dots /
+   progress), where the pill shape carries meaning rather than competing with it. */
 button,
 select,
 input {
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: 10px;
   background: #111311;
   color: var(--text);
   min-height: 38px;
@@ -312,7 +316,7 @@ td span {
   justify-content: center;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: #121412;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -324,7 +328,7 @@ td span {
   min-height: 38px;
   min-width: 108px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--muted);
   background: transparent;
   padding: 0 16px;
@@ -831,11 +835,18 @@ h3 {
   align-items: center;
 }
 .surface-select select {
-  min-height: 30px;
-  padding: var(--space-3xs) var(--space-sm);
+  /* 32px matches the OUTER height of a .mode-toggle pill (26px option + 2px track
+     padding + 1px border, both sides) so this select sits flush with the segmented
+     controls beside it rather than reading as a shorter, stray rectangle. */
+  min-height: 32px;
+  /* Right padding reserves room for the chevron the global select rule paints. We
+     set background-COLOR (not the `background` shorthand) so that inherited
+     chevron image survives, the dropdown affordance the segmented pills don't need
+     but this one does. */
+  padding: var(--space-3xs) 30px var(--space-3xs) var(--space-sm);
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.03);
   color: var(--text);
   font-size: 11px;
   font-weight: 500;

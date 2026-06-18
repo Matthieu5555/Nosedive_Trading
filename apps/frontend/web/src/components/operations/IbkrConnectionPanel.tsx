@@ -46,7 +46,15 @@ function errorDetail(error: unknown): string | null {
   return null;
 }
 
-function StatusView({ status }: { status: IbkrStatus }) {
+function StatusView({
+  status,
+  isRefreshing,
+  onRefresh,
+}: {
+  status: IbkrStatus;
+  isRefreshing: boolean;
+  onRefresh: () => void;
+}) {
   const connect = useIbkrConnect();
   const login = useIbkrLogin();
   const tone = toneFor(status);
@@ -114,6 +122,14 @@ function StatusView({ status }: { status: IbkrStatus }) {
         >
           {connect.isPending ? "Opening…" : "Open brokerage session"}
         </button>
+        <button
+          type="button"
+          className="ibkr-panel__refresh"
+          disabled={isRefreshing}
+          onClick={onRefresh}
+        >
+          {isRefreshing ? "Refreshing…" : "Refresh status"}
+        </button>
       </div>
 
       {loginError && (
@@ -137,18 +153,14 @@ export function IbkrConnectionPanel() {
   return (
     <div className="ibkr-panel-wrap">
       <AsyncBlock loading={status.isPending} error={status.isError ? status.error.message : null}>
-        {status.data && <StatusView status={status.data} />}
+        {status.data && (
+          <StatusView
+            status={status.data}
+            isRefreshing={status.isFetching}
+            onRefresh={() => void status.refetch()}
+          />
+        )}
       </AsyncBlock>
-      <div className="ibkr-panel__actions">
-        <button
-          type="button"
-          className="ibkr-panel__refresh"
-          disabled={status.isFetching}
-          onClick={() => void status.refetch()}
-        >
-          {status.isFetching ? "Refreshing…" : "Refresh status"}
-        </button>
-      </div>
     </div>
   );
 }

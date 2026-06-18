@@ -25,6 +25,13 @@ ATM_DELTA_BAND = "atm"
 
 SIGNAL_KIND_IMPLIED_CORRELATION = "implied_correlation"
 SIGNAL_KIND_IV_RANK = "iv_rank"
+# Companion rows that make IV rank HONEST about the lookback it was actually computed over: with
+# only a handful of implied-history days banked, a rank of 1.00 does NOT mean "IV at the top of a
+# 365-day range" — it means "the highest of the n days we have". These additive rows carry the
+# real sample count and window span (in days) for the SAME subject/tenor so the frontend can label
+# the rank truthfully (or suppress it when the sample is too thin). They never replace iv_rank.
+SIGNAL_KIND_IV_RANK_N_OBS = "iv_rank_n_observations"
+SIGNAL_KIND_IV_RANK_WINDOW_DAYS = "iv_rank_window_days"
 SIGNAL_KIND_IV_VS_REALIZED = "iv_vs_realized"
 SIGNAL_KIND_TERM_STRUCTURE_SLOPE = "term_structure_slope"
 
@@ -73,6 +80,10 @@ class SignalInputs:
     atm_vol_by_subject: Mapping[str, Mapping[str, float]]
     weights: Mapping[str, float]
     iv_history_by_subject: Mapping[str, tuple[float, ...]]
+    # Calendar-day span actually covered by each subject's banked implied history (last observation
+    # date minus first). With a 3-day backfill this is ~2, NOT the configured lookback window — the
+    # honesty companion to iv_rank. Subjects with <2 observations are absent (span undefined).
+    iv_history_window_days_by_subject: Mapping[str, int]
     realized_vol_by_subject: Mapping[str, float]
     subjects: tuple[str, ...] = field(default_factory=tuple)
 
@@ -102,7 +113,14 @@ def _atm_vol_by_tenor(
 
 def _iv_history(
     store: ParquetStore, subject: str, config: SignalConfig, as_of: date
-) -> tuple[float, ...]:
+) -> tuple[tuple[float, ...], int | None]:
+    """Return the reference-tenor implied-vol history and the calendar-day span it actually covers.
+
+    The span is ``last_observation_date - first_observation_date`` in days; ``None`` when fewer
+    than two observations exist (a span is undefined for a single point). It is the REAL window
+    backing iv_rank — typically far short of ``iv_history_lookback_days`` while the backfill is
+    thin — so the rank can be labelled honestly downstream.
+    """
     start = as_of - timedelta(days=config.iv_history_lookback_days)
     rows = store.read(
         _ANALYTICS_TABLE,
@@ -118,7 +136,12 @@ def _iv_history(
         and row.delta_band == ATM_DELTA_BAND
         and row.tenor_label == config.reference_tenor
     ]
-    return tuple(iv for _, iv in sorted(dated, key=lambda pair: pair[0]))
+    dated.sort(key=lambda pair: pair[0])
+    history = tuple(iv for _, iv in dated)
+    window_days: int | None = None
+    if len(dated) >= 2:
+        window_days = (dated[-1][0].date() - dated[0][0].date()).days
+    return history, window_days
 
 
 def _realized_vol(
@@ -145,6 +168,7 @@ def read_signal_inputs(store: ParquetStore, config: SignalConfig, as_of: date) -
 
     atm_vol_by_subject: dict[str, Mapping[str, float]] = {}
     iv_history_by_subject: dict[str, tuple[float, ...]] = {}
+    iv_history_window_days_by_subject: dict[str, int] = {}
     realized_vol_by_subject: dict[str, float] = {}
     snapshot_ts: datetime | None = None
     for subject in subjects:
@@ -152,9 +176,11 @@ def read_signal_inputs(store: ParquetStore, config: SignalConfig, as_of: date) -
         if by_tenor:
             atm_vol_by_subject[subject] = by_tenor
             snapshot_ts = snapshot_ts or subject_snapshot
-        history = _iv_history(store, subject, config, as_of)
+        history, window_days = _iv_history(store, subject, config, as_of)
         if history:
             iv_history_by_subject[subject] = history
+        if window_days is not None:
+            iv_history_window_days_by_subject[subject] = window_days
         realized = _realized_vol(store, subject, config, as_of)
         if realized is not None:
             realized_vol_by_subject[subject] = realized
@@ -166,6 +192,7 @@ def read_signal_inputs(store: ParquetStore, config: SignalConfig, as_of: date) -
         atm_vol_by_subject=atm_vol_by_subject,
         weights=weights,
         iv_history_by_subject=iv_history_by_subject,
+        iv_history_window_days_by_subject=iv_history_window_days_by_subject,
         realized_vol_by_subject=realized_vol_by_subject,
         subjects=subjects,
     )
@@ -189,8 +216,17 @@ def _correlation_rows(inputs: SignalInputs, config: SignalConfig) -> list[_Signa
         ]
         if not paired:
             continue
-        weights = [w for w, _ in paired]
+        # Index membership weights are stored as percentages (they sum to ~95-100, not 1.0). The
+        # implied-correlation closed form (Eq. 23) is defined on fractional weights that sum to
+        # 1.0; feeding percentages in inflates the own/cross variance terms ~1000x and drives ρ̄
+        # to an impossible negative value. Normalize the INCLUDED weights (names with a realized
+        # vol; others are dropped above) so they sum to 1.0 — this is the basket actually solved.
+        raw_weights = [w for w, _ in paired]
         vols = [v for _, v in paired]
+        total = sum(raw_weights)
+        if total <= 0.0:
+            continue
+        weights = [w / total for w in raw_weights]
         try:
             rho_bar = implied_correlation(weights, vols, index_vol)
         except ImpliedCorrelationError:
@@ -222,9 +258,32 @@ def _per_subject_rows(inputs: SignalInputs, config: SignalConfig) -> list[_Signa
         if reference_iv is not None and history:
             try:
                 rank = iv_rank(reference_iv, history)
-                rows.append((SIGNAL_KIND_IV_RANK, subject, config.reference_tenor, rank))
             except IvRankError:
                 pass
+            else:
+                rows.append((SIGNAL_KIND_IV_RANK, subject, config.reference_tenor, rank))
+                # Emit the honesty companions alongside every rank: the sample count and the
+                # calendar-day span the rank was actually computed over. They share the rank's
+                # subject/tenor so the frontend can pair them and say "rank of the last N days"
+                # (or suppress) instead of the false "top of a 365-day range".
+                rows.append(
+                    (
+                        SIGNAL_KIND_IV_RANK_N_OBS,
+                        subject,
+                        config.reference_tenor,
+                        float(len(history)),
+                    )
+                )
+                window_days = inputs.iv_history_window_days_by_subject.get(subject)
+                if window_days is not None:
+                    rows.append(
+                        (
+                            SIGNAL_KIND_IV_RANK_WINDOW_DAYS,
+                            subject,
+                            config.reference_tenor,
+                            float(window_days),
+                        )
+                    )
     return rows
 
 

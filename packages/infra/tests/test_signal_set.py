@@ -121,20 +121,52 @@ def test_persisted_signal_set(tmp_path: Path) -> None:
 
     # ρ̄ (ADR 0051) is solved from the constituents' REALIZED vols (every name with bars), with
     # the index's implied ATM vol as the index leg — independently derived here via Eq. 23's
-    # closed form. CCC has no bars, so only AAA and BBB enter the basket.
+    # closed form. CCC has no bars, so only AAA and BBB enter the basket. The basket weights are
+    # NORMALIZED to sum to 1.0 before the solve: membership weights are stored as percentages, and
+    # feeding them raw inflates the variance terms and drives ρ̄ negative. AAA=0.5, BBB=0.3 enter,
+    # so the fractional weights are 0.5/0.8 and 0.3/0.8.
     realized_aaa = _realized_vol(AAA_CLOSES)
     realized_bbb = _realized_vol(BBB_CLOSES)
-    w_aaa, w_bbb = 0.5, 0.3
+    total = 0.5 + 0.3
+    w_aaa, w_bbb = 0.5 / total, 0.3 / total
     own = (w_aaa * realized_aaa) ** 2 + (w_bbb * realized_bbb) ** 2
     cross = (w_aaa * realized_aaa + w_bbb * realized_bbb) ** 2 - own
     expected_rho = (INDEX_3M_IV**2 - own) / cross
-    assert signals[("implied_correlation", INDEX, "3m")] == pytest.approx(expected_rho)
+    rho_bar = signals[("implied_correlation", INDEX, "3m")]
+    assert rho_bar == pytest.approx(expected_rho)
+    assert 0.0 < rho_bar < 1.0
 
     assert signals[("iv_rank", "AAA", "3m")] == pytest.approx(0.5)
 
     assert signals[("iv_vs_realized", "AAA", "3m")] == pytest.approx(realized_aaa - 0.20)
 
     assert signals[("term_structure_slope", "AAA", "1m:6m")] == pytest.approx(0.03)
+
+
+def test_iv_rank_carries_honest_lookback_companions(tmp_path: Path) -> None:
+    # IV rank must not silently imply a 365-day window. Alongside every rank we emit the real
+    # sample count and the calendar-day span it was computed over, so the frontend can label it
+    # truthfully ("rank of the last 3 days, spanning 2 days") instead of "top of the year".
+    # AAA has three banked 3m observations (2026-05-27, -28, -29): n=3, span=2 days.
+    store = ParquetStore(tmp_path)
+    _seed(store)
+    signals = _persist(store)
+
+    assert signals[("iv_rank", "AAA", "3m")] == pytest.approx(0.5)
+    assert signals[("iv_rank_n_observations", "AAA", "3m")] == pytest.approx(3.0)
+    assert signals[("iv_rank_window_days", "AAA", "3m")] == pytest.approx(2.0)
+
+
+def test_honesty_companions_only_accompany_an_emitted_rank(tmp_path: Path) -> None:
+    # The companions never appear without the rank they explain. CCC has no IV history, so it has
+    # neither an iv_rank nor any companion rows — no fabricated "0 of 0 days" noise.
+    store = ParquetStore(tmp_path)
+    _seed(store)
+    signals = _persist(store)
+
+    assert ("iv_rank", "CCC", "3m") not in signals
+    assert ("iv_rank_n_observations", "CCC", "3m") not in signals
+    assert ("iv_rank_window_days", "CCC", "3m") not in signals
 
 
 def test_persisted_rows_are_read_back_identically(tmp_path: Path) -> None:

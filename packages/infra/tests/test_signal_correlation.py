@@ -56,6 +56,30 @@ def test_malformed_inputs_raise_value_error(
         implied_correlation(weights, vols, index_vol)
 
 
+def test_normalized_weights_yield_a_plausible_correlation_in_unit_interval() -> None:
+    # Regression for the un-normalized-weight bug: passing percentage weights (summing to ~95)
+    # blew the own/cross terms up ~1000x and drove ρ̄ to an impossible negative. With weights
+    # normalized to sum to 1.0 the closed form returns a plausible reading strictly inside (0, 1).
+    raw_pct = [40.0, 30.0, 15.0, 10.0]
+    total = sum(raw_pct)
+    weights = [w / total for w in raw_pct]
+    vols = [0.18, 0.22, 0.25, 0.30]
+    # A single-name realized-vol baseline below the constituents, the SX5E-shaped hybrid leg.
+    index_vol = 0.13
+    rho_bar = implied_correlation(weights, vols, index_vol)
+    assert 0.0 < rho_bar < 1.0
+
+
+def test_un_normalized_percentage_weights_go_out_of_band() -> None:
+    # Documents the bug's signature: the SAME basket fed as raw percentages returns a value far
+    # outside (0, 1) (here strongly negative), which is what the production fix prevents.
+    raw_pct = [40.0, 30.0, 15.0, 10.0]
+    vols = [0.18, 0.22, 0.25, 0.30]
+    index_vol = 0.13
+    rho_bar = implied_correlation(raw_pct, vols, index_vol)
+    assert not (0.0 < rho_bar < 1.0)
+
+
 def test_weight_order_is_respected() -> None:
     a = implied_correlation([0.7, 0.3], [0.20, 0.30], math.sqrt(0.0432))
     b = implied_correlation([0.3, 0.7], [0.20, 0.30], math.sqrt(0.0432))

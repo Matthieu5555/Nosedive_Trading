@@ -12,6 +12,7 @@ import type {
   RiskResponse,
   SignalsResponse,
   SignalUnderlyingsResponse,
+  SurfaceDense,
   SurfaceResponse,
 } from "../api";
 import type { ScenariosResponse } from "../stressApi";
@@ -597,6 +598,22 @@ export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
     model_version: "svi-test",
     degenerate_maturity_years: [],
   },
+};
+
+// A dense surface spanning THREE maturities (1m, 6m, 1y), so the maturity-floor slice has something
+// real to trim on the short end and can still leave ≥2 rows. log-moneyness is a clean 3-column grid;
+// every IV is in the sane band so cleanDenseSurface keeps all columns. Used to prove BUG #3: a floor
+// trims the short tenors of the SAME dense grid instead of blanking the 3D surface.
+export const SURFACE_DENSE_THREE_ROWS: SurfaceDense = {
+  log_moneyness: [-0.1, 0.0, 0.1],
+  maturity_years: [0.083, 0.5, 1.0],
+  implied_vol: [
+    [0.3, 0.22, 0.26],
+    [0.27, 0.2, 0.24],
+    [0.25, 0.19, 0.23],
+  ],
+  model_version: "svi-test",
+  degenerate_maturity_years: [],
 };
 
 // A per-side analytics payload: combined / call / put, each carrying its own maturities and dense

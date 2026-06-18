@@ -6,6 +6,11 @@ import pytest
 from algotrading.infra.contracts import SurfaceParameters
 from algotrading.infra.contracts.bundles import SurfaceFitDiagnostics
 from algotrading.infra.surfaces import reconstruct_dense_surface
+from algotrading.infra.surfaces.reporting import (
+    ClampedSlice,
+    reconstruct_dense_surface_clamped,
+)
+from algotrading.infra.surfaces.svi import SviParams
 from fixtures.records import EXPIRY, SNAPSHOT_TS, make_stamp
 
 
@@ -96,3 +101,97 @@ def test_non_positive_maturity_slices_are_dropped() -> None:
     assert (
         reconstruct_dense_surface([_slice(0.0, **_P1), _slice(0.25, **_P2)]) is None
     )
+
+
+# --- clamped reconstruction (never extrapolate past the quoted window) -----------------------------
+
+
+def _clamped(maturity_years: float, params: dict, k_lo: float, k_hi: float) -> ClampedSlice:
+    return ClampedSlice(
+        maturity_years=maturity_years,
+        params=SviParams(**params),
+        k_lo=k_lo,
+        k_hi=k_hi,
+    )
+
+
+def test_clamped_holes_outside_quoted_window_are_nan_not_extrapolated() -> None:
+    # Both slices quoted only in a narrow window; the dense grid spans [-0.25, 0.25].
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.05, k_hi=0.05),
+            _clamped(1.0, _P2, k_lo=-0.05, k_hi=0.05),
+        ],
+        n_moneyness=5,  # k = -0.25, -0.125, 0.0, 0.125, 0.25
+        n_maturities=3,
+    )
+    assert surface is not None
+    # Edge columns (|k| = 0.25, 0.125) are outside the window -> NaN holes, not exploded wings.
+    for row in surface.implied_vol:
+        assert math.isnan(row[0])  # k = -0.25
+        assert math.isnan(row[1])  # k = -0.125
+        assert math.isnan(row[3])  # k = +0.125
+        assert math.isnan(row[4])  # k = +0.25
+        # The in-window centre column is a finite, sane vol (no extrapolation blowup).
+        assert math.isfinite(row[2])  # k = 0.0
+        assert 0.0 < row[2] < 1.0
+
+
+def test_clamped_in_window_cells_match_svi_evaluation() -> None:
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.25, k_hi=0.25),
+            _clamped(1.0, _P2, k_lo=-0.25, k_hi=0.25),
+        ],
+        n_moneyness=5,
+        n_maturities=3,
+    )
+    assert surface is not None
+    for j, k in enumerate(surface.log_moneyness):
+        # Endpoint rows are each slice sampled directly.
+        assert surface.implied_vol[0][j] == pytest.approx(math.sqrt(_svi_w(k, **_P1) / 0.25))
+        assert surface.implied_vol[2][j] == pytest.approx(math.sqrt(_svi_w(k, **_P2) / 1.0))
+        # Mid maturity interpolates total variance linearly, same as the legacy path.
+        w_mid = 0.5 * (_svi_w(k, **_P1) + _svi_w(k, **_P2))
+        assert surface.implied_vol[1][j] == pytest.approx(math.sqrt(w_mid / 0.625))
+
+
+def test_clamped_window_interpolates_in_maturity() -> None:
+    # Near slice narrow, far slice wide -> at mid maturity the window is the average.
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.05, k_hi=0.05),
+            _clamped(1.0, _P2, k_lo=-0.25, k_hi=0.25),
+        ],
+        n_moneyness=5,  # k = -0.25, -0.125, 0.0, 0.125, 0.25
+        n_maturities=3,  # t = 0.25, 0.625, 1.0
+    )
+    assert surface is not None
+    near, mid, far = surface.implied_vol
+    # Near slice: only k=0.0 is inside [-0.05, 0.05].
+    assert math.isnan(near[1]) and math.isfinite(near[2]) and math.isnan(near[3])
+    # Mid (t=0.625) window interpolates to [-0.15, 0.15]: |k|=0.125 now inside, |k|=0.25 still out.
+    assert math.isfinite(mid[1]) and math.isfinite(mid[3])
+    assert math.isnan(mid[0]) and math.isnan(mid[4])
+    # Far slice: full window, every column finite.
+    assert all(math.isfinite(v) for v in far)
+
+
+def test_clamped_fewer_than_two_slices_is_none() -> None:
+    assert reconstruct_dense_surface_clamped([_clamped(0.25, _P1, -0.05, 0.05)]) is None
+    assert reconstruct_dense_surface_clamped([]) is None
+    # Non-positive maturities are dropped, leaving < 2 usable.
+    assert (
+        reconstruct_dense_surface_clamped(
+            [_clamped(0.0, _P1, -0.05, 0.05), _clamped(0.25, _P2, -0.05, 0.05)]
+        )
+        is None
+    )
+
+
+def test_clamped_no_degenerate_flags_invented() -> None:
+    surface = reconstruct_dense_surface_clamped(
+        [_clamped(0.25, _P1, -0.05, 0.05), _clamped(1.0, _P2, -0.05, 0.05)]
+    )
+    assert surface is not None
+    assert surface.degenerate_maturity_years == ()

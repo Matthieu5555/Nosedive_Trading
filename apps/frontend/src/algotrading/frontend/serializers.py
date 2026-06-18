@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
@@ -94,10 +95,17 @@ def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
 
 
 def dense_surface_to_dict(surface: DenseSurface) -> dict[str, object]:
+    # The clamped reconstruction NaN-holes every cell outside a slice's quoted window (no
+    # extrapolated wing). Starlette's JSONResponse renders with allow_nan=False, so a NaN would 500
+    # the whole payload; we map every non-finite cell to JSON null here, which is exactly the gap
+    # the frontend already nulls/renders as a hole.
     return {
         "log_moneyness": list(surface.log_moneyness),
         "maturity_years": list(surface.maturity_years),
-        "implied_vol": [list(row) for row in surface.implied_vol],
+        "implied_vol": [
+            [value if math.isfinite(value) else None for value in row]
+            for row in surface.implied_vol
+        ],
         "model_version": surface.model_version,
         "degenerate_maturity_years": list(surface.degenerate_maturity_years),
     }

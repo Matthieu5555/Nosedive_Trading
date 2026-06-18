@@ -299,13 +299,17 @@ def _per_side_store(root: Path, seed: ModuleType) -> AppContext:
 
     The captured SX5E store really holds distinct call/put/combined cells (the two wings have
     different skew); this mirrors that shape so the per-side payload and dense grids are exercised
-    against real per-side data, never a re-slice of one combined set.
+    against real per-side data, never a re-slice of one combined set. Each maturity carries five
+    distinct log-moneyness points (>= MIN_POINTS_FOR_SVI) so the unified request-time SVI refit can
+    fit every slice.
     """
     store = ParquetStore(root)
     bands = [
-        ("30dp", -0.30, -0.12),
+        ("10dp", -0.10, -0.18),
+        ("30dp", -0.30, -0.09),
         ("atm", 0.50, 0.0),
-        ("30dc", 0.30, 0.12),
+        ("30dc", 0.30, 0.09),
+        ("10dc", 0.10, 0.18),
     ]
     side_iv = {"put": 0.31, "call": 0.21, "combined": 0.26}
     cells = []
@@ -368,22 +372,34 @@ def test_analytics_serializes_per_side_maturities_and_dense_grids(
     put_front = payload["sides"]["put"][0]["smile"]["implied_vols"]
     assert call_front != put_front
 
-    # Each side gets its own dense 3D grid (>= 2 maturities), shaped maturities x log-moneyness.
+    # Each side gets its own dense 3D grid from the SAME unified clamped-SVI reconstruction (the
+    # default n_maturities x n_moneyness dense grid), shaped maturities x log-moneyness.
+    grid_shapes = set()
     for side in ("put", "call", "combined"):
         dense = payload["surfaces_by_side"][side]
         assert dense is not None
         n_mat = len(dense["maturity_years"])
         n_k = len(dense["log_moneyness"])
-        assert n_mat == 2
+        assert n_mat >= 2
         assert n_k >= 2
         assert len(dense["implied_vol"]) == n_mat
         assert all(len(row) == n_k for row in dense["implied_vol"])
+        grid_shapes.add((n_mat, n_k))
 
-    # The combined per-side dense and the top-level `surface` agree on shape: with a single fitted
-    # slice the SVI reconstruction yields no dense (`surface` is None), so the combined per-side grid
-    # is the cell-built fallback, keeping the toggle consistent with call/put.
-    assert payload["surface"] is None  # one slice -> no SVI reconstruction
-    assert payload["surfaces_by_side"]["combined"] is not None
+        # No served dense IV cell exceeds a sane bound: the clamp NaN-holes the wings instead of
+        # extrapolating them into 38-242% IV, so every FINITE cell is a real, in-window level.
+        for row in dense["implied_vol"]:
+            for value in row:
+                if value is None or not math.isfinite(value):
+                    continue
+                assert 0.0 <= value <= 0.60, f"dense IV cell {value} exceeds the 0.60 bound"
+
+    # Combined / call / put all share the SAME unified grid shape (one method, one reconstruction).
+    assert len(grid_shapes) == 1
+
+    # The top-level `surface` is the combined per-side dense, byte-identical (one method, one source).
+    assert payload["surface"] == payload["surfaces_by_side"]["combined"]
+    assert payload["surface"] is not None
 
 
 def test_analytics_bad_trade_date_is_labeled_400(

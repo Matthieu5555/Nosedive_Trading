@@ -254,6 +254,78 @@ function denseHasZ(surface: SurfaceDense): boolean {
   return surface.maturity_years.length > 0 && surface.log_moneyness.length > 0;
 }
 
+// A surface needs at least two maturity rows to draw: Plotly `type:"surface"` over a single z-row
+// renders nothing (just empty axes). The maturity FLOOR control trims the short end of the dense
+// grid, so it must never trim below this minimum.
+const MIN_SURFACE_ROWS = 2;
+
+export interface FloorSliceResult {
+  surface: SurfaceDense;
+  // The floor that was actually applied after the clamp. Equals the requested floor unless honouring
+  // it would have left <2 rows, in which case it is relaxed down to the highest floor that keeps two
+  // rows (0 = no floor relaxed all the way back to the full span).
+  appliedFloorYears: number;
+  // True when the requested floor was relaxed to keep the surface ≥2 rows, so the caller can surface
+  // an honest inline note rather than silently ignoring or silently blanking the request.
+  relaxed: boolean;
+  // How many short-end rows the applied floor dropped, for an honest "showing the longer N tenors"
+  // style note when wanted.
+  nDropped: number;
+}
+
+// Slice a dense (maturity × log-moneyness) grid down to the maturity rows at or above `floorYears`,
+// keeping x (log-moneyness) untouched and carrying the matching rows of implied_vol and the
+// degenerate-maturity list along. The GUARD: a surface needs ≥2 rows to draw, so if the requested
+// floor would leave fewer, the floor is relaxed (clamped) up only as far as keeps the highest two
+// rows, and `relaxed` is set so the caller can say the floor was eased. floorYears 0 (or absent) is
+// "no floor" and returns the grid unchanged. Pure: builds a new SurfaceDense, never mutates input.
+export function floorSliceDenseSurface(
+  surface: SurfaceDense,
+  floorYears: number,
+): FloorSliceResult {
+  const totalRows = surface.maturity_years.length;
+  // No floor, an empty/too-small grid, or a grid that can't be trimmed: pass through untouched.
+  if (floorYears <= 0 || totalRows <= MIN_SURFACE_ROWS) {
+    return { surface, appliedFloorYears: 0, relaxed: false, nDropped: 0 };
+  }
+  // The row indices the requested floor keeps (maturity at or above the floor), in served order.
+  const requestedKept = surface.maturity_years
+    .map((years, i) => ({ years, i }))
+    .filter(({ years }) => years >= floorYears);
+
+  let keptIdx: number[];
+  let relaxed = false;
+  let appliedFloorYears = floorYears;
+  if (requestedKept.length >= MIN_SURFACE_ROWS) {
+    keptIdx = requestedKept.map(({ i }) => i);
+  } else {
+    // Honouring the floor would leave <2 rows. Clamp: keep the highest MIN_SURFACE_ROWS rows so a
+    // real surface still draws, and report the relaxation honestly. The applied floor becomes the
+    // lowest maturity we ended up keeping.
+    relaxed = true;
+    const byYearsDesc = surface.maturity_years
+      .map((years, i) => ({ years, i }))
+      .sort((a, b) => b.years - a.years)
+      .slice(0, MIN_SURFACE_ROWS);
+    keptIdx = byYearsDesc.map(({ i }) => i).sort((a, b) => a - b);
+    appliedFloorYears = Math.min(...byYearsDesc.map(({ years }) => years));
+  }
+
+  const keptYears = keptIdx.map((i) => surface.maturity_years[i]);
+  const keptSet = new Set(keptYears);
+  return {
+    surface: {
+      ...surface,
+      maturity_years: keptYears,
+      implied_vol: keptIdx.map((i) => surface.implied_vol[i] ?? []),
+      degenerate_maturity_years: surface.degenerate_maturity_years.filter((y) => keptSet.has(y)),
+    },
+    appliedFloorYears,
+    relaxed,
+    nDropped: totalRows - keptIdx.length,
+  };
+}
+
 // Preferred path: the dense surface reconstructed from the fitted SVI slices (the blueprint's
 // regularized grid), served by the BFF. It is already a smooth (maturity × log-moneyness) lattice
 // of implied vol, so it plots as the smooth fitted model — no kinks from a sparse delta-band
@@ -262,9 +334,13 @@ function denseHasZ(surface: SurfaceDense): boolean {
 function DenseVolSurface({
   surface,
   descriptor,
+  floored,
 }: {
   surface: SurfaceDense;
   descriptor: SurfaceDescriptor;
+  // The floor-slice outcome, so a relaxed (clamped) floor surfaces an honest inline note instead of
+  // silently ignoring the request. Absent / not relaxed → no note.
+  floored?: FloorSliceResult | null;
 }) {
   // Robustness (render layer only — the served values are never mutated): a railed slice serves
   // absurd IVs (108%, 140% at deep-OTM deltas) and duplicate log-moneyness columns; left raw they
@@ -299,28 +375,45 @@ function DenseVolSurface({
       "implied vol %{z:.1%} · two-sided<extra></extra>",
   } as Data;
   const ridge = atmRidgeTrace(cleaned);
+  // An honest inline note when the maturity floor was relaxed to keep the surface ≥2 rows: the
+  // request is acknowledged and the easing is shown, never a silent ignore and never a blank chart.
+  // The same fact rides the figure label so the descriptor sentence and the note can't disagree.
+  const relaxedNote = floored?.relaxed
+    ? "Maturity floor eased so the surface keeps at least two tenors."
+    : null;
+  const label = relaxedNote
+    ? `${surfaceLabel(descriptor, note)}, ${relaxedNote}`
+    : surfaceLabel(descriptor, note);
   return (
-    <Plot
-      label={surfaceLabel(descriptor, note)}
-      height={480}
-      data={ridge ? [trace, ridge] : [trace]}
-      layout={{
-        scene: {
-          xaxis: { title: { text: AXIS_LOG_MONEYNESS } },
-          yaxis: { title: { text: AXIS_MATURITY_YEARS } },
-          zaxis: { title: { text: AXIS_IMPLIED_VOL }, range: [0, SURFACE_Z_AXIS_MAX] },
-          aspectmode: "manual",
-          aspectratio: { x: 1.4, y: 1.5, z: 0.7 },
-          camera: { eye: { x: 1.8, y: -1.8, z: 0.8 } },
-        },
-      }}
-    />
+    <>
+      {relaxedNote && (
+        <p className="state-panel state-panel--note" role="status">
+          {relaxedNote}
+        </p>
+      )}
+      <Plot
+        label={label}
+        height={480}
+        data={ridge ? [trace, ridge] : [trace]}
+        layout={{
+          scene: {
+            xaxis: { title: { text: AXIS_LOG_MONEYNESS } },
+            yaxis: { title: { text: AXIS_MATURITY_YEARS } },
+            zaxis: { title: { text: AXIS_IMPLIED_VOL }, range: [0, SURFACE_Z_AXIS_MAX] },
+            aspectmode: "manual",
+            aspectratio: { x: 1.4, y: 1.5, z: 0.7 },
+            camera: { eye: { x: 1.8, y: -1.8, z: 0.8 } },
+          },
+        }}
+      />
+    </>
   );
 }
 
 export function VolSurface({
   surface,
   maturities,
+  floorYears = 0,
   subject,
   asOf,
   closeInstant,
@@ -329,12 +422,23 @@ export function VolSurface({
 }: {
   surface?: SurfaceDense | null;
   maturities: AnalyticsMaturity[];
+  // A lower bound on maturity (in years), the maturity-floor control. 0 (or absent) = no floor. The
+  // dense path slices the grid to rows at or above it, clamping so ≥2 rows always remain so the 3D
+  // surface never blanks; a relaxed floor surfaces an honest inline note rather than failing silently.
+  floorYears?: number;
 } & SurfaceIdentityProps) {
   const hasDense = !!surface && denseHasZ(surface);
+  // Apply the maturity floor to the dense grid: slice to rows at or above it, clamping so ≥2 rows
+  // always remain (the guard, so the surface never blanks). The faithful dense surface is sliced
+  // here rather than dropped to the coarse fallback, so a floor actually trims the short end of the
+  // SAME fitted grid instead of forcing a blank or a different render path (BUG #3).
+  const floored = hasDense ? floorSliceDenseSurface(surface!, floorYears) : null;
+  const flooredSurface = floored?.surface ?? null;
   // A degenerate close (the market-probably-closed surface) is the descriptor's loud state. The
   // dense grid flags it per-maturity; in the fallback path it rides the per-slice degenerate flag.
   const degenerateClose =
-    (hasDense && surface!.degenerate_maturity_years.length === surface!.maturity_years.length) ||
+    (!!flooredSurface &&
+      flooredSurface.degenerate_maturity_years.length === flooredSurface.maturity_years.length) ||
     (!hasDense &&
       maturities.length > 0 &&
       maturities.every((m) => m.surface_slice?.degenerate ?? false));
@@ -349,8 +453,8 @@ export function VolSurface({
   // Render the smooth reconstructed surface whenever the fit produced one; otherwise fall back to
   // the coarse grid built from the sparse delta-band points below (e.g. a single fitted slice, or
   // the surface-grid fallback with no fit).
-  if (hasDense) {
-    return <DenseVolSurface surface={surface!} descriptor={descriptor} />;
+  if (flooredSurface) {
+    return <DenseVolSurface surface={flooredSurface} descriptor={descriptor} floored={floored} />;
   }
   // A clean rectangular vol surface: x = log-moneyness, y = the maturity *index* (0,1,2…),
   // z = implied vol. The x axis is ALWAYS log-moneyness (carried in both smile modes), never the

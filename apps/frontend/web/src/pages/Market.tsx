@@ -169,15 +169,12 @@ export function MarketPage() {
     ? maturityFloorYears
     : 0;
   // The surface always keeps every tenor at or above the floor, so a real 3D surface always renders.
+  // (The Smile & Greeks panel below reads this filtered set; the 3D surface slices the dense grid
+  // itself, see below.)
   const surfaceMaturities = useMemo(
     () => cleanedMaturities.filter((m) => m.maturity_years >= effectiveFloorYears),
     [cleanedMaturities, effectiveFloorYears],
   );
-  // The stored dense (fitted-SVI) grid spans every captured tenor with no floor concept, so it is
-  // only the faithful surface when no floor is applied. With a floor in force we pass null and let
-  // VolSurface rebuild the grid from the filtered per-side cells, so the floor is honoured rather
-  // than silently ignored by a full-span dense grid.
-  const floorMatchesFullSpan = effectiveFloorYears === 0;
 
   // The index quote-currency ISO code (EUR/USD/...), resolved once from the indices payload. The
   // analytics panels render the symbol (currencySymbol); the constituents table takes the ISO code
@@ -432,11 +429,15 @@ export function MarketPage() {
                             // The 3D surface always renders: the maturity control is a floor, not a
                             // single point, so the surface keeps every tenor at or above it (a real
                             // surface needs several tenors). The single-tenor 2D smile lives in the
-                            // Smile & Greeks panel below. When the floor leaves a stored dense grid
-                            // that spans tenors below it, VolSurface falls back to the per-side cell
-                            // grid built from the filtered maturities, so the floor is honoured.
+                            // Smile & Greeks panel below. The dense (fitted-SVI) grid is ALWAYS passed
+                            // through, with the floor as a value: VolSurface slices the dense grid to
+                            // the rows at or above the floor (clamping so ≥2 tenors always remain), so
+                            // a floor trims the short end of the real surface instead of blanking it
+                            // (BUG #3). The coarse-cell fallback (surfaceMaturities) stays the genuine
+                            // no-dense-surface path.
                             <VolSurface
-                              surface={floorMatchesFullSpan ? sideSurface : null}
+                              surface={sideSurface}
+                              floorYears={effectiveFloorYears}
                               maturities={surfaceMaturities}
                               subject={index}
                               asOf={effectiveAsOf}

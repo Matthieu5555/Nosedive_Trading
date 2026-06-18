@@ -7,6 +7,7 @@ from datetime import date
 from algotrading.core.config import (
     ConfigError,
     ConfigFieldError,
+    SurfaceConfig,
     load_platform_config,
 )
 from algotrading.infra.contracts import (
@@ -26,7 +27,11 @@ from algotrading.infra.rates import (
     curve_from_points,
     implied_riskfree_spread,
 )
-from algotrading.infra.surfaces import reconstruct_dense_surface
+from algotrading.infra.surfaces.reporting import (
+    ClampedSlice,
+    reconstruct_dense_surface_clamped,
+)
+from algotrading.infra.surfaces.svi import SviParams, fit_svi
 from algotrading.infra.universe import IndexRegistryError, load_index_registry
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -340,89 +345,103 @@ def _maturities_from_surface_grid(
     return entries
 
 
-_PER_SIDE_DENSE_N_K = 41
+# Canonical SVI calibration defaults (configs/pricing.yaml `surface:`), used to fit slices at
+# request time when the platform config is unavailable (e.g. a store with no configs bundle). The
+# bounds/iteration budget match the persisted-pipeline calibration so a request-time refit reads the
+# same shape the stored slices were fit with.
+_DEFAULT_SURFACE_CONFIG = SurfaceConfig(
+    version="analytics-request-default",
+    svi_a_bounds=(0.0, 10.0),
+    svi_b_bounds=(1.0e-8, 10.0),
+    svi_rho_bounds=(-0.999, 0.999),
+    svi_m_bounds=(-5.0, 5.0),
+    svi_sigma_bounds=(1.0e-8, 10.0),
+    svi_bound_hit_tol=1.0e-5,
+    svi_max_iterations=200,
+)
 
 
-def _interp_iv(k: float, ks: list[float], ivs: list[float]) -> float | None:
-    """Linear IV at `k` along one slice's (sorted) smile; None OUTSIDE the captured wing.
+def _surface_config(ctx: object) -> SurfaceConfig:
+    """The platform's SVI calibration config, or the canonical default when it cannot be loaded.
 
-    Strictly an interpolation of captured cells (never an extrapolation): a `k` past the deepest
-    quoted wing is a null hole, so the surface shows where the side stopped quoting rather than
-    inventing a level. A `k` between two quoted points is linearly blended (the same regularize-only
-    read the smooth fit applies, with no model fabrication).
+    The request-time refit reuses the SAME SurfaceConfig the persisted pipeline calibrates with, so
+    the served per-side slices read the same shape as the stored ones. When the config bundle is
+    missing (a store stood up without configs), we fall back to the canonical pricing.yaml defaults
+    rather than failing the whole surface.
     """
-    if not ks or k < ks[0] or k > ks[-1]:
-        return None
-    for left, right in zip(range(len(ks) - 1), range(1, len(ks)), strict=False):
-        k_lo, k_hi = ks[left], ks[right]
-        if k_lo <= k <= k_hi:
-            if k_hi == k_lo:
-                return ivs[left]
-            weight = (k - k_lo) / (k_hi - k_lo)
-            return ivs[left] + weight * (ivs[right] - ivs[left])
-    return ivs[-1]
+    try:
+        return load_platform_config(ctx.configs_dir).surface  # type: ignore[attr-defined]
+    except (ConfigError, ConfigFieldError):
+        return _DEFAULT_SURFACE_CONFIG
 
 
-def _dense_from_maturity_entries(
-    entries: list[dict[str, object]],
-    model_version: str,
-) -> dict[str, object] | None:
-    """A clean dense (maturity x log-moneyness) IV grid built from the per-side smile cells.
+def _clamped_slices_for_side(
+    entries: list[dict[str, object]], config: SurfaceConfig
+) -> list[ClampedSlice]:
+    """Refit SVI per maturity from a side's smile cells, clamped to each slice's quoted window.
 
-    The fitted SVI dense surface (`reconstruct_dense_surface`) has no side, so for the call/put views
-    we build the grid from the captured per-side cells. To read as a smooth nappe (not a ragged union
-    of every slice's distinct strikes), every maturity is resampled onto ONE regular log-moneyness
-    axis spanning the captured wings; each cell is a linear interpolation of that slice's quotes, and a
-    point past the slice's deepest quoted wing is a null hole (never extrapolated, blueprint "show the
-    gaps"). Needs >= 2 maturities to read as a surface; otherwise None and the 2D smile is the honest
-    read.
+    For each maturity entry produced by :func:`_group_by_maturity`, take its captured smile (the
+    distinct log-moneyness points and aligned implied vols), convert to total variance
+    (``iv^2 * T``), and refit SVI. The fitted slice is paired with the ``[k_lo, k_hi]`` window the
+    side actually quoted at that maturity, so the dense reconstruction never extrapolates the wing.
+    A maturity is skipped when it has too few distinct points to fit, a degenerate window, or the
+    fit raises; the caller treats fewer than two usable slices as "no dense surface" (None).
     """
-    usable = [
-        entry
-        for entry in entries
-        if isinstance(entry.get("smile"), dict)
-        and entry["smile"].get("log_moneyness")  # type: ignore[union-attr]
-    ]
-    if len(usable) < 2:
-        return None
-    usable = sorted(usable, key=lambda e: float(e["maturity_years"]))  # type: ignore[arg-type]
-
-    # One regular k-axis across the captured wings, so the grid is rectangular and smooth.
-    all_k = [
-        float(k)
-        for entry in usable
-        for k in entry["smile"]["log_moneyness"]  # type: ignore[index]
-    ]
-    k_min, k_max = min(all_k), max(all_k)
-    if k_max <= k_min:
-        return None
-    k_axis = [
-        k_min + (k_max - k_min) * i / (_PER_SIDE_DENSE_N_K - 1)
-        for i in range(_PER_SIDE_DENSE_N_K)
-    ]
-
-    maturities = [float(entry["maturity_years"]) for entry in usable]  # type: ignore[arg-type]
-    grid: list[list[float | None]] = []
-    degenerate: list[float] = []
-    for entry in usable:
-        smile = entry["smile"]  # type: ignore[index]
-        pairs = sorted(
-            zip(smile["log_moneyness"], smile["implied_vols"], strict=False),
-            key=lambda p: p[0],
+    slices: list[ClampedSlice] = []
+    for entry in entries:
+        smile = entry.get("smile")
+        if not isinstance(smile, dict):
+            continue
+        logms = smile.get("log_moneyness")
+        ivs = smile.get("implied_vols")
+        if not isinstance(logms, list) or not isinstance(ivs, list):
+            continue
+        try:
+            maturity_years = float(entry["maturity_years"])  # type: ignore[arg-type]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if maturity_years <= 0.0:
+            continue
+        # Distinct, sorted log-moneyness with the aligned IV (last value wins on a duplicate k).
+        by_k: dict[float, float] = {}
+        for k, iv in zip(logms, ivs, strict=False):
+            try:
+                by_k[float(k)] = float(iv)
+            except (TypeError, ValueError):
+                continue
+        ks = sorted(by_k)
+        if len(ks) < 2:
+            continue
+        k_lo, k_hi = ks[0], ks[-1]
+        if k_hi <= k_lo:
+            continue
+        total_variances = tuple(by_k[k] * by_k[k] * maturity_years for k in ks)
+        try:
+            fit = fit_svi(tuple(ks), total_variances, config=config)
+        except (ValueError, FloatingPointError):
+            continue
+        params: SviParams = fit.params
+        slices.append(
+            ClampedSlice(
+                maturity_years=maturity_years, params=params, k_lo=k_lo, k_hi=k_hi
+            )
         )
-        ks = [float(k) for k, _ in pairs]
-        ivs = [float(iv) for _, iv in pairs]
-        grid.append([_interp_iv(k, ks, ivs) for k in k_axis])
-        fitted = entry.get("surface_slice")
-        if isinstance(fitted, dict) and fitted.get("degenerate"):
-            degenerate.append(float(entry["maturity_years"]))  # type: ignore[arg-type]
-    return {
-        "log_moneyness": k_axis,
-        "maturity_years": maturities,
-        "implied_vol": grid,
-        "model_version": model_version,
-        "degenerate_maturity_years": degenerate,
-    }
+    return slices
+
+
+def _dense_dict_for_side(
+    entries: list[dict[str, object]], config: SurfaceConfig, model_version: str
+) -> dict[str, object] | None:
+    """One unified dense (maturity x log-moneyness) IV grid for a side, via clamped SVI refit.
+
+    Builds clamped SVI slices from the side's smile cells and reconstructs a dense grid that
+    interpolates total variance AND the quoted window in maturity, NaN-holing every cell outside the
+    quoted wing (no extrapolation). Returns None when fewer than two slices are usable, so a side
+    that cannot read as a surface serializes as null (honest degrade), same as before.
+    """
+    slices = _clamped_slices_for_side(entries, config)
+    dense = reconstruct_dense_surface_clamped(slices, model_version=model_version)
+    return dense_surface_to_dict(dense) if dense is not None else None
 
 
 @router.get("")
@@ -471,35 +490,31 @@ def get_analytics(
         maturities = _maturities_from_surface_grid(grid, slices)
         if maturities:
             source = "surface_grid"
-    dense = reconstruct_dense_surface(slices)
-    combined_dense = dense_surface_to_dict(dense) if dense is not None else None
 
-    # Per-side views (call / put / combined). The captured store carries genuinely different IV for
-    # the call wing and the put wing, so each side is its own data, not a re-slice of combined. Each
-    # side carries its own maturities (smile + per-band Greek points) and its own dense 3D grid built
-    # from those cells. `combined` reuses the maturities/dense already computed above (the default,
-    # backward-compatible `maturities`/`surface`). A side the close did not capture serializes as an
-    # empty maturity list + null dense, so the front degrades to an honest "per-side fit not available
-    # for this close, showing combined", never a fabricated surface.
+    # Per-side views (call / put / combined), each built by ONE method: refit SVI from that side's
+    # captured smile cells, clamp every slice to its own quoted log-moneyness window, and
+    # reconstruct a dense grid that NaN-holes anything outside the quoted wing (never extrapolates).
+    # The captured store carries genuinely different IV for the call wing and the put wing, so each
+    # side is its own data, not a re-slice of combined. `combined` uses the combined `maturities`
+    # already grouped above, so the top-level `surface` is byte-identical to
+    # `surfaces_by_side["combined"]`. A side that cannot read as a surface (fewer than two fittable
+    # slices) serializes as null, so the front degrades honestly rather than showing a fake wing.
+    surface_config = _surface_config(ctx)
+    model_version = slices[0].model_version if slices else "svi"
     sides: dict[str, list[dict[str, object]]] = {}
     surfaces_by_side: dict[str, dict[str, object] | None] = {}
-    model_version = dense.model_version if dense is not None else "svi"
     for side in SURFACE_SIDES:
         if side == SURFACE_SIDE_COMBINED:
             side_entries = maturities
-            # The combined 3D prefers the smooth fitted-SVI reconstruction (the existing `surface`),
-            # and falls back to the cell grid when the fit produced no dense surface (e.g. a single
-            # fitted slice), so the per-side toggle always has a combined grid when call/put do.
-            side_dense = combined_dense or _dense_from_maturity_entries(
-                side_entries, model_version
-            )
         else:
             side_entries = _group_by_maturity(
                 cells, slices, snapshots, forwards, rate_context, side
             )
-            side_dense = _dense_from_maturity_entries(side_entries, model_version)
         sides[side] = side_entries
-        surfaces_by_side[side] = side_dense
+        surfaces_by_side[side] = _dense_dict_for_side(
+            side_entries, surface_config, model_version
+        )
+    combined_dense = surfaces_by_side[SURFACE_SIDE_COMBINED]
 
     coverage = coverage_from_snapshots(snapshots)
     return JSONResponse(

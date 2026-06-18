@@ -386,6 +386,18 @@ def test_analytics_serializes_per_side_maturities_and_dense_grids(
         assert all(len(row) == n_k for row in dense["implied_vol"])
         grid_shapes.add((n_mat, n_k))
 
+        # Both the clamped ("raw") and filled ("clean") grids are present over the SAME axes,
+        # with identical outer (maturity) and inner (log-moneyness) dimensions.
+        assert "implied_vol_filled" in dense
+        filled = dense["implied_vol_filled"]
+        assert len(filled) == n_mat
+        assert all(len(row) == n_k for row in filled)
+        assert len(filled) == len(dense["implied_vol"])
+        assert all(
+            len(f_row) == len(r_row)
+            for f_row, r_row in zip(filled, dense["implied_vol"], strict=True)
+        )
+
         # No served dense IV cell exceeds a sane bound: the clamp NaN-holes the wings instead of
         # extrapolating them into 38-242% IV, so every FINITE cell is a real, in-window level.
         for row in dense["implied_vol"]:
@@ -393,6 +405,27 @@ def test_analytics_serializes_per_side_maturities_and_dense_grids(
                 if value is None or not math.isfinite(value):
                     continue
                 assert 0.0 <= value <= 0.60, f"dense IV cell {value} exceeds the 0.60 bound"
+
+        # The filled "clean" grid is fully filled (no nulls) and every finite cell is capped <=0.60.
+        for row in filled:
+            for value in row:
+                assert value is not None, "filled grid must contain no nulls (fully filled)"
+                assert math.isfinite(value), "filled grid cell must be finite"
+                assert 0.0 <= value <= 0.60, f"filled IV cell {value} exceeds the 0.60 cap"
+
+        # The filled grid is a superset of the clamped grid's finite cells: wherever the clamped
+        # ("raw") grid has a real level, the filled ("clean") grid also has one. The reverse does
+        # not hold, the clamped grid holes out (null) where the filled grid is finite, proving the
+        # two differ outside the quoted window.
+        n_raw_holes = 0
+        for r_row, f_row in zip(dense["implied_vol"], filled, strict=True):
+            for r_value, f_value in zip(r_row, f_row, strict=True):
+                if r_value is not None and math.isfinite(r_value):
+                    assert f_value is not None and math.isfinite(f_value)
+                if r_value is None:
+                    n_raw_holes += 1
+        # The clamped grid holes out where the filled grid stays finite (windows are sub-grid).
+        assert n_raw_holes > 0, "expected the clamped grid to hole out where filled is finite"
 
     # Combined / call / put all share the SAME unified grid shape (one method, one reconstruction).
     assert len(grid_shapes) == 1

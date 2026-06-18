@@ -7,6 +7,7 @@ from algotrading.infra.contracts import SurfaceParameters
 from algotrading.infra.contracts.bundles import SurfaceFitDiagnostics
 from algotrading.infra.surfaces import reconstruct_dense_surface
 from algotrading.infra.surfaces.reporting import (
+    FILLED_IV_CAP,
     ClampedSlice,
     reconstruct_dense_surface_clamped,
 )
@@ -195,3 +196,101 @@ def test_clamped_no_degenerate_flags_invented() -> None:
     )
     assert surface is not None
     assert surface.degenerate_maturity_years == ()
+
+
+# --- filled ("clean") z-grid: fully filled edge-to-edge and capped -----------------------------
+
+
+def test_filled_grid_has_no_holes_while_clamped_grid_does() -> None:
+    # Narrow quoted window -> clamped grid holes the wings, filled grid fills them.
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.05, k_hi=0.05),
+            _clamped(1.0, _P2, k_lo=-0.05, k_hi=0.05),
+        ],
+        n_moneyness=5,
+        n_maturities=3,
+    )
+    assert surface is not None
+    # Filled grid is fully filled: no NaN / non-finite anywhere.
+    assert all(math.isfinite(v) for row in surface.implied_vol_filled for v in row)
+    # Same shape as the clamped grid.
+    assert len(surface.implied_vol_filled) == len(surface.implied_vol)
+    assert all(
+        len(f) == len(c)
+        for f, c in zip(surface.implied_vol_filled, surface.implied_vol, strict=True)
+    )
+    # The clamped grid still holes outside the window (wings are NaN).
+    assert any(math.isnan(v) for row in surface.implied_vol for v in row)
+
+
+def test_filled_grid_caps_blown_up_wings_at_FILLED_IV_CAP() -> None:
+    # A short tenor with a steep, badly-constrained smile: the unclamped SVI wing
+    # IV exceeds 0.60. The filled grid must clamp it to exactly the cap, not null,
+    # not larger.
+    blown = dict(a=0.02, b=2.0, rho=0.0, m=0.0, sigma=0.01)
+    short = 0.05
+    # Sanity: the raw SVI wing IV really would exceed the cap (otherwise the test
+    # proves nothing).
+    raw_wing_iv = math.sqrt(_svi_w(0.25, **blown) / short)
+    assert raw_wing_iv > FILLED_IV_CAP
+
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(short, blown, k_lo=-0.25, k_hi=0.25),
+            _clamped(1.0, _P2, k_lo=-0.25, k_hi=0.25),
+        ],
+        n_moneyness=5,  # k includes the +/-0.25 wings
+        n_maturities=3,
+    )
+    assert surface is not None
+    # Every finite filled cell is <= the cap, and none are NaN.
+    for row in surface.implied_vol_filled:
+        for v in row:
+            assert math.isfinite(v)
+            assert v <= FILLED_IV_CAP + 1e-12
+    # The short-tenor wing specifically is clamped to exactly the cap.
+    near = surface.implied_vol_filled[0]
+    assert near[0] == pytest.approx(FILLED_IV_CAP)  # k = -0.25
+    assert near[4] == pytest.approx(FILLED_IV_CAP)  # k = +0.25
+
+
+def test_filled_and_clamped_agree_inside_quoted_window_below_cap() -> None:
+    # Sane slices fully quoted across the grid; nothing hits the cap, so the filled
+    # grid equals the clamped grid cell-for-cell.
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.25, k_hi=0.25),
+            _clamped(1.0, _P2, k_lo=-0.25, k_hi=0.25),
+        ],
+        n_moneyness=5,
+        n_maturities=3,
+    )
+    assert surface is not None
+    for fr, cr in zip(surface.implied_vol_filled, surface.implied_vol, strict=True):
+        for fv, cv in zip(fr, cr, strict=True):
+            assert math.isfinite(cv)  # window is full here, so clamped is finite
+            assert fv < FILLED_IV_CAP  # below cap, so untouched by the clamp
+            assert fv == pytest.approx(cv)
+
+
+def test_filled_agrees_with_clamped_only_in_window_when_window_narrow() -> None:
+    # Narrow window: where the clamped grid is finite (inside the window) and below
+    # the cap, the filled grid must match it exactly. Outside the window the clamped
+    # grid is NaN but the filled grid is still a finite (possibly capped) value.
+    surface = reconstruct_dense_surface_clamped(
+        [
+            _clamped(0.25, _P1, k_lo=-0.05, k_hi=0.05),
+            _clamped(1.0, _P2, k_lo=-0.05, k_hi=0.05),
+        ],
+        n_moneyness=5,
+        n_maturities=3,
+    )
+    assert surface is not None
+    for fr, cr in zip(surface.implied_vol_filled, surface.implied_vol, strict=True):
+        for fv, cv in zip(fr, cr, strict=True):
+            if math.isfinite(cv) and cv < FILLED_IV_CAP:
+                assert fv == pytest.approx(cv)
+            else:
+                # Holed (or capped) in the clamped grid; filled is finite regardless.
+                assert math.isfinite(fv)

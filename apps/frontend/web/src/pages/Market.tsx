@@ -8,9 +8,9 @@ import {
   type PriceHistoryResponse,
   type RecordedDatesResponse,
   type SignalsResponse,
+  SURFACE_SIDE_LABELS,
   type SurfaceDense,
   type SurfaceSide,
-  SURFACE_SIDE_LABELS,
 } from "../api";
 import { EMPTY_FRAME, useSetAssistantFrame } from "../components/Assistant/AssistantContext";
 import { AsyncBlock } from "../components/AsyncBlock";
@@ -30,7 +30,6 @@ import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
-import { cleanSurfaceMaturities } from "../lib/volRobust";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
@@ -57,10 +56,11 @@ export function MarketPage() {
     setSurfaceMode("strict");
   }, [index]);
 
-  // Clean surface is the landing state: the front-week / degenerate slices the fitter could not fit
-  // (and which draw the impossible delta spike) are dropped from the smile, Greeks and 3D surface.
-  // Turning it off shows every slice raw, spike and all, for the rare case the PM wants to inspect a
-  // flagged fit. Resets to clean whenever the underlying changes, so "show all" is always deliberate.
+  // Clean surface is the landing state: it draws the smooth, fully FILLED nappe (the classic
+  // vol-surface look, the backend's implied_vol_filled grid capped at 0.60, no holes). Turning it
+  // off shows the RAW, less-interpolated surface that keeps the holes where strikes stop, so a PM
+  // can see exactly where coverage runs out. Toggling only changes interpolation/fill, never which
+  // tenors show. Resets to clean whenever the underlying changes, so "raw" is always deliberate.
   const [cleanSurface, setCleanSurface] = useState(true);
   useEffect(() => {
     setCleanSurface(true);
@@ -141,15 +141,12 @@ export function MarketPage() {
     return analytics.data?.surface ?? null;
   }, [analytics.data, effectiveSide]);
 
-  // The surface/Greeks data path: clean (default) drops the flagged slices; show-all passes raw. Only
-  // the smile, Greeks and 3D surface read this; the indicator scorecards stay on the raw (combined)
-  // maturities. The maturities now follow the selected side.
-  const rawMaturities = sideMaturities;
-  const cleanedMaturities = useMemo(
-    () => (cleanSurface ? cleanSurfaceMaturities(rawMaturities) : rawMaturities),
-    [cleanSurface, rawMaturities],
-  );
-  const nDroppedSlices = rawMaturities.length - cleanSurfaceMaturities(rawMaturities).length;
+  // The surface/Greeks maturity set follows the selected side. The clean/raw toggle no longer drops
+  // any maturity: the backend refits the surface from clean cells (no degenerate slices to drop), so
+  // clean and raw show the SAME tenors and the toggle only changes interpolation/fill on the 3D
+  // surface (clean = smooth filled, raw = holes where strikes stop). The dropped-slice count is
+  // therefore gone (it would always be 0, a misleading label).
+  const surfaceSideMaturities = sideMaturities;
 
   // The maturity FLOOR options: "All maturities" (no floor) plus a "min {tenor} and up" floor for
   // each captured tenor except the last (a floor at the longest tenor would leave a single slice,
@@ -157,23 +154,23 @@ export function MarketPage() {
   // threshold, near -> far. Listing the side's own captured tenors keeps the control honest when a
   // side captured a different set than combined.
   const maturityFloorOptions = useMemo<MaturityFloorOption[]>(() => {
-    const sorted = [...cleanedMaturities].sort((a, b) => a.maturity_years - b.maturity_years);
+    const sorted = [...surfaceSideMaturities].sort((a, b) => a.maturity_years - b.maturity_years);
     const floors = sorted
       .slice(0, Math.max(sorted.length - 1, 0))
       .map((m) => ({ years: m.maturity_years, label: `min ${m.tenor_label || m.label} and up` }));
     return [{ years: 0, label: ALL_MATURITIES }, ...floors];
-  }, [cleanedMaturities]);
-  // Keep the floor valid as the side / clean toggle changes the captured set (a floor the new set
-  // no longer offers falls back to "all maturities" rather than silently emptying the surface).
+  }, [surfaceSideMaturities]);
+  // Keep the floor valid as the side changes the captured set (a floor the new set no longer offers
+  // falls back to "all maturities" rather than silently emptying the surface).
   const effectiveFloorYears = maturityFloorOptions.some((o) => o.years === maturityFloorYears)
     ? maturityFloorYears
     : 0;
   // The surface always keeps every tenor at or above the floor, so a real 3D surface always renders.
   // (The Smile & Greeks panel below reads this filtered set; the 3D surface slices the dense grid
-  // itself, see below.)
+  // itself, see below.) The set is the same for clean and raw; only the 3D fill changes.
   const surfaceMaturities = useMemo(
-    () => cleanedMaturities.filter((m) => m.maturity_years >= effectiveFloorYears),
-    [cleanedMaturities, effectiveFloorYears],
+    () => surfaceSideMaturities.filter((m) => m.maturity_years >= effectiveFloorYears),
+    [surfaceSideMaturities, effectiveFloorYears],
   );
 
   // The index quote-currency ISO code (EUR/USD/...), resolved once from the indices payload. The
@@ -379,7 +376,7 @@ export function MarketPage() {
                           <span className="status" data-tone={descriptor.tone}>
                             {descriptor.caption}
                           </span>
-                          <SurfaceFitPill maturities={rawMaturities} />
+                          <SurfaceFitPill maturities={surfaceSideMaturities} />
                         </Cluster>
                         <Cluster className="panel-heading__toggles" gap="xs" align="center">
                           <SurfaceSideToggle
@@ -393,11 +390,7 @@ export function MarketPage() {
                             options={maturityFloorOptions}
                             onChange={setMaturityFloorYears}
                           />
-                          <CleanSurfaceToggle
-                            clean={cleanSurface}
-                            nDropped={nDroppedSlices}
-                            onChange={setCleanSurface}
-                          />
+                          <CleanSurfaceToggle clean={cleanSurface} onChange={setCleanSurface} />
                           <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
                         </Cluster>
                       </div>
@@ -438,6 +431,7 @@ export function MarketPage() {
                             <VolSurface
                               surface={sideSurface}
                               floorYears={effectiveFloorYears}
+                              filled={cleanSurface}
                               maturities={surfaceMaturities}
                               subject={index}
                               asOf={effectiveAsOf}
@@ -569,46 +563,37 @@ function SurfaceFitPill({ maturities }: { maturities: AnalyticsMaturity[] }) {
   );
 }
 
-// Strict ⟷ Indicative toggle (MAT-LEGIBILITY-strict-indicative-mode). Strict is the default and the
-// only stored/tradeable surface (two-sided quotes only); indicative is a view-time overlay that
-// includes one-sided/last marks, unmistakably badged so it can never be confused for the close. The
-// toggle says what each mode does — the consequence is shown, not sold — and a `mode` change is a
-// deliberate act that visibly reframes the page (the INDICATIF badge appears, the coverage numerator
-// rises), never a silent data swap.
-// Clean surface vs all slices. Default clean drops the front-week / degenerate slices the fitter
-// flagged, the ones that draw the impossible delta spike. "All slices, raw" puts them back for a
-// deliberate look at a flagged fit. Matches the mode-toggle styling so the two controls read as one
-// set. The count of dropped slices is surfaced so the consequence is visible, not hidden.
+// Clean vs raw fill of the 3D surface. Clean (default) draws the smooth, fully filled nappe, the
+// classic vol-surface look. Raw draws the honest, less-interpolated surface that keeps the holes
+// where strikes stop, so you can see exactly where coverage runs out. The toggle changes only the
+// interpolation/fill, never which tenors show. Matches the mode-toggle styling so the surface
+// controls read as one set.
 function CleanSurfaceToggle({
   clean,
-  nDropped,
   onChange,
 }: {
   clean: boolean;
-  nDropped: number;
   onChange: (clean: boolean) => void;
 }) {
-  const droppedNote =
-    nDropped > 0 ? ` (${nDropped} flagged slice${nDropped === 1 ? "" : "s"} hidden)` : "";
   return (
-    <div className="mode-toggle" role="group" aria-label="Surface slices">
+    <div className="mode-toggle" role="group" aria-label="Surface fill">
       <button
         type="button"
         className="mode-toggle__option"
         aria-pressed={clean}
-        title="Hide the front-week and degenerate slices the fitter flagged"
+        title="Smooth, fully filled nappe, the classic vol-surface look"
         onClick={() => onChange(true)}
       >
-        Clean surface{clean ? droppedNote : ""}
+        Clean surface
       </button>
       <button
         type="button"
         className="mode-toggle__option"
         aria-pressed={!clean}
-        title="Include every slice, even the flagged ones that draw the delta spike"
+        title="Less interpolated, keeps the gaps where strikes stop"
         onClick={() => onChange(false)}
       >
-        All slices, raw
+        Raw, with gaps
       </button>
     </div>
   );
@@ -710,6 +695,12 @@ function MaturityFloorSelect({
   );
 }
 
+// Strict / Indicative toggle (MAT-LEGIBILITY-strict-indicative-mode). Strict is the default and the
+// only stored/tradeable surface (two-sided quotes only); indicative is a view-time overlay that
+// includes one-sided/last marks, unmistakably badged so it can never be confused for the close. The
+// toggle says what each mode does, the consequence is shown, not sold, and a `mode` change is a
+// deliberate act that visibly reframes the page (the INDICATIVE badge appears, the coverage numerator
+// rises), never a silent data swap.
 function SurfaceModeToggle({
   mode,
   onChange,

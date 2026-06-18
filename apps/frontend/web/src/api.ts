@@ -271,7 +271,13 @@ export interface AnalyticsMaturity {
 export interface SurfaceDense {
   log_moneyness: number[];
   maturity_years: number[];
-  implied_vol: number[][];
+  // The CLAMPED/holey grid: cells where strikes stop are null, so the RAW (honest) surface shows
+  // gaps where coverage runs out. Use this when `filled` is false.
+  implied_vol: (number | null)[][];
+  // The FILLED, capped-at-0.60 grid with no holes: the classic smooth nappe look. The backend
+  // refits from clean cells so it carries no degenerate slices. Use this for the CLEAN view.
+  // Additive-nullable: an older payload without it parses, and the chart falls back to implied_vol.
+  implied_vol_filled?: (number | null)[][];
   model_version: string;
   degenerate_maturity_years: number[];
 }

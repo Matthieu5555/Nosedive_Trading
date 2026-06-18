@@ -6,7 +6,11 @@ vi.mock("./LightweightLineChart", async () => await import("../test/lightweightL
 
 import type { AnalyticsMaturity } from "../api";
 import { IV_SANE_MAX } from "../lib/volRobust";
-import { ANALYTICS_AAA_DEGENERATE, SURFACE_DENSE_THREE_ROWS } from "../test/fixtures";
+import {
+  ANALYTICS_AAA_DEGENERATE,
+  SURFACE_DENSE_FILLED_AND_HOLEY,
+  SURFACE_DENSE_THREE_ROWS,
+} from "../test/fixtures";
 import { floorSliceDenseSurface, SmileChart, VolSurface } from "./charts";
 
 const DEGEN = ANALYTICS_AAA_DEGENERATE;
@@ -229,5 +233,87 @@ describe("VolSurface maturity floor (never blanks, drops short tenors) — BUG #
     )[][];
     expect(z.length).toBe(3);
     expect(screen.queryByText(/Maturity floor eased/i)).toBeNull();
+  });
+});
+
+// The clean/raw toggle (the `filled` prop) controls how interpolated the 3D surface looks. CLEAN
+// (filled=true) renders the fully-filled implied_vol_filled grid (no holes, the classic smooth
+// nappe); RAW (filled=false) renders the clamped implied_vol grid, which keeps its holes where the
+// strikes stop. Toggling changes only the fill, never the maturity set, and the maturity floor still
+// slices rows in both modes.
+function readZ(): (number | null)[][] {
+  const fig = screen.getByLabelText(/Volatility surface, SX5E/i);
+  return JSON.parse(within(fig).getByTestId("plot-z").textContent || "[]") as (number | null)[][];
+}
+
+describe("VolSurface clean/raw fill toggle (filled prop)", () => {
+  const dense = SURFACE_DENSE_FILLED_AND_HOLEY;
+
+  test("filled=true renders the fully filled grid with NO null holes", () => {
+    render(<VolSurface subject="SX5E" surface={dense} filled={true} maturities={[]} />);
+    const z = readZ();
+    // No cell is null: the smooth nappe is fully filled.
+    expect(z.flat().some((v) => v === null)).toBe(false);
+    // It is the filled grid (the interpolated deep-OTM-put column), not the holey one.
+    expect(z).toEqual([
+      [0.3, 0.22, 0.26],
+      [0.28, 0.2, 0.24],
+      [0.26, 0.19, 0.23],
+    ]);
+  });
+
+  test("filled=false preserves the holes where strikes stop", () => {
+    render(<VolSurface subject="SX5E" surface={dense} filled={false} maturities={[]} />);
+    const z = readZ();
+    // The clamped grid keeps its holes (the deep-OTM-put wing on the two longer tenors).
+    expect(z.flat().filter((v) => v === null).length).toBe(2);
+    expect(z).toEqual([
+      [0.3, 0.22, 0.26],
+      [null, 0.2, 0.24],
+      [null, 0.19, 0.23],
+    ]);
+  });
+
+  test("toggling fill does not change the maturity set (same rows, same y axis)", () => {
+    const { rerender } = render(
+      <VolSurface subject="SX5E" surface={dense} filled={true} maturities={[]} />,
+    );
+    const cleanRows = readZ().length;
+    rerender(<VolSurface subject="SX5E" surface={dense} filled={false} maturities={[]} />);
+    const rawRows = readZ().length;
+    expect(cleanRows).toBe(3);
+    expect(rawRows).toBe(3);
+  });
+
+  test("the maturity floor still slices rows in BOTH fill modes, on the same axes", () => {
+    // Floor 0.5y keeps {0.5, 1.0} = 2 rows. Filled keeps the interpolated cells; raw keeps the holes.
+    const { rerender } = render(
+      <VolSurface subject="SX5E" surface={dense} filled={true} floorYears={0.5} maturities={[]} />,
+    );
+    expect(readZ()).toEqual([
+      [0.28, 0.2, 0.24],
+      [0.26, 0.19, 0.23],
+    ]);
+    rerender(
+      <VolSurface subject="SX5E" surface={dense} filled={false} floorYears={0.5} maturities={[]} />,
+    );
+    expect(readZ()).toEqual([
+      [null, 0.2, 0.24],
+      [null, 0.19, 0.23],
+    ]);
+  });
+
+  test("filled=true falls back to the clamped grid when the payload has no filled grid", () => {
+    // An older payload (no implied_vol_filled): clean asks for filled but degrades to the clamped
+    // grid rather than drawing nothing.
+    render(
+      <VolSurface subject="SX5E" surface={SURFACE_DENSE_THREE_ROWS} filled={true} maturities={[]} />,
+    );
+    const z = readZ();
+    expect(z).toEqual([
+      [0.3, 0.22, 0.26],
+      [0.27, 0.2, 0.24],
+      [0.25, 0.19, 0.23],
+    ]);
   });
 });

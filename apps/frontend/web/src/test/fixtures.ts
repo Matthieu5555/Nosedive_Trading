@@ -616,6 +616,30 @@ export const SURFACE_DENSE_THREE_ROWS: SurfaceDense = {
   degenerate_maturity_years: [],
 };
 
+// A dense surface carrying BOTH grids on the SAME axes (the new payload contract): the CLAMPED/holey
+// `implied_vol` has nulls where strikes stop (the RAW look), while `implied_vol_filled` is the
+// fully-filled, capped-at-0.60 grid with no holes (the CLEAN look). Same three maturities so the
+// maturity-floor slice still has something to trim on the short end and keeps ≥2 rows. Used to prove
+// the clean/raw toggle changes fill, never the maturity set, and that the floor slices either grid.
+export const SURFACE_DENSE_FILLED_AND_HOLEY: SurfaceDense = {
+  log_moneyness: [-0.1, 0.0, 0.1],
+  maturity_years: [0.083, 0.5, 1.0],
+  // Holey: the deep-OTM put wing has no quote on the two longer tenors (strikes stop there).
+  implied_vol: [
+    [0.3, 0.22, 0.26],
+    [null, 0.2, 0.24],
+    [null, 0.19, 0.23],
+  ],
+  // Filled: the same lattice with the holes interpolated in, every cell in the sane band.
+  implied_vol_filled: [
+    [0.3, 0.22, 0.26],
+    [0.28, 0.2, 0.24],
+    [0.26, 0.19, 0.23],
+  ],
+  model_version: "svi-test",
+  degenerate_maturity_years: [],
+};
+
 // A per-side analytics payload: combined / call / put, each carrying its own maturities and dense
 // grid, with call and put differing in IV (the skew asymmetry the per-side selector exists to show).
 // Two maturities (3m, 6m) so each side has a real 3D grid. Built off the scorecard slice so the

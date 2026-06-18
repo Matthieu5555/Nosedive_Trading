@@ -313,11 +313,17 @@ export function floorSliceDenseSurface(
 
   const keptYears = keptIdx.map((i) => surface.maturity_years[i]);
   const keptSet = new Set(keptYears);
+  // Slice BOTH grids on the SAME row indices so the clamped and filled grids stay on identical axes;
+  // the chart then picks one by `filled` and the floor sees the same rows either way.
+  const filledRows = surface.implied_vol_filled;
   return {
     surface: {
       ...surface,
       maturity_years: keptYears,
       implied_vol: keptIdx.map((i) => surface.implied_vol[i] ?? []),
+      ...(filledRows
+        ? { implied_vol_filled: keptIdx.map((i) => filledRows[i] ?? []) }
+        : {}),
       degenerate_maturity_years: surface.degenerate_maturity_years.filter((y) => keptSet.has(y)),
     },
     appliedFloorYears,
@@ -335,23 +341,30 @@ function DenseVolSurface({
   surface,
   descriptor,
   floored,
+  filled,
 }: {
   surface: SurfaceDense;
   descriptor: SurfaceDescriptor;
   // The floor-slice outcome, so a relaxed (clamped) floor surfaces an honest inline note instead of
   // silently ignoring the request. Absent / not relaxed → no note.
   floored?: FloorSliceResult | null;
+  // CLEAN (true) renders the FILLED, capped-at-0.60 grid (implied_vol_filled): the classic smooth
+  // nappe with no holes. RAW (false) renders the CLAMPED/holey grid (implied_vol): the honest, less
+  // interpolated surface with gaps where strikes stop. When filled is asked for but the payload
+  // predates implied_vol_filled, we fall back to the clamped grid rather than draw nothing.
+  filled: boolean;
 }) {
   // Robustness (render layer only — the served values are never mutated): a railed slice serves
   // absurd IVs (108%, 140% at deep-OTM deltas) and duplicate log-moneyness columns; left raw they
   // spike the nappe's height and stretch its colour band. Clamp out-of-band / non-finite cells to
   // null holes (NOT bridged — holes show where coherence breaks, §4.5) and collapse duplicate-k
   // columns, then surface an honest count of the flagged slices instead of rendering the garbage peak.
-  const cleaned = cleanDenseSurface(
-    surface.log_moneyness,
-    surface.maturity_years,
-    surface.implied_vol,
-  );
+  // Pick the grid first (filled = clean, smooth, no holes; else the clamped, holey grid), then run
+  // the SAME cleaning pass on whichever was chosen. The filled grid is already <=0.60 so cleaning
+  // nulls nothing; the clamped grid keeps its holes.
+  const chosenGrid =
+    filled && surface.implied_vol_filled ? surface.implied_vol_filled : surface.implied_vol;
+  const cleaned = cleanDenseSurface(surface.log_moneyness, surface.maturity_years, chosenGrid);
   const note = flaggedNote(cleaned.nFlaggedSlices, "slice");
   // The colour scale tops out at the DISPLAY ceiling (the live SX5E band) so the skew/term reads
   // across the full house ramp; a rare in-band-but-tall slice still draws (the z-axis spans wider),
@@ -414,6 +427,7 @@ export function VolSurface({
   surface,
   maturities,
   floorYears = 0,
+  filled = true,
   subject,
   asOf,
   closeInstant,
@@ -426,6 +440,10 @@ export function VolSurface({
   // dense path slices the grid to rows at or above it, clamping so ≥2 rows always remain so the 3D
   // surface never blanks; a relaxed floor surfaces an honest inline note rather than failing silently.
   floorYears?: number;
+  // CLEAN (true, the default) draws the smooth FILLED nappe (implied_vol_filled); RAW (false) draws
+  // the honest CLAMPED/holey grid (implied_vol). Only changes interpolation/fill, not which tenors
+  // show: the floor slices whichever grid is chosen on the SAME axes. Dense path only.
+  filled?: boolean;
 } & SurfaceIdentityProps) {
   const hasDense = !!surface && denseHasZ(surface);
   // Apply the maturity floor to the dense grid: slice to rows at or above it, clamping so ≥2 rows
@@ -454,7 +472,14 @@ export function VolSurface({
   // the coarse grid built from the sparse delta-band points below (e.g. a single fitted slice, or
   // the surface-grid fallback with no fit).
   if (flooredSurface) {
-    return <DenseVolSurface surface={flooredSurface} descriptor={descriptor} floored={floored} />;
+    return (
+      <DenseVolSurface
+        surface={flooredSurface}
+        descriptor={descriptor}
+        floored={floored}
+        filled={filled}
+      />
+    );
   }
   // A clean rectangular vol surface: x = log-moneyness, y = the maturity *index* (0,1,2…),
   // z = implied vol. The x axis is ALWAYS log-moneyness (carried in both smile modes), never the

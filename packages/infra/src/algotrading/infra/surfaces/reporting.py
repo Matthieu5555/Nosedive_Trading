@@ -51,6 +51,13 @@ def summarize_surface_parameters(
     )
 
 
+# Sane ceiling for the FILLED ("clean") z-grid. A poorly-constrained short
+# tenor can imply absurd wing IVs (the old code reached 88-242%); the filled
+# nappe caps every cell at this value so it can never blow up. Matches the
+# frontend IV_SANE_MAX so the front renders the filled grid without nulling it.
+FILLED_IV_CAP = 0.60
+
+
 @dataclass(frozen=True, slots=True)
 class DenseSurface:
 
@@ -59,6 +66,7 @@ class DenseSurface:
     implied_vol: tuple[tuple[float, ...], ...]
     model_version: str
     degenerate_maturity_years: tuple[float, ...]
+    implied_vol_filled: tuple[tuple[float, ...], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +180,17 @@ def reconstruct_dense_surface_clamped(
     unchanged, and the frontend ``cleanDenseSurface`` (volRobust.ts) already nulls
     every non-finite / out-of-band cell (``Number.isNaN`` / ``!Number.isFinite``),
     so NaN holes render as gaps, not extrapolated wings.
+
+    Alongside the clamped grid this also returns ``implied_vol_filled``: the same
+    SVI evaluation over the same axes, but with the window check skipped (every
+    (k, t) cell is filled edge-to-edge across the full ``[k_min, k_max]`` grid) and
+    each cell capped at :data:`FILLED_IV_CAP`. That is the "clean" view: a smooth,
+    fully-filled nappe like a classic vol surface, bounded so a poorly-constrained
+    slice can never spike. A value above the cap becomes exactly the cap (it is
+    clamped, never nulled), so the filled grid has no NaNs anywhere. The two grids
+    share :func:`_bracket_interpolate`, so they cannot drift: inside the quoted
+    window (and below the cap) they are identical; they differ only where the
+    clamped grid holes out and where the filled grid hits its ceiling.
     """
     usable = sorted(
         (s for s in slices if s.maturity_years > 0.0), key=lambda s: s.maturity_years
@@ -200,15 +219,29 @@ def reconstruct_dense_surface_clamped(
                 )
         return windows[-1][1], windows[-1][2]  # pragma: no cover - guarded above
 
+    def iv_at(k: float, t: float) -> float:
+        """Unclamped SVI implied vol at (k, t); >= 0 by construction."""
+        return math.sqrt(_bracket_interpolate(t, fitted, k) / t)
+
     def cell(k: float, t: float, lo: float, hi: float) -> float:
         if t <= 0.0:
             return 0.0
         if k < lo or k > hi:
             return math.nan  # hole: outside this maturity's quoted window
-        return math.sqrt(_bracket_interpolate(t, fitted, k) / t)
+        return iv_at(k, t)
+
+    def cell_filled(k: float, t: float) -> float:
+        # Same SVI evaluation, no window check (filled edge-to-edge), then capped
+        # so a poorly-constrained slice can never spike. Clamp, never null.
+        if t <= 0.0:
+            return 0.0
+        return min(iv_at(k, t), FILLED_IV_CAP)
 
     implied_vol = tuple(
         tuple(cell(k, t, *window_at(t)) for k in ks) for t in maturities
+    )
+    implied_vol_filled = tuple(
+        tuple(cell_filled(k, t) for k in ks) for t in maturities
     )
     # No per-cell diagnostics are carried on a ClampedSlice, so there are no
     # degenerate-maturity flags to surface here; leave the set empty rather than
@@ -219,4 +252,5 @@ def reconstruct_dense_surface_clamped(
         implied_vol=implied_vol,
         model_version=model_version,
         degenerate_maturity_years=(),
+        implied_vol_filled=implied_vol_filled,
     )

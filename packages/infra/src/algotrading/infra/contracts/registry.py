@@ -13,6 +13,7 @@ from .tables import (
     BrokerCashBalance,
     BrokerFill,
     BrokerPosition,
+    ConstituentCaptureOutcome,
     DailyBar,
     DiscoveryCacheRow,
     ForwardCurvePoint,
@@ -347,6 +348,17 @@ REGISTRY: dict[str, TableSpec] = {
         requires_source_snapshot_ts=False,
         positive_fields=(),
         non_negative_fields=(),
+    ),
+    "constituent_capture_outcomes": TableSpec(
+        name="constituent_capture_outcomes",
+        contract=ConstituentCaptureOutcome,
+        primary_key=("run_id", "index", "underlying"),
+        layer="qc",
+        append_only=False,
+        requires_provenance=False,
+        requires_source_snapshot_ts=False,
+        positive_fields=("rank",),
+        non_negative_fields=("weight", "n_options"),
     ),
 }
 

@@ -75,6 +75,7 @@ class StrikeSelectionConfig(_ConfigModel):
     min_strikes_per_side: int = Field(default=2, ge=1)
     discovery_working_vol: float = Field(default=0.40, gt=0.0)
     discovery_pool_size: int = Field(default=6, ge=1)
+    capture_pool_size: int = Field(default=6, ge=1)
     strike_window_pct: float = Field(default=0.35, gt=0.0, le=1.0)
 
 
@@ -110,6 +111,8 @@ class UniverseConfig(_ConfigModel):
     exchange: str = Field(min_length=1)
     tenor_grid: _StrTuple = ("10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y")
     dispersion_top_n: int = Field(default=10, ge=1)
+    capture_constituents: bool = Field(default=True)
+    constituent_top_n: int | None = Field(default=None)
     indices: Mapping[str, Any] = Field(default_factory=dict)
     strike_selection: StrikeSelectionConfig = Field(
         default_factory=lambda: StrikeSelectionConfig(version="strike-selection-default")
@@ -124,6 +127,10 @@ class UniverseConfig(_ConfigModel):
             raise ValueError("tenor_grid must be non-empty")
         if len(set(self.tenor_grid)) != len(self.tenor_grid):
             raise ValueError("tenor_grid tenors must be unique")
+        if self.constituent_top_n is not None and self.constituent_top_n < 1:
+            raise ValueError(
+                "constituent_top_n must be >= 1 when set (or null for the full membership)"
+            )
         object.__setattr__(self, "indices", _canonical_indices(self.indices))
         return self
 

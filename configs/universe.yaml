@@ -55,6 +55,7 @@ strike_selection:
   min_strikes_per_side: 2
   discovery_working_vol: 0.40
   discovery_pool_size: 6
+  capture_pool_size: 6
   strike_window_pct: 0.35
 
 # Tenor grid (P0.1 / OQ-4, ADR 0036): the ordered standard maturities analytics project
@@ -70,6 +71,21 @@ tenor_grid: ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]
 # index options + constituent prices). Still hashed config (config_hashes["universe"]), never a
 # `.py` literal (ADR 0028 / C7). Top-50 = the full SX5E; top-10 is the course default. Must be >= 1.
 dispersion_top_n: 50
+
+# Constituent option-chain capture scope (ADR 0059, re-enabling the lane ADR 0051 retired). The EOD
+# close now banks index options AND constituent options at every fire (owner directive: maximize
+# option-surface data; live entitlement verified — top constituents resolve full EUREX chains). This
+# is ADDITIVE to the dispersion ρ̄ diagnostic, which is unchanged: ρ̄ still reads REALIZED constituent
+# vol over the FULL membership (signals.basket_size: null), not these captured surfaces.
+#   - capture_constituents: master switch for the constituent-option lane. true = capture index +
+#     all constituents; false = ADR-0051 index-only behavior. Economic (decides which records exist)
+#     so it is hashed here, never a `.py` literal.
+#   - constituent_top_n: how many of the index's heaviest names by 1A weight the lane captures.
+#     `null` = the FULL as-of membership (~40-50 names — the owner's "maximum option data" scope,
+#     mirroring how ρ̄ reads the whole basket). An int caps it to the top-N for a narrower fire.
+#     Must be >= 1 when set; the top-N is resolved point-in-time from banked membership weights.
+capture_constituents: true
+constituent_top_n: null
 # Strategy-entry signal-computation params (R3 / §3, ADR 0028). The daily signal layer
 # (`infra/signals`) derives the readings the §3 book triggers on — ρ̄ (S1), IV-rank/RV−IV (S3),
 # the term-structure slope (S5) — and persists them as `strategy_signals`. Every choice below

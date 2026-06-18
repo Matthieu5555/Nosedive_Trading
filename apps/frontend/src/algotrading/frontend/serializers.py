@@ -107,7 +107,7 @@ def dense_surface_to_dict(surface: DenseSurface) -> dict[str, object]:
             for row in surface.implied_vol
         ],
         # Sibling "clean" grid: filled edge-to-edge over the SAME axes, capped at FILLED_IV_CAP
-        # (<=0.60), so it has no NaN holes. The NaN->null guard is kept for robustness even though
+        # (<=1.0), so it has no NaN holes. The NaN->null guard is kept for robustness even though
         # the filled grid is fully finite by construction. The frontend renders this as the smooth
         # surface and `implied_vol` (clamped, may contain nulls) as the holey "raw" surface.
         "implied_vol_filled": [

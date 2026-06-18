@@ -1,6 +1,6 @@
 import type { AnalyticsMaturity, AnalyticsPoint, SurfaceSlice } from "../api";
 
-export const IV_SANE_MAX = 0.6;
+export const IV_SANE_MAX = 1.0;
 export const IV_SANE_MIN = 0;
 
 export function isSaneIv(value: number | null | undefined): value is number {

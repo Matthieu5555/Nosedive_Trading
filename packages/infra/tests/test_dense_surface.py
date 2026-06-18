@@ -226,7 +226,7 @@ def test_filled_grid_has_no_holes_while_clamped_grid_does() -> None:
 
 def test_filled_grid_caps_blown_up_wings_at_FILLED_IV_CAP() -> None:
     # A short tenor with a steep, badly-constrained smile: the unclamped SVI wing
-    # IV exceeds 0.60. The filled grid must clamp it to exactly the cap, not null,
+    # IV exceeds the cap. The filled grid must clamp it to exactly the cap, not null,
     # not larger.
     blown = dict(a=0.02, b=2.0, rho=0.0, m=0.0, sigma=0.01)
     short = 0.05

@@ -51,11 +51,15 @@ def summarize_surface_parameters(
     )
 
 
-# Sane ceiling for the FILLED ("clean") z-grid. A poorly-constrained short
-# tenor can imply absurd wing IVs (the old code reached 88-242%); the filled
-# nappe caps every cell at this value so it can never blow up. Matches the
-# frontend IV_SANE_MAX so the front renders the filled grid without nulling it.
-FILLED_IV_CAP = 0.60
+# Sane ceiling for the FILLED ("clean") z-grid. The filled nappe is extrapolated
+# edge-to-edge by design, so it needs a backstop against a poorly-constrained
+# short tenor blowing the wing up (the old code reached 88-242%). The bound sits
+# at 1.0 (100% IV): high enough that a genuine short-dated deep-OTM put-skew wing
+# shows its true height (those legitimately run 60-100% IV), low enough that the
+# >100% extrapolation absurdity is still clamped. Below 1.0 the filled grid is the
+# honest SVI value. Matches the frontend IV_SANE_MAX so the front renders the
+# filled grid without nulling it.
+FILLED_IV_CAP = 1.00
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,8 +189,10 @@ def reconstruct_dense_surface_clamped(
     SVI evaluation over the same axes, but with the window check skipped (every
     (k, t) cell is filled edge-to-edge across the full ``[k_min, k_max]`` grid) and
     each cell capped at :data:`FILLED_IV_CAP`. That is the "clean" view: a smooth,
-    fully-filled nappe like a classic vol surface, bounded so a poorly-constrained
-    slice can never spike. A value above the cap becomes exactly the cap (it is
+    fully-filled nappe like a classic vol surface, bounded at :data:`FILLED_IV_CAP`
+    (1.0) so a poorly-constrained slice can never spike past 100% IV while a real
+    deep-OTM wing still shows its true height. A value above the cap becomes
+    exactly the cap (it is
     clamped, never nulled), so the filled grid has no NaNs anywhere. The two grids
     share :func:`_bracket_interpolate`, so they cannot drift: inside the quoted
     window (and below the cap) they are identical; they differ only where the

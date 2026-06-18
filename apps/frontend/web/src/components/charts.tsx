@@ -20,16 +20,17 @@ import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { Plot } from "./Plot";
 
 // Two distinct ceilings, split out of the old single `IV_SANE_MAX` reused for both jobs:
-//  • the REJECT threshold (data sanity) stays at IV_SANE_MAX (0.6) and lives in volRobust — a cell
-//    above it is railed garbage and is clamped to a hole BEFORE plotting.
-//  • the DISPLAY colour ceiling is the live SX5E band (~0.35). The nappe's colour scale tops out
-//    here so the skew/term structure spreads across the full Plasma ramp instead of being washed
-//    into its lower third by the rare 0.6 outlier (the 2026-06-16 bilan finding).
-const SURFACE_DISPLAY_Z_MAX = 0.35;
+//  • the REJECT threshold (data sanity) is IV_SANE_MAX (1.0) and lives in volRobust — a cell
+//    above 100% IV is railed garbage and is clamped to a hole BEFORE plotting. This tracks the
+//    backend FILLED_IV_CAP so the filled "clean" grid renders edge-to-edge without nulling.
+//  • the DISPLAY colour ceiling is 0.5. The nappe's colour scale tops out here so the skew/term
+//    structure spreads across the full Plasma ramp instead of being washed into its lower third;
+//    a genuine deep-OTM wing climbing toward 1.0 reads as the hot end of the ramp.
+const SURFACE_DISPLAY_Z_MAX = 0.5;
 
-// The z-AXIS still spans the sane band so a tall (but in-band) slice isn't clipped off the top of
-// the 3D box; only the COLOUR mapping is compressed to the display ceiling.
-const SURFACE_Z_AXIS_MAX = 0.6;
+// The z-AXIS spans the full sane band so a tall (but in-band) deep-OTM put-skew wing isn't clipped
+// off the top of the 3D box; only the COLOUR mapping is compressed to the display ceiling.
+const SURFACE_Z_AXIS_MAX = 1.0;
 
 // ---------------------------------------------------------------------------------------------
 // Self-describing surface descriptor (MAT-LEGIBILITY-self-describing). One pure builder assembles
@@ -348,7 +349,7 @@ function DenseVolSurface({
   // The floor-slice outcome, so a relaxed (clamped) floor surfaces an honest inline note instead of
   // silently ignoring the request. Absent / not relaxed → no note.
   floored?: FloorSliceResult | null;
-  // CLEAN (true) renders the FILLED, capped-at-0.60 grid (implied_vol_filled): the classic smooth
+  // CLEAN (true) renders the FILLED, capped-at-1.0 grid (implied_vol_filled): the classic smooth
   // nappe with no holes. RAW (false) renders the CLAMPED/holey grid (implied_vol): the honest, less
   // interpolated surface with gaps where strikes stop. When filled is asked for but the payload
   // predates implied_vol_filled, we fall back to the clamped grid rather than draw nothing.

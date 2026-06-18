@@ -57,7 +57,7 @@ export function MarketPage() {
   }, [index]);
 
   // Clean surface is the landing state: it draws the smooth, fully FILLED nappe (the classic
-  // vol-surface look, the backend's implied_vol_filled grid capped at 0.60, no holes). Turning it
+  // vol-surface look, the backend's implied_vol_filled grid capped at 1.0, no holes). Turning it
   // off shows the RAW, less-interpolated surface that keeps the holes where strikes stop, so a PM
   // can see exactly where coverage runs out. Toggling only changes interpolation/fill, never which
   // tenors show. Resets to clean whenever the underlying changes, so "raw" is always deliberate.

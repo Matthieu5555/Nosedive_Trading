@@ -151,11 +151,12 @@ describe("cleanSmile (degenerate slice)", () => {
   });
 
   // infra-surface-fit-quality LANE 2 (front robustness): the ~2-3d ultra-short slice serves wing IV
-  // spikes to 1.0–1.4 (10d-wing extrapolation, audit F3). The clean must exclude every such spike
-  // so the smile/surface can't draw a garbage peak — flag-not-reject, render-side only.
-  test("excludes the ultra-short wing IV spikes (1.0–1.4) the 10d slice serves", () => {
+  // spikes above 1.0 (10d-wing extrapolation, audit F3). The clean must exclude every such spike
+  // so the smile/surface can't draw a garbage peak — flag-not-reject, render-side only. Spikes sit
+  // above IV_SANE_MAX (1.0) so they drop; a genuine wing at/under 1.0 is now kept (the raised cap).
+  test("excludes the ultra-short wing IV spikes (>1.0) the 10d slice serves", () => {
     const wingKs = [-0.25, -0.18, 0.0, 0.18, 0.25];
-    const wingIvs = [1.4, 1.08, 0.152, 1.0, 1.2];
+    const wingIvs = [1.4, 1.08, 0.152, 1.05, 1.2];
     const r = cleanSmile(wingKs, wingIvs);
     // Only the in-band ATM neighbourhood survives; all four wing spikes are dropped as absurd.
     expect(r.logMoneyness).toEqual([0.0]);

@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 from algotrading.execution import (
     BookingCommitted,
     JsonlBookingAuditLog,
     JsonlFillsLedger,
-    ResolvedLeg,
     book,
 )
-from algotrading.execution.booking import ConcretizationError, LegResolver
+from algotrading.execution.booking import LegResolver
 from algotrading.infra.contracts import ContractValidationError
 from algotrading.infra.orders import TicketError, build_ticket
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from ..booking_resolve import StoreLegResolver
 from ..context import AppContext
 from ..deps import BadRequestError, CtxDep, parse_json_body
 from .ticket import (
@@ -36,19 +36,10 @@ _AUDIT_FILENAME = "booking_audit.jsonl"
 _PAPER_PORTFOLIO = "paper"
 
 
-class _PendingConcretizationResolver:
-
-    def __call__(self, leg: object, *, as_of: date, chain: object) -> ResolvedLeg:
-        raise ConcretizationError(
-            "concretization (execution-fill-concretization, ADR 0043) is not yet wired; "
-            "the password gate is live but no concrete fill can be synthesized yet",
-            field="resolver",
-            value="pending",
-        )
-
-
 def _resolver_for(ctx: AppContext) -> LegResolver:
-    return _PendingConcretizationResolver()
+    # Concretize each grid-cell leg into a real contract + paper mark off the as-of chain
+    # (ADR 0043). An unresolvable cell becomes a labelled paper block, not a 500.
+    return StoreLegResolver(ctx)
 
 
 def _booking_dir(ctx: AppContext) -> object:

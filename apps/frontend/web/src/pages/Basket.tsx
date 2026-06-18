@@ -277,10 +277,21 @@ export function BasketPage() {
         <Tabs defaultValue="compose" className="market-tabs">
           <div className="market-tabs__bar max-w-full overflow-x-auto">
             <TabsList className="market-tabs__list max-w-none" data-tour-id="basket.tabs">
-              <TabsTrigger value="compose">① Compose</TabsTrigger>
-              <TabsTrigger value="book">② The Book</TabsTrigger>
-              <TabsTrigger value="stress">③ Stress</TabsTrigger>
-              <TabsTrigger value="attribution">④ Attribution</TabsTrigger>
+              {/* Drop the shadcn min-w so each pill hugs its own label; with the list's uniform
+                  gap the inter-pill rhythm is then even, instead of short labels (Stress) padding
+                  out to the same min-width as long ones and reading as uneven spacing. */}
+              <TabsTrigger value="compose" className="min-w-0">
+                ① Compose
+              </TabsTrigger>
+              <TabsTrigger value="book" className="min-w-0">
+                ② The Book
+              </TabsTrigger>
+              <TabsTrigger value="stress" className="min-w-0">
+                ③ Stress
+              </TabsTrigger>
+              <TabsTrigger value="attribution" className="min-w-0">
+                ④ Attribution
+              </TabsTrigger>
             </TabsList>
           </div>
 

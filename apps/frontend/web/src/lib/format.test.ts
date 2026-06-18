@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   asOfClose,
+  cleanText,
   count,
   coverageHeadline,
   coveragePercent,
@@ -10,6 +11,7 @@ import {
   referencePrice,
   sci,
   sciUnit,
+  signalLabel,
   UNITS,
   withCurrency,
 } from "./format";
@@ -219,5 +221,42 @@ describe("asOfClose", () => {
 
   it("never invents a date, an absent as-of is labelled, not blank", () => {
     expect(asOfClose(null, "17:30 CET")).toBe("date unresolved");
+  });
+});
+
+describe("cleanText", () => {
+  it("drops the combining-macron rho so a backend 'ρ̄' reads as a plain 'ρ'", () => {
+    expect(cleanText("Implied correlation ρ̄")).toBe("Implied correlation ρ");
+  });
+
+  it("rewrites a spaced minus used as a dash to a plain hyphen", () => {
+    expect(cleanText("Realized − implied")).toBe("Realized - implied");
+    expect(cleanText("vol points (back − front)")).toBe("vol points (back - front)");
+  });
+
+  it("rewrites an em dash to a plain hyphen", () => {
+    expect(cleanText("Term-structure slope — back vs front")).toBe(
+      "Term-structure slope - back vs front",
+    );
+  });
+
+  it("keeps a minus bound to a digit (math axis notation) untouched", () => {
+    expect(cleanText("−1 … 0 … +1")).toBe("−1 … 0 … +1");
+  });
+
+  it("leaves clean prose unchanged", () => {
+    expect(cleanText("IV rank")).toBe("IV rank");
+  });
+});
+
+describe("signalLabel", () => {
+  it("humanises a raw underscore field name into a title with no underscores", () => {
+    expect(signalLabel("iv_rank_window_days")).toBe("IV rank window days");
+    expect(signalLabel("iv_rank_n_observations")).toBe("IV rank n observations");
+  });
+
+  it("passes a prose label through, only sweeping the house-rule glyphs", () => {
+    expect(signalLabel("Implied correlation ρ̄")).toBe("Implied correlation ρ");
+    expect(signalLabel("Realized − implied")).toBe("Realized - implied");
   });
 });

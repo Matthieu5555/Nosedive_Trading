@@ -1,5 +1,5 @@
 import { type Signal, SIGNAL_CAPTIONS, type SignalsResponse } from "../api";
-import { sciUnit } from "../lib/format";
+import { cleanText, sciUnit, signalLabel } from "../lib/format";
 import { InfoDot } from "./InfoDot";
 import { Cluster, Scroll, Stack } from "./layout";
 
@@ -46,7 +46,7 @@ function formatValue(signal: Signal): string {
   if (isRank(signal.signal_kind)) {
     return `${(signal.value * 100).toFixed(1)}%`;
   }
-  return sciUnit(signal.value, signal.unit);
+  return cleanText(sciUnit(signal.value, signal.unit));
 }
 
 function panelScale(kind: string, rows: Signal[]): number {
@@ -92,8 +92,8 @@ function isFlatCorrelation(kind: string, rows: Signal[]): boolean {
 }
 
 function KindPanel({ kind, rows }: { kind: string; rows: Signal[] }) {
-  const label = rows[0]?.label ?? kind;
-  const unit = rows[0]?.unit ?? null;
+  const label = signalLabel(rows[0]?.label ?? kind);
+  const unit = rows[0]?.unit ? cleanText(rows[0].unit) : null;
   const caption = SIGNAL_CAPTIONS[kind];
   const scale = panelScale(kind, rows);
 

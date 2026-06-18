@@ -247,3 +247,29 @@ export function statusLabel(value: string): string {
   const words = value.replaceAll("_", " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/**
+ * Sanitise any backend-sent display string before it reaches the screen, enforcing the house UI
+ * rules the BFF does not: no combining-macron rho (the ugly "ρ̄" — we drop the U+0304 so it reads
+ * as a plain "ρ"), and no em dash or stand-alone minus-as-dash (we render those as a plain hyphen).
+ * Math notation like "−1 … +1" keeps its minus because the minus is bound to a digit there, so
+ * only a minus flanked by spaces (used as a dash, e.g. "Realized − implied") is rewritten.
+ */
+export function cleanText(value: string): string {
+  return value
+    .replaceAll("̄", "") // combining macron (the rho-bar)
+    .replaceAll("—", "-") // em dash
+    .replaceAll(/ [−–] /g, " - "); // spaced minus / en dash used as a dash
+}
+
+/**
+ * A backend signal/field label rendered as a clean UI title: underscores humanised
+ * ("iv_rank_window_days" → "IV rank window days"), the "iv" token re-cased to the "IV"
+ * initialism, then the shared house-rule sweep (cleanText) for macron-rho and em/minus
+ * dashes. A label that already reads as prose (no underscores) keeps its own casing.
+ */
+export function signalLabel(value: string): string {
+  if (!value.includes("_")) return cleanText(value);
+  const humanised = statusLabel(value).replace(/\biv\b/gi, "IV");
+  return cleanText(humanised);
+}

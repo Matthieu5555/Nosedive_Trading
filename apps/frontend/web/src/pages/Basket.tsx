@@ -285,30 +285,34 @@ export function BasketPage() {
           </div>
 
           <TabsContent value="compose">
-            <BuildPriceTab
-              canPrice={legs.length > 0}
-              loading={loading}
-              error={error}
-              result={result}
-              currency={currency}
-              onPrice={price}
-            />
-            <ComposeTab
-              subStrategies={subStrategies.data?.sub_strategies ?? []}
-              subStrategiesLoading={subStrategies.loading}
-              subStrategiesError={subStrategies.error}
-              layers={layers}
-              bands={deltaBands.data?.delta_bands ?? []}
-              loading={composeLoading}
-              error={composeError}
-              book={book}
-              currency={currency}
-              tradeDate={tradeDate}
-              onAddLayer={addLayer}
-              onRemoveLayer={removeLayer}
-              onMoveLayer={moveLayer}
-              onCompose={runCompose}
-            />
+            {/* Two sibling panels share this tab; the Stack owns the gap between them so the
+                Price and Compose cards never touch, matching every other tab's rhythm. */}
+            <Stack gap="md">
+              <BuildPriceTab
+                canPrice={legs.length > 0}
+                loading={loading}
+                error={error}
+                result={result}
+                currency={currency}
+                onPrice={price}
+              />
+              <ComposeTab
+                subStrategies={subStrategies.data?.sub_strategies ?? []}
+                subStrategiesLoading={subStrategies.loading}
+                subStrategiesError={subStrategies.error}
+                layers={layers}
+                bands={deltaBands.data?.delta_bands ?? []}
+                loading={composeLoading}
+                error={composeError}
+                book={book}
+                currency={currency}
+                tradeDate={tradeDate}
+                onAddLayer={addLayer}
+                onRemoveLayer={removeLayer}
+                onMoveLayer={moveLayer}
+                onCompose={runCompose}
+              />
+            </Stack>
           </TabsContent>
 
           <TabsContent value="book">

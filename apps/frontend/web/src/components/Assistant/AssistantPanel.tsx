@@ -195,6 +195,25 @@ export function AssistantPanel({
         aria-expanded={false}
         onClick={() => setOpen(true)}
       >
+        <svg
+          className="assistant-launch__spark"
+          viewBox="0 0 24 24"
+          width="14"
+          height="14"
+          aria-hidden="true"
+          focusable="false"
+        >
+          {/* A four-point sparkle: the AI signal, carried by the glyph (accent + shimmer), not the pill. */}
+          <path
+            d="M12 2c.4 3.6 1.8 5 5.4 5.4-3.6.4-5 1.8-5.4 5.4-.4-3.6-1.8-5-5.4-5.4C10.2 7 11.6 5.6 12 2Z"
+            fill="currentColor"
+          />
+          <path
+            d="M18.5 14c.2 1.7.9 2.4 2.6 2.6-1.7.2-2.4.9-2.6 2.6-.2-1.7-.9-2.4-2.6-2.6 1.7-.2 2.4-.9 2.6-2.6Z"
+            fill="currentColor"
+            opacity="0.7"
+          />
+        </svg>
         Ask the assistant
       </button>
     );

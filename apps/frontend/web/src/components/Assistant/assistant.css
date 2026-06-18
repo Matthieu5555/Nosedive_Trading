@@ -2,12 +2,12 @@
    accent, no second palette. The boldness on Onglet 1 is spent on the coverage headline / the
    INDICATIF badge, never on the assistant chrome, which stays quiet. */
 
-/* The dock is the fixed anchor the floating assistant lives in: bottom-right on every page, above
+/* The dock is the fixed anchor the floating assistant lives in: bottom-left on every page, above
    page content but below the global error banner (z 1000). Both the launcher and the open panel are
    positioned by this wrapper, so the assistant never collides with or gets clipped by page content. */
 .assistant-dock {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   z-index: 900;
 }
@@ -26,10 +26,46 @@
 /* In the dock the launcher is a solid pill that reads on any page background, not the quiet inline
    chip it was as a Market sub-control. */
 .assistant-dock .assistant-launch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: var(--panel);
   color: var(--text);
   padding: 10px 16px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+/* The spark is the lone AI signal: an accent glyph (a violet→blue wash on the house --blue token,
+   the closest existing accent) with a quiet shimmer, so the pill itself stays on the neutral tokens.
+   The glyph keeps the accent on hover too, never washing back to plain text. */
+.assistant-launch__spark {
+  flex: none;
+  color: var(--blue);
+  filter: drop-shadow(0 0 3px rgba(121, 184, 214, 0.45));
+  animation: assistant-spark-shimmer 2.8s ease-in-out infinite;
+}
+
+.assistant-launch:hover .assistant-launch__spark {
+  color: var(--blue);
+}
+
+@keyframes assistant-spark-shimmer {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-launch__spark {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 .assistant-launch:hover,
@@ -54,12 +90,12 @@
   color: var(--text);
 }
 
-/* The floating open panel: a comfortable ~380px column anchored to the dock's bottom-right corner,
+/* The floating open panel: a comfortable ~380px column anchored to the dock's bottom-left corner,
    capped to the viewport height with an internal scrolling thread so it can never overflow the
    screen. The shadow lifts it off the page content; z-index stays under the global error banner. */
 .assistant-dock .assistant-panel {
   position: fixed;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   width: 380px;
   max-width: calc(100vw - 40px);
@@ -88,7 +124,7 @@
   }
 }
 
-/* The expand toggle blows the docked column up to near-fullscreen, anchored to the same corner so the
+/* The expand toggle blows the docked column up to near-fullscreen, anchored to the same (bottom-left) corner so the
    × still returns it to the dock. It rides the same tokens, just more room for a long thread or a
    guided tour. The narrow-screen rule above already covers small viewports, so this only widens it
    where there is room. */

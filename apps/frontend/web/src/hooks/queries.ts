@@ -117,6 +117,24 @@ export function useIbkrConnect() {
   });
 }
 
+// Run the idempotent IBKR login (scripts/ibkr_login.py) from the web app. AUTH ONLY: the backend
+// shells out to the same script the operator would run, never placing or transmitting an order. A
+// success returns the fresh status (pushed straight into the cache so the pill updates); a 409/502/
+// 504 comes back as an ApiError the panel surfaces verbatim (e.g. a 2FA challenge fired and the
+// headless login could not complete, so finish it from a shell). We always refetch on settle.
+export function useIbkrLogin() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => postJson<IbkrStatus>("/api/ibkr/login", {}),
+    onSuccess: (status) => {
+      client.setQueryData<IbkrStatus>(IBKR_STATUS_KEY, status);
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: IBKR_STATUS_KEY });
+    },
+  });
+}
+
 export function usePortfolios() {
   return useQuery({
     queryKey: ["risk", "portfolios"] as const,

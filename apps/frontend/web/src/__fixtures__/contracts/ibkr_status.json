@@ -1,8 +1,8 @@
 {
   "configured": true,
-  "authenticated": true,
-  "established": true,
+  "authenticated": false,
+  "established": false,
   "competing": false,
-  "account": "U26136924",
-  "detail": "Session ready: authenticated and brokerage session established."
+  "account": null,
+  "detail": "Gateway is up but there is no SSO session. Run ! scripts/ibkr_login.py from a shell to log in."
 }

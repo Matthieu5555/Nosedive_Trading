@@ -1,7 +1,7 @@
 import "./operations.css";
 
 import { ApiError, type IbkrStatus } from "../../api";
-import { useIbkrConnect, useIbkrStatus } from "../../hooks/queries";
+import { useIbkrConnect, useIbkrLogin, useIbkrStatus } from "../../hooks/queries";
 import { AsyncBlock } from "../AsyncBlock";
 
 type Tone = "ok" | "warn" | "bad";
@@ -40,18 +40,25 @@ function DetailLine({ detail }: { detail: string }) {
   );
 }
 
+function errorDetail(error: unknown): string | null {
+  if (error instanceof ApiError) return error.detail;
+  if (error instanceof Error) return error.message;
+  return null;
+}
+
 function StatusView({ status }: { status: IbkrStatus }) {
   const connect = useIbkrConnect();
+  const login = useIbkrLogin();
   const tone = toneFor(status);
   // Opening a brokerage session only makes sense once authenticated at the SSO layer; before that
-  // the only path forward is the CLI login, so the button is offered disabled with an honest title.
+  // the path forward is the login button below, so Open is offered disabled with an honest title.
   const canConnect = status.authenticated && !status.established && !connect.isPending;
-  const connectError =
-    connect.error instanceof ApiError
-      ? connect.error.detail
-      : connect.error instanceof Error
-        ? connect.error.message
-        : null;
+  // Log in is offered exactly in the state the operator complained about: a gateway is up but there
+  // is no SSO session. It runs the idempotent scripts/ibkr_login.py on the server (auth only, never
+  // trades); a 2FA challenge that cannot complete headless is surfaced honestly below.
+  const canLogIn = status.configured && !status.authenticated && !login.isPending;
+  const connectError = errorDetail(connect.error);
+  const loginError = errorDetail(login.error);
 
   return (
     <div className="ibkr-panel">
@@ -79,6 +86,21 @@ function StatusView({ status }: { status: IbkrStatus }) {
       <div className="ibkr-panel__actions">
         <button
           type="button"
+          className="ibkr-panel__connect ibkr-panel__login"
+          disabled={!canLogIn}
+          title={
+            !status.configured
+              ? "Bring up the gateway first (see the detail above)."
+              : status.authenticated
+                ? "Already authenticated; no login needed."
+                : "Run the IBKR login on the server (auth only, never trades). Completes a 2FA challenge only from a shell."
+          }
+          onClick={() => login.mutate()}
+        >
+          {login.isPending ? "Logging in…" : "Log in to IBKR"}
+        </button>
+        <button
+          type="button"
           className="ibkr-panel__connect"
           disabled={!canConnect}
           title={
@@ -86,13 +108,19 @@ function StatusView({ status }: { status: IbkrStatus }) {
               ? "The brokerage session is already established."
               : status.authenticated
                 ? "Open the brokerage session (ssodh/init) on the authenticated gateway."
-                : "Authenticate first by running scripts/ibkr_login.py from a shell."
+                : "Log in to IBKR first, then open the brokerage session."
           }
           onClick={() => connect.mutate()}
         >
           {connect.isPending ? "Opening…" : "Open brokerage session"}
         </button>
       </div>
+
+      {loginError && (
+        <div role="alert" className="error">
+          Could not log in to IBKR: <DetailLine detail={loginError} />
+        </div>
+      )}
 
       {connectError && (
         <div role="alert" className="error">

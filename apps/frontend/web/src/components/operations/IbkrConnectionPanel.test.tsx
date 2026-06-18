@@ -18,6 +18,15 @@ const NOT_CONFIGURED: IbkrStatus = {
     "IBKR gateway is not configured. Set IBKR_CP_GATEWAY=1 in the repo .env, then run scripts/ibkr_login.py from a shell to authenticate.",
 };
 
+const NOT_AUTHENTICATED: IbkrStatus = {
+  configured: true,
+  authenticated: false,
+  established: false,
+  competing: false,
+  account: null,
+  detail: "Gateway is up but there is no SSO session. Run scripts/ibkr_login.py from a shell.",
+};
+
 const AUTHED_NOT_ESTABLISHED: IbkrStatus = {
   configured: true,
   authenticated: true,
@@ -106,6 +115,73 @@ test("a 409 from connect surfaces the honest detail including the login hint", a
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent(/Could not open the brokerage session/);
   expect(alert).toHaveTextContent(/A browser login does not run from the web app/);
+});
+
+test("not-authenticated enables Log in to IBKR and POSTs login, then reads ready", async () => {
+  let loggedIn = false;
+  server.use(
+    http.get("/api/ibkr/status", () =>
+      HttpResponse.json(loggedIn ? READY : NOT_AUTHENTICATED),
+    ),
+    http.post("/api/ibkr/login", () => {
+      loggedIn = true;
+      return HttpResponse.json(READY);
+    }),
+  );
+  renderWithClient(<IbkrConnectionPanel />);
+
+  const login = await screen.findByRole("button", { name: /Log in to IBKR/i });
+  expect(login).toBeEnabled();
+  await userEvent.click(login);
+
+  await waitFor(() => expect(loggedIn).toBe(true));
+  expect(await screen.findByText("Session ready")).toBeInTheDocument();
+});
+
+test("Log in to IBKR is disabled when not configured", async () => {
+  server.use(jsonGet("/api/ibkr/status", NOT_CONFIGURED));
+  renderWithClient(<IbkrConnectionPanel />);
+
+  expect(await screen.findByText("Gateway not configured")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Log in to IBKR/i })).toBeDisabled();
+});
+
+test("Log in to IBKR is disabled once authenticated", async () => {
+  server.use(jsonGet("/api/ibkr/status", AUTHED_NOT_ESTABLISHED));
+  renderWithClient(<IbkrConnectionPanel />);
+
+  expect(await screen.findByText("Authenticated, session not opened")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Log in to IBKR/i })).toBeDisabled();
+});
+
+test("a failed login surfaces the honest detail (2FA challenge) in an alert", async () => {
+  server.use(jsonGet("/api/ibkr/status", NOT_AUTHENTICATED));
+  server.use(
+    http.post("/api/ibkr/login", () =>
+      HttpResponse.json(
+        {
+          error: "ibkr_login_incomplete",
+          login_hint: "! scripts/ibkr_login.py",
+          configured: true,
+          authenticated: false,
+          established: false,
+          competing: false,
+          account: null,
+          detail:
+            "IBKR login did not complete from the web app: a 2FA challenge fired but no code provider was supplied. Run scripts/ibkr_login.py from a shell.",
+        },
+        { status: 409 },
+      ),
+    ),
+  );
+  renderWithClient(<IbkrConnectionPanel />);
+
+  const login = await screen.findByRole("button", { name: /Log in to IBKR/i });
+  await userEvent.click(login);
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(/Could not log in to IBKR/);
+  expect(alert).toHaveTextContent(/2FA challenge/);
 });
 
 test("Refresh status re-fetches the gateway state", async () => {

@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+import subprocess
 
+from algotrading.core.paths import repo_root
 from algotrading.infra_ibkr.connectivity.cp_rest_session import CpRestSession
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import (
     CpRestTransport,
@@ -34,6 +36,19 @@ router = APIRouter(prefix="/api/ibkr", tags=["ibkr"])
 # The one-line operator instruction for the not-authenticated path. The leading `!` is the shell
 # hint the rest of the codebase uses for "run this from a shell"; the script is idempotent.
 _LOGIN_HINT = "! scripts/ibkr_login.py"
+
+# The canonical, idempotent "make the gateway ready for data" entrypoint. The web Log-in button
+# runs THIS, the same machinery the shell hint points at: status check, headless login only if
+# needed, ssodh/init, stale-session retry, verification. We shell out (rather than import) because
+# the script pulls Selenium in ephemerally via `uv run --with selenium` and runs a real browser; we
+# do NOT want that driving inside the BFF event loop, and `uv run` gives us the dependency injection
+# and process isolation for free. AUTH ONLY: no 2FA code provider is passed, so if a challenge fires
+# the script fails fast (it never blocks) and we report the unauthenticated status honestly. The
+# script only logs in + opens the brokerage session; it places NO trades and transmits NO orders.
+_LOGIN_SCRIPT = "scripts/ibkr_login.py"
+# Hard ceiling on the login subprocess so a stuck browser / SMS challenge can never hang the BFF.
+# The script's own establish poll is ~30s; a clean no-2FA login lands well inside this window.
+_LOGIN_TIMEOUT_SECONDS = 120
 
 _NOT_CONFIGURED_DETAIL = (
     "IBKR gateway is not configured. Set IBKR_CP_GATEWAY=1 (plus IBKR_USERID/IBKR_PASSWORD) in the "
@@ -196,3 +211,83 @@ def ibkr_connect() -> JSONResponse:
         transport.close()
 
     return JSONResponse(_status_payload())
+
+
+def _run_login_script() -> subprocess.CompletedProcess[str]:
+    """Run the idempotent CLI login (`scripts/ibkr_login.py`) once, non-interactively, with a hard
+    timeout. Selenium is injected ephemerally (`uv run --with selenium`); no 2FA code provider is
+    passed, so a challenge fails fast instead of blocking. AUTH ONLY: the script logs in and opens
+    the brokerage session, never trades. Lets `subprocess.TimeoutExpired` propagate to the caller.
+    """
+    root = repo_root()
+    # `uv run` resolves the project's interpreter and injects Selenium ephemerally for this one
+    # process; the script itself is a no-op (idempotent) when the session is already live.
+    cmd = ["uv", "run", "--with", "selenium", "python", _LOGIN_SCRIPT]
+    return subprocess.run(  # noqa: S603 - fixed argv, no shell, repo-local script
+        cmd,
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        timeout=_LOGIN_TIMEOUT_SECONDS,
+        check=False,
+    )
+
+
+@router.post("/login")
+def ibkr_login() -> JSONResponse:
+    """Run the idempotent IBKR login from the web app, then report the resulting session status.
+
+    This is the button behind the operator's complaint that there was no frontend way to run
+    `scripts/ibkr_login.py`. It shells out to that exact script (status check + headless login only
+    if needed + ssodh/init + verification), with a hard timeout so it can never hang the server.
+
+    AUTH ONLY: no order is ever placed or transmitted. If a 2FA/SMS challenge fires (risk-based,
+    often it does not), the script cannot complete a code-less login and exits non-zero; we then
+    return the honest, still-unauthenticated status with a clear message so the operator knows to
+    run the CLI with a code, rather than the UI hanging. On success we return the fresh IbkrStatus
+    (the same probe `/status` uses), so the panel can update immediately.
+    """
+    try:
+        result = _run_login_script()
+    except subprocess.TimeoutExpired:
+        # The login took too long (stuck browser, or an SMS challenge nobody can answer headless).
+        # Report the real current status with a clear message, never a hung request or a 500.
+        status = _status_payload()
+        status["detail"] = (
+            "Login timed out from the web app after "
+            f"{_LOGIN_TIMEOUT_SECONDS}s (a 2FA/SMS challenge may have fired, which cannot complete "
+            f"headless). Run {_LOGIN_HINT} from a shell to finish logging in."
+        )
+        return JSONResponse(
+            {"error": "ibkr_login_timeout", "login_hint": _LOGIN_HINT, **status},
+            status_code=504,
+        )
+    except (OSError, ValueError) as exc:
+        # Could not even launch the login (e.g. uv missing). Honest, never a silent failure.
+        status = _status_payload()
+        status["detail"] = (
+            f"Could not start the IBKR login from the web app: {exc}. Run {_LOGIN_HINT} from a "
+            "shell instead."
+        )
+        return JSONResponse(
+            {"error": "ibkr_login_failed", "login_hint": _LOGIN_HINT, **status},
+            status_code=502,
+        )
+
+    status = _status_payload()
+    if result.returncode == 0 and status["authenticated"]:
+        return JSONResponse(status)
+
+    # The script ran but did not land an authenticated session. Surface the script's own tail so the
+    # operator sees why (e.g. a 2FA challenge, rejected credentials, gateway down), and fall back to
+    # the honest status payload, never a 500.
+    tail = (result.stderr or result.stdout or "").strip().splitlines()
+    reason = tail[-1] if tail else "login did not complete; no output from the script."
+    status["detail"] = (
+        f"IBKR login did not complete from the web app: {reason} Run {_LOGIN_HINT} from a shell "
+        "(you can pass a 2FA code there if a challenge fired)."
+    )
+    return JSONResponse(
+        {"error": "ibkr_login_incomplete", "login_hint": _LOGIN_HINT, **status},
+        status_code=409,
+    )

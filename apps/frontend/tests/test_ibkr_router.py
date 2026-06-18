@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 from algotrading.frontend.routers import ibkr as ibkr_router
 from algotrading.infra_ibkr.connectivity.cp_rest_transport import CpRestTransportError
@@ -185,3 +187,122 @@ def test_connect_returns_409_not_authenticated_on_401(
     assert body["error"] == "ibkr_not_authenticated"
     assert body["login_hint"] == "! scripts/ibkr_login.py"
     assert "scripts/ibkr_login.py" in body["detail"]
+
+
+# --- /api/ibkr/login --------------------------------------------------------------------------
+#
+# The login endpoint shells out to scripts/ibkr_login.py. EVERY test here MOCKS that subprocess:
+# we NEVER run a real login (it could fire SMS 2FA and bump the shared gateway session). We assert
+# the endpoint wires returncode + the resulting status probe into honest responses, and that the
+# argv it would run is the idempotent script (auth only), never anything that could transmit.
+
+
+def _stub_run(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    returncode: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+    raises: BaseException | None = None,
+) -> list[list[str]]:
+    """Replace the login subprocess with a stub. Returns a list capturing the argv it was called
+    with, so a test can assert the command is the idempotent script and carries no transmit flag.
+    """
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(cmd))
+        if raises is not None:
+            raise raises
+        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(ibkr_router.subprocess, "run", _fake_run)
+    return calls
+
+
+def test_login_runs_idempotent_script_and_returns_status_on_success(
+    infra_client: TestClient,
+    gateway_live: list[_AuthenticatedTransport],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Script exits 0 and the (mocked) gateway now probes authenticated/established.
+    calls = _stub_run(monkeypatch, returncode=0, stdout="  ✓ READY")
+    response = infra_client.post("/api/ibkr/login")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authenticated"] is True
+    assert body["established"] is True
+    assert body["account"] == "DUQ574355"
+    # The endpoint ran exactly the idempotent CLI script, auth only: no order/transmit token anywhere
+    # in the argv.
+    assert len(calls) == 1
+    argv = calls[0]
+    assert "scripts/ibkr_login.py" in argv
+    joined = " ".join(argv).lower()
+    assert "transmit" not in joined
+    assert "order" not in joined
+
+
+def test_login_reports_incomplete_when_script_fails(
+    infra_client: TestClient,
+    gateway_401: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Script exits non-zero (e.g. a 2FA challenge fired that cannot complete headless); the gateway
+    # is still 401. The endpoint must surface that honestly, not pretend success.
+    _stub_run(
+        monkeypatch,
+        returncode=1,
+        stderr="  ✗ a 2FA challenge fired but no code provider was supplied",
+    )
+    response = infra_client.post("/api/ibkr/login")
+    assert response.status_code == 409
+    body = response.json()
+    assert body["error"] == "ibkr_login_incomplete"
+    assert body["authenticated"] is False
+    assert body["login_hint"] == "! scripts/ibkr_login.py"
+    assert "2FA challenge" in body["detail"]
+    assert "scripts/ibkr_login.py" in body["detail"]
+
+
+def test_login_reports_incomplete_when_returncode_zero_but_still_unauthenticated(
+    infra_client: TestClient,
+    gateway_401: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Defensive: even a 0 exit is not trusted blindly. If the probe still says unauthenticated, the
+    # endpoint reports incomplete rather than a misleading 200.
+    _stub_run(monkeypatch, returncode=0, stdout="ran")
+    response = infra_client.post("/api/ibkr/login")
+    assert response.status_code == 409
+    assert response.json()["error"] == "ibkr_login_incomplete"
+
+
+def test_login_reports_timeout_without_hanging(
+    infra_client: TestClient,
+    gateway_401: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A stuck browser / unanswerable SMS must degrade to a 504 with the honest status, never hang.
+    _stub_run(monkeypatch, raises=subprocess.TimeoutExpired(cmd="ibkr_login", timeout=120))
+    response = infra_client.post("/api/ibkr/login")
+    assert response.status_code == 504
+    body = response.json()
+    assert body["error"] == "ibkr_login_timeout"
+    assert body["authenticated"] is False
+    assert "timed out" in body["detail"]
+    assert "scripts/ibkr_login.py" in body["detail"]
+
+
+def test_login_reports_launch_failure(
+    infra_client: TestClient,
+    gateway_401: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # If the login process cannot even start (e.g. uv missing), surface it, never a silent failure.
+    _stub_run(monkeypatch, raises=OSError("uv not found"))
+    response = infra_client.post("/api/ibkr/login")
+    assert response.status_code == 502
+    body = response.json()
+    assert body["error"] == "ibkr_login_failed"
+    assert "Could not start" in body["detail"]

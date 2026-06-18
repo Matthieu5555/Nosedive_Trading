@@ -94,8 +94,8 @@ def _status_payload() -> dict[str, object]:
                     "competing": False,
                     "account": None,
                     "detail": (
-                        "Gateway is up but there is no SSO session. Run "
-                        f"{_LOGIN_HINT} from a shell to log in."
+                        "Gateway is up but there is no SSO session. Click Log in to IBKR to "
+                        "authenticate."
                     ),
                 }
             # No gateway answers on the base URL: report not-configured (the honest fact here), with
@@ -117,8 +117,8 @@ def _status_payload() -> dict[str, object]:
                 "competing": False,
                 "account": None,
                 "detail": (
-                    "Gateway is up but not authenticated (no SSO session). Run "
-                    f"{_LOGIN_HINT} from a shell to log in."
+                    "Gateway is up but not authenticated (no SSO session). Click Log in to IBKR "
+                    "to authenticate."
                 ),
             }
 
@@ -133,8 +133,7 @@ def _status_payload() -> dict[str, object]:
         else:
             detail = (
                 "Authenticated, but the brokerage session is not established yet. Click Open "
-                "brokerage session, or run "
-                f"{_LOGIN_HINT} from a shell."
+                "brokerage session to open it."
             )
         return {
             "configured": True,
@@ -172,9 +171,8 @@ def ibkr_connect() -> JSONResponse:
                     {
                         "error": "ibkr_not_authenticated",
                         "detail": (
-                            "Gateway is up but not authenticated (no SSO session). A browser login "
-                            f"does not run from the web app, run {_LOGIN_HINT} from a shell to "
-                            "authenticate."
+                            "Gateway is up but not authenticated (no SSO session). Click Log in to "
+                            "IBKR to authenticate, then open the brokerage session."
                         ),
                         "login_hint": _LOGIN_HINT,
                     },
@@ -194,8 +192,8 @@ def ibkr_connect() -> JSONResponse:
                 {
                     "error": "ibkr_not_authenticated",
                     "detail": (
-                        "Gateway is up but not authenticated at the SSO layer. A browser login "
-                        f"does not run from the web app, run {_LOGIN_HINT} from a shell to log in."
+                        "Gateway is up but not authenticated at the SSO layer. Click Log in to "
+                        "IBKR to authenticate, then open the brokerage session."
                     ),
                     "login_hint": _LOGIN_HINT,
                 },

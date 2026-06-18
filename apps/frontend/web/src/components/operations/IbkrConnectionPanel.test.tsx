@@ -24,7 +24,7 @@ const NOT_AUTHENTICATED: IbkrStatus = {
   established: false,
   competing: false,
   account: null,
-  detail: "Gateway is up but there is no SSO session. Run scripts/ibkr_login.py from a shell.",
+  detail: "Gateway is up but there is no SSO session. Click Log in to IBKR to authenticate.",
 };
 
 const AUTHED_NOT_ESTABLISHED: IbkrStatus = {
@@ -120,9 +120,7 @@ test("a 409 from connect surfaces the honest detail including the login hint", a
 test("not-authenticated enables Log in to IBKR and POSTs login, then reads ready", async () => {
   let loggedIn = false;
   server.use(
-    http.get("/api/ibkr/status", () =>
-      HttpResponse.json(loggedIn ? READY : NOT_AUTHENTICATED),
-    ),
+    http.get("/api/ibkr/status", () => HttpResponse.json(loggedIn ? READY : NOT_AUTHENTICATED)),
     http.post("/api/ibkr/login", () => {
       loggedIn = true;
       return HttpResponse.json(READY);
@@ -136,6 +134,19 @@ test("not-authenticated enables Log in to IBKR and POSTs login, then reads ready
 
   await waitFor(() => expect(loggedIn).toBe(true));
   expect(await screen.findByText("Session ready")).toBeInTheDocument();
+});
+
+test("not-authenticated state does not tell the operator to open a terminal", async () => {
+  // Login happens from the button now, so the not-authenticated detail must not instruct running
+  // the script from a shell. It points the operator at the in-app Log in button instead.
+  server.use(jsonGet("/api/ibkr/status", NOT_AUTHENTICATED));
+  renderWithClient(<IbkrConnectionPanel />);
+
+  expect(await screen.findByText("Not authenticated")).toBeInTheDocument();
+  expect(screen.queryByText(/from a shell/i)).not.toBeInTheDocument();
+  expect(screen.queryByText("scripts/ibkr_login.py")).not.toBeInTheDocument();
+  // The actionable next step is the enabled in-app button.
+  expect(screen.getByRole("button", { name: /Log in to IBKR/i })).toBeEnabled();
 });
 
 test("Log in to IBKR is disabled when not configured", async () => {

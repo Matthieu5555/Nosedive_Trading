@@ -174,7 +174,10 @@ def test_status_reports_gateway_up_but_no_sso_session_on_401(
     assert body["authenticated"] is False
     assert body["established"] is False
     assert "no SSO session" in body["detail"]
-    assert "scripts/ibkr_login.py" in body["detail"]
+    # Login happens from the web app now: the status detail points at the in-app button, not a shell.
+    assert "Log in to IBKR" in body["detail"]
+    assert "from a shell" not in body["detail"]
+    assert "scripts/ibkr_login.py" not in body["detail"]
 
 
 def test_connect_returns_409_not_authenticated_on_401(
@@ -185,8 +188,11 @@ def test_connect_returns_409_not_authenticated_on_401(
     assert response.status_code == 409
     body = response.json()
     assert body["error"] == "ibkr_not_authenticated"
+    # login_hint stays the canonical command (a machine-readable field), but the human detail now
+    # points at the in-app Log in button rather than telling the operator to open a terminal.
     assert body["login_hint"] == "! scripts/ibkr_login.py"
-    assert "scripts/ibkr_login.py" in body["detail"]
+    assert "Log in to IBKR" in body["detail"]
+    assert "from a shell" not in body["detail"]
 
 
 # --- /api/ibkr/login --------------------------------------------------------------------------

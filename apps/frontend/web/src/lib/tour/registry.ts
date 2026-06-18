@@ -83,6 +83,13 @@ const MARKET_ANCHORS: readonly TourAnchor[] = [
     description: "Choose which index you are looking at, like the Euro Stoxx 50.",
   },
   {
+    id: "market.ticker-picker",
+    route: "/",
+    label: "Ticker picker",
+    description:
+      "Pick the ticker the whole page follows, the index itself or any of its members like ASML.",
+  },
+  {
     id: "market.as-of",
     route: "/",
     label: "As-of picker",

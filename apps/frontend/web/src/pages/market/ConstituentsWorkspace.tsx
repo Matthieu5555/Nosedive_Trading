@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type {
   Constituent,
@@ -13,26 +13,35 @@ import { Scroll, Stack } from "../../components/layout";
 import { useFetch } from "../../hooks/useFetch";
 import { useConstituentHistoryBatch } from "./constituentHistory";
 
+// The Constituents element. It is both a read (index members, weights, latest close, plus a
+// master-detail candle for one member) AND the page's secondary selection surface: clicking a row
+// makes that constituent the active ticker every panel above re-renders for. The constituents data is
+// lifted to the page (so the top ticker selector and this table share one fetch); this component owns
+// the per-member history batch and the detail candle.
 export function ConstituentsWorkspace({
-  index,
   asOf,
   currency,
-  selected,
-  onSelect,
+  constituents,
+  loading,
+  error,
+  activeTicker,
+  onSelectConstituent,
 }: {
-  index: string;
   asOf: string;
   // The index quote-currency ISO code (EUR/USD/...), so latest close reads "€1,624.00".
   currency: string | null;
-  selected: string | null;
-  onSelect: (symbol: string) => void;
+  constituents: ConstituentsResponse | null;
+  loading: boolean;
+  error: string | null;
+  // The active ticker driving the whole page. When it is a constituent, the detail candle and the row
+  // highlight follow it; when it is the index, the candle defaults to the heaviest member so the
+  // member comparison still reads, without changing the active ticker.
+  activeTicker: string;
+  onSelectConstituent: (symbol: string) => void;
 }) {
-  const state = useFetch<ConstituentsResponse>(
-    `/api/constituents?index=${encodeURIComponent(index)}&as_of=${encodeURIComponent(asOf)}`,
-  );
   const symbols = useMemo(
-    () => state.data?.constituents.map((item) => item.symbol) ?? [],
-    [state.data],
+    () => constituents?.constituents.map((item) => item.symbol) ?? [],
+    [constituents],
   );
   const histories = useConstituentHistoryBatch(symbols, asOf);
   const historyByUnderlying = useMemo(
@@ -40,16 +49,30 @@ export function ConstituentsWorkspace({
       new Map((histories.data?.histories ?? []).map((history) => [history.underlying, history])),
     [histories.data],
   );
-  const selectedHistory = selected === null ? null : (historyByUnderlying.get(selected) ?? null);
 
+  const memberSymbols = useMemo(() => new Set(symbols), [symbols]);
   const heaviest = useMemo(() => {
-    const list = state.data?.constituents ?? [];
+    const list = constituents?.constituents ?? [];
     if (list.length === 0) return null;
     return [...list].sort((a, b) => (b.weight ?? -Infinity) - (a.weight ?? -Infinity))[0].symbol;
-  }, [state.data]);
+  }, [constituents]);
+
+  // The detail candle's member: the active ticker when it is one of these members, else a local
+  // default (the heaviest), so a PM lands on a real member comparison without the active ticker
+  // leaving the index.
+  const [detailMember, setDetailMember] = useState<string | null>(null);
   useEffect(() => {
-    if (selected === null && heaviest !== null) onSelect(heaviest);
-  }, [selected, heaviest, onSelect]);
+    if (detailMember === null && heaviest !== null) setDetailMember(heaviest);
+  }, [detailMember, heaviest]);
+  const detail = memberSymbols.has(activeTicker) ? activeTicker : detailMember;
+  const detailHistory = detail === null ? null : (historyByUnderlying.get(detail) ?? null);
+
+  // A row click sets the active ticker (the page-driving action) AND fixes the detail candle on that
+  // member, so the click reads as one gesture: "show me this name everywhere".
+  const handleSelect = (symbol: string) => {
+    setDetailMember(symbol);
+    onSelectConstituent(symbol);
+  };
 
   return (
     <div className="constituents-row">
@@ -58,14 +81,14 @@ export function ConstituentsWorkspace({
           <div className="panel-heading">
             <h2>Constituents</h2>
             <span className="status">
-              {state.data ? `${state.data.n_constituents} members` : ""}
+              {constituents ? `${constituents.n_constituents} members` : ""}
             </span>
           </div>
-          <AsyncBlock loading={state.loading} error={state.error}>
-            {state.data &&
-              (state.data.n_constituents === 0 ? (
+          <AsyncBlock loading={loading} error={error}>
+            {constituents &&
+              (constituents.n_constituents === 0 ? (
                 <p>
-                  No constituents for {state.data.index} as of {state.data.as_of}.
+                  No constituents for {constituents.index} as of {constituents.as_of}.
                 </p>
               ) : (
                 <Stack gap="md">
@@ -73,13 +96,13 @@ export function ConstituentsWorkspace({
                     batch={histories.data}
                     loading={histories.loading}
                     error={histories.error}
-                    constituents={state.data.constituents}
+                    constituents={constituents.constituents}
                   />
                   <ConstituentTable
-                    constituents={state.data.constituents}
+                    constituents={constituents.constituents}
                     currency={currency}
-                    selected={selected}
-                    onSelect={onSelect}
+                    selected={detail}
+                    onSelect={handleSelect}
                   />
                 </Stack>
               ))}
@@ -89,17 +112,17 @@ export function ConstituentsWorkspace({
 
       <article
         className="panel component-panel"
-        aria-label={selected ? `Price history for ${selected}` : "Component price history"}
+        aria-label={detail ? `Price history for ${detail}` : "Component price history"}
       >
         <Stack gap="md">
           <div className="panel-heading">
-            <h2>{selected ?? "Pick a ticker"}</h2>
+            <h2>{detail ?? "Pick a ticker"}</h2>
             <span className="status">selected member · daily OHLC</span>
           </div>
-          {selected === null ? (
+          {detail === null ? (
             <p>Select a constituent on the left to see its price history.</p>
           ) : (
-            <SelectedComponentHistory symbol={selected} asOf={asOf} batchEntry={selectedHistory} />
+            <SelectedComponentHistory symbol={detail} asOf={asOf} batchEntry={detailHistory} />
           )}
         </Stack>
       </article>

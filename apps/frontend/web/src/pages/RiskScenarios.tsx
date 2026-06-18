@@ -75,50 +75,53 @@ export function RiskScenariosPage() {
         </Cluster>
       </div>
 
-      <Card data-tour-id="risk.scenarios">
-        <CardHeader>
-          <CardTitle>Named historical scenarios</CardTitle>
-          <CardDescription>
-            Replay labelled crises (2008, COVID-2020, …) against today&apos;s book, one compound
-            spot/vol/rate shock each, full-repriced. Empty until a scenario catalogue is configured.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AsyncBlock
-            loading={scenarios.isPending}
-            error={scenarios.isError ? scenarios.error.message : null}
-          >
-            {scenarios.data && <NamedScenarios scenarios={scenarios.data.named ?? []} />}
-          </AsyncBlock>
-        </CardContent>
-      </Card>
+      <Grid min="420px" gap="md">
+        <Card data-tour-id="risk.scenarios">
+          <CardHeader>
+            <CardTitle>Named historical scenarios</CardTitle>
+            <CardDescription>
+              Replay labelled crises (2008, COVID-2020, …) against today&apos;s book, one compound
+              spot/vol/rate shock each, full-repriced. Empty until a scenario catalogue is
+              configured.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AsyncBlock
+              loading={scenarios.isPending}
+              error={scenarios.isError ? scenarios.error.message : null}
+            >
+              {scenarios.data && <NamedScenarios scenarios={scenarios.data.named ?? []} />}
+            </AsyncBlock>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Where the P&amp;L came from</CardTitle>
-          <CardDescription>
-            The book&apos;s realized/scenario P&amp;L split by Greek, with the leftover residual
-            shown as its own honesty bar. Empty until a scenario attribution lands for this
-            selection.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <AsyncBlock
-            loading={attribution.isPending}
-            error={attribution.isError ? attribution.error.message : null}
-            height={180}
-            subject="the P&L attribution"
-          >
-            {attribution.data && (
-              <AttributionWaterfall
-                attribution={attribution.data}
-                kicker={attributionScope}
-                embedded
-              />
-            )}
-          </AsyncBlock>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Where the P&amp;L came from</CardTitle>
+            <CardDescription>
+              The book&apos;s realized/scenario P&amp;L split by Greek, with the leftover residual
+              shown as its own honesty bar. Empty until a scenario attribution lands for this
+              selection.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AsyncBlock
+              loading={attribution.isPending}
+              error={attribution.isError ? attribution.error.message : null}
+              height={180}
+              subject="the P&L attribution"
+            >
+              {attribution.data && (
+                <AttributionWaterfall
+                  attribution={attribution.data}
+                  kicker={attributionScope}
+                  embedded
+                />
+              )}
+            </AsyncBlock>
+          </CardContent>
+        </Card>
+      </Grid>
 
       <Card>
         <CardHeader>
@@ -178,8 +181,15 @@ function reconciliationError(error: Error | null): string | null {
 }
 
 function ScenarioBoard({ data }: { data: ScenariosResponse }) {
+  // The summary scorecards and the rate sweep are narrow, text-heavy panels; the heatmap and the 3D
+  // surface are wide chart panels that already span every column (`grid-column: 1 / -1` in the shared
+  // panel CSS). With a 280px `min` the auto-fit grid opened four-plus slivers on a wide screen, so the
+  // summary panel and the rate sweep collapsed into a single ~280px rail and the right two thirds of
+  // the page stayed empty. A larger `min` caps the grid at two columns: the summary and the rate
+  // sweep pair up on one full-width row, the charts span both columns beneath them, and nothing is
+  // crammed into a sliver.
   return (
-    <Grid min="280px" gap="md">
+    <Grid min="440px" gap="md">
       <StressSurface
         surface={data.surface}
         kicker={data.portfolio_id ?? "All portfolios"}

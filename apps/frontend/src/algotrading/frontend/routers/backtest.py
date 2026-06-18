@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 
+from algotrading.infra.risk.attribution import RealizedBookAttribution
 from algotrading.infra.risk.config import AttributionConfig
-from algotrading.infra.risk.scenarios import Scenario
+from algotrading.infra.risk.scenarios import Scenario, TaylorTerms
 from algotrading.strategy.backtest import (
     BacktestConfig,
     BacktestResult,
@@ -149,8 +150,7 @@ def _greeks_to_dict(greeks: DayGreeks) -> dict[str, float]:
     }
 
 
-def _attribution_to_dict(result: BacktestResult) -> dict[str, float]:
-    terms = result.cumulative_attribution()
+def _terms_to_dict(terms: TaylorTerms) -> dict[str, float]:
     return {
         "delta": terms.delta_pnl,
         "gamma": terms.gamma_pnl,
@@ -159,6 +159,32 @@ def _attribution_to_dict(result: BacktestResult) -> dict[str, float]:
         "rho": terms.rho_pnl,
         "vanna": terms.vanna_pnl,
         "volga": terms.volga_pnl,
+    }
+
+
+def _attribution_to_dict(result: BacktestResult) -> dict[str, float]:
+    return _terms_to_dict(result.cumulative_attribution())
+
+
+def _day_attribution_to_dict(
+    attribution: RealizedBookAttribution | None,
+) -> dict[str, object] | None:
+    """Per-day realized decomposition: the seven terms, the full reprice, the residual, verdict.
+
+    The engine produces a full ``RealizedBookAttribution`` per day (terms + full_reprice +
+    residual + tolerance verdict); the old serializer dropped all of it and surfaced only the
+    cumulative terms, so the day-level reconciliation (does Taylor explain the realized move?)
+    was invisible. ``None`` on days with no attributed book (e.g. before the first position).
+    """
+    if attribution is None:
+        return None
+    return {
+        "terms": _terms_to_dict(attribution.terms),
+        "approx_pnl": attribution.terms.total,
+        "full_reprice_pnl": attribution.full_reprice_pnl,
+        "residual": attribution.residual,
+        "within_tolerance": attribution.within_tolerance,
+        "diagnostic": attribution.diagnostic,
     }
 
 
@@ -187,6 +213,7 @@ def _result_to_dict(result: BacktestResult) -> dict[str, object]:
                 "transaction_cost": day.transaction_cost,
                 "stress_loss": day.stress_loss,
                 "greeks": _greeks_to_dict(day.greeks),
+                "attribution": _day_attribution_to_dict(day.attribution),
             }
             for day in result.days
         ],

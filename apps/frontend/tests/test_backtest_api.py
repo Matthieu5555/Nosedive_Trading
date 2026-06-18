@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+import pytest
 from algotrading.core.provenance import source_ref, stamp
 from algotrading.frontend.app import create_app
 from algotrading.frontend.context import AppContext
@@ -152,6 +153,34 @@ def test_run_backtest_returns_full_result_shape(ctx: AppContext) -> None:
     assert day0["open_contracts"] == 1.0
     assert set(day0["greeks"]) == {"delta", "gamma", "vega", "theta"}
     assert payload["days"][1]["realized_pnl"] is not None
+
+
+def test_run_backtest_emits_per_day_attribution_not_just_cumulative(ctx: AppContext) -> None:
+    # The serializer used to drop the per-day realized decomposition and surface only the
+    # cumulative terms. Each day must now carry its own attribution (terms + full_reprice +
+    # residual + verdict), and the per-day terms must sum to the cumulative terms.
+    _seed(ctx)
+    with TestClient(create_app(ctx)) as client:
+        payload = client.post("/api/backtest/run", json=_request_body()).json()
+
+    attributed = [
+        day["attribution"] for day in payload["days"] if day["attribution"] is not None
+    ]
+    assert attributed, "expected at least one day to carry a realized attribution"
+    for day_attr in attributed:
+        assert set(day_attr["terms"]) == {
+            "delta", "gamma", "vega", "theta", "rho", "vanna", "volga",
+        }
+        for key in ("approx_pnl", "full_reprice_pnl", "residual", "within_tolerance"):
+            assert key in day_attr
+        assert day_attr["approx_pnl"] + day_attr["residual"] == pytest.approx(
+            day_attr["full_reprice_pnl"], abs=1e-6
+        )
+
+    cumulative = payload["cumulative_attribution"]
+    for term in cumulative:
+        summed = sum(day_attr["terms"][term] for day_attr in attributed)
+        assert summed == pytest.approx(cumulative[term], abs=1e-6)
 
 
 def test_transaction_costs_are_reflected_in_net(ctx: AppContext) -> None:

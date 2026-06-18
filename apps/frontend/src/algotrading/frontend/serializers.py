@@ -22,6 +22,7 @@ from algotrading.infra.orders import Limit, OrderTicket
 from algotrading.infra.pricing import UNIT_STRINGS
 from algotrading.infra.rates import ImpliedRiskfreeSpread, RateCurve
 from algotrading.infra.risk import BasketRisk, LegRisk
+from algotrading.infra.risk.scenarios import TaylorTerms
 from algotrading.infra.surfaces import (
     DenseSurface,
     SlicePlotSeries,
@@ -31,6 +32,7 @@ from algotrading.infra.surfaces import (
 
 from .basket_scenarios import BasketStressResult
 from .positions_read import GreekComponent, PositionBook, PositionLine
+from .realized_attribution import RealizedDayStep
 
 if TYPE_CHECKING:
     from algotrading.infra.orchestration import DashboardStatus
@@ -324,6 +326,67 @@ def scenario_attribution_to_dict(row: ScenarioAttribution) -> dict[str, object]:
         "attribution_version": row.attribution_version,
         "source_snapshot_ts": _iso(row.source_snapshot_ts),
         "provenance": provenance_to_dict(row.provenance),
+    }
+
+
+# The full seven-term realized waterfall: first-order Delta/Gamma/Vega/Theta plus the
+# second-order Rho/Vanna/Volga the realized engine always decomposes. Unlike the persisted
+# scenario record (whose second-order terms are nullable for backwards compatibility), a
+# realized day-step always carries all seven, so they are emitted unconditionally here.
+_REALIZED_ATTRIBUTION_TERMS: tuple[tuple[str, str], ...] = (
+    ("Delta", "delta_pnl"),
+    ("Gamma", "gamma_pnl"),
+    ("Vega", "vega_pnl"),
+    ("Theta", "theta_pnl"),
+    ("Rho", "rho_pnl"),
+    ("Vanna", "vanna_pnl"),
+    ("Volga", "volga_pnl"),
+)
+
+
+def _realized_terms_list(terms: TaylorTerms) -> list[dict[str, object]]:
+    return [
+        {"name": name, "dollars": getattr(terms, field), "unit": ATTRIBUTION_TERM_UNIT}
+        for name, field in _REALIZED_ATTRIBUTION_TERMS
+    ]
+
+
+def realized_day_step_to_dict(step: RealizedDayStep) -> dict[str, object]:
+    """Serialize one close-to-close step of the realized day-over-day attribution waterfall.
+
+    Carries the full seven-term Taylor decomposition, the engine's full-reprice P&L, the
+    residual (full_reprice - approx) with its tolerance verdict, and the realized market move
+    (d_spot/d_vol/d_time/d_rate) that drove it, all dollar/unit labelled for direct rendering.
+    """
+    attribution = step.attribution
+    move = attribution.lines[0].move if attribution.lines else None
+    return {
+        "start_date": step.start_date.isoformat(),
+        "end_date": step.end_date.isoformat(),
+        "portfolio_id": attribution.portfolio_id,
+        "terms": _realized_terms_list(attribution.terms),
+        "approx_pnl": {"dollars": attribution.terms.total, "unit": ATTRIBUTION_TERM_UNIT},
+        "full_reprice_pnl": {
+            "dollars": attribution.full_reprice_pnl,
+            "unit": ATTRIBUTION_RESIDUAL_UNIT,
+        },
+        "residual": {"dollars": attribution.residual, "unit": ATTRIBUTION_RESIDUAL_UNIT},
+        "verdict": {
+            "within_tolerance": attribution.within_tolerance,
+            "diagnostic": attribution.diagnostic,
+            "residual_abs_tol": attribution.config.residual_abs_tol,
+            "residual_rel_tol": attribution.config.residual_rel_tol,
+        },
+        "move": (
+            None
+            if move is None
+            else {
+                "d_spot": move.d_spot,
+                "d_vol": move.d_vol,
+                "d_time": move.d_time,
+                "d_rate": move.d_rate,
+            }
+        ),
     }
 
 

@@ -1,17 +1,37 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import type { AttributionResponse } from "../api";
+import type { AttributionResponse, RealizedAttributionResponse } from "../api";
 import { BASKET_RISK_AAA } from "../test/fixtures";
+import { renderWithClient } from "../test/renderWithClient";
 import { jsonGet, jsonPost, server } from "../test/server";
 import { BasketPage } from "./Basket";
 
+// The ④ Attribution tab now also fires useRealizedAttribution on mount, so every render of the
+// page needs a QueryClient in scope; `render` is replaced by `renderWithClient` below. A labelled-
+// empty realized payload keeps that auto-firing query off the catch-all 500 so the tab stays clean.
+const REALIZED_EMPTY: RealizedAttributionResponse = {
+  found: false,
+  underlying: "SX5E",
+  expiry: "2026-09-18",
+  portfolio_id: "demo",
+  term_unit: "$",
+  residual_unit: "$",
+  contracts: [],
+  dates: [],
+  steps: [],
+};
+
+beforeEach(() => {
+  server.use(jsonGet("/api/attribution/realized", REALIZED_EMPTY));
+});
+
 test("the page splits into the four Basket blocks (compose → book → shock → explain), Compose first", () => {
-  render(<BasketPage />);
+  renderWithClient(<BasketPage />);
 
   const tabs = screen.getAllByRole("tab");
   expect(tabs.map((tab) => tab.textContent)).toEqual([
@@ -25,7 +45,7 @@ test("the page splits into the four Basket blocks (compose → book → shock �
 
 test("the leg composer (templates + grid + controls) is shared above the tabs", async () => {
   const user = userEvent.setup();
-  render(<BasketPage />);
+  renderWithClient(<BasketPage />);
 
   expect(screen.getByLabelText("underlying")).toBeInTheDocument();
   expect(screen.getByLabelText("trade date")).toBeInTheDocument();
@@ -44,7 +64,7 @@ test("the leg composer (templates + grid + controls) is shared above the tabs", 
 test("pricing happens on the Compose block and shows the book-additive totals", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
-  render(<BasketPage />);
+  renderWithClient(<BasketPage />);
 
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: /price basket/i }));
@@ -72,7 +92,7 @@ const ATTRIBUTION_AAA: AttributionResponse = {
 test("the Attribution tab carries its own portfolio input and renders the waterfall", async () => {
   const user = userEvent.setup();
   server.use(jsonGet("/api/attribution", ATTRIBUTION_AAA));
-  render(<BasketPage />);
+  renderWithClient(<BasketPage />);
 
   await user.click(screen.getByRole("tab", { name: /attribution/i }));
   const portfolio = screen.getByLabelText("portfolio");
@@ -91,7 +111,7 @@ test("an attribution error surfaces a labelled alert on the Attribution tab", as
       HttpResponse.json({ error: "bad_attr", detail: "nope" }, { status: 400 }),
     ),
   );
-  render(<BasketPage />);
+  renderWithClient(<BasketPage />);
 
   await user.click(screen.getByRole("tab", { name: /attribution/i }));
   await user.click(screen.getByRole("button", { name: /P&L attribution/i }));

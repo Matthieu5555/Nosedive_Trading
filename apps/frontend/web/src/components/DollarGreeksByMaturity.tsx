@@ -11,9 +11,10 @@ import { isSaneIv } from "../lib/volRobust";
 import { InfoDot } from "./InfoDot";
 import { Scroll, Stack } from "./layout";
 
-// The always-present first-order Greeks (the second-order set below is additive-nullable and is
-// rendered by its own block, so it is deliberately excluded from this generic first-order indexing).
-type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta" | "rho";
+// The four first-order Greeks an operator reads first. Rate-rho is deliberately excluded: it added a
+// column the PM doesn't read, so the toggle is now just first-order vs second-order. (The second-order
+// set below is additive-nullable and rendered by its own block.)
+type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta";
 
 type GreekColumn = { name: FirstOrderGreek; rawUnit: string };
 
@@ -22,20 +23,14 @@ const GREEKS: ReadonlyArray<GreekColumn> = [
   { name: "gamma", rawUnit: UNITS.gamma },
   { name: "vega", rawUnit: UNITS.vega },
   { name: "theta", rawUnit: UNITS.theta },
-  { name: "rho", rawUnit: UNITS.rho },
 ];
 
-// "Primary" drops rho so the page opens on the four Greeks an operator reads first; "Full first-order"
-// adds rho back. The segmented control gates which set is mounted so the table never shows everything
-// at once. This is purely presentational column gating — no value, metric or data path changes.
-const PRIMARY_GREEKS: ReadonlyArray<GreekColumn> = GREEKS.filter((g) => g.name !== "rho");
+// The Greek group the segmented control selects. "first-order" is the four-Greek table the page opens
+// on; "second-order" swaps in the vanna/volga/charm block below (the existing additive-nullable
+// SecondOrderGreeks, with its "not banked for this close" empty state preserved).
+type GreekGroup = "first-order" | "second-order";
 
-// The Greek group the segmented control selects. "higher-order" swaps the first-order table for the
-// vanna/volga/charm block below (the existing additive-nullable SecondOrderGreeks, with its
-// "not banked for this close" empty state preserved).
-type GreekGroup = "primary" | "first-order" | "higher-order";
-
-const DEFAULT_GROUP: GreekGroup = "primary";
+const DEFAULT_GROUP: GreekGroup = "first-order";
 
 // The explanatory prose for the higher-order Greeks, lifted out of a permanent panel-note and into
 // the InfoDot beside the toggle so it stops taking vertical space.
@@ -97,8 +92,8 @@ export function DollarGreeksByMaturity({
 }) {
   const label = "Dollar Greeks by delta band (Greeks as columns, delta bands as rows)";
 
-  // Local group selection, mirroring TenorPanel's `tenor` useState pattern. Opens on "primary"
-  // (four Greeks), so the view never mounts all ~16 columns at once.
+  // Local group selection, mirroring TenorPanel's `tenor` useState pattern. Opens on "first-order"
+  // (four Greeks), so the view never mounts all the second-order columns at once.
   const [group, setGroup] = useState<GreekGroup>(DEFAULT_GROUP);
 
   if (maturities.length === 0) {
@@ -126,9 +121,9 @@ export function DollarGreeksByMaturity({
     })
     .sort((a, b) => a.target_delta - b.target_delta);
 
-  // The first-order column set in view: "primary" drops rho, "first-order" shows the full set.
-  const firstOrderColumns = group === "first-order" ? GREEKS : PRIMARY_GREEKS;
-  const showHigherOrder = group === "higher-order";
+  // The first-order column set in view (delta/gamma/vega/theta).
+  const firstOrderColumns = GREEKS;
+  const showHigherOrder = group === "second-order";
 
   // Pre-compute the sign-flip rows: walking down the sorted bands, a row flips when any displayed
   // Greek's sign differs from the last non-zero sign seen for that Greek above it.
@@ -161,32 +156,23 @@ export function DollarGreeksByMaturity({
             <button
               type="button"
               className="mode-toggle__option"
-              aria-pressed={group === "primary"}
-              title="Delta, gamma, vega, theta, the four read first"
-              onClick={() => setGroup("primary")}
-            >
-              Primary
-            </button>
-            <button
-              type="button"
-              className="mode-toggle__option"
               aria-pressed={group === "first-order"}
-              title="Adds rho to the primary four"
+              title="Delta, gamma, vega, theta, the four read first"
               onClick={() => setGroup("first-order")}
             >
-              Full first-order
+              First order
             </button>
             <button
               type="button"
               className="mode-toggle__option"
-              aria-pressed={group === "higher-order"}
+              aria-pressed={group === "second-order"}
               title="Vanna, volga, charm, how the first-order Greeks themselves move"
-              onClick={() => setGroup("higher-order")}
+              onClick={() => setGroup("second-order")}
             >
-              Higher-order
+              Second order
             </button>
           </div>
-          <InfoDot label="About higher-order Greeks" body={HIGHER_ORDER_INFO} />
+          <InfoDot label="About second-order Greeks" body={HIGHER_ORDER_INFO} />
         </div>
       </div>
       {rows.length === 0 ? (

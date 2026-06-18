@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { screen, within } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 
 vi.mock("../../components/Plot", async () => await import("../../test/plotMock"));
 
 import type { AttributionResponse } from "../../api";
+import { renderWithClient } from "../../test/renderWithClient";
 import { AttributionTab } from "./AttributionTab";
 
 // The ④ Attribution panel renders every by-Greek term the BFF sends — including the second-order
@@ -30,8 +31,40 @@ const ATTRIBUTION_SECOND_ORDER: AttributionResponse = {
 
 const NOOP = () => {};
 
+// The tab now also fires useRealizedAttribution on mount; stub fetch to a labelled-empty realized
+// payload so that query resolves to its honest empty state and never touches the network. These
+// tests still assert on the scenario-attribution panel driven by the `attribution` prop.
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function stubEmptyRealized() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          found: false,
+          underlying: "SX5E",
+          expiry: "2026-09-18",
+          portfolio_id: "demo",
+          term_unit: "$",
+          residual_unit: "$",
+          contracts: [],
+          dates: [],
+          steps: [],
+        }),
+      } as Response),
+    ),
+  );
+}
+
 test("the attribution panel renders the Rho/Vanna/Volga terms beside Δ/Γ/Vega/Θ", () => {
-  render(
+  stubEmptyRealized();
+  renderWithClient(
     <AttributionTab
       portfolioId="demo-book"
       onPortfolioId={NOOP}
@@ -52,7 +85,8 @@ test("the attribution panel renders the Rho/Vanna/Volga terms beside Δ/Γ/Vega/
 });
 
 test("each second-order term carries its own unit label", () => {
-  render(
+  stubEmptyRealized();
+  renderWithClient(
     <AttributionTab
       portfolioId="demo-book"
       onPortfolioId={NOOP}

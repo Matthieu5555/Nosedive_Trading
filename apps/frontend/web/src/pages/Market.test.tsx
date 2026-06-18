@@ -41,7 +41,7 @@ test("is one scrollable page (price → scorecards → surface → tenor → dis
   expect(await screen.findByRole("heading", { name: /Daily price/i })).toBeInTheDocument();
   expect(await screen.findByLabelText("Volatility scorecards")).toBeInTheDocument();
   expect(await screen.findByLabelText(/Volatility surface.*maturity/i)).toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: /Dispersion/i })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /Avg correlation/i })).toBeInTheDocument();
   // The old tab chrome is gone.
   expect(screen.queryByRole("tab", { name: "Analytics" })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Data quality" })).not.toBeInTheDocument();
@@ -59,14 +59,16 @@ test("renders the six headline scorecards with independently-derived numbers", a
   const atm = await screen.findByLabelText("ATM level");
   expect(within(atm).getByText("20.0%")).toBeInTheDocument();
   expect(within(screen.getByLabelText("Skew 25Δ")).getByText("+7.0 vp")).toBeInTheDocument();
-  // RV−IV is the persisted iv_vs_realized signal, not a recompute.
-  expect(within(screen.getByLabelText("RV − IV")).getByText("-1.8 vp")).toBeInTheDocument();
+  // RV-IV is the persisted iv_vs_realized signal, not a recompute.
+  expect(within(screen.getByLabelText("RV - IV")).getByText("-1.8 vp")).toBeInTheDocument();
   // The three new persisted-signal cards.
   expect(
     within(screen.getByLabelText("Term-structure slope")).getByText("+1.2 vp"),
   ).toBeInTheDocument();
   expect(within(screen.getByLabelText("IV-rank")).getByText("62.0%")).toBeInTheDocument();
-  expect(within(screen.getByLabelText("ρ̄")).getByText("50.0%")).toBeInTheDocument();
+  expect(
+    within(screen.getByLabelText("Avg correlation (ρ)")).getByText("50.0%"),
+  ).toBeInTheDocument();
   // Convexity is no longer a headline card (it moved to the smile block).
   expect(within(cards).queryByLabelText("Convexity 25Δ")).not.toBeInTheDocument();
 });
@@ -76,9 +78,9 @@ test("the sign legend prints so the trader never inverts a sign", async () => {
   render(<MarketPage />);
 
   const legend = await screen.findByLabelText("Sign legend");
-  expect(legend).toHaveTextContent(/vol cheap \(buy\)/i);
-  expect(legend).toHaveTextContent(/vol rich \(sell\)/i);
-  expect(legend).toHaveTextContent(/backwardation = risk imminent/i);
+  expect(legend).toHaveTextContent(/options look cheap to buy/i);
+  expect(legend).toHaveTextContent(/options look expensive to sell/i);
+  expect(legend).toHaveTextContent(/near-term risk is rising/i);
 });
 
 test("a signed scorecard reads in the sign colour (green positive, coral negative)", async () => {
@@ -88,7 +90,7 @@ test("a signed scorecard reads in the sign colour (green positive, coral negativ
   // Skew +7.0 vp is positive → the value carries the positive class; RV−IV −1.8 vp negative.
   const skewValue = within(await screen.findByLabelText("Skew 25Δ")).getByText("+7.0 vp");
   expect(skewValue).toHaveClass("positive");
-  const rvValue = within(screen.getByLabelText("RV − IV")).getByText("-1.8 vp");
+  const rvValue = within(screen.getByLabelText("RV - IV")).getByText("-1.8 vp");
   expect(rvValue).toHaveClass("negative");
 });
 
@@ -176,7 +178,9 @@ test("the smile superimposes put + call (both wings, no side filter)", async () 
 test("the dispersion strip reads the realized-vol ρ̄ signal (no per-member fan-out)", async () => {
   render(<MarketPage />);
   // implied_correlation from the signal fixture is 0.5 → 50.00%.
-  expect(await screen.findByLabelText("Implied correlation")).toHaveTextContent(/ρ̄ = 50.00%/);
+  expect(await screen.findByLabelText("Implied correlation")).toHaveTextContent(
+    /Avg correlation \(ρ\) = 50.00%/,
+  );
 });
 
 test("never calls /api/analytics for a constituent symbol, index-keyed only", async () => {

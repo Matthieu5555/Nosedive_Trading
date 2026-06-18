@@ -47,11 +47,11 @@ const CLEAN_12M: AnalyticsMaturity = {
 };
 
 describe("DollarGreeksByMaturity", () => {
-  test("the Primary group opens on four Greeks (delta/gamma/vega/theta), rho hidden until Full first-order", () => {
+  test("the First order group shows the four read-first Greeks (delta/gamma/vega/theta), rho gone entirely", () => {
     render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />);
     const primaryTable = screen.getByRole("table", { name: /Dollar Greeks, / });
 
-    // Default = Primary: the four read-first Greeks, no rho, no second-order table.
+    // Default = First order: the four read-first Greeks, no rho, no second-order table.
     for (const greek of ["delta", "gamma", "vega", "theta"]) {
       expect(within(primaryTable).getByRole("columnheader", { name: greek })).toBeInTheDocument();
     }
@@ -61,17 +61,15 @@ describe("DollarGreeksByMaturity", () => {
     expect(within(primaryTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(4);
     expect(within(primaryTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(4);
 
-    // Switching to Full first-order mounts rho (five Greeks, five raw + currency pairs).
-    fireEvent.click(screen.getByRole("button", { name: "Full first-order" }));
-    const fullTable = screen.getByRole("table", { name: /Dollar Greeks, / });
-    for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
-      expect(within(fullTable).getByRole("columnheader", { name: greek })).toBeInTheDocument();
-    }
-    expect(within(fullTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(5);
-    expect(within(fullTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(5);
+    // The old "Full first-order" option (the rho-only view) is gone: only two options remain, and
+    // rho never appears in this table.
+    expect(screen.queryByRole("button", { name: "Full first-order" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "First order" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Second order" })).toBeInTheDocument();
+    expect(screen.queryByText("€ per 1% rate")).not.toBeInTheDocument();
 
-    expect(within(fullTable).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
-    expect(within(fullTable).getByText("€ per 1% move")).toBeInTheDocument();
+    expect(within(primaryTable).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
+    expect(within(primaryTable).getByText("€ per 1% move")).toBeInTheDocument();
   });
 
   test("the maturity in view is driven by the maturityLabel prop (the shared selector)", () => {
@@ -182,8 +180,8 @@ describe("DollarGreeksByMaturity", () => {
         currency="€"
       />,
     );
-    // The higher-order Greeks live behind the "Higher-order" group of the segmented control now.
-    fireEvent.click(screen.getByRole("button", { name: "Higher-order" }));
+    // The higher-order Greeks live behind the "Second order" group of the segmented control now.
+    fireEvent.click(screen.getByRole("button", { name: "Second order" }));
     const table = screen.getByRole("table", { name: /Second-order Greeks, 12m/ });
     for (const greek of ["vanna", "volga", "charm"]) {
       expect(within(table).getByRole("columnheader", { name: greek })).toBeInTheDocument();
@@ -200,8 +198,8 @@ describe("DollarGreeksByMaturity", () => {
     render(
       <DollarGreeksByMaturity maturities={[CLEAN_12M]} maturityLabel="12m (1.000y)" currency="€" />,
     );
-    // Open the Higher-order group: the empty state is preserved (no fabricated table).
-    fireEvent.click(screen.getByRole("button", { name: "Higher-order" }));
+    // Open the Second order group: the empty state is preserved (no fabricated table).
+    fireEvent.click(screen.getByRole("button", { name: "Second order" }));
     expect(screen.queryByRole("table", { name: /Second-order Greeks, / })).not.toBeInTheDocument();
     expect(screen.getByText(/not banked for this close/i)).toBeInTheDocument();
   });

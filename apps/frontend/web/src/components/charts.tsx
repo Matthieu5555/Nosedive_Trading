@@ -8,7 +8,12 @@ import {
   type SurfaceDense,
 } from "../api";
 import { currencySymbol, UNITS, withCurrency } from "../lib/format";
-import { cleanDenseSurface, cleanSmile, flaggedNote } from "../lib/volRobust";
+import {
+  cleanDenseSurface,
+  cleanSmile,
+  flaggedNote,
+  singleBranchDeltaPoints,
+} from "../lib/volRobust";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
 import { Plot } from "./Plot";
@@ -531,10 +536,10 @@ export function SmileChart({
 }
 
 const GREEKS_SHAPE_HOW_TO_READ =
-  "raw Greeks vs strike ; gamma/vega bell, delta S-curve (and its peak)";
+  "Greeks vs strike ; gamma/vega bell, call-delta S-curve from near 1 (low strikes) to near 0 (high strikes)";
 
 const GREEKS_SHAPE_LAYOUT = {
-  yaxis: { title: { text: "delta (S-curve)" }, zeroline: true, tickformat: ".2f" },
+  yaxis: { title: { text: "call delta (S-curve)" }, zeroline: true, tickformat: ".2f" },
   yaxis2: {
     title: { text: "gamma / vega (bell)" },
     overlaying: "y" as const,
@@ -579,7 +584,12 @@ export function GreeksShapeCurves({
     ? frontMaturity
     : (maturities.find((m) => m.label === maturityLabel) ?? frontMaturity);
 
-  const points: AnalyticsPoint[] = [...maturity.points].sort((a, b) => a.strike - b.strike);
+  // A single smile carries both wings (put-quoted low strikes, call-quoted high strikes) with the
+  // at-the-money strike duplicated. singleBranchDeltaPoints dedupes by strike and rewrites delta onto
+  // one (call) convention, so the delta trace is a single continuous S-curve instead of an impossible
+  // vertical spike where the put and call branches cross at the money. Gamma/vega read the same
+  // deduplicated set so all three curves share one strike axis.
+  const points: AnalyticsPoint[] = singleBranchDeltaPoints(maturity.points);
   const label = `${baseDescriptor.title}, Greeks ${maturity.label} (${GREEKS_SHAPE_HOW_TO_READ})`;
   if (points.length === 0) {
     return (

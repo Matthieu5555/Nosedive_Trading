@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AttributionResponse,
   fetchAttribution,
+  fetchRealizedAttribution,
   fetchReconciliation,
   getJson,
   type HealthResponse,
@@ -10,6 +11,7 @@ import {
   type Job,
   postJson,
   type ProvidersResponse,
+  type RealizedAttributionResponse,
   type ReconciliationResponse,
   type RecordedDatesResponse,
   type RunRequest,
@@ -135,6 +137,19 @@ export function useBookAttribution(portfolioId: string) {
     queryKey: ["attribution", "book", portfolioId] as const,
     queryFn: ({ signal }) =>
       fetchAttribution({ level: "book", portfolioId: portfolioId || undefined }, signal),
+  });
+}
+
+// The realized day-over-day Greek waterfall for a held position. With no underlying/expiry it
+// defaults to the demo straddle the BFF seeds; pass them to scope a different held position.
+export function useRealizedAttribution(underlying?: string, expiry?: string) {
+  return useQuery<RealizedAttributionResponse>({
+    queryKey: ["attribution", "realized", underlying ?? "", expiry ?? ""] as const,
+    queryFn: ({ signal }) =>
+      fetchRealizedAttribution(
+        { underlying: underlying || undefined, expiry: expiry || undefined },
+        signal,
+      ),
   });
 }
 

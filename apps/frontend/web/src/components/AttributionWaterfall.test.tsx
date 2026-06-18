@@ -4,8 +4,9 @@ import { afterEach, expect, test, vi } from "vitest";
 
 vi.mock("../components/Plot", async () => await import("../test/plotMock"));
 
-import type { AttributionResponse } from "../api";
-import { AttributionWaterfall } from "./AttributionWaterfall";
+import type { AttributionResponse, RealizedAttributionResponse } from "../api";
+import { renderWithClient } from "../test/renderWithClient";
+import { AttributionWaterfall, RealizedAttributionWaterfall } from "./AttributionWaterfall";
 
 const TERM_UNIT = "$ (PnL contribution)";
 const RESIDUAL_UNIT = "$ (residual vs full reprice)";
@@ -109,6 +110,77 @@ test("embedded empty state also drops the inner heading, keeps the empty message
   expect(screen.getByText(/No P&L attribution for this selection/i)).toBeInTheDocument();
 });
 
+const TERM_UNIT_PNL = "$ (PnL contribution)";
+const RESIDUAL_UNIT_REPRICE = "$ (residual vs full reprice)";
+
+function realizedStep(start: string, end: string, dSpot: number) {
+  return {
+    start_date: start,
+    end_date: end,
+    portfolio_id: "demo-sep-straddle",
+    terms: [
+      { name: "Delta", dollars: 54.96, unit: TERM_UNIT_PNL },
+      { name: "Gamma", dollars: 95.15, unit: TERM_UNIT_PNL },
+      { name: "Vega", dollars: 287.65, unit: TERM_UNIT_PNL },
+      { name: "Theta", dollars: -210.0, unit: TERM_UNIT_PNL },
+      { name: "Rho", dollars: 0.0, unit: TERM_UNIT_PNL },
+      { name: "Vanna", dollars: 1.18, unit: TERM_UNIT_PNL },
+      { name: "Volga", dollars: -0.001, unit: TERM_UNIT_PNL },
+    ],
+    approx_pnl: { dollars: 228.94, unit: TERM_UNIT_PNL },
+    full_reprice_pnl: { dollars: 225.56, unit: RESIDUAL_UNIT_REPRICE },
+    residual: { dollars: -3.38, unit: RESIDUAL_UNIT_REPRICE },
+    verdict: { within_tolerance: true, diagnostic: "", residual_abs_tol: 1.0, residual_rel_tol: 0.05 },
+    move: { d_spot: dSpot, d_vol: 0.0011, d_time: 0.00274, d_rate: 0.0 },
+  };
+}
+
+const REALIZED: RealizedAttributionResponse = {
+  found: true,
+  underlying: "SX5E",
+  expiry: "2026-09-18",
+  portfolio_id: "demo-sep-straddle",
+  term_unit: TERM_UNIT_PNL,
+  residual_unit: RESIDUAL_UNIT_REPRICE,
+  contracts: ["SX5E|2026-09-18|6275|C", "SX5E|2026-09-18|6275|P"],
+  dates: ["2026-06-15", "2026-06-16", "2026-06-17"],
+  steps: [
+    realizedStep("2026-06-15", "2026-06-16", 34.5),
+    realizedStep("2026-06-16", "2026-06-17", -12.0),
+  ],
+};
+
+test("realized: one day card per step, each with the seven Greek terms + a residual bar", () => {
+  render(<RealizedAttributionWaterfall realized={REALIZED} />);
+
+  // One waterfall plot per held day.
+  expect(screen.getAllByLabelText(/Realized P&L attribution/i)).toHaveLength(REALIZED.steps.length);
+
+  const dayOne = screen.getByRole("list", { name: /day 1 attribution terms/i });
+  for (const term of ["Delta", "Gamma", "Vega", "Theta", "Rho", "Vanna", "Volga"]) {
+    expect(within(dayOne).getByText(new RegExp(`^${term}:`))).toBeInTheDocument();
+  }
+  // The residual is its own labelled bar, never folded into a term.
+  expect(within(dayOne).getByText(/^Residual:/)).toBeInTheDocument();
+});
+
+test("realized: the per-day move drives a plain-language sentence (direction from d_spot sign)", () => {
+  render(<RealizedAttributionWaterfall realized={REALIZED} />);
+  // Day 1 spot rose, day 2 spot fell — both surfaced in plain language, no quant jargon.
+  expect(screen.getByText(/the underlying rose/i)).toBeInTheDocument();
+  expect(screen.getByText(/the underlying fell/i)).toBeInTheDocument();
+});
+
+test("realized: an empty payload renders an honest empty state, not a waterfall", () => {
+  render(
+    <RealizedAttributionWaterfall
+      realized={{ ...REALIZED, found: false, steps: [], contracts: [], dates: [] }}
+    />,
+  );
+  expect(screen.getByText(/No realized attribution for this position yet/i)).toBeInTheDocument();
+  expect(screen.queryByTestId("plot-types")).not.toBeInTheDocument();
+});
+
 import { BasketPage } from "../pages/Basket";
 
 test("a fetch error renders a labelled alert on the page, not a blank page", async () => {
@@ -124,7 +196,9 @@ test("a fetch error renders a labelled alert on the page, not a blank page", asy
       } as Response),
     ),
   );
-  render(<BasketPage />);
+  // BasketPage's ④ Attribution tab now fires a react-query hook (the realized waterfall), so the
+  // page needs a QueryClient in scope; the stubbed-failing fetch still drives the assertion.
+  renderWithClient(<BasketPage />);
   await user.click(screen.getByRole("tab", { name: /attribution/i }));
   await user.click(screen.getByRole("button", { name: /P&L attribution/i }));
   // With every fetch stubbed to fail, the page now surfaces each failure as its own alert (the

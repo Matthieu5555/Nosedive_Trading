@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  type AnalyticsMaturity,
   type AnalyticsResponse,
   type IndicesResponse,
   type PriceHistoryResponse,
@@ -25,6 +26,7 @@ import { Scorecards } from "../components/Scorecards";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { cleanSurfaceMaturities } from "../lib/volRobust";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 
@@ -49,6 +51,15 @@ export function MarketPage() {
   const [surfaceMode, setSurfaceMode] = useState<SurfaceMode>("strict");
   useEffect(() => {
     setSurfaceMode("strict");
+  }, [index]);
+
+  // Clean surface is the landing state: the front-week / degenerate slices the fitter could not fit
+  // (and which draw the impossible delta spike) are dropped from the smile, Greeks and 3D surface.
+  // Turning it off shows every slice raw, spike and all, for the rare case the PM wants to inspect a
+  // flagged fit. Resets to clean whenever the underlying changes, so "show all" is always deliberate.
+  const [cleanSurface, setCleanSurface] = useState(true);
+  useEffect(() => {
+    setCleanSurface(true);
   }, [index]);
 
   const recorded = useFetch<RecordedDatesResponse>(
@@ -80,7 +91,20 @@ export function MarketPage() {
       : "",
   );
 
-  const currency = currencySymbol(indexOptions.find((o) => o.symbol === index)?.currency);
+  // The surface/Greeks data path: clean (default) drops the flagged slices; show-all passes raw. Only
+  // the smile, Greeks and 3D surface read this; the indicator scorecards stay on the raw maturities.
+  const rawMaturities = useMemo(() => analytics.data?.maturities ?? [], [analytics.data]);
+  const surfaceMaturities = useMemo(
+    () => (cleanSurface ? cleanSurfaceMaturities(rawMaturities) : rawMaturities),
+    [cleanSurface, rawMaturities],
+  );
+  const nDroppedSlices = rawMaturities.length - cleanSurfaceMaturities(rawMaturities).length;
+
+  // The index quote-currency ISO code (EUR/USD/...), resolved once from the indices payload. The
+  // analytics panels render the symbol (currencySymbol); the constituents table takes the ISO code
+  // and localises it itself, so latest close reads "€1,624.00" not a bare "1,624.00".
+  const currencyCode = indexOptions.find((o) => o.symbol === index)?.currency ?? null;
+  const currency = currencySymbol(currencyCode);
 
   // Feed the globally-mounted floating assistant the live Market frame, so while the user is on this
   // page the assistant grounds on exactly the subject, close and mode the charts are showing. On
@@ -185,11 +209,11 @@ export function MarketPage() {
             });
             return (
               <Stack gap="md">
-                <div className="market-scroll__status">
-                  <span className="status">
-                    {index} · {descriptor.asOfPhrase} <QcBadge qc={qc} />
-                  </span>
-                </div>
+                <Cluster className="market-scroll__status" gap="sm" align="center">
+                  <span className="market-scroll__index">{index}</span>
+                  <span className="status">{descriptor.asOfPhrase}</span>
+                  <QcBadge qc={qc} />
+                </Cluster>
 
                 <ErrorBoundary label="Scorecards">
                   <AsyncBlock
@@ -247,6 +271,7 @@ export function MarketPage() {
                   <ConstituentsWorkspace
                     index={index}
                     asOf={effectiveAsOf}
+                    currency={currencyCode}
                     selected={selectedMember}
                     onSelect={setSelectedMember}
                   />
@@ -274,10 +299,20 @@ export function MarketPage() {
                         </h2>
                       </div>
                       <div className="panel-heading__controls">
-                        <span className="status" data-tone={descriptor.tone}>
-                          {descriptor.caption}
-                        </span>
-                        <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
+                        <Cluster className="panel-heading__status" gap="xs" align="center">
+                          <span className="status" data-tone={descriptor.tone}>
+                            {descriptor.caption}
+                          </span>
+                          <SurfaceFitPill maturities={rawMaturities} />
+                        </Cluster>
+                        <Cluster className="panel-heading__toggles" gap="xs" align="center">
+                          <CleanSurfaceToggle
+                            clean={cleanSurface}
+                            nDropped={nDroppedSlices}
+                            onChange={setCleanSurface}
+                          />
+                          <SurfaceModeToggle mode={surfaceMode} onChange={setSurfaceMode} />
+                        </Cluster>
                       </div>
                     </div>
                     <ErrorBoundary label="3D surface">
@@ -295,7 +330,7 @@ export function MarketPage() {
                           ) : (
                             <VolSurface
                               surface={analytics.data.surface}
-                              maturities={analytics.data.maturities}
+                              maturities={surfaceMaturities}
                               subject={index}
                               asOf={effectiveAsOf}
                               closeInstant={instant}
@@ -317,7 +352,7 @@ export function MarketPage() {
                   >
                     {analytics.data && (
                       <TenorPanel
-                        maturities={analytics.data.maturities}
+                        maturities={surfaceMaturities}
                         currency={currency}
                         subject={index}
                         asOf={effectiveAsOf}
@@ -333,10 +368,10 @@ export function MarketPage() {
                   <Stack gap="md">
                     <div className="panel-heading">
                       <Cluster gap="2xs" align="center">
-                        <h2>Dispersion (ρ̄), {index}</h2>
+                        <h2>Avg correlation (ρ), {index}</h2>
                         <InfoDot
                           label="Dispersion, how to read it"
-                          body={`How tightly the ${index} members are expected to move together. A high average correlation (ρ̄ near 1) means the index moves as one block, so index vol is dear relative to its members; a low ρ̄ means the members move independently, the case for a dispersion trade. Today a realized-vol diagnostic until constituent implied vols land.`}
+                          body={`How tightly the ${index} members are expected to move together. A high average correlation (ρ near 1) means the index moves as one block, so index vol is dear relative to its members; a low ρ means the members move independently, the case for a dispersion trade. Today a realized-vol diagnostic until constituent implied vols land.`}
                         />
                       </Cluster>
                       <span className="status">
@@ -391,12 +426,85 @@ export function MarketPage() {
   );
 }
 
+// How well the fitted surface tracks the quotes that were actually traded, in vol points. The fitter
+// records a per-slice fit error (iv_rmse, a vol-point RMSE) on every slice it fit; a slice with no
+// fitted surface, or an older read, carries none. We surface the BEST (smallest) fit error across
+// the slices that have one, with a count of how many slices the fit covers, so a PM sees at a glance
+// how tightly the surface sits on the market. When no slice carries a fit error we say so plainly,
+// never inventing a number. A vol point is one hundredth of an annualized vol (so 0.0005 IV = 0.05
+// vol pts); the InfoDot spells that out in plain words.
+function SurfaceFitPill({ maturities }: { maturities: AnalyticsMaturity[] }) {
+  const fits = maturities
+    .map((m) => m.surface_slice?.diagnostics?.iv_rmse)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const body =
+    "How tightly the fitted surface sits on the quotes that actually traded, measured in vol points " +
+    "(one vol point is one hundredth of an annualized volatility). Smaller is a closer fit. Shown only " +
+    "for the maturities the fitter actually fit; a maturity with no fitted slice, or an older capture, " +
+    "carries no fit number.";
+  if (fits.length === 0) {
+    return (
+      <span className="status surface-fit" data-tone="muted">
+        fit not available
+        <InfoDot label="Surface fit, how to read it" body={body} />
+      </span>
+    );
+  }
+  const bestVolPts = Math.min(...fits) * 100;
+  const sliceNote = fits.length === 1 ? "1 maturity" : `${fits.length} maturities`;
+  return (
+    <span className="status surface-fit" data-tone="full">
+      {`fit ${bestVolPts.toFixed(2)} vol pts (${sliceNote})`}
+      <InfoDot label="Surface fit, how to read it" body={body} />
+    </span>
+  );
+}
+
 // Strict ⟷ Indicative toggle (MAT-LEGIBILITY-strict-indicative-mode). Strict is the default and the
 // only stored/tradeable surface (two-sided quotes only); indicative is a view-time overlay that
 // includes one-sided/last marks, unmistakably badged so it can never be confused for the close. The
 // toggle says what each mode does — the consequence is shown, not sold — and a `mode` change is a
 // deliberate act that visibly reframes the page (the INDICATIF badge appears, the coverage numerator
 // rises), never a silent data swap.
+// Clean surface vs all slices. Default clean drops the front-week / degenerate slices the fitter
+// flagged, the ones that draw the impossible delta spike. "All slices, raw" puts them back for a
+// deliberate look at a flagged fit. Matches the mode-toggle styling so the two controls read as one
+// set. The count of dropped slices is surfaced so the consequence is visible, not hidden.
+function CleanSurfaceToggle({
+  clean,
+  nDropped,
+  onChange,
+}: {
+  clean: boolean;
+  nDropped: number;
+  onChange: (clean: boolean) => void;
+}) {
+  const droppedNote =
+    nDropped > 0 ? ` (${nDropped} flagged slice${nDropped === 1 ? "" : "s"} hidden)` : "";
+  return (
+    <div className="mode-toggle" role="group" aria-label="Surface slices">
+      <button
+        type="button"
+        className="mode-toggle__option"
+        aria-pressed={clean}
+        title="Hide the front-week and degenerate slices the fitter flagged"
+        onClick={() => onChange(true)}
+      >
+        Clean surface{clean ? droppedNote : ""}
+      </button>
+      <button
+        type="button"
+        className="mode-toggle__option"
+        aria-pressed={!clean}
+        title="Include every slice, even the flagged ones that draw the delta spike"
+        onClick={() => onChange(false)}
+      >
+        All slices, raw
+      </button>
+    </div>
+  );
+}
+
 function SurfaceModeToggle({
   mode,
   onChange,

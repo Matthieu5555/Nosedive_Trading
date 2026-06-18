@@ -22,7 +22,7 @@ export function DispersionStrip({ index, signal }: { index: string; signal: Sign
   return (
     <Stack className="dispersion-strip" gap="2xs">
       <p className="dispersion-strip__value" aria-label="Implied correlation">
-        ρ̄ = {correlationPercent(signal.value)}
+        Avg correlation (ρ) = {correlationPercent(signal.value)}
         <span className="dispersion-strip__tenor"> · {signal.tenor_label}</span>
       </p>
       <p className="panel-note">{SIGNAL_CAPTIONS.implied_correlation}</p>

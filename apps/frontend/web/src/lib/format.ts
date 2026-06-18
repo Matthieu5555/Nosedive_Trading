@@ -206,6 +206,42 @@ export function volPercent(value: number, digits = 1): string {
   return `${(value * 100).toFixed(digits)}%`;
 }
 
+/**
+ * An index-weight figure for the constituents table. The backend already sends weights on a
+ * percent scale (the 50 SX5E members sum to ~100, e.g. ASML 12.076038), so this is a plain
+ * grouped percent at two decimals: 12.076038 → "12.08%". These are human-reference quantities,
+ * not analytics outputs, so they never take the scientific form the greeks get (owner override,
+ * 2026-06-18). A null/undefined weight reads "n/a" rather than a bare blank.
+ */
+export function indexWeightPercent(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
+  return `${value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}%`;
+}
+
+/**
+ * A reference share price for the constituents table: a plain grouped amount at two decimals with
+ * the index's quote currency, e.g. 1624 → "€1,624.00". A human-read price, never scientific (owner
+ * override, 2026-06-18). The currency is an ISO code (EUR/USD/…); an unknown/absent code falls back
+ * to a plain grouped number with no symbol. A null/undefined price reads "-".
+ */
+export function referencePrice(
+  value: number | null | undefined,
+  currency?: string | null,
+  digits = 2,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+  if (currency && CURRENCY_SYMBOL[currency]) {
+    return money(value, currency, digits);
+  }
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 /** API enums ("paper_accepted") rendered as labels ("Paper accepted"). */
 export function statusLabel(value: string): string {
   const words = value.replaceAll("_", " ");

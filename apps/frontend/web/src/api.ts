@@ -29,6 +29,12 @@ export interface SurfaceSlice {
 
   diagnostics: {
     rmse: number;
+    // The surface-fit error in IV space (vol-point RMSE, e.g. 0.00055 = 0.06 vol pts), and the
+    // fraction of quotes the fit treated as outliers. Both are present only on slices the fitter
+    // actually fit (a slice with no surface_slice has neither); absent on older reads. Optional so
+    // the front degrades to an honest "fit not available" rather than inventing a number.
+    iv_rmse?: number | null;
+    iv_outlier_fraction?: number | null;
     n_points: number;
     arb_free: boolean;
     bound_hits: string[] | null;
@@ -887,6 +893,73 @@ export async function fetchAttribution(
   if (query.contractKey) params.set("contract_key", query.contractKey);
   const suffix = params.toString();
   return getJson<AttributionResponse>(`/api/attribution${suffix ? `?${suffix}` : ""}`, signal);
+}
+
+// --- Realized day-over-day attribution (TARGET §2 #5) ---------------------------------------
+// Mirrors apps/frontend/src/algotrading/frontend/serializers.py + the /api/attribution/realized
+// router body. For a held position over a span of dates, this re-reads each day's actual P&L as
+// the per-Greek contributions that produced it, day by day. The BFF re-decomposes nothing; every
+// `dollars` is the engine's own term. The HTTP shape is the seam — keep both sides in lockstep.
+
+// One day-over-day step: the seven by-Greek contributions for the move from start_date to
+// end_date, the approximate P&L they sum to, the full-reprice P&L they approximate, and the
+// honest residual between them (its own number, never folded into a term).
+export interface RealizedAttributionStep {
+  start_date: string;
+  end_date: string;
+  portfolio_id: string;
+  // Seven entries in display order: Delta, Gamma, Vega, Theta, Rho, Vanna, Volga.
+  terms: AttributionTerm[];
+  approx_pnl: { dollars: number | null; unit: string };
+  full_reprice_pnl: { dollars: number | null; unit: string };
+  residual: { dollars: number | null; unit: string };
+  verdict: {
+    within_tolerance: boolean;
+    diagnostic: string;
+    residual_abs_tol: number;
+    residual_rel_tol: number;
+  };
+  // The market move that drove the day: change in spot, vol, time (years), and rate.
+  move: { d_spot: number; d_vol: number; d_time: number; d_rate: number };
+}
+
+// The /api/attribution/realized body. `found=false` is the labelled-empty case (steps []), 200.
+export interface RealizedAttributionResponse {
+  found: boolean;
+  underlying: string;
+  expiry: string;
+  portfolio_id: string;
+  term_unit: string;
+  residual_unit: string;
+  contracts: string[];
+  dates: string[];
+  steps: RealizedAttributionStep[];
+}
+
+export interface RealizedAttributionQuery {
+  underlying?: string;
+  expiry?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+// Fetch the realized day-over-day Greek waterfall for a held position. With no params it defaults
+// to the demo September straddle the BFF seeds. A bad date range is a labelled 400 the ApiError
+// surfaces; an unknown selection is a labelled-empty 200 (found=false, steps []).
+export async function fetchRealizedAttribution(
+  query: RealizedAttributionQuery = {},
+  signal?: AbortSignal,
+): Promise<RealizedAttributionResponse> {
+  const params = new URLSearchParams();
+  if (query.underlying) params.set("underlying", query.underlying);
+  if (query.expiry) params.set("expiry", query.expiry);
+  if (query.startDate) params.set("start_date", query.startDate);
+  if (query.endDate) params.set("end_date", query.endDate);
+  const suffix = params.toString();
+  return getJson<RealizedAttributionResponse>(
+    `/api/attribution/realized${suffix ? `?${suffix}` : ""}`,
+    signal,
+  );
 }
 
 // --- Broker reconciliation (§7.9): does the broker agree with our book? ---------------------

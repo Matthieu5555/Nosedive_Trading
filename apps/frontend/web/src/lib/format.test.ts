@@ -6,6 +6,8 @@ import {
   coverageHeadline,
   coveragePercent,
   currencySymbol,
+  indexWeightPercent,
+  referencePrice,
   sci,
   sciUnit,
   UNITS,
@@ -89,6 +91,62 @@ describe("count", () => {
     expect(count(null)).toBe("-");
     expect(count(undefined)).toBe("-");
     expect(count(Number.NaN)).toBe("-");
+  });
+});
+
+describe("indexWeightPercent", () => {
+  it("renders a percent-scale weight as a plain grouped percent, never scientific", () => {
+    // Real SX5E payload values: weights already sum to ~100, so they ARE the percent.
+    expect(indexWeightPercent(12.076038)).toBe("12.08%");
+    expect(indexWeightPercent(1.345434)).toBe("1.35%");
+    expect(indexWeightPercent(0.597104)).toBe("0.60%");
+  });
+
+  it("groups thousands and honours a custom decimal count", () => {
+    expect(indexWeightPercent(1234.5)).toBe("1,234.50%");
+    expect(indexWeightPercent(12.076038, 1)).toBe("12.1%");
+  });
+
+  it("labels a missing weight n/a rather than emitting a bare blank", () => {
+    expect(indexWeightPercent(null)).toBe("n/a");
+    expect(indexWeightPercent(undefined)).toBe("n/a");
+    expect(indexWeightPercent(Number.NaN)).toBe("n/a");
+  });
+});
+
+describe("referencePrice", () => {
+  it("renders a plain grouped amount with the index currency, never scientific", () => {
+    // Real SX5E payload closes: ASML 1624.0, RMS 1693.0, ADYEN small.
+    expect(referencePrice(1624, "EUR")).toBe("€1,624.00");
+    expect(referencePrice(1693, "EUR")).toBe("€1,693.00");
+    expect(referencePrice(1199.6, "EUR")).toBe("€1,199.60");
+    expect(referencePrice(1624, "USD")).toBe("$1,624.00");
+  });
+
+  it("falls back to a plain grouped number with two decimals when currency is absent/unknown", () => {
+    expect(referencePrice(1624)).toBe("1,624.00");
+    expect(referencePrice(1624, null)).toBe("1,624.00");
+    expect(referencePrice(1624, "ZZZ")).toBe("1,624.00");
+  });
+
+  it("labels a missing price rather than emitting a bare blank", () => {
+    expect(referencePrice(null, "EUR")).toBe("-");
+    expect(referencePrice(undefined)).toBe("-");
+    expect(referencePrice(Number.NaN, "EUR")).toBe("-");
+  });
+
+  it("renders an OHLC candlestick legend as plain prices, never scientific (the SIE bug)", () => {
+    // The reported bug: SIE daily OHLC rendered "2.654 × 10²" etc. for ordinary ~264 stock prices.
+    // The candlestick legend routes O/H/L/C through referencePrice; with no currency on the bar
+    // payload it must read as a plain grouped price.
+    expect(referencePrice(264)).toBe("264.00");
+    expect(referencePrice(269.74)).toBe("269.74");
+    expect(referencePrice(262.34)).toBe("262.34");
+    // Independently derived: 264 -> "264.00", 1624 -> "1,624.00", 1234567.5 -> "1,234,567.50".
+    expect(referencePrice(1624)).toBe("1,624.00");
+    expect(referencePrice(1234567.5)).toBe("1,234,567.50");
+    // With a currency available it carries the symbol but stays plain (not scientific).
+    expect(referencePrice(264, "EUR")).toBe("€264.00");
   });
 });
 

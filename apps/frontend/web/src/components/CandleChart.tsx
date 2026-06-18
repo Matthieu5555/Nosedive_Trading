@@ -7,28 +7,33 @@ import {
 import { useEffect, useRef } from "react";
 
 import type { DailyBar } from "../api";
-import { sci, UNITS } from "../lib/format";
+import { count, referencePrice } from "../lib/format";
 import { baseLightweightOptions, CHART_COLORS } from "./chartTheme";
 
 export interface CandleChartProps {
   bars: DailyBar[];
 
   label: string;
+
+  // The index's quote currency (ISO code, e.g. "EUR"). When present, OHLC prices render with the
+  // currency symbol ("€264.00"); absent/unknown falls back to a plain grouped price ("264.00").
+  // These are ordinary stock prices, never analytics, so they never take the scientific form.
+  currency?: string | null;
 }
 
 const UP = CHART_COLORS.positive;
 const DOWN = CHART_COLORS.negative;
 
-const price2 = (n: number): string => sci(n);
-const volFmt = (n: number): string => Math.round(n).toLocaleString();
-
-export function CandleChart({ bars, label }: CandleChartProps) {
+export function CandleChart({ bars, label, currency }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const legendRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (container === null) return;
+
+    const price2 = (n: number): string => referencePrice(n, currency);
+    const volFmt = (n: number): string => count(n);
 
     const chart: IChartApi = createChart(container, {
       ...baseLightweightOptions(),
@@ -70,7 +75,7 @@ export function CandleChart({ bars, label }: CandleChartProps) {
       legend.textContent =
         `${date}   O ${price2(ohlc.open)}   ` +
         `H ${price2(ohlc.high)}   L ${price2(ohlc.low)}   ` +
-        `C ${price2(ohlc.close)} ${UNITS.price}   Vol ${vol}`;
+        `C ${price2(ohlc.close)}   Vol ${vol}`;
     };
 
     // Seed the read-out with the latest bar so the box is never empty before the first hover.
@@ -97,7 +102,7 @@ export function CandleChart({ bars, label }: CandleChartProps) {
       chart.unsubscribeCrosshairMove(onMove);
       chart.remove();
     };
-  }, [bars]);
+  }, [bars, currency]);
 
   return (
     <figure aria-label={label} className="plot">

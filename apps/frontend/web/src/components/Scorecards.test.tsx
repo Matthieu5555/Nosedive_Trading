@@ -173,6 +173,6 @@ describe("Scorecards, provenance line binds to live state", () => {
     );
     expect(screen.queryByLabelText("Scorecard provenance")).not.toBeInTheDocument();
     expect(screen.getByLabelText("ATM level")).toBeInTheDocument();
-    expect(screen.getByLabelText("ρ̄")).toBeInTheDocument();
+    expect(screen.getByLabelText("Avg correlation (ρ)")).toBeInTheDocument();
   });
 });

@@ -16,11 +16,14 @@ import { useConstituentHistoryBatch } from "./constituentHistory";
 export function ConstituentsWorkspace({
   index,
   asOf,
+  currency,
   selected,
   onSelect,
 }: {
   index: string;
   asOf: string;
+  // The index quote-currency ISO code (EUR/USD/...), so latest close reads "€1,624.00".
+  currency: string | null;
   selected: string | null;
   onSelect: (symbol: string) => void;
 }) {
@@ -74,6 +77,7 @@ export function ConstituentsWorkspace({
                   />
                   <ConstituentTable
                     constituents={state.data.constituents}
+                    currency={currency}
                     selected={selected}
                     onSelect={onSelect}
                   />
@@ -177,7 +181,7 @@ function UnderlyingDataSummary({
         <span>Coverage</span>
         <strong>{loading ? "..." : `${coverage}%`}</strong>
       </div>
-      <div>
+      <div className="underlying-data-summary__wide">
         <span>History window</span>
         <strong>{windowText}</strong>
       </div>

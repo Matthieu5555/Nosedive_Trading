@@ -41,7 +41,12 @@ export function signColor(value: number | null | undefined): SignColor {
 interface CardSpec {
   label: string;
   value: string;
+  // A short always-on subtitle (the tenor / the one-glance read). The longer explanation lives in
+  // `info`, behind the hover ⓘ, so the card stays the big-number + short-label read it should be.
   hint: string;
+  // The verbose "what is this / how to read it" sentence, relocated off the card face into the
+  // hover ⓘ so the grid declutters without losing the information.
+  info: string;
   // The signed scalar the value is read from, used to pick the sign colour. Absent/null = no colour
   // (a pure level like ATM or IV-rank is not signed, so it stays neutral).
   sign?: number | null;
@@ -99,51 +104,58 @@ export function Scorecards({
     {
       label: "ATM level",
       value: levelPercent(card?.atm ?? null),
-      hint: `at-the-money implied vol · ${tenorNote}`,
+      hint: tenorNote,
+      info: `At-the-money implied volatility, read off the captured surface ${tenorNote}.`,
     },
     {
       // Term-structure slope: longer-dated IV − shorter-dated, in vol points. Positive (upward) is
       // the calm norm; negative (backwardation) flags near-term stress — §4.2 "signal fort".
       label: "Term-structure slope",
       value: termStructureSlope ? volPoints(termStructureSlope.value) : "-",
-      hint: termStructureSlope
-        ? `far − near IV · ${termStructureSlope.tenor_label} (signal) · < 0 = backwardation`
-        : "far − near IV · signal not recorded",
+      hint: termStructureSlope ? termStructureSlope.tenor_label : "signal not recorded",
+      info: termStructureSlope
+        ? `Far minus near implied vol, in vol points (${termStructureSlope.tenor_label}). Below zero is backwardation, a sign of near-term stress.`
+        : "Far minus near implied vol. No signal recorded for this close.",
       sign: termStructureSlope?.value ?? null,
     },
     {
       // IV-rank: where today's IV sits in its 1-year range, 0–100%. A pure level (not signed).
       label: "IV-rank",
       value: ivRank ? levelPercent(ivRank.value) : "-",
-      hint: ivRank
-        ? `today's IV in its 1-year range · ${ivRank.tenor_label} (signal)`
-        : "today's IV in its 1-year range · signal not recorded",
+      hint: ivRank ? ivRank.tenor_label : "signal not recorded",
+      info: ivRank
+        ? `Where today's implied vol sits inside its 1-year range, from 0% (year low) to 100% (year high). Tenor ${ivRank.tenor_label}.`
+        : "Where today's implied vol sits in its 1-year range. No signal recorded for this close.",
     },
     {
       label: "Skew 25Δ",
       value: volPoints(card?.skew ?? null),
-      hint: `risk-reversal: IV(25Δ put) − IV(25Δ call) · ${tenorNote}`,
+      hint: tenorNote,
+      info: `How much more the market is paying to protect against a fall than to bet on a rise, in vol points (${tenorNote}). A positive number means downside protection is the dearer side, the usual sign of nervousness.`,
       sign: card?.skew ?? null,
     },
     {
       // RV−IV: positive means the market moved more than options priced (vol cheap → buy). Read
       // straight off the persisted signal; the unit string travels with it from the BFF.
-      label: "RV − IV",
+      label: "RV - IV",
       value: ivVsRealized ? volPoints(ivVsRealized.value) : "-",
-      hint: ivVsRealized
-        ? `realized − implied · ${ivVsRealized.tenor_label} (signal) · > 0 = vol cheap`
-        : "realized − implied · signal not recorded",
+      hint: ivVsRealized ? ivVsRealized.tenor_label : "signal not recorded",
+      info: ivVsRealized
+        ? `How much the market has actually been moving versus how much option prices expect it to move, in vol points (${ivVsRealized.tenor_label}). Above zero means it has been moving more than options are pricing, so options look cheap to buy.`
+        : "How much the market has actually been moving versus how much option prices expect. No signal recorded for this close.",
       sign: ivVsRealized?.value ?? null,
     },
     {
-      // ρ̄: average implied correlation across the members, −1..+1. The dispersion book's thesis
+      // Average implied correlation across the members, −1..+1. The dispersion book's thesis
       // (TARGET §3 S1 / R3). Today a hybrid implied-index / realized-constituent read — labelled
-      // honestly until constituent IVs land.
-      label: "ρ̄",
+      // honestly until constituent IVs land. Plain-words label avoids the rho-bar glyph that
+      // rendered mispositioned in the numeric font.
+      label: "Avg correlation (ρ)",
       value: impliedCorrelation ? levelPercent(impliedCorrelation.value) : "-",
-      hint: impliedCorrelation
-        ? `implied correlation · ${impliedCorrelation.tenor_label} (signal) · hybrid read`
-        : "implied correlation · signal not recorded",
+      hint: impliedCorrelation ? impliedCorrelation.tenor_label : "signal not recorded",
+      info: impliedCorrelation
+        ? `Average implied correlation across the index members (${impliedCorrelation.tenor_label}), today a hybrid implied-index and realized-constituent read. Higher means members move more in lockstep.`
+        : "Average implied correlation across the index members. No signal recorded for this close.",
     },
   ];
 
@@ -166,7 +178,10 @@ export function Scorecards({
           const color = c.sign !== undefined ? signColor(c.sign) : null;
           return (
             <article key={c.label} className="scorecard" aria-label={c.label}>
-              <p className="scorecard__label">{c.label}</p>
+              <p className="scorecard__label">
+                <span>{c.label}</span>
+                <InfoDot label={`${c.label}, what this is`} body={c.info} />
+              </p>
               <p className={`scorecard__value${color ? ` ${color}` : ""}`}>{c.value}</p>
               <p className="scorecard__hint">{c.hint}</p>
             </article>
@@ -174,10 +189,14 @@ export function Scorecards({
         })}
       </div>
       <p className="scorecards-legend" aria-label="Sign legend">
-        Read the signs: <span className="positive">RV−IV &gt; 0 = vol cheap (buy)</span>;{" "}
-        <span className="negative">RV−IV &lt; 0 = vol rich (sell)</span>;{" "}
-        <span className="negative">slope &lt; 0 = backwardation = risk imminent</span>. vp = vol
-        point = 0.01 annualized IV.
+        Read the signs:{" "}
+        <span className="positive">RV - IV above zero means options look cheap to buy</span>;{" "}
+        <span className="negative">RV - IV below zero means options look expensive to sell</span>;{" "}
+        <span className="negative">
+          a negative term-structure slope means near-term risk is rising
+        </span>
+        . A vol point (vp) is one hundredth of an annualized volatility, so a move from 18% to 19% is
+        one vol point.
       </p>
     </section>
   );

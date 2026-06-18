@@ -1,6 +1,11 @@
 import type { AttributionResponse } from "../../api";
-import { AttributionWaterfall } from "../../components/AttributionWaterfall";
+import { AsyncBlock } from "../../components/AsyncBlock";
+import {
+  AttributionWaterfall,
+  RealizedAttributionWaterfall,
+} from "../../components/AttributionWaterfall";
 import { Cluster, Stack } from "../../components/layout";
+import { useRealizedAttribution } from "../../hooks/queries";
 
 type AttributionTabProps = {
   portfolioId: string;
@@ -21,8 +26,36 @@ export function AttributionTab({
   attribution,
   onLoad,
 }: AttributionTabProps) {
+  // The realized day-over-day waterfall is self-contained: it defaults to the demo held position
+  // the BFF seeds, so it loads on its own without the operator pressing the scenario button.
+  const realized = useRealizedAttribution();
+
   return (
     <Stack gap="md">
+      <article className="panel" aria-label="Realized P&L attribution intro">
+        <Stack gap="sm">
+          <div className="panel-heading">
+            <div>
+              <p className="panel-kicker">Realized, day by day</p>
+              <h2>How the position actually made or lost money</h2>
+            </div>
+          </div>
+          <p className="basket-tab__lead">
+            For a position you held, this reads each day's real change in value back as the
+            contribution of each Greek, with the unexplained leftover (the residual) shown honestly
+            against a full re-pricing.
+          </p>
+        </Stack>
+      </article>
+
+      <AsyncBlock
+        loading={realized.isPending}
+        error={realized.isError ? realized.error.message : null}
+        subject="the realized attribution"
+      >
+        {realized.data && <RealizedAttributionWaterfall realized={realized.data} />}
+      </AsyncBlock>
+
       <article className="panel" aria-label="P&L attribution">
         <Stack gap="md">
           <div className="panel-heading">

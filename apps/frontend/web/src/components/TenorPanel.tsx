@@ -4,7 +4,7 @@ import { type AnalyticsMaturity, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
 import { GreeksShapeCurves, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
-import { Grid, Stack } from "./layout";
+import { Stack } from "./layout";
 import { PriceStructure } from "./PriceStructure";
 import { RateDiagnosticsPanel } from "./RateDiagnostics";
 
@@ -120,12 +120,10 @@ export function TenorPanel({
               maturityLabel={selected.label}
               currency={currency}
             />
-            <Grid min="340px" gap="lg">
-              <DollarGreeksByMaturity
-                maturities={maturities}
-                maturityLabel={selected.label}
-                currency={currency}
-              />
+            {/* Two dense panels never share a row: the Greeks line chart and the Dollar Greeks
+                table each get the full width, stacked. Chart first (the shape read), then the
+                table (the exact per-band numbers underneath it). */}
+            <Stack gap="lg">
               <GreeksShapeCurves
                 maturities={maturities}
                 maturityLabel={selected.label}
@@ -136,7 +134,12 @@ export function TenorPanel({
                 coverage={coverage}
                 currency={currency}
               />
-            </Grid>
+              <DollarGreeksByMaturity
+                maturities={maturities}
+                maturityLabel={selected.label}
+                currency={currency}
+              />
+            </Stack>
           </Stack>
         )}
       </Stack>

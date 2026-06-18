@@ -58,3 +58,54 @@ describe("SmileChart robustness", () => {
     expect(plotted).toBe(4);
   });
 });
+
+// A maturity whose captured cells span BOTH sides of ATM (low strikes k<0 and high strikes k>0),
+// the real per-side shape: every strike carries that side's own quoted IV.
+const TWO_WING_MATURITY: AnalyticsMaturity = {
+  maturity_years: 0.027,
+  tenor_label: "10d",
+  label: "10d (0.027y)",
+  smile: {
+    axis_type: "delta",
+    deltas: [-0.1, -0.02, 0.0, 0.02, 0.1],
+    implied_vols: [0.21, 0.18, 0.14, 0.16, 0.2],
+    log_moneyness: [-0.07, -0.03, 0.0, 0.03, 0.07],
+  },
+  surface_slice: null,
+  points: [],
+};
+
+describe("SmileChart side semantics (deep-OTM-put correctness)", () => {
+  test("combined splits the curve into a put wing and a call wing", () => {
+    render(
+      <SmileChart
+        subject="SX5E"
+        maturities={[TWO_WING_MATURITY]}
+        maturityLabel={TWO_WING_MATURITY.label}
+        side="combined"
+      />,
+    );
+    const fig = screen.getByLabelText(/smile 10d/i);
+    // Two scatter traces: puts (k <= 0) and calls (k >= 0).
+    expect(within(fig).getByTestId("plot-types").textContent).toBe("scatter,scatter");
+    expect(fig.getAttribute("aria-label")).toMatch(/puts ◄ ATM ► calls/i);
+  });
+
+  test("a put-side smile is ONE continuous put-quoted curve, never split as if calls", () => {
+    render(
+      <SmileChart
+        subject="SX5E"
+        maturities={[TWO_WING_MATURITY]}
+        maturityLabel={TWO_WING_MATURITY.label}
+        side="put"
+      />,
+    );
+    const fig = screen.getByLabelText(/smile 10d/i);
+    // One scatter trace (the whole curve is puts), every captured point in it.
+    expect(within(fig).getByTestId("plot-types").textContent).toBe("scatter");
+    expect(Number(within(fig).getByTestId("plot-points").textContent)).toBe(5);
+    // Labelled as put-quoted, deep-OTM puts on the low-strike (left) wing, not "puts ◄ ATM ► calls".
+    expect(fig.getAttribute("aria-label")).toMatch(/put-quoted/i);
+    expect(fig.getAttribute("aria-label")).not.toMatch(/ATM ► calls/i);
+  });
+});

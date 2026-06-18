@@ -17,7 +17,6 @@ import { AsyncBlock } from "../components/AsyncBlock";
 import {
   describeSurface,
   PriceChart,
-  SmileChart,
   type SurfaceCoverage,
   type SurfaceMode,
   VolSurface,
@@ -70,13 +69,15 @@ export function MarketPage() {
   // Call / Put / Combined is a first-class selector now (the owner ask: calls and puts have
   // different skew, so each is its own surface). Combined is the landing read; switching the
   // underlying re-lands on it so a per-side view is always a deliberate choice. The Maturity
-  // selector isolates one tenor (or all) so the surface is not a crammed all-maturities ribbon;
-  // a single maturity prefers the cleaner 2D smile read.
+  // control is a FLOOR, not a single point: it keeps every captured tenor at or above the chosen
+  // lower bound, so the 3D surface always renders (a surface needs several tenors). The value is a
+  // maturity in years; 0 (ALL_MATURITIES) is "no floor". A single-tenor 2D smile already lives in
+  // the Smile & Greeks panel below, so the surface control never collapses the surface to a slice.
   const [surfaceSide, setSurfaceSide] = useState<SurfaceSide>("combined");
-  const [surfaceMaturity, setSurfaceMaturity] = useState<string>(ALL_MATURITIES);
+  const [maturityFloorYears, setMaturityFloorYears] = useState<number>(0);
   useEffect(() => {
     setSurfaceSide("combined");
-    setSurfaceMaturity(ALL_MATURITIES);
+    setMaturityFloorYears(0);
   }, [index]);
 
   const recorded = useFetch<RecordedDatesResponse>(
@@ -114,10 +115,17 @@ export function MarketPage() {
     () => analytics.data?.sides_available ?? (analytics.data ? ["combined"] : []),
     [analytics.data],
   );
+  // Whether THIS payload carries the per-side block at all. When it doesn't (an older BFF build that
+  // predates the per-call/per-put surfaces), Calls/Puts are disabled because the backend serving the
+  // page can't supply them yet, NOT because the close failed to capture them. The disabled tooltip
+  // and an inline note say which, so a greyed-out Calls/Puts reads as "this backend can't serve it"
+  // (restart the BFF), never a silent dead control.
+  const perSideServed = analytics.data?.sides_available !== undefined;
   // If the chosen side isn't available for this close, fall back to combined (and surface that the
   // per-side fit isn't there) rather than rendering a blank.
-  const effectiveSide: SurfaceSide =
-    sidesAvailable.includes(surfaceSide) ? surfaceSide : "combined";
+  const effectiveSide: SurfaceSide = sidesAvailable.includes(surfaceSide)
+    ? surfaceSide
+    : "combined";
   const perSideFitMissing = surfaceSide !== "combined" && !sidesAvailable.includes(surfaceSide);
 
   // The selected side's maturities + dense grid. Falls back to the top-level combined view on an
@@ -137,28 +145,39 @@ export function MarketPage() {
   // the smile, Greeks and 3D surface read this; the indicator scorecards stay on the raw (combined)
   // maturities. The maturities now follow the selected side.
   const rawMaturities = sideMaturities;
-  const surfaceMaturities = useMemo(
+  const cleanedMaturities = useMemo(
     () => (cleanSurface ? cleanSurfaceMaturities(rawMaturities) : rawMaturities),
     [cleanSurface, rawMaturities],
   );
   const nDroppedSlices = rawMaturities.length - cleanSurfaceMaturities(rawMaturities).length;
 
-  // The maturity options for the selector: "All maturities" plus every captured tenor on the side
-  // in view (near -> far). Listing the side's own tenors keeps the selector honest when a side
-  // captured a different set than combined.
-  const maturityOptions = useMemo<string[]>(() => {
-    const labels = [...surfaceMaturities]
-      .sort((a, b) => a.maturity_years - b.maturity_years)
-      .map((m) => m.label);
-    return [ALL_MATURITIES, ...labels];
-  }, [surfaceMaturities]);
-  // Keep the maturity selection valid as the side changes (a tenor the new side lacks falls back to
-  // all maturities rather than rendering an empty single-maturity view).
-  const effectiveMaturity =
-    surfaceMaturity === ALL_MATURITIES || maturityOptions.includes(surfaceMaturity)
-      ? surfaceMaturity
-      : ALL_MATURITIES;
-  const singleMaturity = effectiveMaturity !== ALL_MATURITIES;
+  // The maturity FLOOR options: "All maturities" (no floor) plus a "min {tenor} and up" floor for
+  // each captured tenor except the last (a floor at the longest tenor would leave a single slice,
+  // which is a smile, not a surface). Each option carries the tenor's own maturity-in-years as its
+  // threshold, near -> far. Listing the side's own captured tenors keeps the control honest when a
+  // side captured a different set than combined.
+  const maturityFloorOptions = useMemo<MaturityFloorOption[]>(() => {
+    const sorted = [...cleanedMaturities].sort((a, b) => a.maturity_years - b.maturity_years);
+    const floors = sorted
+      .slice(0, Math.max(sorted.length - 1, 0))
+      .map((m) => ({ years: m.maturity_years, label: `min ${m.tenor_label || m.label} and up` }));
+    return [{ years: 0, label: ALL_MATURITIES }, ...floors];
+  }, [cleanedMaturities]);
+  // Keep the floor valid as the side / clean toggle changes the captured set (a floor the new set
+  // no longer offers falls back to "all maturities" rather than silently emptying the surface).
+  const effectiveFloorYears = maturityFloorOptions.some((o) => o.years === maturityFloorYears)
+    ? maturityFloorYears
+    : 0;
+  // The surface always keeps every tenor at or above the floor, so a real 3D surface always renders.
+  const surfaceMaturities = useMemo(
+    () => cleanedMaturities.filter((m) => m.maturity_years >= effectiveFloorYears),
+    [cleanedMaturities, effectiveFloorYears],
+  );
+  // The stored dense (fitted-SVI) grid spans every captured tenor with no floor concept, so it is
+  // only the faithful surface when no floor is applied. With a floor in force we pass null and let
+  // VolSurface rebuild the grid from the filtered per-side cells, so the floor is honoured rather
+  // than silently ignored by a full-span dense grid.
+  const floorMatchesFullSpan = effectiveFloorYears === 0;
 
   // The index quote-currency ISO code (EUR/USD/...), resolved once from the indices payload. The
   // analytics panels render the symbol (currencySymbol); the constituents table takes the ISO code
@@ -369,12 +388,13 @@ export function MarketPage() {
                           <SurfaceSideToggle
                             side={surfaceSide}
                             available={sidesAvailable}
+                            perSideServed={perSideServed}
                             onChange={setSurfaceSide}
                           />
-                          <MaturitySelect
-                            value={effectiveMaturity}
-                            options={maturityOptions}
-                            onChange={setSurfaceMaturity}
+                          <MaturityFloorSelect
+                            value={effectiveFloorYears}
+                            options={maturityFloorOptions}
+                            onChange={setMaturityFloorYears}
                           />
                           <CleanSurfaceToggle
                             clean={cleanSurface}
@@ -390,6 +410,12 @@ export function MarketPage() {
                         Per-side fit not available for this close, showing combined.
                       </p>
                     )}
+                    {analytics.data && !perSideServed && (
+                      <p className="state-panel state-panel--note" role="status">
+                        Calls / Puts are off because the backend serving this page does not yet
+                        return the per-side surfaces. Restart the BFF to enable them.
+                      </p>
+                    )}
                     <ErrorBoundary label="3D surface">
                       <AsyncBlock
                         loading={analytics.loading}
@@ -402,22 +428,15 @@ export function MarketPage() {
                             <p className="state-panel" role="status">
                               {descriptor.emptyCopy}
                             </p>
-                          ) : singleMaturity ? (
-                            // One maturity isolated: the 2D smile is the cleaner read than a
-                            // single-slice 3D ribbon. Both wings (puts red, calls green) on the
-                            // shared log-moneyness axis for the side in view.
-                            <SmileChart
-                              maturities={surfaceMaturities}
-                              maturityLabel={effectiveMaturity}
-                              subject={index}
-                              asOf={effectiveAsOf}
-                              closeInstant={instant}
-                              mode={surfaceMode}
-                              coverage={surfaceCoverage}
-                            />
                           ) : (
+                            // The 3D surface always renders: the maturity control is a floor, not a
+                            // single point, so the surface keeps every tenor at or above it (a real
+                            // surface needs several tenors). The single-tenor 2D smile lives in the
+                            // Smile & Greeks panel below. When the floor leaves a stored dense grid
+                            // that spans tenors below it, VolSurface falls back to the per-side cell
+                            // grid built from the filtered maturities, so the floor is honoured.
                             <VolSurface
-                              surface={sideSurface}
+                              surface={floorMatchesFullSpan ? sideSurface : null}
                               maturities={surfaceMaturities}
                               subject={index}
                               asOf={effectiveAsOf}
@@ -603,10 +622,15 @@ const SURFACE_SIDES_ORDER: SurfaceSide[] = ["combined", "call", "put"];
 function SurfaceSideToggle({
   side,
   available,
+  perSideServed,
   onChange,
 }: {
   side: SurfaceSide;
   available: SurfaceSide[];
+  // Whether the payload carries the per-side block at all. False = the backend build predates the
+  // per-side surfaces, so the disabled tooltip says "restart the BFF" rather than the misleading
+  // "not captured for this close".
+  perSideServed: boolean;
   onChange: (side: SurfaceSide) => void;
 }) {
   return (
@@ -618,6 +642,9 @@ function SurfaceSideToggle({
     >
       {SURFACE_SIDES_ORDER.map((option) => {
         const captured = available.includes(option);
+        const disabledTitle = perSideServed
+          ? `${SURFACE_SIDE_LABELS[option]} not captured for this close`
+          : `${SURFACE_SIDE_LABELS[option]} needs the per-side surfaces, restart the BFF to enable`;
         return (
           <button
             key={option}
@@ -630,7 +657,7 @@ function SurfaceSideToggle({
                 ? option === "combined"
                   ? "Both wings together, the union read"
                   : `The ${SURFACE_SIDE_LABELS[option].toLowerCase()} wing on its own`
-                : `${SURFACE_SIDE_LABELS[option]} not captured for this close`
+                : disabledTitle
             }
             onClick={() => onChange(option)}
           >
@@ -642,29 +669,39 @@ function SurfaceSideToggle({
   );
 }
 
-// The Maturity selector — isolates one tenor (or all). Pulling a single maturity out of the crammed
-// all-maturities ribbon is the owner ask; a single maturity then prefers the cleaner 2D smile read.
-// A plain pill-styled select so it reads as one of the surface controls, not a stray form field.
-function MaturitySelect({
+// The Maturity FLOOR selector — a lower bound on maturity, not a single point. The owner ask: a
+// single-maturity pick used to collapse the 3D surface to one slice (a surface needs several
+// tenors). This keeps every tenor at or above the chosen floor ("min 1m and up", "min 1y and up",
+// ...) so a real surface always renders; the single-tenor 2D smile lives in the Smile & Greeks
+// panel below. A plain pill-styled select so it reads as one of the surface controls. Each option's
+// `years` is the threshold (0 = no floor); the threshold, not the label, is the value, so two tenors
+// that share a label can never collide.
+interface MaturityFloorOption {
+  years: number;
+  label: string;
+}
+
+function MaturityFloorSelect({
   value,
   options,
   onChange,
 }: {
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
+  value: number;
+  options: MaturityFloorOption[];
+  onChange: (years: number) => void;
 }) {
   return (
     <label className="surface-select">
-      <span className="visually-hidden">Maturity</span>
+      <span className="visually-hidden">Minimum maturity</span>
       <select
-        aria-label="Maturity"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+        aria-label="Minimum maturity"
+        title="Lower bound on maturity, keeps every tenor at or above it so the surface stays 3D"
+        value={String(value)}
+        onChange={(event) => onChange(Number(event.target.value))}
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.years} value={String(option.years)}>
+            {option.label}
           </option>
         ))}
       </select>

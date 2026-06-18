@@ -112,6 +112,7 @@ export function TenorPanel({
                 closeInstant={closeInstant}
                 mode={mode}
                 coverage={coverage}
+                side={side}
               />
               <ConvexityReadout maturity={selected} />
             </Stack>

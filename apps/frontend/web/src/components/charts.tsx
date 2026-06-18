@@ -6,6 +6,7 @@ import {
   type AnalyticsPoint,
   type PriceHistoryResponse,
   type SurfaceDense,
+  type SurfaceSide,
 } from "../api";
 import { currencySymbol, UNITS, withCurrency } from "../lib/format";
 import {
@@ -444,6 +445,13 @@ const PUT_COLOR = CHART_COLORS.negative;
 const CALL_COLOR = CHART_COLORS.positive;
 
 const SMILE_HOW_TO_READ = "implied vol vs log-moneyness ; puts ◄ ATM ► calls";
+// A single-side smile is one continuous curve (every strike priced off that side's quote), not two
+// wings; its how-to-read says so, so a Puts-only smile reading high at low strikes is unmistakably
+// "deep out-of-the-money puts, high IV" rather than a half-labelled combined curve.
+const SMILE_HOW_TO_READ_SIDE: Record<"put" | "call", string> = {
+  put: "implied vol vs log-moneyness ; put-quoted, deep OTM puts ◄ (low strikes, high IV)",
+  call: "implied vol vs log-moneyness ; call-quoted, deep OTM calls ► (high strikes)",
+};
 
 // Trader-unit ticks: log-moneyness as a plain decimal k (not -3.00e-1), IV as a percent. The old
 // ".2e" scientific formatting on both axes was unreadable for an operator (the 2026-06-16 bilan).
@@ -454,12 +462,14 @@ const SMILE_LAYOUT = {
   hovermode: "closest" as const,
 };
 
-// The smile for ONE tenor: the put wing (k ≤ 0, red) and the call wing (k ≥ 0, green) SUPERIMPOSED
-// on a shared log-moneyness axis, joining at ATM (k = 0). The two curves read whole — the vertical
-// gap between the wings IS the skew (ADR 0048 per-side overlay; the `combined` shape is the union of
-// both). Side-agnostic by design: the page no longer has a put/call switch (the asymmetry is the
-// point). A tenor the capture didn't reach is handled upstream as a labelled gap; here an empty
-// smile is an honest empty state, never a blank.
+// The smile for ONE tenor. For the COMBINED view (default): the put wing (k ≤ 0, red) and the call
+// wing (k ≥ 0, green) SUPERIMPOSED on a shared log-moneyness axis, joining at ATM (k = 0). The two
+// curves read whole — the vertical gap between the wings IS the skew (ADR 0048 per-side overlay; the
+// `combined` shape is the union of both). For a single SIDE (put or call): every strike is priced
+// off that side's quote, so it is ONE continuous curve coloured for that side and labelled as such,
+// NOT split into pseudo-wings by the sign of k — a Puts-only smile rises into the deep-OTM-put (low
+// strike, left) wing exactly as an operator expects. A tenor the capture didn't reach is handled
+// upstream as a labelled gap; here an empty smile is an honest empty state, never a blank.
 export function SmileChart({
   maturities,
   maturityLabel,
@@ -468,18 +478,23 @@ export function SmileChart({
   closeInstant,
   mode,
   coverage,
+  side = "combined",
 }: {
   maturities: AnalyticsMaturity[];
   // The selected tenor's label. Falls back to the front tenor when the label isn't found.
   maturityLabel?: string;
+  // The surface side in view. Combined splits into put/call wings; a single side is one curve.
+  side?: SurfaceSide;
 } & SurfaceIdentityProps) {
   const sorted = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years);
+  const singleSide = side === "put" || side === "call";
+  const howToRead = singleSide ? SMILE_HOW_TO_READ_SIDE[side] : SMILE_HOW_TO_READ;
   // The smile shares the surface's identity sentence; the tenor is appended as the smile's own
   // subject detail so the title still answers "which underlying, which date, which mode" first.
   const baseDescriptor = describeSurface({ subject, asOf, closeInstant, mode, coverage });
 
   if (sorted.length === 0) {
-    const label = `${baseDescriptor.title}, smile, ${SMILE_HOW_TO_READ}`;
+    const label = `${baseDescriptor.title}, smile, ${howToRead}`;
     return (
       <figure aria-label={label} className="plot">
         <figcaption>{label}</figcaption>
@@ -493,17 +508,25 @@ export function SmileChart({
   const clean = cleanSmile(maturity.smile.log_moneyness, maturity.smile.implied_vols);
   const nDropped = clean.nDroppedNonFinite + clean.nDroppedAbsurd + clean.nDroppedDuplicate;
   const dropNote = nDropped > 0 ? `, ${nDropped} pt${nDropped === 1 ? "" : "s"} flagged` : "";
-  const label = `${baseDescriptor.title}, smile ${maturity.label} (${SMILE_HOW_TO_READ})${
+  const label = `${baseDescriptor.title}, smile ${maturity.label} (${howToRead})${
     degenerate ? " ⚠ degenerate fit" : ""
   }${dropNote}`;
 
   const provByK = new Map(maturity.points.map((p) => [p.log_moneyness, pointProvenance(p)]));
   const putPairs: Array<[number, number]> = [];
   const callPairs: Array<[number, number]> = [];
-  clean.logMoneyness.forEach((k, i) => {
-    if (k <= 0) putPairs.push([k, clean.impliedVols[i]]);
-    if (k >= 0) callPairs.push([k, clean.impliedVols[i]]);
-  });
+  if (singleSide) {
+    // One side: the whole curve is that side, every strike. No sign-of-k split (that would mislabel
+    // this side's high-strike quotes as the other side). Sorted left (deep OTM puts) to right.
+    const pairs = clean.logMoneyness.map((k, i): [number, number] => [k, clean.impliedVols[i]]);
+    if (side === "put") putPairs.push(...pairs);
+    else callPairs.push(...pairs);
+  } else {
+    clean.logMoneyness.forEach((k, i) => {
+      if (k <= 0) putPairs.push([k, clean.impliedVols[i]]);
+      if (k >= 0) callPairs.push([k, clean.impliedVols[i]]);
+    });
+  }
   putPairs.sort((a, b) => a[0] - b[0]);
   callPairs.sort((a, b) => a[0] - b[0]);
   const wingTrace = (name: string, color: string, pairs: Array<[number, number]>): Data => ({

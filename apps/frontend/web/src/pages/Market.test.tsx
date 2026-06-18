@@ -221,22 +221,31 @@ test("selecting Calls then Puts swaps the rendered surface to that side's grid",
   expect(putZ).not.toEqual(callZ);
 });
 
-test("the maturity selector isolates one tenor, preferring the 2D smile over the 3D ribbon", async () => {
+test("the maturity control is a floor, and applying it keeps the 3D surface (never a single slice)", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_PER_SIDE));
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  // The header maturity selector opens on "All maturities" (the 3D surface read).
-  const maturity = await screen.findByLabelText("Maturity");
-  expect((maturity as HTMLSelectElement).value).toMatch(/All maturities/i);
-  // All maturities -> a 3D surface trace in the surface panel.
+  // The header maturity control opens on "All maturities" (no floor).
+  const floor = await screen.findByLabelText("Minimum maturity");
+  expect((floor as HTMLSelectElement).value).toMatch(/^0$/);
+  // No floor -> a 3D surface trace in the surface panel.
   await screen.findByRole("article", { name: /Volatility surface/i });
   expect(within(surfacePanelArticle()).getByTestId("plot-types").textContent).toMatch(/surface/);
 
-  // Isolate the 3m maturity -> the surface panel now reads the 2D smile (both wings, scatter).
-  await user.selectOptions(maturity, "3m (0.250y)");
-  const smile = await within(surfacePanelArticle()).findByLabelText(/smile 3m/i);
-  expect(within(smile).getByTestId("plot-types").textContent).toMatch(/scatter/);
+  // The options are FLOORS ("min … and up"), never a single tenor that would collapse the surface.
+  expect((floor as HTMLSelectElement).textContent).toMatch(/min .* and up/i);
+  expect((floor as HTMLSelectElement).textContent).not.toMatch(/2d smile/i);
+
+  // Apply a floor (the first "min … and up") -> the surface panel STILL renders a 3D surface, not
+  // a 2D smile slice. The single-tenor smile lives in the Smile & Greeks panel below.
+  const floorOption = within(floor as HTMLSelectElement)
+    .getAllByRole("option")
+    .find((o) => /min .* and up/i.test(o.textContent ?? "")) as HTMLOptionElement;
+  await user.selectOptions(floor, floorOption.value);
+  await waitFor(() =>
+    expect(within(surfacePanelArticle()).getByTestId("plot-types").textContent).toMatch(/surface/),
+  );
 });
 
 test("the dispersion strip reads the realized-vol ρ̄ signal (no per-member fan-out)", async () => {

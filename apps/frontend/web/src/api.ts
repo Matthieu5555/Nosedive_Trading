@@ -199,9 +199,10 @@ export interface NullableDollarMetric {
 // belongs to both, so it is never filtered out.
 export type OptionSide = "put" | "call";
 
-// The maturity selector carries one tenor label, or this sentinel meaning "every captured tenor at
-// once" — the natural read of a surface. Panels that are inherently per-tenor (the fitted smile, the
-// by-band table) interpret it; the 3D surface and the term-structure curves already span all tenors.
+// The surface maturity control is a FLOOR, not a single point: it keeps every captured tenor at or
+// above the chosen lower bound, so the 3D surface always renders (a surface needs several tenors; a
+// single tenor is a 2D smile, which already lives in the Smile & Greeks panel below). This sentinel
+// is the "no floor" reading, every captured tenor in view. A floor reads as "min {tenor} and up".
 export const ALL_MATURITIES = "All maturities";
 
 // The pinned tenor grid the surface is projected onto (configs/universe.yaml `tenor_grid`, ADR 0011).

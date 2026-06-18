@@ -5,7 +5,12 @@ from datetime import date, datetime, timedelta
 
 import structlog
 from algotrading.core.config import PlatformConfig
-from algotrading.infra.actor import ActorOutputs, persist_outputs, run_analytics
+from algotrading.infra.actor import (
+    ActorOutputs,
+    QcInputs,
+    persist_outputs,
+    run_analytics_with_qc,
+)
 from algotrading.infra.actor.basket import DEFAULT_PROVIDER
 from algotrading.infra.actor.valuation_join import default_exercise_style
 from algotrading.infra.collectors import replay_day
@@ -29,7 +34,7 @@ from algotrading.infra.qc import thresholds_from_config
 from algotrading.infra.signals import persist_signal_set, signal_config_for
 from algotrading.infra.storage import ParquetStore
 
-from ..eod_stages import persist_triage
+from ..eod_stages import analytics_qc_results, persist_triage
 from ..qc_job import run_qc
 from .report import (
     EMPTY,
@@ -97,7 +102,7 @@ def reconstruct_day(
     # when ``provider is None`` (``driver._build_projected_analytics``). Reconstruct previously
     # passed neither, so recompute-from-raw silently produced zero projected + zero pricing
     # (blueprint Part XV breach: not all derived recomputed from raw).
-    outputs = run_analytics(
+    run = run_analytics_with_qc(
         events,
         positions,
         instruments=instruments,
@@ -111,6 +116,7 @@ def reconstruct_day(
         session_open=session_open,
         provider=provider,
     )
+    outputs = run.outputs
 
     count = _record_count(outputs)
     if outputs.is_empty():
@@ -131,6 +137,7 @@ def reconstruct_day(
             _persist_signals_and_qc(
                 store,
                 outputs,
+                qc_inputs=run.qc_inputs,
                 trade_date=trade_date,
                 config=config,
                 config_hashes=config_hashes,
@@ -215,6 +222,7 @@ def _persist_signals_and_qc(
     store: ParquetStore,
     outputs: ActorOutputs,
     *,
+    qc_inputs: QcInputs,
     trade_date: date,
     config: PlatformConfig,
     config_hashes: Mapping[str, str],
@@ -246,6 +254,15 @@ def _persist_signals_and_qc(
     )
 
     thresholds = thresholds_from_config(config.qc_threshold)
+    # Mirror the live EOD QC plane: the per-slice analytics checks (surface_fit_error,
+    # iv_solver_convergence, forward_stability, parity, calendar, greeks, scenario, chain coverage)
+    # are assembled the same way the live `_analytics` stage does and threaded through `run_qc` as
+    # `extra_results`. Reconstruction previously ran ONLY the grid coverage checks, so a recompute
+    # never re-recorded the surface-fit verdict — the IV-space teeth would never have reached
+    # qc_results on a rebuild. `run_ts` is `calc_ts` to reproduce the original close provenance.
+    analytics_results = analytics_qc_results(
+        outputs, qc_inputs, thresholds=thresholds, run_id=correlation_id, run_ts=calc_ts
+    )
     job = run_qc(
         store=store,
         thresholds=thresholds,
@@ -256,6 +273,7 @@ def _persist_signals_and_qc(
         correlation_id=correlation_id,
         grid_points=dict(grid_cells) or None,
         tenor_grid=config.universe.tenor_grid,
+        extra_results=analytics_results,
     )
     triage = persist_triage(store, job.report, correlation_id=correlation_id)
     log.info(

@@ -89,9 +89,25 @@ forward_engine:
 # IV-convergence + surface-fit cut-offs (C7 increment 2). Economic (they gate which smiles
 # and slice fits survive QC), so hashed here, never `.py` literals (ADR 0028).
 fit_tolerance:
-  version: "2026.05.31"
+  version: "2026.06.18"
   max_non_convergence_ratio: 0.10  # largest acceptable solver non-convergence fraction (0..1)
+  # Total-variance RMSE limb. RETAINED but no longer the SOLE driver of surface_fit_error: total
+  # variance ~ iv^2 * T collapses toward zero at short maturities, so the largest stored SX5E
+  # total-variance RMSE (~3.3e-4) sat ~60x below this and this limb NEVER fired. It still trips on a
+  # genuinely gross long-dated misfit; the IV-space limbs below carry the short-end teeth.
   max_surface_rmse: 0.02           # largest acceptable per-slice RMSE (total-variance units)
+  # IV-SPACE fit-error teeth (T-invariant, in VOL POINTS) — what a PM actually reads, and the limb
+  # that catches near-dated contamination the total-variance limb is blind to. `iv_rmse` is
+  # sqrt(mean((SVI_iv(k) - market_iv)^2)) per slice (surface diagnostics `iv_rmse`). WARN above the
+  # warn band, FAIL above the fail band. A clean SX5E slice fits to << 1 vol point; the stale-ATM-put
+  # 2026-06-18 front slice scatters to ~8-9 vol points, so the bands sit between.
+  warn_iv_rmse: 0.015              # >1.5 vol points off the market cloud -> WARN
+  max_iv_rmse: 0.03                # >3 vol points off the market cloud -> FAIL
+  # IV-DISPERSION / outlier teeth: the share of a slice's market IV points sitting more than the
+  # per-point outlier band (5 vol points, surfaces.fit._IV_OUTLIER_BAND_VOL_POINTS) off the fitted
+  # curve. Catches a CLEAN aggregate fit contaminated by a few stale quotes (the 2026-06-18 slice: 3
+  # stale ATM puts at ~0.60 against a ~0.19 cloud). Above this fraction the slice FAILs.
+  max_iv_outlier_fraction: 0.10    # >10% of points are gross outliers -> FAIL
 
 # Anomaly bands (C7 increment 2). The static-check MAD multiplier and the rolling-baseline
 # robust-z warn/fail bands + minimum baseline length. Economic (they decide whether a metric

@@ -451,7 +451,7 @@
     },
     "surface_parameters": {
       "day_count": "ACT/365",
-      "diagnostics": "{\"arb_free\":true,\"bound_hits\":null,\"converged\":null,\"n_points\":5,\"rmse\":0.001}",
+      "diagnostics": "{\"arb_free\":true,\"bound_hits\":null,\"converged\":null,\"iv_outlier_fraction\":null,\"iv_rmse\":null,\"n_points\":5,\"rmse\":0.001}",
       "expiry_date": {
         "$date": "2026-06-19"
       },

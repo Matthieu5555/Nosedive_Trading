@@ -211,6 +211,18 @@ class FitToleranceQcConfig(_ConfigModel):
     version: str = Field(min_length=1)
     max_non_convergence_ratio: float = Field(default=0.10, ge=0.0, le=1.0)
     max_surface_rmse: float = Field(default=0.02, gt=0.0)
+    # IV-space (vol-point) surface-fit teeth. `warn_iv_rmse`/`max_iv_rmse` band the per-slice
+    # IV-space RMSE (T-invariant, what a PM reads); `max_iv_outlier_fraction` bands the share of a
+    # slice's IV points that scatter grossly off the fitted curve. See configs/qc.yaml.
+    warn_iv_rmse: float = Field(default=0.015, gt=0.0)
+    max_iv_rmse: float = Field(default=0.03, gt=0.0)
+    max_iv_outlier_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _check_iv_bands(self) -> FitToleranceQcConfig:
+        if self.max_iv_rmse < self.warn_iv_rmse:
+            raise ValueError("require max_iv_rmse >= warn_iv_rmse")
+        return self
 
 
 class AnomalyQcConfig(_ConfigModel):

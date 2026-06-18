@@ -447,6 +447,20 @@ def test_surface_parameters_is_a_valid_stamped_contract() -> None:
     assert len(params.provenance.source_records) == 5
 
 
+def test_surface_parameters_emit_iv_space_diagnostics() -> None:
+    # The synthetic cloud lies on the fitted curve, so the IV-space RMSE is tiny (vol points) and
+    # nothing scatters past the outlier band. These are the contract fields the frontend reads.
+    fit = _fit(_synthetic_points())
+    params = _params(fit)
+    assert params.diagnostics.iv_rmse is not None
+    assert params.diagnostics.iv_rmse < 0.01  # well under a vol point on a clean fit
+    assert params.diagnostics.iv_outlier_fraction == pytest.approx(0.0)
+    # And it agrees with the standalone helper on the same slice.
+    from algotrading.infra.surfaces import iv_space_fit_error
+
+    assert iv_space_fit_error(fit).iv_rmse == pytest.approx(params.diagnostics.iv_rmse)
+
+
 def test_surface_parameters_refuses_a_nonparametric_slice() -> None:
     sparse = _fit(_synthetic_points()[:3], maturity=0.25)
     with pytest.raises(ValueError, match="nonparametric"):

@@ -350,13 +350,13 @@ def test_reconstruct_threads_provider_and_eod_session_to_run_analytics(
     instruments, masters = _instruments_and_masters(chain, trade_date)
 
     captured: dict[str, object] = {}
-    real_run_analytics = batch.run_analytics
+    real_run_analytics_with_qc = batch.run_analytics_with_qc
 
     def _spy(*args: object, **kwargs: object) -> object:
         captured.update(kwargs)
-        return real_run_analytics(*args, **kwargs)
+        return real_run_analytics_with_qc(*args, **kwargs)
 
-    monkeypatch.setattr(batch, "run_analytics", _spy)
+    monkeypatch.setattr(batch, "run_analytics_with_qc", _spy)
 
     reconstruct_day(
         store, trade_date, [], instruments=instruments, masters=masters,
@@ -464,7 +464,13 @@ def test_reconstruct_regenerates_signals_and_qc_from_raw(
     as_of, calc_ts = _as_of(trade_date), _calc_ts(trade_date)
 
     outputs = _projecting_outputs(as_of)
-    monkeypatch.setattr(batch, "run_analytics", lambda *args, **kwargs: outputs)
+    from algotrading.infra.actor import AnalyticsRun, QcInputs
+
+    monkeypatch.setattr(
+        batch,
+        "run_analytics_with_qc",
+        lambda *args, **kwargs: AnalyticsRun(outputs=outputs, qc_inputs=QcInputs()),
+    )
 
     outcome = reconstruct_day(
         store, trade_date, [], instruments=instruments, masters=masters,
@@ -490,7 +496,12 @@ def test_reconstruct_regenerates_signals_and_qc_from_raw(
 
     realized_aaa = _annualized_realized_vol(_AAA_CLOSES)
     realized_bbb = _annualized_realized_vol(_BBB_CLOSES)
-    w_aaa, w_bbb = 0.5, 0.3
+    # Implied correlation normalizes the included basket weights to sum to 1.0 before the solve
+    # (signals fix 80e9b33): the raw membership weights 0.5/0.3 sum to 0.8, so the solve sees
+    # 0.625/0.375. The expected rho must mirror that normalization.
+    raw_aaa, raw_bbb = 0.5, 0.3
+    total = raw_aaa + raw_bbb
+    w_aaa, w_bbb = raw_aaa / total, raw_bbb / total
     own = (w_aaa * realized_aaa) ** 2 + (w_bbb * realized_bbb) ** 2
     cross = (w_aaa * realized_aaa + w_bbb * realized_bbb) ** 2 - own
     expected_rho = (_INDEX_3M_IV**2 - own) / cross
@@ -516,7 +527,13 @@ def test_reconstruct_dry_run_and_versioned_restate_skip_signals_and_qc(
     as_of, calc_ts = _as_of(trade_date), _calc_ts(trade_date)
 
     outputs = _projecting_outputs(as_of)
-    monkeypatch.setattr(batch, "run_analytics", lambda *args, **kwargs: outputs)
+    from algotrading.infra.actor import AnalyticsRun, QcInputs
+
+    monkeypatch.setattr(
+        batch,
+        "run_analytics_with_qc",
+        lambda *args, **kwargs: AnalyticsRun(outputs=outputs, qc_inputs=QcInputs()),
+    )
 
     reconstruct_day(
         store, trade_date, [], instruments=instruments, masters=masters,

@@ -734,6 +734,114 @@ def test_surface_fit_non_svi_converged_none_is_not_penalised() -> None:
     assert context["degeneracy_reasons"] == []
 
 
+# --- IV-space (vol-point) limbs ------------------------------------------------------------------
+
+_FIT_SVI = SviParams(a=0.04, b=0.1, rho=-0.2, m=0.0, sigma=0.1)
+_FIT_MATURITY = 0.25
+_FIT_KS = (-0.10, -0.05, 0.0, 0.05, 0.10)
+
+
+def _iv_point(k: float, implied_vol: float):
+    return make_record(
+        "iv_points",
+        contract_key=f"X@{k:g}",
+        log_moneyness=k,
+        implied_vol=implied_vol,
+        total_variance=implied_vol * implied_vol * _FIT_MATURITY,
+    )
+
+
+def _curve_iv(k: float) -> float:
+    return math.sqrt(max(_FIT_SVI.total_variance(k), 0.0) / _FIT_MATURITY)
+
+
+def _fitted_slice(
+    *, raw_points, converged: bool | None = True, bound_hits=(), arb_free: bool = True
+) -> SliceFit:
+    return dataclasses.replace(
+        _slice_fit(rmse=1e-6),
+        svi=_FIT_SVI,
+        maturity_years=_FIT_MATURITY,
+        converged=converged,
+        bound_hits=bound_hits,
+        arb_free=arb_free,
+        raw_points=tuple(raw_points),
+    )
+
+
+def test_surface_fit_emits_iv_rmse_and_passes_on_a_clean_iv_cloud() -> None:
+    # Market IV points lie exactly on the served curve -> IV-RMSE is ~0 vol points.
+    clean = _fitted_slice(raw_points=[_iv_point(k, _curve_iv(k)) for k in _FIT_KS])
+    result = check_surface_fit_error(clean, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = deserialize_context(result.context)
+    assert result.qc_status == STATUS_PASS
+    assert context["iv_rmse"] == pytest.approx(0.0, abs=1e-9)
+    assert context["iv_point_count"] == len(_FIT_KS)
+    # measured_value is the PM-legible IV-space RMSE when it exists.
+    assert result.measured_value == pytest.approx(0.0, abs=1e-9)
+
+
+def test_surface_fit_fails_high_iv_rmse_even_with_tiny_total_variance_rmse() -> None:
+    # Every market point is ~5 vol points above the curve: total-variance RMSE stays tiny (the
+    # slice's stored rmse=1e-6) yet the IV-space error is gross. This is the short-end blind spot.
+    contaminated = _fitted_slice(
+        raw_points=[_iv_point(k, _curve_iv(k) + 0.05) for k in _FIT_KS]
+    )
+    result = check_surface_fit_error(
+        contaminated, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    context = deserialize_context(result.context)
+    assert result.qc_status == STATUS_FAIL
+    assert context["rmse_ok"] is True
+    assert "iv_rmse_high" in context["degeneracy_reasons"]
+    assert context["iv_rmse"] == pytest.approx(0.05, abs=1e-9)
+
+
+def test_surface_fit_fails_iv_outlier_scatter_when_aggregate_rmse_is_low() -> None:
+    # One stale ATM quote sits far off an otherwise clean cloud (the 2026-06-18 contamination
+    # shape). The few-point scatter trips the outlier-fraction limb even though most points fit.
+    points = [_iv_point(k, _curve_iv(k)) for k in _FIT_KS[:-1]]
+    points += [_iv_point(_FIT_KS[-1], _curve_iv(_FIT_KS[-1]) + 0.40)]  # one gross outlier of 5
+    contaminated = _fitted_slice(raw_points=points)
+    result = check_surface_fit_error(
+        contaminated, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
+    )
+    context = deserialize_context(result.context)
+    assert result.qc_status == STATUS_FAIL
+    assert "iv_outlier_scatter" in context["degeneracy_reasons"]
+    assert context["iv_outlier_fraction"] == pytest.approx(0.2, abs=1e-9)
+
+
+def test_surface_fit_demotes_rho_rail_to_warn_on_a_clean_slice() -> None:
+    # A steep skew rails rho to its bound, but the slice is arb-free, converged, and tracks the
+    # market cloud (low IV-RMSE). That is not a defect -> a NON-BLOCKING WARN, never a FAIL.
+    clean_skew = _fitted_slice(
+        raw_points=[_iv_point(k, _curve_iv(k)) for k in _FIT_KS],
+        bound_hits=("rho_lower",),
+    )
+    result = check_surface_fit_error(clean_skew, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = deserialize_context(result.context)
+    assert result.qc_status == STATUS_WARN
+    assert context["degeneracy_reasons"] == []
+    assert context["demoted_rho_rail_hits"] == ["rho_lower"]
+    assert "rho_rail:rho_lower" in context["notes"]
+
+
+def test_surface_fit_keeps_rho_rail_a_fail_when_iv_rmse_is_high() -> None:
+    # The same rho rail, but the slice does NOT track the market cloud: the rail is no longer
+    # demotable (the slice is genuinely degenerate) and the high IV-RMSE fails it outright.
+    bad_skew = _fitted_slice(
+        raw_points=[_iv_point(k, _curve_iv(k) + 0.05) for k in _FIT_KS],
+        bound_hits=("rho_lower",),
+    )
+    result = check_surface_fit_error(bad_skew, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS)
+    context = deserialize_context(result.context)
+    assert result.qc_status == STATUS_FAIL
+    assert "bound_hit:rho_lower" in context["degeneracy_reasons"]
+    assert "iv_rmse_high" in context["degeneracy_reasons"]
+    assert context["demoted_rho_rail_hits"] == []
+
+
 def test_calendar_sanity_passes_no_violations() -> None:
     result = check_calendar_sanity(
         [], "AAPL", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS

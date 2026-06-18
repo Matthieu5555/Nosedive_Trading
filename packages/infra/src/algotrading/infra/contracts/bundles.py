@@ -29,6 +29,17 @@ class SurfaceFitDiagnostics:
     arb_free: bool
     bound_hits: tuple[str, ...] | None = None
     converged: bool | None = None
+    # IV-space fit error in VOL POINTS (sqrt(mean((SVI_iv(k) - market_iv)^2))), the
+    # T-invariant error a PM actually reads. `rmse` above is in TOTAL-VARIANCE units and so
+    # collapses toward zero at short maturities (total variance ~ iv^2 * T); `iv_rmse` does
+    # not. `None` when there are no raw IV points to compare against (a sparse or
+    # reconstructed slice). The frontend depends on this exact field name (do not rename).
+    iv_rmse: float | None = None
+    # Dispersion of the market IV points about the fitted curve: the share of points whose
+    # |SVI_iv(k) - market_iv| exceeds the outlier band. Catches a contaminated slice (stale
+    # quotes scattered far off a clean fit) that the aggregate `iv_rmse` can still mask.
+    # `None` when there are no raw IV points.
+    iv_outlier_fraction: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

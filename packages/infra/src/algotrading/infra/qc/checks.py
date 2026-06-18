@@ -18,6 +18,7 @@ from algotrading.infra.surfaces import (
     SliceFit,
     classify_tenor_provenance,
     is_benign_a_floor,
+    iv_space_fit_error,
     tenor_years,
 )
 from algotrading.infra.utils import robust_zscore_vs_baseline
@@ -353,6 +354,21 @@ def check_iv_solver_convergence(
     )
 
 
+_RHO_RAIL_BOUND_HITS = frozenset({"rho_lower", "rho_upper"})
+
+
+def _is_rho_rail(bound_hit: str) -> bool:
+    """A skew parameter pinned to its bound (steep smile), not a structural defect.
+
+    SVI ρ is the skew; a genuinely steep skew (a long-maturity or steep-skew slice) drives ρ to its
+    bound, but the fit is otherwise sound. We demote a ρ-rail-ONLY hit to a non-blocking note when
+    the slice is arb-free, converged, and tracks the market IV cloud (mirroring how the benign
+    ``a_lower`` parametrization sink is already treated). A real defect (arb violation,
+    non-convergence, a different railed param, or a high IV-space error) still fails.
+    """
+    return bound_hit in _RHO_RAIL_BOUND_HITS
+
+
 def check_surface_fit_error(
     fit: SliceFit,
     *,
@@ -360,45 +376,105 @@ def check_surface_fit_error(
     run_id: str,
     run_ts: datetime,
 ) -> QcResult:
-    rmse_ok = fit.rmse <= thresholds.fit_tolerance.max_surface_rmse
+    tol = thresholds.fit_tolerance
+    rmse_ok = fit.rmse <= tol.max_surface_rmse
     minimum_total_variance = (
         fit.svi.minimum_total_variance() if fit.svi is not None else None
     )
+
+    # IV-SPACE limbs (vol points, T-invariant) — what a PM reads, and the teeth the total-variance
+    # limb is blind to at short maturities. `iv_rmse` is the aggregate error; `iv_outlier_fraction`
+    # catches a clean aggregate fit contaminated by a few stale quotes scattered off the curve.
+    iv_error = iv_space_fit_error(fit)
+    iv_rmse = iv_error.iv_rmse
+    iv_outlier_fraction = iv_error.outlier_fraction
+    iv_rmse_low = iv_rmse is not None and iv_rmse <= tol.warn_iv_rmse
+    iv_rmse_warn = iv_rmse is not None and tol.warn_iv_rmse < iv_rmse <= tol.max_iv_rmse
+    iv_rmse_fail = iv_rmse is not None and iv_rmse > tol.max_iv_rmse
+    iv_outlier_fail = (
+        iv_outlier_fraction is not None
+        and iv_outlier_fraction > tol.max_iv_outlier_fraction
+    )
+
     benign_bound_hits = [
         name
         for name in fit.bound_hits
         if is_benign_a_floor(name, minimum_total_variance=minimum_total_variance)
     ]
-    genuine_bound_hits = [name for name in fit.bound_hits if name not in benign_bound_hits]
-    degeneracy_reasons: list[str] = []
+    remaining_hits = [name for name in fit.bound_hits if name not in benign_bound_hits]
+
+    # A ρ-rail (steep-skew) hit is demoted to a NON-BLOCKING note when the slice is otherwise clean:
+    # arb-free, converged, and a low IV-space RMSE. A steep skew is not a defect (mirrors a_lower).
+    other_arb_free = fit.arb_free
+    other_converged = fit.converged is not False
+    rho_demotable = other_arb_free and other_converged and iv_rmse_low
+    rho_rail_hits = [name for name in remaining_hits if _is_rho_rail(name)]
+    genuine_bound_hits = [
+        name
+        for name in remaining_hits
+        if not (_is_rho_rail(name) and rho_demotable)
+    ]
+    demoted_rho_hits = [name for name in rho_rail_hits if rho_demotable]
+
+    fail_reasons: list[str] = []
     if not fit.arb_free:
-        degeneracy_reasons.append("arb_violation")
+        fail_reasons.append("arb_violation")
     if genuine_bound_hits:
-        degeneracy_reasons.append(f"bound_hit:{','.join(genuine_bound_hits)}")
+        fail_reasons.append(f"bound_hit:{','.join(genuine_bound_hits)}")
     if fit.converged is False:
-        degeneracy_reasons.append("not_converged")
-    status = STATUS_PASS if (rmse_ok and not degeneracy_reasons) else STATUS_FAIL
+        fail_reasons.append("not_converged")
+    if iv_rmse_fail:
+        fail_reasons.append("iv_rmse_high")
+    if iv_outlier_fail:
+        fail_reasons.append("iv_outlier_scatter")
+    if not rmse_ok:
+        fail_reasons.append("total_variance_rmse_high")
+
+    notes: list[str] = []
+    if demoted_rho_hits:
+        notes.append(f"rho_rail:{','.join(demoted_rho_hits)}")
+    if iv_rmse_warn:
+        notes.append("iv_rmse_elevated")
+
+    if fail_reasons:
+        status = STATUS_FAIL
+    elif notes:
+        status = STATUS_WARN
+    else:
+        status = STATUS_PASS
+
     context = {
         "underlying": fit.underlying,
         "failing_maturity": fit.maturity_years,
         "rmse": fit.rmse,
         "rmse_ok": rmse_ok,
+        "iv_rmse": iv_rmse,
+        "iv_outlier_fraction": iv_outlier_fraction,
+        "iv_point_count": iv_error.point_count,
+        "warn_iv_rmse": tol.warn_iv_rmse,
+        "max_iv_rmse": tol.max_iv_rmse,
+        "max_iv_outlier_fraction": tol.max_iv_outlier_fraction,
         "method": fit.method,
         "n_points": fit.n_points,
-        "max_surface_rmse": thresholds.fit_tolerance.max_surface_rmse,
+        "max_surface_rmse": tol.max_surface_rmse,
         "arb_free": fit.arb_free,
         "bound_hits": list(fit.bound_hits),
         "benign_bound_hits": benign_bound_hits,
+        "demoted_rho_rail_hits": demoted_rho_hits,
         "minimum_total_variance": minimum_total_variance,
         "converged": fit.converged,
-        "degeneracy_reasons": degeneracy_reasons,
+        "degeneracy_reasons": fail_reasons,
+        "notes": notes,
     }
+    # Headline measured_value is the IV-space RMSE (vol points) — the PM-legible error — when it
+    # exists, else the total-variance RMSE (a sparse/reconstructed slice with no comparable points).
+    measured = iv_rmse if iv_rmse is not None else fit.rmse
     return build_result(
         check_name=CHECK_SURFACE_FIT_ERROR,
         target_key=f"{fit.underlying}@{fit.maturity_years:g}",
         status=status,
         severity=SEVERITY_WARNING,
-        measured_value=fit.rmse,
+        measured_value=measured,
         threshold_version=thresholds.version,
         context=context,
         run_id=run_id,

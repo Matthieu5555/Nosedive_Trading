@@ -82,7 +82,7 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "fc38f74127ff9bdbb6f51e144100a7832e668ebed743d2c729285085cf7c89bd"
+        "c126d1ba34619146534dfe6c851f796c5a97cc14242d9b82854f0608bfc77f6f"
     )
     # The pricing/qc/scenarios/universe bundle hashes stay byte-identical across the ADR-0054
     # rate-curve land: `rates` is its OWN bundle, so adding it moves only the whole-config
@@ -90,7 +90,7 @@ def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     # golden moves on the rate curve's account.
     assert config_hashes(config) == {
         "pricing": "9083222ce26b63f5a935f8ad1667b5e0bcbb91c8cedb14b195941bdeeeb4b31e",
-        "qc": "5ee4c4ee5fb3b4b07b94a00ad3d71277abec90bd3fc570b4ba1f643ca1238a12",
+        "qc": "0d3205df691370eb2b01e9d65cd3cb4aa9e8ed1c742ad58bc0831e39c8f18961",
         "rates": "64e037b5a52f570f50003137a061f7e741c7805d4dfe695ac65ae48dfd8ec69f",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
         "universe": "4833799bb76dcaaafeda85c23557159ab638407ca7122ac3d9796fd93d96e3e1",

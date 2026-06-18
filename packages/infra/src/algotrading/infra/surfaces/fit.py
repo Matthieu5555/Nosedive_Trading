@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -23,6 +24,68 @@ METHOD_INSUFFICIENT = "insufficient"
 
 _ARB_GRID_PAD = 0.1
 _ARB_GRID_POINTS = 21
+
+# A single market IV point is an "outlier" against the fitted curve when it sits more than
+# this many VOL POINTS off the SVI-implied vol at its log-moneyness. This is the per-point
+# band the dispersion diagnostic counts against; the QC plane thresholds the resulting
+# FRACTION (configs/qc.yaml fit_tolerance.max_iv_outlier_fraction). 5 vol points is well
+# above ordinary smile fit noise (a clean slice fits to << 1 vol point), so the band only
+# trips on genuine contamination (e.g. the stale-ATM-put cluster on a near-dated slice).
+_IV_OUTLIER_BAND_VOL_POINTS = 0.05
+
+
+@dataclass(frozen=True, slots=True)
+class IvSpaceFitError:
+    """The T-invariant, vol-point view of how well the served curve tracks the market IV cloud.
+
+    ``iv_rmse`` is ``sqrt(mean((SVI_iv(k) - market_iv)^2))`` over the slice's raw IV points, in
+    vol points. ``outlier_fraction`` is the share of those points sitting more than
+    ``_IV_OUTLIER_BAND_VOL_POINTS`` off the curve — the dispersion/contamination signal that a low
+    aggregate RMSE can still mask when only a few points are stale. Both are ``None`` when there is
+    nothing to compare against (no raw IV points, or no usable curve).
+    """
+
+    iv_rmse: float | None
+    outlier_fraction: float | None
+    point_count: int
+
+
+def iv_space_fit_error(fit: SliceFit) -> IvSpaceFitError:
+    """Vol-point fit error of ``fit``'s served curve against its own raw market IV points.
+
+    The SVI/fallback curve carries TOTAL VARIANCE ``w(k)``; market IV recovers as
+    ``sqrt(max(w, 0) / T)`` (the solver stored ``w = iv^2 * T``). We compare the curve's implied
+    vol to each raw point's ``implied_vol`` at the point's ``log_moneyness``. Points with a
+    non-finite or non-positive maturity / IV are skipped (they carry no comparable vol).
+    """
+    maturity = fit.maturity_years
+    if (
+        fit.method == METHOD_INSUFFICIENT
+        or not fit.raw_points
+        or not (math.isfinite(maturity) and maturity > 0.0)
+    ):
+        return IvSpaceFitError(iv_rmse=None, outlier_fraction=None, point_count=0)
+
+    squared_errors: list[float] = []
+    outliers = 0
+    for point in fit.raw_points:
+        market_iv = point.implied_vol
+        if not (math.isfinite(market_iv) and market_iv > 0.0):
+            continue
+        fitted_w = max(fit.total_variance(point.log_moneyness), 0.0)
+        fitted_iv = math.sqrt(fitted_w / maturity)
+        error = fitted_iv - market_iv
+        squared_errors.append(error * error)
+        if abs(error) > _IV_OUTLIER_BAND_VOL_POINTS:
+            outliers += 1
+
+    count = len(squared_errors)
+    if count == 0:
+        return IvSpaceFitError(iv_rmse=None, outlier_fraction=None, point_count=0)
+    rmse = math.sqrt(sum(squared_errors) / count)
+    return IvSpaceFitError(
+        iv_rmse=rmse, outlier_fraction=outliers / count, point_count=count
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,6 +326,7 @@ def surface_parameters(
 ) -> SurfaceParameters:
     if fit.method != METHOD_SVI or fit.svi is None:
         raise ValueError(f"cannot emit SurfaceParameters for a {fit.method} slice")
+    iv_error = iv_space_fit_error(fit)
     return SurfaceParameters(
         snapshot_ts=snapshot_ts,
         underlying=fit.underlying,
@@ -278,6 +342,7 @@ def surface_parameters(
         diagnostics=SurfaceFitDiagnostics(
             rmse=fit.rmse, n_points=fit.n_points, arb_free=fit.arb_free,
             bound_hits=fit.bound_hits, converged=fit.converged,
+            iv_rmse=iv_error.iv_rmse, iv_outlier_fraction=iv_error.outlier_fraction,
         ),
         source_snapshot_ts=source_snapshot_ts,
         provenance=_slice_stamp(

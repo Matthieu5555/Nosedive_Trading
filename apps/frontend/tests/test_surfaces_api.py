@@ -19,6 +19,10 @@ def test_surfaces_router_reads_back_persisted_svi_slice(
     assert slice_row["diagnostics"]["arb_free"] is False
     assert slice_row["diagnostics"]["bound_hits"] == ["rho_lower"]
     assert slice_row["diagnostics"]["converged"] is False
+    # Legacy rows persisted before iv_rmse/iv_outlier_fraction existed must still
+    # serialize, carrying None rather than raising.
+    assert slice_row["diagnostics"]["iv_rmse"] is None
+    assert slice_row["diagnostics"]["iv_outlier_fraction"] is None
     assert slice_row["degenerate"] is True
     assert slice_row["degenerate_reasons"] == [
         "param_at_bound:rho_lower", "not_converged", "butterfly_arbitrage",
@@ -34,6 +38,8 @@ def test_surfaces_router_does_not_flag_a_clean_slice(
     slice_row = payload["slices"][0]
     assert slice_row["diagnostics"]["bound_hits"] == []
     assert slice_row["diagnostics"]["converged"] is True
+    assert slice_row["diagnostics"]["iv_rmse"] == pytest.approx(0.0004)
+    assert slice_row["diagnostics"]["iv_outlier_fraction"] == pytest.approx(0.1)
     assert slice_row["degenerate"] is False
     assert slice_row["degenerate_reasons"] == []
 

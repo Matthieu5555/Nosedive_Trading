@@ -326,6 +326,7 @@ def seed_store(root: Path) -> None:
                 MEMBER_AAA,
                 SurfaceFitDiagnostics(
                     rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True,
+                    iv_rmse=0.0004, iv_outlier_fraction=0.1,
                 ),
             )
         ],

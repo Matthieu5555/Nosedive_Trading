@@ -81,6 +81,10 @@ def surface_parameters_to_dict(row: SurfaceParameters) -> dict[str, object]:
                 else None
             ),
             "converged": row.diagnostics.converged,
+            "iv_rmse": getattr(row.diagnostics, "iv_rmse", None),
+            "iv_outlier_fraction": getattr(
+                row.diagnostics, "iv_outlier_fraction", None
+            ),
         },
         "degenerate": bool(reasons),
         "degenerate_reasons": list(reasons),

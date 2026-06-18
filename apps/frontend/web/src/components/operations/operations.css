@@ -16,13 +16,13 @@
 .ibkr-panel__headline {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-sm);
 }
 
 .ibkr-panel__summary {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-3xs);
 }
 
 .ibkr-panel__state {

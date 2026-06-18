@@ -43,6 +43,25 @@
   --color-blue: var(--blue);
 }
 
+/* ── The keystone: ONE spacing scale ─────────────────────────────────────────
+ * Register the t-shirt spacing steps into Tailwind's `--spacing-*` theme namespace so the named
+ * utilities (p-md, px-md, py-md, m-md, gap-md, gap-x-sm, space-y-md, …) EXIST for every step and
+ * resolve to the SAME pixels as var(--space-*) — the exact values the layout primitives draw from.
+ * `inline` makes the generated utilities reference var(--space-*) directly, so the two scales can
+ * never drift: editing a token in foundation.css re-tunes the utilities live. This is purely
+ * ADDITIVE — Tailwind's built-in numeric steps (p-2, gap-4, …) keep working alongside these. */
+@theme inline {
+  --spacing-3xs: var(--space-3xs);
+  --spacing-2xs: var(--space-2xs);
+  --spacing-xs: var(--space-xs);
+  --spacing-sm: var(--space-sm);
+  --spacing-md: var(--space-md);
+  --spacing-lg: var(--space-lg);
+  --spacing-xl: var(--space-xl);
+  --spacing-2xl: var(--space-2xl);
+  --spacing-3xl: var(--space-3xl);
+}
+
 :root {
   color-scheme: dark;
   --bg: #0e100e;
@@ -107,6 +126,44 @@ svg,
 canvas,
 video {
   max-width: 100%;
+}
+
+/* ── Three more layout primitives ─────────────────────────────────────────────
+ * Sibling classes to .l-stack / .l-cluster / .l-grid (defined in styles/foundation.css). A matching
+ * set of TS components emits these EXACT class names; every spacing value is drawn from the scale so
+ * nothing here is hand-picked per element. */
+
+/* Center a single child on BOTH axes within whatever space the parent gives it. Fills its parent's
+ * width; centers vertically in the height it is handed (a flex/grid child gets the track's height). */
+.l-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+}
+
+/* Page measure: a max-width content column, horizontally centered, with horizontal page padding from
+ * the scale. --measure is overridable per call site (default 1200px). */
+.l-frame {
+  inline-size: 100%;
+  max-inline-size: var(--measure, 1200px);
+  margin-inline: auto;
+  padding-inline: var(--space-lg);
+}
+
+/* Surface / card: the panel look (border + bg + radius) with the inner pad and a vertical internal
+ * rhythm, so children stack with one even gap and never carry their own margins. Matches .panel and
+ * src/ui/card.tsx. */
+.l-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--panel-gap);
+  min-width: 0;
+  padding: var(--panel-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
 }
 
 body {
@@ -216,9 +273,11 @@ td span {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto minmax(100px, 1fr);
   align-items: center;
-  gap: 18px;
+  /* 18px snaps to --space-md (16) to stay on the 4px grid (it sits between md=16 and lg=24, closer
+     to md). The vertical block padding (top 18, bottom 16) collapses to a single md=16 token. */
+  gap: var(--space-md);
   margin: -20px calc(-1 * clamp(20px, 3vw, 48px)) 0;
-  padding: 18px clamp(20px, 3vw, 48px) 16px;
+  padding: var(--space-md) clamp(20px, 3vw, 48px) var(--space-md);
   background: rgba(14, 16, 14, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(16px);
@@ -229,7 +288,7 @@ td span {
 .control-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
 }
 
 .brand {
@@ -359,7 +418,7 @@ td span {
 .page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--page-gap);
 }
 
 .page-header,
@@ -367,7 +426,7 @@ td span {
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--page-gap);
 }
 
 .page-header {
@@ -416,7 +475,7 @@ h3 {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--panel);
-  padding: 18px;
+  padding: var(--panel-pad);
 }
 
 .market-grid {
@@ -1514,8 +1573,10 @@ h3 {
 }
 
 .gaps {
-  margin-top: 16px;
-  padding: 12px 14px;
+  /* 16 → md; the 12/14 inner padding snaps to a single sm=12 token (14 is equidistant between
+     sm=12 and md=16, snapped down to keep the callout compact and on-grid). */
+  margin-top: var(--space-md);
+  padding: var(--space-sm);
   border: 1px solid var(--border-strong);
   border-left: 3px solid var(--amber);
   border-radius: var(--radius);

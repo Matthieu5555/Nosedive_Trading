@@ -16,7 +16,7 @@
 .assistant-action {
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  padding: 7px 12px;
+  padding: var(--space-xs) var(--space-sm);
   background: transparent;
   color: var(--muted);
   font-size: 12px;
@@ -28,10 +28,10 @@
 .assistant-dock .assistant-launch {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-xs);
   background: var(--panel);
   color: var(--text);
-  padding: 10px 16px;
+  padding: var(--space-sm) var(--space-md);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
 
@@ -82,10 +82,10 @@
 .assistant-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-sm);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: var(--space-md);
   background: var(--panel);
   color: var(--text);
 }
@@ -150,7 +150,7 @@
 .assistant-panel__head-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-2xs);
 }
 
 .assistant-panel__icon {
@@ -159,7 +159,7 @@
   color: var(--muted);
   font-size: 14px;
   line-height: 1;
-  padding: 2px 4px;
+  padding: var(--space-3xs) var(--space-2xs);
   cursor: pointer;
 }
 
@@ -189,19 +189,19 @@
 .assistant-guide-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-xs);
 }
 
 .assistant-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-xs);
 }
 
 .assistant-thread {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .assistant-question {
@@ -213,9 +213,9 @@
 .assistant-answer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-xs);
   border-left: 2px solid var(--border-strong);
-  padding-left: 10px;
+  padding-left: var(--space-xs);
 }
 
 .assistant-answer--gap {
@@ -234,13 +234,13 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-2xs);
 }
 
 .assistant-citation {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-xs);
   align-items: baseline;
   font-size: 12px;
 }
@@ -277,7 +277,7 @@
 .assistant-form {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-xs);
   align-items: center;
 }
 
@@ -294,7 +294,7 @@
   flex: 1 1 200px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
-  padding: 7px 10px;
+  padding: var(--space-xs) var(--space-xs);
   background: var(--bg);
   color: var(--text);
   font-size: 13px;

@@ -150,7 +150,7 @@ export function DollarGreeksByMaturity({
         </h3>
         <div
           className="panel-heading__controls"
-          style={{ flexDirection: "row", alignItems: "center", gap: "6px" }}
+          style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-xs)" }}
         >
           <div className="mode-toggle" role="group" aria-label="Greek group">
             <button

@@ -10,7 +10,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
-import { Cluster, Grid, Scroll, Stack } from "./index";
+import { Center, Cluster, Frame, Grid, Panel, Scroll, Stack } from "./index";
 
 // The size -> token mapping is the contract under test, re-derived here by hand from the documented
 // rule ("the only legal spacing steps map to the --space-* tokens"), NOT imported from the module.
@@ -92,6 +92,94 @@ describe("Grid", () => {
     const { container } = render(<Grid min="320px">x</Grid>);
     const el = container.firstElementChild as HTMLElement;
     expect(el.style.getPropertyValue("--l-min")).toBe("320px");
+  });
+});
+
+describe("Center", () => {
+  test("renders .l-center and its child, no spacing vars", () => {
+    const { container, getByText } = render(<Center>middle</Center>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.classList.contains("l-center")).toBe(true);
+    expect(getByText("middle")).toBeTruthy();
+    // Center just centers; it emits no spacing custom prop.
+    expect(el.style.getPropertyValue("--l-gap")).toBe("");
+  });
+
+  test("respects `as`, merges className, forwards aria-/data- props", () => {
+    const { container } = render(
+      <Center as="section" className="extra" aria-label="empty" data-testid="c">
+        x
+      </Center>,
+    );
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.tagName).toBe("SECTION");
+    expect(el.classList.contains("l-center")).toBe(true);
+    expect(el.classList.contains("extra")).toBe(true);
+    expect(el.getAttribute("aria-label")).toBe("empty");
+    expect(el.getAttribute("data-testid")).toBe("c");
+  });
+});
+
+describe("Frame", () => {
+  test("renders .l-frame and its child; no --measure when unset", () => {
+    const { container, getByText } = render(<Frame>page</Frame>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.classList.contains("l-frame")).toBe(true);
+    expect(getByText("page")).toBeTruthy();
+    expect(el.style.getPropertyValue("--measure")).toBe("");
+  });
+
+  test("`measure` sets the --measure custom property", () => {
+    const { container } = render(<Frame measure="960px">x</Frame>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.getPropertyValue("--measure")).toBe("960px");
+  });
+
+  test("respects `as`, merges className, forwards aria-/data- props", () => {
+    const { container } = render(
+      <Frame as="main" className="extra" aria-label="content" data-region="page">
+        x
+      </Frame>,
+    );
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.tagName).toBe("MAIN");
+    expect(el.classList.contains("l-frame")).toBe(true);
+    expect(el.classList.contains("extra")).toBe(true);
+    expect(el.getAttribute("aria-label")).toBe("content");
+    expect(el.getAttribute("data-region")).toBe("page");
+  });
+});
+
+describe("Panel", () => {
+  test("renders .l-panel and its child; no gap override when unset", () => {
+    const { container, getByText } = render(<Panel>card</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.classList.contains("l-panel")).toBe(true);
+    expect(getByText("card")).toBeTruthy();
+    // Unset: defer to the CSS default --panel-gap, so no inline gap is written.
+    expect(el.style.getPropertyValue("gap")).toBe("");
+  });
+
+  test("`gap` overrides the internal rhythm using the size -> token map", () => {
+    for (const [size, token] of Object.entries(EXPECTED_SPACE_VAR)) {
+      const { container } = render(<Panel gap={size as never}>x</Panel>);
+      const el = container.firstElementChild as HTMLElement;
+      expect(el.style.getPropertyValue("gap"), `Panel gap=${size}`).toBe(token);
+    }
+  });
+
+  test("respects `as`, merges className, forwards aria-/data- props", () => {
+    const { container } = render(
+      <Panel as="article" className="extra" aria-label="position card" data-testid="p">
+        x
+      </Panel>,
+    );
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.tagName).toBe("ARTICLE");
+    expect(el.classList.contains("l-panel")).toBe(true);
+    expect(el.classList.contains("extra")).toBe(true);
+    expect(el.getAttribute("aria-label")).toBe("position card");
+    expect(el.getAttribute("data-testid")).toBe("p");
   });
 });
 

@@ -120,6 +120,66 @@ export function Grid({
 }
 
 /**
+ * Center — both-axis centering for a single child (an empty state, a spinner, a lone icon). Replaces
+ * the hand-rolled `display:flex;align-items:center;justify-content:center` that gets copy-pasted onto
+ * a div every time something needs to sit in the middle of the space it is given.
+ */
+export function Center({ as: Tag = "div", className, children, ...rest }: BaseProps) {
+  return (
+    <Tag className={cn("l-center", className)} {...rest}>
+      {children}
+    </Tag>
+  );
+}
+
+/**
+ * Frame — the page measure: a max-width content column, horizontally centered, with the page padding.
+ * Stops ragged full-bleed layouts where content runs edge to edge on a wide screen. `measure` widens
+ * or narrows the column (any CSS length); left unset, the CSS default applies.
+ */
+export function Frame({
+  measure,
+  as: Tag = "div",
+  className,
+  children,
+  ...rest
+}: BaseProps & { measure?: string }) {
+  return (
+    <Tag
+      className={cn("l-frame", className)}
+      style={measure ? ({ "--measure": measure } as CSSProperties) : undefined}
+      {...rest}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+/**
+ * Panel — a surface/card that owns its own padding AND stacks its children with one internal rhythm,
+ * so card contents are evenly spaced for free and never carry their own margins. The card is the unit
+ * a PM actually reads, so its surface is structurally well-spaced. `gap` overrides the internal
+ * vertical rhythm (from the scale); left unset, the CSS default --panel-gap applies.
+ */
+export function Panel({
+  gap,
+  as: Tag = "div",
+  className,
+  children,
+  ...rest
+}: BaseProps & { gap?: Space }) {
+  return (
+    <Tag
+      className={cn("l-panel", className)}
+      style={gap ? ({ gap: SPACE_VAR[gap] } as CSSProperties) : undefined}
+      {...rest}
+    >
+      {children}
+    </Tag>
+  );
+}
+
+/**
  * Scroll — contains a wide table or chart AT THE SOURCE. Whatever is inside scrolls within this box;
  * the page width stays bounded. Wrap every bare table and every chart canvas in this so a wide
  * payload can never push the page sideways (the Market/Signals horizontal-scroll bug, contained

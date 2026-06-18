@@ -287,6 +287,36 @@ export interface AnalyticsCoverage {
   two_sided_fraction: number | null;
 }
 
+// The three vol-surface sides the captured store carries. Calls and puts have genuinely different
+// skew (the call wing and the put wing are quoted separately), so each is its own surface, not a
+// re-slice of one combined set; `combined` is the union read the page opens on. The market page's
+// Call / Put / Combined selector carries this; every surface/smile/Greeks panel reads the matching
+// side's maturities + dense grid.
+export type SurfaceSide = "combined" | "call" | "put";
+
+export const SURFACE_SIDE_LABELS: Record<SurfaceSide, string> = {
+  combined: "Combined",
+  call: "Calls",
+  put: "Puts",
+};
+
+// The per-side analytics views. Each side carries its own maturities (smile + per-band Greek points)
+// and its own dense 3D grid built from those cells. A side the close did not capture is an empty
+// maturity list + null dense, so the front degrades to an honest "per-side fit not available for this
+// close, showing combined", never a fabricated surface. Additive-nullable: an older payload without
+// the per-side block still parses, and the page falls back to the combined `maturities` / `surface`.
+export interface AnalyticsSides {
+  combined: AnalyticsMaturity[];
+  call: AnalyticsMaturity[];
+  put: AnalyticsMaturity[];
+}
+
+export interface AnalyticsSurfacesBySide {
+  combined: SurfaceDense | null;
+  call: SurfaceDense | null;
+  put: SurfaceDense | null;
+}
+
 export interface AnalyticsResponse {
   underlying: string;
   trade_date: string | null;
@@ -296,8 +326,16 @@ export interface AnalyticsResponse {
   // additive-nullable so an older payload without it still parses (date-only as-of).
   close_instant?: string | null;
   n_maturities: number;
+  // The combined view, kept top-level for backward compatibility (Scorecards / term-structure read
+  // it directly). The same data is also `sides.combined` / `surfaces_by_side.combined`.
   maturities: AnalyticsMaturity[];
   surface: SurfaceDense | null;
+  // The per-side views (additive). Absent on an older payload; the page falls back to combined.
+  sides?: AnalyticsSides;
+  surfaces_by_side?: AnalyticsSurfacesBySide;
+  // Which sides actually carry captured maturities (e.g. ["call","combined","put"]), so the selector
+  // can disable a side the close did not reach rather than offering an empty surface.
+  sides_available?: SurfaceSide[];
   coverage?: AnalyticsCoverage | null;
 }
 

@@ -14,6 +14,7 @@ import {
   ANALYTICS_AAA_DEGENERATE,
   ANALYTICS_AAA_DENSE,
   ANALYTICS_AAA_MONEYNESS_FALLBACK,
+  ANALYTICS_PER_SIDE,
   ANALYTICS_QUOTED,
   ANALYTICS_SCORECARD,
   INDICES_SPX_SX5E,
@@ -173,6 +174,69 @@ test("the smile superimposes put + call (both wings, no side filter)", async () 
   const smile = await screen.findByLabelText(/smile 3m/i);
   // Both wings plotted as scatter traces (the gap between them is the skew).
   expect(within(smile).getByTestId("plot-types").textContent).toMatch(/scatter,scatter/);
+});
+
+test("the surface header offers a Call / Put / Combined selector, landing on Combined", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_PER_SIDE));
+  render(<MarketPage />);
+
+  const group = await screen.findByRole("group", { name: "Surface side" });
+  const combined = within(group).getByRole("button", { name: "Combined" });
+  const calls = within(group).getByRole("button", { name: "Calls" });
+  const puts = within(group).getByRole("button", { name: "Puts" });
+  // Combined is the landing state.
+  expect(combined).toHaveAttribute("aria-pressed", "true");
+  expect(calls).toHaveAttribute("aria-pressed", "false");
+  expect(puts).toHaveAttribute("aria-pressed", "false");
+});
+
+// The surface panel article and the plot figure inside it both carry a "Volatility surface" label,
+// so scope to the panel article (by role) and read its plot figure's z-grid / trace types.
+function surfacePanelArticle(): HTMLElement {
+  return screen.getByRole("article", { name: /Volatility surface/i });
+}
+
+test("selecting Calls then Puts swaps the rendered surface to that side's grid", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_PER_SIDE));
+  const user = userEvent.setup();
+  render(<MarketPage />);
+
+  const group = await screen.findByRole("group", { name: "Surface side" });
+  await screen.findByRole("article", { name: /Volatility surface/i });
+  const combinedZ = within(surfacePanelArticle()).getByTestId("plot-z").textContent;
+
+  await user.click(within(group).getByRole("button", { name: "Calls" }));
+  await waitFor(() =>
+    expect(within(group).getByRole("button", { name: "Calls" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    ),
+  );
+  const callZ = within(surfacePanelArticle()).getByTestId("plot-z").textContent;
+  // The call surface is a different z-grid than combined (genuinely different per-side data).
+  expect(callZ).not.toEqual(combinedZ);
+
+  await user.click(within(group).getByRole("button", { name: "Puts" }));
+  const putZ = within(surfacePanelArticle()).getByTestId("plot-z").textContent;
+  expect(putZ).not.toEqual(callZ);
+});
+
+test("the maturity selector isolates one tenor, preferring the 2D smile over the 3D ribbon", async () => {
+  server.use(jsonGet("/api/analytics", ANALYTICS_PER_SIDE));
+  const user = userEvent.setup();
+  render(<MarketPage />);
+
+  // The header maturity selector opens on "All maturities" (the 3D surface read).
+  const maturity = await screen.findByLabelText("Maturity");
+  expect((maturity as HTMLSelectElement).value).toMatch(/All maturities/i);
+  // All maturities -> a 3D surface trace in the surface panel.
+  await screen.findByRole("article", { name: /Volatility surface/i });
+  expect(within(surfacePanelArticle()).getByTestId("plot-types").textContent).toMatch(/surface/);
+
+  // Isolate the 3m maturity -> the surface panel now reads the 2D smile (both wings, scatter).
+  await user.selectOptions(maturity, "3m (0.250y)");
+  const smile = await within(surfacePanelArticle()).findByLabelText(/smile 3m/i);
+  expect(within(smile).getByTestId("plot-types").textContent).toMatch(/scatter/);
 });
 
 test("the dispersion strip reads the realized-vol ρ̄ signal (no per-member fan-out)", async () => {

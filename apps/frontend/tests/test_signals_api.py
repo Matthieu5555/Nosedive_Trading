@@ -95,7 +95,7 @@ _EXPECTED_LABELS = {
     "iv_rank": "IV rank",
     "iv_vs_realized": "Realized − implied",
     "term_structure_slope": "Term-structure slope",
-    "implied_correlation": "Implied correlation ρ̄",
+    "implied_correlation": "Implied correlation (ρ)",
 }
 
 

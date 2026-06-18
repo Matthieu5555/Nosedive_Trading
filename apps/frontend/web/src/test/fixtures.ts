@@ -262,7 +262,7 @@ export const SIGNALS_SX5E: SignalsResponse = {
     implied_correlation: [
       {
         signal_kind: "implied_correlation",
-        label: "Implied correlation ρ̄",
+        label: "Implied correlation (ρ)",
         subject: "SX5E",
         tenor_label: "3m",
         value: 0.5,
@@ -597,6 +597,87 @@ export const ANALYTICS_AAA_DENSE: AnalyticsResponse = {
     model_version: "svi-test",
     degenerate_maturity_years: [],
   },
+};
+
+// A per-side analytics payload: combined / call / put, each carrying its own maturities and dense
+// grid, with call and put differing in IV (the skew asymmetry the per-side selector exists to show).
+// Two maturities (3m, 6m) so each side has a real 3D grid. Built off the scorecard slice so the
+// scorecards still resolve from the combined view.
+const _sideMaturity = (
+  label: string,
+  tenor: string,
+  years: number,
+  ivs: [number, number, number],
+): AnalyticsResponse["maturities"][number] => ({
+  maturity_years: years,
+  tenor_label: tenor,
+  label,
+  smile: {
+    axis_type: "delta",
+    deltas: [-0.3, 0.0, 0.3],
+    implied_vols: ivs,
+    log_moneyness: [-0.2, 0.0, 0.2],
+  },
+  surface_slice: null,
+  points: [
+    _scorecardPoint("30dp", -0.3, ivs[0]),
+    _scorecardPoint("atm", 0.0, ivs[1]),
+    _scorecardPoint("30dc", 0.3, ivs[2]),
+  ],
+});
+
+const _denseForSide = (rows: [number, number, number][]): AnalyticsResponse["surface"] => ({
+  log_moneyness: [-0.2, 0.0, 0.2],
+  maturity_years: [0.25, 0.5],
+  implied_vol: rows.map((r) => [...r]),
+  model_version: "svi-test",
+  degenerate_maturity_years: [],
+});
+
+export const ANALYTICS_PER_SIDE: AnalyticsResponse = {
+  underlying: "SX5E",
+  trade_date: "2026-05-29",
+  n_maturities: 2,
+  // Combined is the top-level view (scorecards read it); also mirrored in `sides.combined`.
+  maturities: [
+    _sideMaturity("3m (0.250y)", "3m", 0.25, [0.3, 0.2, 0.24]),
+    _sideMaturity("6m (0.500y)", "6m", 0.5, [0.28, 0.19, 0.23]),
+  ],
+  surface: _denseForSide([
+    [0.3, 0.2, 0.24],
+    [0.28, 0.19, 0.23],
+  ]),
+  sides: {
+    combined: [
+      _sideMaturity("3m (0.250y)", "3m", 0.25, [0.3, 0.2, 0.24]),
+      _sideMaturity("6m (0.500y)", "6m", 0.5, [0.28, 0.19, 0.23]),
+    ],
+    // Calls: a flatter, lower wing (genuinely different skew from puts).
+    call: [
+      _sideMaturity("3m (0.250y)", "3m", 0.25, [0.22, 0.2, 0.25]),
+      _sideMaturity("6m (0.500y)", "6m", 0.5, [0.21, 0.19, 0.24]),
+    ],
+    // Puts: a steeper downside wing.
+    put: [
+      _sideMaturity("3m (0.250y)", "3m", 0.25, [0.34, 0.2, 0.21]),
+      _sideMaturity("6m (0.500y)", "6m", 0.5, [0.32, 0.19, 0.2]),
+    ],
+  },
+  surfaces_by_side: {
+    combined: _denseForSide([
+      [0.3, 0.2, 0.24],
+      [0.28, 0.19, 0.23],
+    ]),
+    call: _denseForSide([
+      [0.22, 0.2, 0.25],
+      [0.21, 0.19, 0.24],
+    ]),
+    put: _denseForSide([
+      [0.34, 0.2, 0.21],
+      [0.32, 0.19, 0.2],
+    ]),
+  },
+  sides_available: ["call", "combined", "put"],
 };
 
 export const ANALYTICS_AAA_DEGENERATE: AnalyticsResponse = {

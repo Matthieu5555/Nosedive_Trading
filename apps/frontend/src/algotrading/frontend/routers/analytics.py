@@ -11,6 +11,7 @@ from algotrading.core.config import (
 )
 from algotrading.infra.contracts import (
     SURFACE_SIDE_COMBINED,
+    SURFACE_SIDES,
     ForwardCurvePoint,
     MarketStateSnapshot,
     ProjectedOptionAnalytics,
@@ -204,13 +205,22 @@ def _group_by_maturity(
     snapshots: list[MarketStateSnapshot],
     forwards: list[ForwardCurvePoint],
     rate_context: _RateContext | None = None,
+    surface_side: str = SURFACE_SIDE_COMBINED,
 ) -> list[dict[str, object]]:
+    """Maturity entries for ONE surface side (combined / call / put).
+
+    The captured store carries the same maturities for each side, but call and put cells differ in
+    IV (the two wings have genuinely different skew, per the captured SX5E close), so a per-side
+    grouping is real data, not a re-slice of combined. The fitted SVI `surface_slice` is per-maturity
+    (no side discriminator), so every side reads the same slice diagnostics — honest, since only one
+    fit exists per maturity.
+    """
     slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
     quote_index = _listed_options_by_expiry_right(snapshots)
     forward_by_maturity = {_maturity_key(f.maturity_years): f for f in forwards}
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
-        if cell.surface_side != SURFACE_SIDE_COMBINED:
+        if cell.surface_side != surface_side:
             continue
         grouped.setdefault(_maturity_key(cell.maturity_years), []).append(cell)
 
@@ -295,6 +305,91 @@ def _maturities_from_surface_grid(
     return entries
 
 
+_PER_SIDE_DENSE_N_K = 41
+
+
+def _interp_iv(k: float, ks: list[float], ivs: list[float]) -> float | None:
+    """Linear IV at `k` along one slice's (sorted) smile; None OUTSIDE the captured wing.
+
+    Strictly an interpolation of captured cells (never an extrapolation): a `k` past the deepest
+    quoted wing is a null hole, so the surface shows where the side stopped quoting rather than
+    inventing a level. A `k` between two quoted points is linearly blended (the same regularize-only
+    read the smooth fit applies, with no model fabrication).
+    """
+    if not ks or k < ks[0] or k > ks[-1]:
+        return None
+    for left, right in zip(range(len(ks) - 1), range(1, len(ks)), strict=False):
+        k_lo, k_hi = ks[left], ks[right]
+        if k_lo <= k <= k_hi:
+            if k_hi == k_lo:
+                return ivs[left]
+            weight = (k - k_lo) / (k_hi - k_lo)
+            return ivs[left] + weight * (ivs[right] - ivs[left])
+    return ivs[-1]
+
+
+def _dense_from_maturity_entries(
+    entries: list[dict[str, object]],
+    model_version: str,
+) -> dict[str, object] | None:
+    """A clean dense (maturity x log-moneyness) IV grid built from the per-side smile cells.
+
+    The fitted SVI dense surface (`reconstruct_dense_surface`) has no side, so for the call/put views
+    we build the grid from the captured per-side cells. To read as a smooth nappe (not a ragged union
+    of every slice's distinct strikes), every maturity is resampled onto ONE regular log-moneyness
+    axis spanning the captured wings; each cell is a linear interpolation of that slice's quotes, and a
+    point past the slice's deepest quoted wing is a null hole (never extrapolated, blueprint "show the
+    gaps"). Needs >= 2 maturities to read as a surface; otherwise None and the 2D smile is the honest
+    read.
+    """
+    usable = [
+        entry
+        for entry in entries
+        if isinstance(entry.get("smile"), dict)
+        and entry["smile"].get("log_moneyness")  # type: ignore[union-attr]
+    ]
+    if len(usable) < 2:
+        return None
+    usable = sorted(usable, key=lambda e: float(e["maturity_years"]))  # type: ignore[arg-type]
+
+    # One regular k-axis across the captured wings, so the grid is rectangular and smooth.
+    all_k = [
+        float(k)
+        for entry in usable
+        for k in entry["smile"]["log_moneyness"]  # type: ignore[index]
+    ]
+    k_min, k_max = min(all_k), max(all_k)
+    if k_max <= k_min:
+        return None
+    k_axis = [
+        k_min + (k_max - k_min) * i / (_PER_SIDE_DENSE_N_K - 1)
+        for i in range(_PER_SIDE_DENSE_N_K)
+    ]
+
+    maturities = [float(entry["maturity_years"]) for entry in usable]  # type: ignore[arg-type]
+    grid: list[list[float | None]] = []
+    degenerate: list[float] = []
+    for entry in usable:
+        smile = entry["smile"]  # type: ignore[index]
+        pairs = sorted(
+            zip(smile["log_moneyness"], smile["implied_vols"], strict=False),
+            key=lambda p: p[0],
+        )
+        ks = [float(k) for k, _ in pairs]
+        ivs = [float(iv) for _, iv in pairs]
+        grid.append([_interp_iv(k, ks, ivs) for k in k_axis])
+        fitted = entry.get("surface_slice")
+        if isinstance(fitted, dict) and fitted.get("degenerate"):
+            degenerate.append(float(entry["maturity_years"]))  # type: ignore[arg-type]
+    return {
+        "log_moneyness": k_axis,
+        "maturity_years": maturities,
+        "implied_vol": grid,
+        "model_version": model_version,
+        "degenerate_maturity_years": degenerate,
+    }
+
+
 @router.get("")
 def get_analytics(
     ctx: CtxDep,
@@ -327,7 +422,9 @@ def get_analytics(
         trade_date=trade_date,
     )
     rate_context = _load_rate_context(ctx, resolved_underlying, trade_date)
-    maturities = _group_by_maturity(cells, slices, snapshots, forwards, rate_context)
+    maturities = _group_by_maturity(
+        cells, slices, snapshots, forwards, rate_context, SURFACE_SIDE_COMBINED
+    )
     source = "projected_option_analytics"
     if not maturities:
         grid: list[SurfaceGrid] = read_for_underlying(
@@ -340,6 +437,35 @@ def get_analytics(
         if maturities:
             source = "surface_grid"
     dense = reconstruct_dense_surface(slices)
+    combined_dense = dense_surface_to_dict(dense) if dense is not None else None
+
+    # Per-side views (call / put / combined). The captured store carries genuinely different IV for
+    # the call wing and the put wing, so each side is its own data, not a re-slice of combined. Each
+    # side carries its own maturities (smile + per-band Greek points) and its own dense 3D grid built
+    # from those cells. `combined` reuses the maturities/dense already computed above (the default,
+    # backward-compatible `maturities`/`surface`). A side the close did not capture serializes as an
+    # empty maturity list + null dense, so the front degrades to an honest "per-side fit not available
+    # for this close, showing combined", never a fabricated surface.
+    sides: dict[str, list[dict[str, object]]] = {}
+    surfaces_by_side: dict[str, dict[str, object] | None] = {}
+    model_version = dense.model_version if dense is not None else "svi"
+    for side in SURFACE_SIDES:
+        if side == SURFACE_SIDE_COMBINED:
+            side_entries = maturities
+            # The combined 3D prefers the smooth fitted-SVI reconstruction (the existing `surface`),
+            # and falls back to the cell grid when the fit produced no dense surface (e.g. a single
+            # fitted slice), so the per-side toggle always has a combined grid when call/put do.
+            side_dense = combined_dense or _dense_from_maturity_entries(
+                side_entries, model_version
+            )
+        else:
+            side_entries = _group_by_maturity(
+                cells, slices, snapshots, forwards, rate_context, side
+            )
+            side_dense = _dense_from_maturity_entries(side_entries, model_version)
+        sides[side] = side_entries
+        surfaces_by_side[side] = side_dense
+
     coverage = coverage_from_snapshots(snapshots)
     return JSONResponse(
         {
@@ -349,7 +475,12 @@ def get_analytics(
             "n_maturities": len(maturities),
             "source": source,
             "maturities": maturities,
-            "surface": dense_surface_to_dict(dense) if dense is not None else None,
+            "surface": combined_dense,
+            "sides": sides,
+            "surfaces_by_side": surfaces_by_side,
+            "sides_available": sorted(
+                side for side, entries in sides.items() if entries
+            ),
             "coverage": coverage.to_dict() if coverage.option_rows > 0 else None,
             "rate_curve": (
                 rate_curve_to_dict(

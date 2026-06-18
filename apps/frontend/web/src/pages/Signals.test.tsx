@@ -39,7 +39,7 @@ function envelope(over: Partial<SignalsResponse> = {}): SignalsResponse {
       implied_correlation: [
         {
           signal_kind: "implied_correlation",
-          label: "Implied correlation ρ̄",
+          label: "Implied correlation (ρ)",
           subject: "SX5E",
           tenor_label: "3m",
           value: 0.5,
@@ -70,7 +70,7 @@ test("loads underlyings, default-selects one, and renders the per-kind panels", 
   await waitFor(() => expect((select as HTMLSelectElement).value).toBe("SX5E"));
 
   expect(await screen.findByRole("heading", { name: "IV rank" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Implied correlation ρ̄" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Implied correlation (ρ)" })).toBeInTheDocument();
   expect(screen.getByText("62.0%")).toBeInTheDocument();
 });
 

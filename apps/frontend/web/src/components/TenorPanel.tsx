@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { type AnalyticsMaturity, TENOR_GRID } from "../api";
+import { type AnalyticsMaturity, type OptionSide, type SurfaceSide, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
 import { GreeksShapeCurves, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
@@ -49,9 +49,14 @@ export function TenorPanel({
   closeInstant,
   mode,
   coverage,
+  side = "combined",
 }: {
   maturities: AnalyticsMaturity[];
   currency: string;
+  // The selected surface side (combined / call / put). The Greeks table filters to the matching wing
+  // when a single side is selected; combined keeps both wings (ATM shared). The smile/Greeks curves
+  // already carry both wings of the side's own maturities, so they need no further filter.
+  side?: SurfaceSide;
 } & SurfaceIdentityProps) {
   // Which grid tenors actually have a captured maturity, by tenor_label.
   const capturedByTenor = useMemo(() => {
@@ -137,6 +142,7 @@ export function TenorPanel({
               <DollarGreeksByMaturity
                 maturities={maturities}
                 maturityLabel={selected.label}
+                side={side === "combined" ? undefined : (side as OptionSide)}
                 currency={currency}
               />
             </Stack>

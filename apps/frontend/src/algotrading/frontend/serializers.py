@@ -403,7 +403,7 @@ SIGNAL_DISPLAY: dict[str, tuple[str, str]] = {
     SIGNAL_KIND_IV_RANK: ("IV rank", "fraction [0,1]"),
     SIGNAL_KIND_IV_VS_REALIZED: ("Realized − implied", "vol points (annualized)"),
     SIGNAL_KIND_TERM_STRUCTURE_SLOPE: ("Term-structure slope", "vol points (back − front)"),
-    SIGNAL_KIND_IMPLIED_CORRELATION: ("Implied correlation ρ̄", "correlation [-1,1]"),
+    SIGNAL_KIND_IMPLIED_CORRELATION: ("Implied correlation (ρ)", "correlation [-1,1]"),
 }
 
 

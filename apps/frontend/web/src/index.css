@@ -707,34 +707,90 @@ h3 {
   align-items: center;
   gap: var(--space-3xs);
 }
+/* The segmented surface controls (Combined/Call/Put, Clean/Raw, Strict/Indicative). A calm pill: a
+   soft inset track, a single low-contrast hairline, the pressed segment lifted on a quiet raised
+   chip rather than a loud fill. align-items: stretch keeps every segment one height; equal auto
+   columns keep them the width of the widest sibling so the group reads as one intentional control. */
 .mode-toggle {
-  /* Grid with equal auto columns so every segment is exactly as wide as the widest
-     sibling label. align-items: stretch makes all options share a single height. */
   display: inline-grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   align-items: stretch;
-  border: 0.5px solid var(--border-strong);
-  border-radius: 999px;
-  overflow: hidden;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
 }
 .mode-toggle__option {
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  min-height: var(--space-lg);
+  min-height: 26px;
+  white-space: nowrap;
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  padding: var(--space-3xs) var(--space-xs);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: var(--space-3xs) var(--space-sm);
   cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+.mode-toggle__option:hover:not([aria-pressed="true"]):not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
 }
 .mode-toggle__option[aria-pressed="true"] {
   color: var(--amber);
-  background: var(--panel-soft);
+  background: rgba(229, 195, 106, 0.1);
+  border-color: var(--border-strong);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.mode-toggle__option:disabled {
+  color: var(--muted);
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* The Maturity selector, styled to sit beside the segmented pills as one of the surface controls
+   (not a stray form field): the same soft track, hairline border and radius, with a compact select. */
+.surface-select {
+  display: inline-flex;
+  align-items: center;
+}
+.surface-select select {
+  min-height: 30px;
+  padding: var(--space-3xs) var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+.surface-select select:hover {
+  border-color: var(--border-strong);
+}
+
+/* The quiet inline note (e.g. "per-side fit not available, showing combined"): a muted status line
+   above the surface, not an alarm. Distinct from the bordered .state-panel empty state. */
+.state-panel--note {
+  margin-bottom: var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* The dollar-Greeks term structure lays its four Greek panels out two-up (one per Greek). */

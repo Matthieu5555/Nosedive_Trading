@@ -1,18 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  ALL_MATURITIES,
   type AnalyticsMaturity,
   type AnalyticsResponse,
   type IndicesResponse,
   type PriceHistoryResponse,
   type RecordedDatesResponse,
   type SignalsResponse,
+  type SurfaceDense,
+  type SurfaceSide,
+  SURFACE_SIDE_LABELS,
 } from "../api";
 import { EMPTY_FRAME, useSetAssistantFrame } from "../components/Assistant/AssistantContext";
 import { AsyncBlock } from "../components/AsyncBlock";
 import {
   describeSurface,
   PriceChart,
+  SmileChart,
   type SurfaceCoverage,
   type SurfaceMode,
   VolSurface,
@@ -62,6 +67,18 @@ export function MarketPage() {
     setCleanSurface(true);
   }, [index]);
 
+  // Call / Put / Combined is a first-class selector now (the owner ask: calls and puts have
+  // different skew, so each is its own surface). Combined is the landing read; switching the
+  // underlying re-lands on it so a per-side view is always a deliberate choice. The Maturity
+  // selector isolates one tenor (or all) so the surface is not a crammed all-maturities ribbon;
+  // a single maturity prefers the cleaner 2D smile read.
+  const [surfaceSide, setSurfaceSide] = useState<SurfaceSide>("combined");
+  const [surfaceMaturity, setSurfaceMaturity] = useState<string>(ALL_MATURITIES);
+  useEffect(() => {
+    setSurfaceSide("combined");
+    setSurfaceMaturity(ALL_MATURITIES);
+  }, [index]);
+
   const recorded = useFetch<RecordedDatesResponse>(
     index ? `/api/recorded-dates?index=${encodeURIComponent(index)}` : "",
   );
@@ -91,14 +108,57 @@ export function MarketPage() {
       : "",
   );
 
+  // Which sides the close actually captured. A side with no maturities is offered disabled in the
+  // selector (the honest "not captured" state), never silently swapped for combined.
+  const sidesAvailable = useMemo<SurfaceSide[]>(
+    () => analytics.data?.sides_available ?? (analytics.data ? ["combined"] : []),
+    [analytics.data],
+  );
+  // If the chosen side isn't available for this close, fall back to combined (and surface that the
+  // per-side fit isn't there) rather than rendering a blank.
+  const effectiveSide: SurfaceSide =
+    sidesAvailable.includes(surfaceSide) ? surfaceSide : "combined";
+  const perSideFitMissing = surfaceSide !== "combined" && !sidesAvailable.includes(surfaceSide);
+
+  // The selected side's maturities + dense grid. Falls back to the top-level combined view on an
+  // older payload that predates the per-side block, so the page never breaks on a stale BFF.
+  const sideMaturities = useMemo<AnalyticsMaturity[]>(() => {
+    const sides = analytics.data?.sides;
+    if (sides && effectiveSide in sides) return sides[effectiveSide];
+    return analytics.data?.maturities ?? [];
+  }, [analytics.data, effectiveSide]);
+  const sideSurface = useMemo<SurfaceDense | null>(() => {
+    const bySide = analytics.data?.surfaces_by_side;
+    if (bySide && effectiveSide in bySide) return bySide[effectiveSide];
+    return analytics.data?.surface ?? null;
+  }, [analytics.data, effectiveSide]);
+
   // The surface/Greeks data path: clean (default) drops the flagged slices; show-all passes raw. Only
-  // the smile, Greeks and 3D surface read this; the indicator scorecards stay on the raw maturities.
-  const rawMaturities = useMemo(() => analytics.data?.maturities ?? [], [analytics.data]);
+  // the smile, Greeks and 3D surface read this; the indicator scorecards stay on the raw (combined)
+  // maturities. The maturities now follow the selected side.
+  const rawMaturities = sideMaturities;
   const surfaceMaturities = useMemo(
     () => (cleanSurface ? cleanSurfaceMaturities(rawMaturities) : rawMaturities),
     [cleanSurface, rawMaturities],
   );
   const nDroppedSlices = rawMaturities.length - cleanSurfaceMaturities(rawMaturities).length;
+
+  // The maturity options for the selector: "All maturities" plus every captured tenor on the side
+  // in view (near -> far). Listing the side's own tenors keeps the selector honest when a side
+  // captured a different set than combined.
+  const maturityOptions = useMemo<string[]>(() => {
+    const labels = [...surfaceMaturities]
+      .sort((a, b) => a.maturity_years - b.maturity_years)
+      .map((m) => m.label);
+    return [ALL_MATURITIES, ...labels];
+  }, [surfaceMaturities]);
+  // Keep the maturity selection valid as the side changes (a tenor the new side lacks falls back to
+  // all maturities rather than rendering an empty single-maturity view).
+  const effectiveMaturity =
+    surfaceMaturity === ALL_MATURITIES || maturityOptions.includes(surfaceMaturity)
+      ? surfaceMaturity
+      : ALL_MATURITIES;
+  const singleMaturity = effectiveMaturity !== ALL_MATURITIES;
 
   // The index quote-currency ISO code (EUR/USD/...), resolved once from the indices payload. The
   // analytics panels render the symbol (currencySymbol); the constituents table takes the ISO code
@@ -306,6 +366,16 @@ export function MarketPage() {
                           <SurfaceFitPill maturities={rawMaturities} />
                         </Cluster>
                         <Cluster className="panel-heading__toggles" gap="xs" align="center">
+                          <SurfaceSideToggle
+                            side={surfaceSide}
+                            available={sidesAvailable}
+                            onChange={setSurfaceSide}
+                          />
+                          <MaturitySelect
+                            value={effectiveMaturity}
+                            options={maturityOptions}
+                            onChange={setSurfaceMaturity}
+                          />
                           <CleanSurfaceToggle
                             clean={cleanSurface}
                             nDropped={nDroppedSlices}
@@ -315,6 +385,11 @@ export function MarketPage() {
                         </Cluster>
                       </div>
                     </div>
+                    {perSideFitMissing && (
+                      <p className="state-panel state-panel--note" role="status">
+                        Per-side fit not available for this close, showing combined.
+                      </p>
+                    )}
                     <ErrorBoundary label="3D surface">
                       <AsyncBlock
                         loading={analytics.loading}
@@ -327,9 +402,22 @@ export function MarketPage() {
                             <p className="state-panel" role="status">
                               {descriptor.emptyCopy}
                             </p>
+                          ) : singleMaturity ? (
+                            // One maturity isolated: the 2D smile is the cleaner read than a
+                            // single-slice 3D ribbon. Both wings (puts red, calls green) on the
+                            // shared log-moneyness axis for the side in view.
+                            <SmileChart
+                              maturities={surfaceMaturities}
+                              maturityLabel={effectiveMaturity}
+                              subject={index}
+                              asOf={effectiveAsOf}
+                              closeInstant={instant}
+                              mode={surfaceMode}
+                              coverage={surfaceCoverage}
+                            />
                           ) : (
                             <VolSurface
-                              surface={analytics.data.surface}
+                              surface={sideSurface}
                               maturities={surfaceMaturities}
                               subject={index}
                               asOf={effectiveAsOf}
@@ -359,6 +447,7 @@ export function MarketPage() {
                         closeInstant={instant}
                         mode={surfaceMode}
                         coverage={surfaceCoverage}
+                        side={effectiveSide}
                       />
                     )}
                   </AsyncBlock>
@@ -502,6 +591,84 @@ function CleanSurfaceToggle({
         All slices, raw
       </button>
     </div>
+  );
+}
+
+// The Call / Put / Combined selector — a first-class control now, not a buried toggle. Calls and
+// puts carry genuinely different skew, so each is its own surface; combined is the union the page
+// opens on. A side the close did not capture is offered DISABLED (the honest "not captured" state),
+// never silently swapped. Shares the clean .mode-toggle pill styling with the other surface controls.
+const SURFACE_SIDES_ORDER: SurfaceSide[] = ["combined", "call", "put"];
+
+function SurfaceSideToggle({
+  side,
+  available,
+  onChange,
+}: {
+  side: SurfaceSide;
+  available: SurfaceSide[];
+  onChange: (side: SurfaceSide) => void;
+}) {
+  return (
+    <div
+      className="mode-toggle"
+      role="group"
+      aria-label="Surface side"
+      data-tour-id="market.side-toggle"
+    >
+      {SURFACE_SIDES_ORDER.map((option) => {
+        const captured = available.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            className="mode-toggle__option"
+            aria-pressed={side === option}
+            disabled={!captured}
+            title={
+              captured
+                ? option === "combined"
+                  ? "Both wings together, the union read"
+                  : `The ${SURFACE_SIDE_LABELS[option].toLowerCase()} wing on its own`
+                : `${SURFACE_SIDE_LABELS[option]} not captured for this close`
+            }
+            onClick={() => onChange(option)}
+          >
+            {SURFACE_SIDE_LABELS[option]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// The Maturity selector — isolates one tenor (or all). Pulling a single maturity out of the crammed
+// all-maturities ribbon is the owner ask; a single maturity then prefers the cleaner 2D smile read.
+// A plain pill-styled select so it reads as one of the surface controls, not a stray form field.
+function MaturitySelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="surface-select">
+      <span className="visually-hidden">Maturity</span>
+      <select
+        aria-label="Maturity"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

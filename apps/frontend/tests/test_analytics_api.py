@@ -287,6 +287,103 @@ def test_analytics_unknown_ticker_is_empty_not_500(seeded_client: TestClient) ->
     payload = response.json()
     assert payload["n_maturities"] == 0
     assert payload["maturities"] == []
+    # The per-side block is always present (additive contract), and empty when nothing was captured.
+    assert set(payload["sides"]) == {"put", "call", "combined"}
+    assert payload["sides"]["combined"] == []
+    assert payload["sides_available"] == []
+    assert payload["surfaces_by_side"]["call"] is None
+
+
+def _per_side_store(root: Path, seed: ModuleType) -> AppContext:
+    """Two maturities x three sides, with call and put carrying genuinely different IV per band.
+
+    The captured SX5E store really holds distinct call/put/combined cells (the two wings have
+    different skew); this mirrors that shape so the per-side payload and dense grids are exercised
+    against real per-side data, never a re-slice of one combined set.
+    """
+    store = ParquetStore(root)
+    bands = [
+        ("30dp", -0.30, -0.12),
+        ("atm", 0.50, 0.0),
+        ("30dc", 0.30, 0.12),
+    ]
+    side_iv = {"put": 0.31, "call": 0.21, "combined": 0.26}
+    cells = []
+    for maturity, tenor in ((0.25, "3m"), (0.75, "9m")):
+        for side, base_iv in side_iv.items():
+            for band, target, logm in bands:
+                cells.append(
+                    seed.analytics_cell(
+                        delta_band=band,
+                        target_delta=target,
+                        log_moneyness=logm,
+                        # IV walks with the wing so call != put at the same band (real skew shape).
+                        implied_vol=base_iv + 0.05 * logm,
+                        delta=target,
+                        dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
+                        surface_side=side,
+                        maturity_years=maturity,
+                        tenor_label=tenor,
+                    )
+                )
+    store.write("projected_option_analytics", cells)
+    store.write(
+        "surface_parameters",
+        [
+            seed.surface_parameters_row(
+                seed.MEMBER_AAA,
+                SurfaceFitDiagnostics(
+                    rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True,
+                ),
+            )
+        ],
+    )
+    return AppContext(
+        store_root=root,
+        configs_dir=root.parent / "configs",
+        store=ParquetStore(root),
+        default_underlying=seed.MEMBER_AAA,
+    )
+
+
+def test_analytics_serializes_per_side_maturities_and_dense_grids(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    ctx = _per_side_store(tmp_path / "data", seed)
+    with TestClient(create_app(ctx)) as client:
+        payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+
+    # All three sides are present and populated, with the combined view byte-identical to the
+    # backward-compatible top-level `maturities`.
+    assert sorted(payload["sides_available"]) == ["call", "combined", "put"]
+    assert payload["sides"]["combined"] == payload["maturities"]
+    for side in ("put", "call", "combined"):
+        assert len(payload["sides"][side]) == 2  # two maturities per side
+
+    # Call and put carry genuinely different IV at the same band/maturity (the skew asymmetry).
+    call_front = payload["sides"]["call"][0]["smile"]["implied_vols"]
+    put_front = payload["sides"]["put"][0]["smile"]["implied_vols"]
+    assert call_front != put_front
+
+    # Each side gets its own dense 3D grid (>= 2 maturities), shaped maturities x log-moneyness.
+    for side in ("put", "call", "combined"):
+        dense = payload["surfaces_by_side"][side]
+        assert dense is not None
+        n_mat = len(dense["maturity_years"])
+        n_k = len(dense["log_moneyness"])
+        assert n_mat == 2
+        assert n_k >= 2
+        assert len(dense["implied_vol"]) == n_mat
+        assert all(len(row) == n_k for row in dense["implied_vol"])
+
+    # The combined per-side dense and the top-level `surface` agree on shape: with a single fitted
+    # slice the SVI reconstruction yields no dense (`surface` is None), so the combined per-side grid
+    # is the cell-built fallback, keeping the toggle consistent with call/put.
+    assert payload["surface"] is None  # one slice -> no SVI reconstruction
+    assert payload["surfaces_by_side"]["combined"] is not None
 
 
 def test_analytics_bad_trade_date_is_labeled_400(

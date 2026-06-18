@@ -23,6 +23,14 @@ def create_app(
     *,
     openrouter: OpenRouterClient | None = None,
 ) -> FastAPI:
+    # Load the repo-root .env (OPENROUTER_API_KEY, ASSISTANT_MODEL, ...) before any
+    # *.from_env() runs, so the assistant works no matter how the BFF was launched.
+    # The real process environment always wins, so an explicit `VAR=… uvicorn` is
+    # never clobbered. No-op when there is no .env (e.g. CI, which stubs OpenRouter).
+    from .envfile import load_dotenv  # noqa: PLC0415
+
+    load_dotenv()
+
     if ctx is None:
         ctx = AppContext.build()
 

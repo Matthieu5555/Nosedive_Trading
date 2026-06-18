@@ -67,6 +67,22 @@ def _resolve_trade_date(trade_date: str | None) -> date | None:
         return None
 
 
+@router.get("/health")
+def get_assistant_health(client: ClientDep) -> JSONResponse:
+    """Cheap readiness probe, no LLM call. Reports whether the OpenRouter key is
+    present and which model the BFF will use, so a launcher can verify the
+    assistant is wired up without spending tokens on a real completion."""
+    configured = client.config.has_key()
+    return JSONResponse(
+        {
+            "configured": configured,
+            "model": client.config.reasoning_model,
+            "gloss_model": client.config.gloss_model,
+        },
+        status_code=200 if configured else 503,
+    )
+
+
 @router.post("")
 def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JSONResponse:
     resolved_date = _resolve_trade_date(body.trade_date)

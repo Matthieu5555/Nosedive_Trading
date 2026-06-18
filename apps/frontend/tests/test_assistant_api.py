@@ -508,6 +508,34 @@ def test_client_model_routing_picks_distinct_models() -> None:
     assert client.model_for(gloss=True) == "anthropic/claude-haiku-4-5"
 
 
+# --- Readiness probe -----------------------------------------------------------------------
+
+def test_health_reports_configured_and_model_without_an_llm_call(ctx: AppContext) -> None:
+    configured = OpenRouterClient(
+        OpenRouterConfig(
+            api_key="k",
+            reasoning_model="qwen/qwen3.6-flash",
+            gloss_model="qwen/qwen3.6-flash",
+        )
+    )
+    with _client(ctx, configured) as client:
+        resp = client.get("/api/assistant/health")
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "configured": True,
+        "model": "qwen/qwen3.6-flash",
+        "gloss_model": "qwen/qwen3.6-flash",
+    }
+
+
+def test_health_is_503_when_no_key(ctx: AppContext) -> None:
+    unconfigured = OpenRouterClient(OpenRouterConfig.from_env({}))
+    with _client(ctx, unconfigured) as client:
+        resp = client.get("/api/assistant/health")
+    assert resp.status_code == 503
+    assert resp.json()["configured"] is False
+
+
 # --- Streaming -----------------------------------------------------------------------------
 
 def test_stream_endpoint_relays_tokens(ctx: AppContext) -> None:

@@ -422,14 +422,15 @@ test("a strike with no quotes shows '-' for bid/ask/volume (honest gap, no fabri
   expect(within(noQuoteRow).getAllByText("-").length).toBeGreaterThanOrEqual(3);
 });
 
-test("the tenor panel shows Greek shape curves beside the Greeks table (complementary)", async () => {
+test("the tenor panel shows a single-Greek chart beside the Greeks table (complementary)", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   render(<MarketPage />);
 
-  // The §3.6 profiles: delta S-curve + gamma/vega bells vs strike, alongside the raw/$ table.
+  // The §3.6 profile, alongside the raw/$ table: one chart for one selected Greek, opening on the
+  // delta S-curve. A Greek selector drives which Greek is shown (no more three crammed onto one chart).
   expect(await screen.findByRole("table", { name: /Dollar Greeks, 3m/i })).toBeInTheDocument();
-  const curves = await screen.findByLabelText(/Greeks 3m/i);
-  expect(within(curves).getByTestId("plot-types").textContent).toMatch(/scatter,scatter,scatter/);
+  const curves = await screen.findByLabelText(/delta 3m/i);
+  expect(within(curves).getByTestId("plot-types").textContent).toBe("scatter");
 });
 
 test("the surface renders a degenerate slice legibly (108%/140% IV clamped, not a spike)", async () => {

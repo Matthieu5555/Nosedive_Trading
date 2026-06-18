@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { type AnalyticsMaturity, type OptionSide, type SurfaceSide, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
-import { GreeksShapeCurves, SmileChart, type SurfaceIdentityProps } from "./charts";
+import { GreekCurve, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
 import { Stack } from "./layout";
 import { PriceStructure } from "./PriceStructure";
@@ -130,7 +130,7 @@ export function TenorPanel({
                 table each get the full width, stacked. Chart first (the shape read), then the
                 table (the exact per-band numbers underneath it). */}
             <Stack gap="lg">
-              <GreeksShapeCurves
+              <GreekCurve
                 maturities={maturities}
                 maturityLabel={selected.label}
                 subject={subject}

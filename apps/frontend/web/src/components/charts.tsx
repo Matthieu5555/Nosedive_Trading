@@ -1,4 +1,5 @@
-import type { Data } from "plotly.js";
+import type { Data, Layout } from "plotly.js";
+import { useState } from "react";
 
 import {
   ALL_MATURITIES,
@@ -17,6 +18,8 @@ import {
 } from "../lib/volRobust";
 import { CandleChart } from "./CandleChart";
 import { CHART_COLORS, VOL_COLORSCALE } from "./chartTheme";
+import { InfoDot } from "./InfoDot";
+import { Cluster, Stack } from "./layout";
 import { Plot } from "./Plot";
 
 // Two distinct ceilings, split out of the old single `IV_SANE_MAX` reused for both jobs:
@@ -322,9 +325,7 @@ export function floorSliceDenseSurface(
       ...surface,
       maturity_years: keptYears,
       implied_vol: keptIdx.map((i) => surface.implied_vol[i] ?? []),
-      ...(filledRows
-        ? { implied_vol_filled: keptIdx.map((i) => filledRows[i] ?? []) }
-        : {}),
+      ...(filledRows ? { implied_vol_filled: keptIdx.map((i) => filledRows[i] ?? []) } : {}),
       degenerate_maturity_years: surface.degenerate_maturity_years.filter((y) => keptSet.has(y)),
     },
     appliedFloorYears,
@@ -688,22 +689,183 @@ export function SmileChart({
   return <Plot label={label} height={360} data={traces} layout={SMILE_LAYOUT} />;
 }
 
-const GREEKS_SHAPE_HOW_TO_READ =
-  "Greeks vs strike ; gamma/vega bell, call-delta S-curve from near 1 (low strikes) to near 0 (high strikes)";
+// One single-Greek chart driven by a Greek SELECTOR (replacing the old dual-axis overlay, which
+// crammed delta, gamma and vega onto one chart and squashed gamma's bell under vega's scale). The
+// dominant choice here, WHICH Greek, becomes a prominent calm-pill selector (the page's "important
+// filters become selectors" idiom); the single chart re-renders centered on the picked Greek with
+// its OWN auto-scaled y-axis and correct unit. Theta and rho, never charted before, are now first
+// class; rho stays deliberately out (the owner's standing rule, ugly in the dollar table).
 
-const GREEKS_SHAPE_LAYOUT = {
-  yaxis: { title: { text: "call delta (S-curve)" }, zeroline: true, tickformat: ".2f" },
-  yaxis2: {
-    title: { text: "gamma / vega (bell)" },
-    overlaying: "y" as const,
-    side: "right" as const,
-    showgrid: false,
+// The first-order Greeks an operator reads first; delta is the natural default. Rho is excluded by
+// the owner's standing rule. Each carries its raw unit (UNITS, the house vocabulary), the trace
+// colour, the tick format for its scale, and a plain how-to-read gloss.
+type FirstOrderGreekName = "delta" | "gamma" | "vega" | "theta";
+type SecondOrderGreekName = "vanna" | "volga" | "charm";
+type GreekName = FirstOrderGreekName | SecondOrderGreekName;
+
+type GreekGroup = "first-order" | "second-order";
+
+interface GreekSpec {
+  name: GreekName;
+  group: GreekGroup;
+  rawUnit: string;
+  color: string;
+  // Plotly tick format for this Greek's own scale: delta is a plain S-curve fraction (.2f), the rest
+  // span orders of magnitude so they read in compact scientific (.2g).
+  tickFormat: string;
+  howToRead: string;
+}
+
+const GREEK_SPECS: ReadonlyArray<GreekSpec> = [
+  {
+    name: "delta",
+    group: "first-order",
+    rawUnit: UNITS.delta,
+    color: CHART_COLORS.positive,
+    tickFormat: ".2f",
+    howToRead:
+      "call delta vs strike, one continuous S-curve from near 1 (low strikes, deep in the money) to near 0 (high strikes)",
   },
-  legend: { orientation: "h" as const, y: -0.22 },
-  hovermode: "closest" as const,
-};
+  {
+    name: "gamma",
+    group: "first-order",
+    rawUnit: UNITS.gamma,
+    color: CHART_COLORS.blue,
+    tickFormat: ".2g",
+    howToRead: "gamma vs strike, a bell peaking around the at-the-money strike",
+  },
+  {
+    name: "vega",
+    group: "first-order",
+    rawUnit: UNITS.vega,
+    color: CHART_COLORS.negative,
+    tickFormat: ".2g",
+    howToRead: "vega vs strike, a bell peaking around the at-the-money strike",
+  },
+  {
+    name: "theta",
+    group: "first-order",
+    rawUnit: UNITS.theta,
+    color: CHART_COLORS.amber,
+    tickFormat: ".2g",
+    howToRead: "theta (time decay) vs strike, most negative around the at-the-money strike",
+  },
+  {
+    name: "vanna",
+    group: "second-order",
+    rawUnit: UNITS.vanna,
+    color: CHART_COLORS.blue,
+    tickFormat: ".2g",
+    howToRead: "vanna vs strike, how delta itself moves as volatility moves",
+  },
+  {
+    name: "volga",
+    group: "second-order",
+    rawUnit: UNITS.volga,
+    color: CHART_COLORS.negative,
+    tickFormat: ".2g",
+    howToRead: "volga vs strike, how vega itself moves as volatility moves",
+  },
+  {
+    name: "charm",
+    group: "second-order",
+    rawUnit: UNITS.charm,
+    color: CHART_COLORS.amber,
+    tickFormat: ".2g",
+    howToRead: "charm vs strike, how delta itself decays as time passes",
+  },
+];
 
-export function GreeksShapeCurves({
+const DEFAULT_GREEK: GreekName = "delta";
+
+const GREEK_GROUP_INFO =
+  "First order is delta, gamma, vega, theta, the four read first. Second order is vanna, volga, " +
+  "charm, how the first-order Greeks themselves move as volatility or time changes. Second-order " +
+  "Greeks are banked on the same projected cell; a close projected before they existed shows them " +
+  "as a gap, not a value.";
+
+function specFor(name: GreekName): GreekSpec {
+  return GREEK_SPECS.find((s) => s.name === name) ?? GREEK_SPECS[0];
+}
+
+// The raw value of one Greek at a point. Delta is rewritten onto the single call-delta branch
+// upstream (singleBranchDeltaPoints), so it reads off metrics.delta.raw like the rest. The
+// second-order set is additive-nullable, so a missing metric reads as a null (an honest gap), never
+// a fabricated zero.
+function greekRawAt(point: AnalyticsPoint, name: GreekName): number | null {
+  const metric = point.metrics[name];
+  const raw = metric?.raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+}
+
+// The at-the-money strike: the point whose log-moneyness is nearest zero (the spot pivot). Used to
+// draw the vertical ATM marker line so the eye lands on the structurally important strike first.
+function atmStrike(points: AnalyticsPoint[]): number | null {
+  if (points.length === 0) return null;
+  let best = points[0];
+  for (const p of points) {
+    if (Math.abs(p.log_moneyness) < Math.abs(best.log_moneyness)) best = p;
+  }
+  return best.strike;
+}
+
+// The Greek SELECTOR: a first-order / second-order switch (reusing the Dollar Greeks table's
+// language) plus a calm-pill row of the Greeks in the active group. One pill language, matching the
+// surface side / clean-raw / strict-indicative toggles on this page.
+function GreekSelector({
+  group,
+  greek,
+  onGroupChange,
+  onGreekChange,
+}: {
+  group: GreekGroup;
+  greek: GreekName;
+  onGroupChange: (group: GreekGroup) => void;
+  onGreekChange: (greek: GreekName) => void;
+}) {
+  const greeksInGroup = GREEK_SPECS.filter((s) => s.group === group);
+  return (
+    <Cluster className="panel-heading__controls" gap="xs" align="center">
+      <div className="mode-toggle" role="group" aria-label="Greek group">
+        <button
+          type="button"
+          className="mode-toggle__option"
+          aria-pressed={group === "first-order"}
+          title="Delta, gamma, vega, theta, the four read first"
+          onClick={() => onGroupChange("first-order")}
+        >
+          First order
+        </button>
+        <button
+          type="button"
+          className="mode-toggle__option"
+          aria-pressed={group === "second-order"}
+          title="Vanna, volga, charm, how the first-order Greeks themselves move"
+          onClick={() => onGroupChange("second-order")}
+        >
+          Second order
+        </button>
+      </div>
+      <div className="mode-toggle" role="group" aria-label="Greek">
+        {greeksInGroup.map((spec) => (
+          <button
+            key={spec.name}
+            type="button"
+            className="mode-toggle__option"
+            aria-pressed={greek === spec.name}
+            title={spec.howToRead}
+            onClick={() => onGreekChange(spec.name)}
+          >
+            {spec.name}
+          </button>
+        ))}
+      </div>
+      <InfoDot label="About first- and second-order Greeks" body={GREEK_GROUP_INFO} />
+    </Cluster>
+  );
+}
+
+export function GreekCurve({
   maturities,
   maturityLabel,
   subject,
@@ -716,18 +878,47 @@ export function GreeksShapeCurves({
   maturities: AnalyticsMaturity[];
   maturityLabel?: string;
 } & SurfaceIdentityProps) {
-  const baseDescriptor = describeSurface({ subject, asOf, closeInstant, mode, coverage });
-  const layout = {
-    ...GREEKS_SHAPE_LAYOUT,
-    xaxis: { title: { text: axisStrike(currency) }, tickformat: ".2s" },
+  // Local selection, mirroring TenorPanel's `tenor` / DollarGreeksByMaturity's `group` useState
+  // pattern. Opens on delta (the natural default, the continuous S-curve), first-order group.
+  const [group, setGroup] = useState<GreekGroup>("first-order");
+  const [greek, setGreek] = useState<GreekName>(DEFAULT_GREEK);
+  const spec = specFor(greek);
+
+  // Switching group moves the selection to the first Greek of the group it lands on, so the chart is
+  // never left on a Greek that is no longer in the visible pill row.
+  const changeGroup = (next: GreekGroup) => {
+    if (next === group) return;
+    setGroup(next);
+    const first = GREEK_SPECS.find((s) => s.group === next);
+    if (first) setGreek(first.name);
   };
+
+  const baseDescriptor = describeSurface({ subject, asOf, closeInstant, mode, coverage });
+  const heading = (
+    <div className="panel-heading">
+      <div>
+        <p className="panel-kicker">Greeks shape</p>
+        <h3>Greek vs strike</h3>
+      </div>
+      <GreekSelector
+        group={group}
+        greek={greek}
+        onGroupChange={changeGroup}
+        onGreekChange={setGreek}
+      />
+    </div>
+  );
+
   if (maturities.length === 0) {
-    const label = `${baseDescriptor.title}, Greeks, ${GREEKS_SHAPE_HOW_TO_READ}`;
+    const label = `${baseDescriptor.title}, ${spec.name}, ${spec.howToRead}`;
     return (
-      <figure aria-label={label} className="plot">
-        <figcaption>{label}</figcaption>
-        <p role="status">{baseDescriptor.emptyCopy}</p>
-      </figure>
+      <Stack as="section" aria-label="Greek vs strike" gap="sm">
+        {heading}
+        <figure aria-label={label} className="plot">
+          <figcaption>{label}</figcaption>
+          <p role="status">{baseDescriptor.emptyCopy}</p>
+        </figure>
+      </Stack>
     );
   }
 
@@ -740,55 +931,83 @@ export function GreeksShapeCurves({
   // A single smile carries both wings (put-quoted low strikes, call-quoted high strikes) with the
   // at-the-money strike duplicated. singleBranchDeltaPoints dedupes by strike and rewrites delta onto
   // one (call) convention, so the delta trace is a single continuous S-curve instead of an impossible
-  // vertical spike where the put and call branches cross at the money. Gamma/vega read the same
-  // deduplicated set so all three curves share one strike axis.
+  // vertical spike where the put and call branches cross at the money. Every Greek reads this same
+  // deduplicated, strike-sorted set so the x axis is one clean strike axis.
   const points: AnalyticsPoint[] = singleBranchDeltaPoints(maturity.points);
-  const label = `${baseDescriptor.title}, Greeks ${maturity.label} (${GREEKS_SHAPE_HOW_TO_READ})`;
-  if (points.length === 0) {
+  const label = `${baseDescriptor.title}, ${spec.name} ${maturity.label} (${spec.howToRead})`;
+
+  // The (strike, value) pairs for the selected Greek, dropping points where this Greek has no value
+  // (the second-order gap), so a half-banked close charts the points it has rather than nothing.
+  const pairs: Array<[number, number]> = [];
+  for (const p of points) {
+    const value = greekRawAt(p, greek);
+    if (value !== null) pairs.push([p.strike, value]);
+  }
+
+  if (pairs.length === 0) {
+    // No value for this Greek at this close, an honest gap (an older projection that predates the
+    // second-order set, or no projected points at all), never a blank or fabricated curve.
+    const gapCopy =
+      spec.group === "second-order"
+        ? `${spec.name} was not banked for this close, nothing to chart (older projection).`
+        : baseDescriptor.emptyCopy;
     return (
-      <figure aria-label={label} className="plot">
-        <figcaption>{label}</figcaption>
-        <p role="status">{baseDescriptor.emptyCopy}</p>
-      </figure>
+      <Stack as="section" aria-label="Greek vs strike" gap="sm">
+        {heading}
+        <figure aria-label={label} className="plot">
+          <figcaption>{label}</figcaption>
+          <p role="status">{gapCopy}</p>
+        </figure>
+      </Stack>
     );
   }
 
-  const strikes = points.map((p) => p.strike);
-  const deltaCurve: Data = {
+  const trace: Data = {
     type: "scatter",
     mode: "lines+markers",
-    name: "delta",
-    x: strikes,
-    y: points.map((p) => p.metrics.delta.raw),
-    yaxis: "y",
-    line: { color: CHART_COLORS.positive, width: 2 },
-    marker: { color: CHART_COLORS.positive, size: 4 },
-    hovertemplate: `strike %{x:.4s}<br>delta %{y:.4f} ${UNITS.delta}<extra>delta</extra>`,
+    name: spec.name,
+    x: pairs.map((pair) => pair[0]),
+    y: pairs.map((pair) => pair[1]),
+    line: { color: spec.color, width: 2 },
+    marker: { color: spec.color, size: 5 },
+    hovertemplate: `strike %{x:.4s}<br>${spec.name} %{y:.4g} ${spec.rawUnit}<extra>${spec.name}</extra>`,
   };
-  const gammaCurve: Data = {
-    type: "scatter",
-    mode: "lines+markers",
-    name: "gamma",
-    x: strikes,
-    y: points.map((p) => p.metrics.gamma.raw),
-    yaxis: "y2",
-    line: { color: CHART_COLORS.muted, width: 2 },
-    marker: { color: CHART_COLORS.muted, size: 4 },
-    hovertemplate: `strike %{x:.4s}<br>gamma %{y:.4g} ${UNITS.gamma}<extra>gamma</extra>`,
-  };
-  const vegaCurve: Data = {
-    type: "scatter",
-    mode: "lines+markers",
-    name: "vega",
-    x: strikes,
-    y: points.map((p) => p.metrics.vega.raw),
-    yaxis: "y2",
-    line: { color: CHART_COLORS.negative, width: 2, dash: "dot" },
-    marker: { color: CHART_COLORS.negative, size: 4 },
-    hovertemplate: `strike %{x:.4s}<br>vega %{y:.4g} ${UNITS.vega}<extra>vega</extra>`,
+
+  // The vertical at-the-money marker line: a thin amber line at the ATM strike (the spot pivot the
+  // eye should land on first), drawn as a layout shape so it sits behind the curve without joining it.
+  const atm = atmStrike(points);
+  const shapes: NonNullable<Layout["shapes"]> =
+    atm !== null
+      ? [
+          {
+            type: "line",
+            x0: atm,
+            x1: atm,
+            yref: "paper",
+            y0: 0,
+            y1: 1,
+            line: { color: CHART_COLORS.amber, width: 1, dash: "dot" },
+          },
+        ]
+      : [];
+
+  // One auto-scaled y-axis, sized to THIS Greek alone (no shared dual axis), with its own unit on the
+  // title and a tick format that suits its scale. The x axis is the strike axis, re-currencied.
+  const layout: Partial<Layout> = {
+    xaxis: { title: { text: axisStrike(currency) }, tickformat: ".2s" },
+    yaxis: {
+      title: { text: `${spec.name} (${spec.rawUnit})` },
+      zeroline: true,
+      tickformat: spec.tickFormat,
+    },
+    shapes,
+    hovermode: "closest",
   };
 
   return (
-    <Plot label={label} height={360} data={[deltaCurve, gammaCurve, vegaCurve]} layout={layout} />
+    <Stack as="section" aria-label="Greek vs strike" gap="sm">
+      {heading}
+      <Plot label={label} height={360} data={[trace]} layout={layout} />
+    </Stack>
   );
 }

@@ -181,21 +181,21 @@ function reconciliationError(error: Error | null): string | null {
 }
 
 function ScenarioBoard({ data }: { data: ScenariosResponse }) {
-  // The summary scorecards and the rate sweep are narrow, text-heavy panels; the heatmap and the 3D
-  // surface are wide chart panels that already span every column (`grid-column: 1 / -1` in the shared
-  // panel CSS). With a 280px `min` the auto-fit grid opened four-plus slivers on a wide screen, so the
-  // summary panel and the rate sweep collapsed into a single ~280px rail and the right two thirds of
-  // the page stayed empty. A larger `min` caps the grid at two columns: the summary and the rate
-  // sweep pair up on one full-width row, the charts span both columns beneath them, and nothing is
-  // crammed into a sliver.
+  // Owner: "the element should take the entire subspace or should be centered at the very least."
+  // StressSurface emits four panels in order: the narrow text summary, the wide heatmap, the wide 3D
+  // surface, then (here) the narrow rate sweep. In an auto-fit grid the two wide charts already span
+  // every column (`grid-column: 1 / -1`), but because they sit BETWEEN the two narrow panels the
+  // summary and the rate sweep can never pair on one row, so each landed alone in a single track and
+  // left the rest of the row empty, the "cramped left, big void right" complaint. A plain vertical
+  // Stack makes every panel full-width, so each one fills the whole container and nothing is crammed.
   return (
-    <Grid min="440px" gap="md">
+    <Stack gap="md">
       <StressSurface
         surface={data.surface}
         kicker={data.portfolio_id ?? "All portfolios"}
         emptyMessage="No stress surface persisted yet for this selection."
       />
       {data.rate && data.rate.length > 0 && <RateSweep rates={data.rate} />}
-    </Grid>
+    </Stack>
   );
 }

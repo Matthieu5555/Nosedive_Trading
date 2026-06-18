@@ -689,3 +689,94 @@ def test_smile_axis_dedups_the_atm_put_pillar_but_keeps_it_in_points(
     ]
     assert len(entry["points"]) == 4
     assert {p["delta_band"] for p in entry["points"]} == {"02dp", "atm", "atmp", "02dc"}
+
+
+def test_off_grid_reading_tenor_still_binds_its_slice_forward_and_quote(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # Regression for the blank bid / ask / spread / volume columns the PM saw on the Price structure
+    # table. The projected analytics live on a fixed READING-TENOR grid (10d / 1m / 3m ...), while the
+    # fitted slices, forwards and listed-option snapshots live on the captured EXPIRY maturities. The
+    # two grids never share a maturity key, so the old exact-key join silently left every cell with no
+    # slice, no forward and no quote. Here the cell sits at 0.2466y (a reading tenor) while the slice /
+    # forward / quote-expiry are at 0.25y; the nearest-maturity join must still thread all three
+    # through. Built directly (not via _analytics_store_with_quotes, which seeds an on-grid cell).
+    from algotrading.frontend.routers.analytics import _group_by_maturity
+
+    off_grid_maturity = 0.2466  # ~90 calendar days, the 3m reading tenor, off the 0.25y slice
+    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
+    put_bid, put_ask, put_volume = 4.10, 4.40, 1875.0
+    cells = [
+        seed.analytics_cell(
+            delta_band="30dp",
+            target_delta=seed.AN_PUT_DELTA,
+            log_moneyness=seed.AN_PUT_LOGM,
+            implied_vol=seed.AN_PUT_IV,
+            delta=seed.AN_PUT_DELTA,
+            dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
+            maturity_years=off_grid_maturity,
+        ),
+    ]
+    slices = [
+        seed.surface_parameters_row(
+            seed.MEMBER_AAA,
+            SurfaceFitDiagnostics(
+                rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True
+            ),
+        )
+    ]
+    snapshots = [
+        _quote_snapshot(
+            seed, strike=put_strike, right="P", bid=put_bid, ask=put_ask, volume=put_volume
+        )
+    ]
+    forwards = [
+        _forward_curve_point(
+            seed, implied_rate=0.031, implied_carry=0.0, implied_dividend=0.02
+        )
+    ]
+
+    entry = _group_by_maturity(cells, slices, snapshots, forwards)[0]
+    point = next(p for p in entry["points"] if p["delta_band"] == "30dp")
+    assert point["quote"]["bid"] == pytest.approx(put_bid)
+    assert point["quote"]["ask"] == pytest.approx(put_ask)
+    assert point["quote"]["volume"] == pytest.approx(put_volume)
+    # The fitted slice and the per-tenor rate diagnostic must also bind through the nearest join, so
+    # the surface-fit pill and Rate diagnostics panel are populated, not the broken "fit not
+    # available" / "projection gap" state.
+    assert entry["surface_slice"] is not None
+    assert entry["rate_diagnostics"] is not None
+
+
+def test_reading_tenor_with_no_captured_neighbour_stays_unbound(
+    seed: ModuleType,
+) -> None:
+    # The honest gap: a reading tenor far from any captured maturity (a 3y read against a chain that
+    # stops at 3m) must NOT be yoked to the distant slice / forward. The cell keeps a null quote
+    # block and a null surface_slice rather than a mismatched join.
+    from algotrading.frontend.routers.analytics import _group_by_maturity
+
+    far_cell = [
+        seed.analytics_cell(
+            delta_band="30dp",
+            target_delta=seed.AN_PUT_DELTA,
+            log_moneyness=seed.AN_PUT_LOGM,
+            implied_vol=seed.AN_PUT_IV,
+            delta=seed.AN_PUT_DELTA,
+            dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
+            maturity_years=3.0,
+            tenor_label="3y",
+        ),
+    ]
+    slices = [
+        seed.surface_parameters_row(
+            seed.MEMBER_AAA,
+            SurfaceFitDiagnostics(
+                rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True
+            ),
+        )
+    ]
+    entry = _group_by_maturity(far_cell, slices, [], [])[0]
+    assert entry["surface_slice"] is None
+    point = entry["points"][0]
+    assert point["quote"] == {"bid": None, "ask": None, "volume": None}

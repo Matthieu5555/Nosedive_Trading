@@ -113,6 +113,37 @@ def _quote_for_cell(
     return _nearest_quote(index.get((expiry, right), []), cell.strike)
 
 
+# The projected analytics live on a fixed reading-tenor grid (10d / 1m / 3m / 6m / 12m / 18m),
+# while the fitted slices, forwards and listed-option snapshots live on the ACTUAL captured
+# expiries (2026-06-26, 2026-07-17, ...). The two grids never share a `_maturity_key`, so an
+# exact-key join silently left every cell with no slice, no forward and no quote, the symptom the
+# PM saw as blank bid / ask / spread / volume columns. We instead pair each reading tenor with its
+# NEAREST captured maturity, within a relative tolerance so a tenor with no captured neighbour stays
+# honestly unpaired (e.g. a 3y read against a chain that stops at 18m) rather than being yoked to a
+# far-off expiry.
+_MATURITY_MATCH_REL_TOL = 0.25
+
+
+def _nearest_by_maturity[T](
+    maturity_years: float,
+    candidates: list[tuple[float, T]],
+) -> T | None:
+    """The candidate whose maturity is closest to `maturity_years`, within the relative tolerance.
+
+    `candidates` is a list of (candidate_maturity_years, candidate) pairs. Returns None when nothing
+    is within tolerance (the reading tenor falls outside the captured chain), so the caller surfaces
+    an honest gap instead of a mismatched join.
+    """
+    if not candidates or maturity_years <= 0.0:
+        return None
+    nearest_maturity, nearest = min(
+        candidates, key=lambda pair: abs(pair[0] - maturity_years)
+    )
+    if abs(nearest_maturity - maturity_years) > _MATURITY_MATCH_REL_TOL * maturity_years:
+        return None
+    return nearest
+
+
 def _smile_axis_cells(
     maturity_cells: list[ProjectedOptionAnalytics],
 ) -> list[ProjectedOptionAnalytics]:
@@ -215,9 +246,12 @@ def _group_by_maturity(
     (no side discriminator), so every side reads the same slice diagnostics — honest, since only one
     fit exists per maturity.
     """
-    slice_by_maturity = {_maturity_key(s.maturity_years): s for s in slices}
+    # The reading-tenor cell grid does not line up with the captured-expiry slices / forwards, so we
+    # pair each by NEAREST maturity (within tolerance), not by an exact key that never matches. An
+    # exact key still wins when present (the seeded-test case), since it is also the nearest.
+    slice_candidates = [(s.maturity_years, s) for s in slices]
+    forward_candidates = [(f.maturity_years, f) for f in forwards]
     quote_index = _listed_options_by_expiry_right(snapshots)
-    forward_by_maturity = {_maturity_key(f.maturity_years): f for f in forwards}
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
         if cell.surface_side != surface_side:
@@ -228,7 +262,8 @@ def _group_by_maturity(
     for key in sorted(grouped, key=float):
         maturity_cells = sorted(grouped[key], key=lambda c: c.target_delta)
         tenor_label = maturity_cells[0].tenor_label
-        fitted = slice_by_maturity.get(key)
+        maturity_years = maturity_cells[0].maturity_years
+        fitted = _nearest_by_maturity(maturity_years, slice_candidates)
         expiry = fitted.expiry_date if fitted is not None else None
         points = [
             projected_option_analytics_to_dict(
@@ -236,7 +271,7 @@ def _group_by_maturity(
             )
             for cell in maturity_cells
         ]
-        forward = forward_by_maturity.get(key)
+        forward = _nearest_by_maturity(maturity_years, forward_candidates)
         smile_cells = _smile_axis_cells(maturity_cells)
         entries.append(
             {

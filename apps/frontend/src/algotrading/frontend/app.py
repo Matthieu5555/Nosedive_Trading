@@ -28,6 +28,13 @@ def create_app(
 
     configure_logging()
 
+    # Opt-in synthetic book: when DEMO_BOOK=1 and the demo tables are empty,
+    # populate the positions/risk/reconciliation surfaces for the banked closes
+    # so those tabs render real numbers. No-op (graceful-empty) when unset.
+    from .demo_populate import ensure_demo_book  # noqa: PLC0415
+
+    ensure_demo_book(ctx)
+
     runner = PipelineRunner()
     assistant_client = (
         openrouter

@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.23.9"
-app = marimo.App(width="medium")
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -32,14 +32,13 @@ def _():
         build_book,
         ctx,
         go,
+        load_platform_config,
         mo,
         np,
         position_risk,
         read_for_underlying,
         realized_volatility,
         reconstruct_valuation,
-        load_platform_config,
-        timedelta,
     )
 
 
@@ -97,7 +96,7 @@ def _(build_book, ctx, load_platform_config, read_for_underlying):
 
 
 @app.cell
-def _(basket_risk, all_rows, book):
+def _(all_rows, basket_risk, book):
     risk = basket_risk(book, analytics_rows=all_rows, spot_by_underlying={})
     resolved_legs = [lr for lr in risk.legs if lr.resolved]
     return resolved_legs, risk
@@ -105,8 +104,8 @@ def _(basket_risk, all_rows, book):
 
 @app.cell
 def _(mo, resolved_legs, trade_date, underlyings):
-    mo.md(
-        f"# Risk dashboard\n\n"
+    mo.md(f"""
+    # Risk dashboard\n\n"
         f"What's the risk, what explains a move, where can we blow up, and where did vol go — "
         f"for a **constructed book** of {len(resolved_legs)} option legs across {len(underlyings)} "
         f"names, on **{trade_date.isoformat()}**.\n\n"
@@ -114,8 +113,8 @@ def _(mo, resolved_legs, trade_date, underlyings):
         f"offline store, so the dashboard seeds a plausible vol-seller book (sell at-the-money, own "
         f"crash protection) to have something real to measure. Every number *on* that book is the "
         f"real risk engine — only the positions are synthetic. P&L attribution is therefore a "
-        f"**hypothetical scenario**, not a realised day."
-    )
+        f"**hypothetical scenario**, not a realised day.
+    """)
     return
 
 
@@ -151,7 +150,7 @@ def _(mo, underlyings):
 
 
 @app.cell
-def _(go, mo, resolved_legs, risk):
+def _(mo, resolved_legs, risk):
     # === The book ===
     _rows = [
         {
@@ -191,7 +190,7 @@ def _(go, mo, resolved_legs, risk):
 
 
 @app.cell
-def _(basket_stress, all_rows, book, cur_by, go, mo, np, scenario_config):
+def _(all_rows, basket_stress, book, cur_by, go, mo, np, scenario_config):
     # === ① Scenario heatmap (spot x vol) — the most important PM view ===
     _res = basket_stress(
         book,

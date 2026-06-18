@@ -91,7 +91,7 @@ export function Scorecards({
   // Where the numbers came from, in PM register: ATM/Skew are projected off the captured surface;
   // slope/IV-rank/RV−IV/ρ̄ are persisted signals the BFF computed (we never recompute one here). The
   // run_id names the exact capture so a PM can defend any number against any question.
-  const provenanceBody = `ATM & Skew are read off the captured volatility surface; Term-structure slope, IV-rank, RV−IV and ρ̄ are persisted signals computed by the backend (never recomputed on the front).${
+  const provenanceBody = `ATM & Skew are read off the captured volatility surface; Term-structure slope, IV-rank, RV−IV and average correlation are persisted signals computed by the backend (never recomputed on the front).${
     runId ? ` Source capture: run ${runId}.` : ""
   }`;
   const tenorNote = card

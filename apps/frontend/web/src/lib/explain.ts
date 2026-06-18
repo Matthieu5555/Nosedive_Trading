@@ -113,9 +113,9 @@ export const EXPLAIN: Record<MetricId, ExplainEntry> = {
     whereFrom: signalWhereFrom,
   },
   rho_bar: {
-    label: "ρ̄",
+    label: "Avg correlation (ρ)",
     whatIs: "implied correlation across the members (hybrid read)",
-    howToRead: "−1..+1; high ρ̄ = members move together, dispersion thin",
+    howToRead: "−1..+1; high correlation = members move together, dispersion thin",
     unit: "(ratio)",
     whereFrom: signalWhereFrom,
   },

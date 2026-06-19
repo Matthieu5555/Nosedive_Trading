@@ -103,9 +103,3 @@ just eod            # capture every enabled index for today
 
 Index options only, EuroStoxx-50-first; Interactive Brokers is the sole live
 broker. Adding or parking an index is configuration, not code.
-
----
-
-*Internals and the build roadmap live in [`TARGET.md`](TARGET.md) and
-[`BIG_PICTURE.md`](BIG_PICTURE.md); contributor process is in
-[`AGENTS.md`](AGENTS.md).*

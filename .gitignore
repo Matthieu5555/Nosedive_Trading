@@ -70,3 +70,15 @@ notebooks/__marimo__/
 
 # TypeScript incremental build artifact
 *.tsbuildinfo
+
+# --- Internal docs & process — kept on disk, out of the published repo.
+# These are the team's working layer (task board, agent instructions, internal
+# roadmap, and the detailed domain/blueprint docs). Untracked, not deleted.
+tasks/
+.agent/
+.claude/skills/
+AGENTS.md
+CLAUDE.md
+TARGET.md
+BIG_PICTURE.md
+docs/

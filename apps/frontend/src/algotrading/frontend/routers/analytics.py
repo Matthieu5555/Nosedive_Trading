@@ -247,8 +247,9 @@ def _group_by_maturity(
 
     The captured store carries the same maturities for each side, but call and put cells differ in
     IV (the two wings have genuinely different skew, per the captured SX5E close), so a per-side
-    grouping is real data, not a re-slice of combined. The fitted SVI `surface_slice` is per-maturity
-    (no side discriminator), so every side reads the same slice diagnostics — honest, since only one
+    grouping is real data, not a re-slice of combined. The fitted SVI `surface_slice` is
+    per-maturity (no side discriminator), so every side reads the same slice diagnostics — honest,
+    since only one
     fit exists per maturity.
     """
     # The reading-tenor cell grid does not line up with the captured-expiry slices / forwards, so we

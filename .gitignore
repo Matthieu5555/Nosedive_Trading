@@ -76,9 +76,11 @@ notebooks/__marimo__/
 # roadmap, and the detailed domain/blueprint docs). Untracked, not deleted.
 tasks/
 .agent/
+.agents/
 .claude/skills/
 AGENTS.md
 CLAUDE.md
 TARGET.md
 BIG_PICTURE.md
-docs/
+docs/transcripts/
+docs/vol-surface/

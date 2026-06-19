@@ -51,7 +51,10 @@ export async function askAssistant(
   body: AssistantRequest,
   signal?: AbortSignal,
 ): Promise<AssistantResponse> {
-  return postJson<AssistantResponse>("/api/assistant", body, signal);
+  // No client-side timeout: this is an LLM call whose slowest grounded answers land near the old
+  // 30s cutoff, so a fixed timeout would race the model. The panel aborts the in-flight request
+  // when a new question is asked, and the BFF has its own bound.
+  return postJson<AssistantResponse>("/api/assistant", body, signal, null);
 }
 
 // --- Guided tour ---------------------------------------------------------------------------------
@@ -97,5 +100,6 @@ export interface GuideRequest {
 }
 
 export async function askGuide(body: GuideRequest, signal?: AbortSignal): Promise<GuideStep> {
-  return postJson<GuideStep>("/api/assistant/guide", body, signal);
+  // Same as askAssistant: an LLM call, no client-side timeout, aborted on the next step.
+  return postJson<GuideStep>("/api/assistant/guide", body, signal, null);
 }

@@ -282,7 +282,7 @@ def _apply_capture_progress(job: JobStatus, line: str, progress: dict[str, Any])
             progress["captured_indices"] = indices
     elif name == _EV_NO_BASKET:
         progress.setdefault("captured_events", 0)
-        job.message = f"{job.underlying}: no live gateway, recording a clean empty day"
+        job.message = f"{job.underlying}: no live capture source bound, recording a clean empty day"
 
 
 def _capture_outcome_message(returncode: int, underlying: str, progress: dict[str, Any]) -> str:
@@ -291,8 +291,12 @@ def _capture_outcome_message(returncode: int, underlying: str, progress: dict[st
         if events:
             return f"Close-capture finished for {underlying}: {events:,} market events banked."
         return (
-            f"Close-capture finished for {underlying} (exit 0). No live gateway was authenticated, "
-            "so a clean empty day was recorded."
+            f"Close-capture finished for {underlying} (exit 0), but it bound no live capture "
+            "source, so a clean empty day was recorded. The subprocess saw no usable source at "
+            "launch (IBKR_CP_GATEWAY unset in this run's environment, the local Gateway not "
+            "reachable/authenticated at that instant, or no hosted-OAuth artifacts). If the IBKR "
+            "panel shows a ready session, re-run the capture, the gateway may have authenticated "
+            "after this run started."
         )
     if returncode == 1:
         return (

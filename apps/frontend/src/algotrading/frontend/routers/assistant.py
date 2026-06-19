@@ -14,6 +14,11 @@ from ..assistant_prompt import (
     is_grounded,
     ungrounded_numbers,
 )
+from ..assistant_structured import (
+    allowed_fact_ids,
+    build_grounded_messages,
+    render_grounded,
+)
 from ..deps import CtxDep
 from ..grounding import MODE_INDICATIVE, MODE_STRICT, build_grounding_context
 from ..guide_prompt import CatalogEntry, build_guide_messages, parse_guide_step
@@ -83,6 +88,27 @@ def get_assistant_health(client: ClientDep) -> JSONResponse:
     )
 
 
+def _unavailable(exc: OpenRouterError, frame: dict[str, object]) -> JSONResponse:
+    return JSONResponse(
+        {"error": "assistant_unavailable", "detail": exc.detail, "frame": frame},
+        status_code=502,
+    )
+
+
+def _answer_payload(
+    answer: str, *, grounded: bool, rejected: list[str], citations: list, frame: dict
+) -> JSONResponse:
+    return JSONResponse(
+        {
+            "answer": answer,
+            "grounded": grounded,
+            "rejected_numbers": rejected,
+            "citations": citations if grounded else [],
+            "frame": frame,
+        }
+    )
+
+
 @router.post("")
 def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JSONResponse:
     resolved_date = _resolve_trade_date(body.trade_date)
@@ -95,31 +121,48 @@ def post_assistant(ctx: CtxDep, client: ClientDep, body: AssistantRequest) -> JS
     )
     frame = grounding.frame.to_dict()
     citations = grounding.citations()
-    messages = build_messages(grounding, body.question)
 
-    try:
-        raw_answer = client.complete(messages, gloss=body.gloss)
-    except OpenRouterError as exc:
-        return JSONResponse(
-            {
-                "error": "assistant_unavailable",
-                "detail": exc.detail,
-                "frame": frame,
-            },
-            status_code=502,
+    # The one-line element gloss is definitional ("what is ATM skew?"), not a live-value
+    # readout, so it keeps the plain free-text path. Every other question goes through the
+    # grounded-by-construction structured path, where the model can only cite on-screen values.
+    if body.gloss:
+        try:
+            raw_answer = client.complete(build_messages(grounding, body.question), gloss=True)
+        except OpenRouterError as exc:
+            return _unavailable(exc, frame)
+        grounded = is_grounded(raw_answer, grounding)
+        return _answer_payload(
+            raw_answer if grounded else honest_gap_answer(),
+            grounded=grounded,
+            rejected=ungrounded_numbers(raw_answer, grounding),
+            citations=citations,
+            frame=frame,
         )
 
-    grounded = is_grounded(raw_answer, grounding)
-    answer = raw_answer if grounded else honest_gap_answer()
+    messages = build_grounded_messages(grounding, body.question)
+    try:
+        parsed = client.complete_grounded(
+            messages, allowed_ids=allowed_fact_ids(grounding)
+        )
+    except OpenRouterError as exc:
+        return _unavailable(exc, frame)
 
-    return JSONResponse(
-        {
-            "answer": answer,
-            "grounded": grounded,
-            "rejected_numbers": ungrounded_numbers(raw_answer, grounding),
-            "citations": citations if grounded else [],
-            "frame": frame,
-        }
+    if not parsed.answerable:
+        return _answer_payload(
+            honest_gap_answer(), grounded=False, rejected=[], citations=[], frame=frame
+        )
+
+    answer = render_grounded(parsed, grounding)
+    # Belt-and-suspenders: placeholders render only on-screen values, so this should never
+    # fire, but the legacy guard stays as a cheap last line of defence.
+    rejected = ungrounded_numbers(answer, grounding)
+    grounded = not rejected
+    return _answer_payload(
+        answer if grounded else honest_gap_answer(),
+        grounded=grounded,
+        rejected=rejected,
+        citations=citations,
+        frame=frame,
     )
 
 

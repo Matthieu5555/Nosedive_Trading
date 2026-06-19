@@ -625,11 +625,22 @@ export type PositionGreekName = (typeof POSITION_GREEK_ORDER)[number];
 
 export const FETCH_TIMEOUT_MS = 30_000;
 
-function requestSignal(signal?: AbortSignal): AbortSignal | undefined {
-  if (typeof AbortSignal === "undefined" || typeof AbortSignal.timeout !== "function") {
+// Most fetches get a 30s client-side cutoff. A caller can pass `timeoutMs: null` to opt out
+// entirely: the assistant runs an LLM whose slowest answers land near 30s, so a fixed cutoff
+// would race the model. Those calls rely on the caller's own AbortSignal (a new question aborts
+// the in-flight one) and the BFF's own bound instead.
+function requestSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number | null,
+): AbortSignal | undefined {
+  if (
+    timeoutMs === null ||
+    typeof AbortSignal === "undefined" ||
+    typeof AbortSignal.timeout !== "function"
+  ) {
     return signal;
   }
-  const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
+  const timeout = AbortSignal.timeout(timeoutMs);
   if (!signal) return timeout;
   return typeof AbortSignal.any === "function" ? AbortSignal.any([signal, timeout]) : signal;
 }
@@ -658,8 +669,13 @@ function errorDetail(payload: unknown, statusText: string): string {
 
 // The one fetch path every call goes through, so error handling cannot diverge per verb: a
 // non-OK response throws a typed ApiError carrying the status and the BFF's labelled detail.
-async function requestJson<T>(path: string, init: RequestInit, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(path, { ...init, signal: requestSignal(signal) });
+async function requestJson<T>(
+  path: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+  timeoutMs: number | null = FETCH_TIMEOUT_MS,
+): Promise<T> {
+  const response = await fetch(path, { ...init, signal: requestSignal(signal, timeoutMs) });
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     throw new ApiError(response.status, errorDetail(payload, response.statusText));
@@ -673,7 +689,12 @@ export async function getJson<T>(path: string, signal?: AbortSignal): Promise<T>
   return requestJson<T>(path, {}, signal);
 }
 
-export async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+export async function postJson<T>(
+  path: string,
+  body: unknown,
+  signal?: AbortSignal,
+  timeoutMs: number | null = FETCH_TIMEOUT_MS,
+): Promise<T> {
   return requestJson<T>(
     path,
     {
@@ -682,6 +703,7 @@ export async function postJson<T>(path: string, body: unknown, signal?: AbortSig
       body: JSON.stringify(body),
     },
     signal,
+    timeoutMs,
   );
 }
 

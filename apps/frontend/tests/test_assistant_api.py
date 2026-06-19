@@ -13,6 +13,7 @@ from algotrading.frontend.assistant_prompt import (
     is_grounded,
     ungrounded_numbers,
 )
+from algotrading.frontend.assistant_structured import GroundedAnswer
 from algotrading.frontend.context import AppContext
 from algotrading.frontend.grounding import (
     MODE_INDICATIVE,
@@ -156,9 +157,20 @@ def _seed_store(root: Path) -> None:
 
 
 class FakeOpenRouterClient:
-    def __init__(self, answer: str, *, stream_tokens: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        answer: str,
+        *,
+        stream_tokens: list[str] | None = None,
+        grounded: GroundedAnswer | None = None,
+    ) -> None:
         self.answer = answer
         self.stream_tokens = stream_tokens or [answer]
+        # The structured path returns a GroundedAnswer; by default we wrap `answer` verbatim
+        # (no placeholders), so render_grounded passes it through and the post-hoc guard still
+        # judges it exactly as the free-text path did. Pass `grounded=` to drive placeholder
+        # rendering or the answerable=False degrade explicitly.
+        self.grounded = grounded
         self.calls: list[tuple[list[ChatMessage], bool]] = []
 
     def complete(
@@ -166,6 +178,19 @@ class FakeOpenRouterClient:
     ) -> str:
         self.calls.append((messages, gloss))
         return self.answer
+
+    def complete_grounded(
+        self,
+        messages: list[ChatMessage],
+        *,
+        allowed_ids: set[str],
+        max_retries: int = 2,
+        max_tokens: int = 1024,
+    ) -> GroundedAnswer:
+        self.calls.append((messages, False))
+        if self.grounded is not None:
+            return self.grounded
+        return GroundedAnswer(answerable=True, answer=self.answer, facts_used=[])
 
     def stream(
         self, messages: list[ChatMessage], *, gloss: bool = False, max_tokens: int = 1024
@@ -176,6 +201,11 @@ class FakeOpenRouterClient:
 
 class RaisingOpenRouterClient:
     def complete(self, messages: list[ChatMessage], **_: object) -> str:
+        raise OpenRouterError("boom", status_code=503)
+
+    def complete_grounded(
+        self, messages: list[ChatMessage], **_: object
+    ) -> GroundedAnswer:
         raise OpenRouterError("boom", status_code=503)
 
     def stream(self, messages: list[ChatMessage], **_: object) -> Iterator[str]:
@@ -268,6 +298,49 @@ def test_router_passes_a_grounded_answer_through(ctx: AppContext) -> None:
     assert body["grounded"] is True
     assert body["answer"] == grounded_answer
     assert body["frame"]["underlying"] == UNDERLYING
+
+
+def test_router_renders_placeholders_from_the_structured_answer(ctx: AppContext) -> None:
+    # The structured path: the model returns a {fact_id} placeholder, and the router renders it
+    # to the exact on-screen value, so the digits in the reply come from the facts block, not the
+    # model. This is the grounded-by-construction guarantee, end to end.
+    grounding = build_grounding_context(ctx, UNDERLYING, TRADE_DATE)
+    atm_text = next(f.value_text for f in grounding.facts if f.fact_id == "atm_level")
+    fake = FakeOpenRouterClient(
+        "ignored",
+        grounded=GroundedAnswer(
+            answerable=True, answer="The ATM is {atm_level}.", facts_used=["atm_level"]
+        ),
+    )
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant",
+            json={"question": "What is the ATM?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    body = resp.json()
+    assert body["grounded"] is True
+    assert body["answer"] == f"The ATM is {atm_text}."
+    assert "{atm_level}" not in body["answer"]
+
+
+def test_router_returns_the_honest_gap_when_model_declares_unanswerable(
+    ctx: AppContext,
+) -> None:
+    fake = FakeOpenRouterClient(
+        "ignored",
+        grounded=GroundedAnswer(answerable=False, answer="", facts_used=[]),
+    )
+    with _client(ctx, fake) as client:
+        resp = client.post(
+            "/api/assistant",
+            json={"question": "What is the 10-delta vega?", "underlying": UNDERLYING,
+                  "trade_date": TRADE_DATE.isoformat()},
+        )
+    body = resp.json()
+    assert body["grounded"] is False
+    assert body["answer"] == honest_gap_answer()
+    assert body["citations"] == []
 
 
 def test_validator_allows_coverage_counts_and_facts(ctx: AppContext) -> None:

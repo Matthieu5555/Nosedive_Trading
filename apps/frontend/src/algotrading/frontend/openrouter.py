@@ -3,8 +3,12 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
+
+if TYPE_CHECKING:
+    from .assistant_structured import GroundedAnswer
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -12,6 +16,15 @@ _DEFAULT_REASONING_MODEL = "anthropic/claude-opus-4-8"
 _DEFAULT_GLOSS_MODEL = "anthropic/claude-haiku-4-5"
 _DEFAULT_TIMEOUT_SECONDS = 60.0
 _DEFAULT_MAX_TOKENS = 1024
+
+# The grounded structured path runs against a cheap, flaky flash model. Keep answers short (a
+# couple of sentences never need more) so a fast empty response (qwen's usual failure) still
+# leaves room for a retry. The web client no longer imposes a cutoff, so each attempt gets the
+# full default transport budget rather than a tight grounded-specific cap that raced the model's
+# slowest answers (which land near the old 30s mark).
+_GROUNDED_MAX_TOKENS = 350
+_GROUNDED_TIMEOUT_SECONDS = _DEFAULT_TIMEOUT_SECONDS
+_GROUNDED_MAX_RETRIES = 2
 
 _API_KEY_ENV = "OPENROUTER_API_KEY"
 _REASONING_MODEL_ENV = "ASSISTANT_MODEL"
@@ -153,6 +166,70 @@ class OpenRouterClient:
         if not isinstance(payload, dict):
             raise OpenRouterError("OpenRouter returned a non-object body")
         return _content_from_payload(payload)
+
+    def complete_grounded(
+        self,
+        messages: list[ChatMessage],
+        *,
+        allowed_ids: set[str],
+        max_retries: int = _GROUNDED_MAX_RETRIES,
+        max_tokens: int = _GROUNDED_MAX_TOKENS,
+    ) -> GroundedAnswer:
+        """Force a grounded, schema-validated answer out of the reasoning model.
+
+        Wraps the OpenRouter chat endpoint with `instructor`, so the model must return a
+        `GroundedAnswer` whose numbers are all ``{fact_id}`` placeholders. `allowed_ids` is
+        threaded into the pydantic validator through instructor's validation context, so an
+        out-of-vocabulary placeholder or a bare digit is fed back to the model as an error
+        and retried (up to `max_retries`) rather than silently failing the turn.
+
+        instructor + the OpenAI SDK live behind this one method on purpose: the rest of the
+        BFF (and every unit test) talks to the plain `complete`/`stream` seam, so the network
+        client is never imported on the hot import path or exercised in tests.
+
+        Returns a `GroundedAnswer`; when the model cannot produce a valid grounded answer
+        within the retry budget, returns one with ``answerable=False`` so the caller degrades
+        to the honest-gap line instead of surfacing a hard error. Raises `OpenRouterError`
+        for transport / API failures (missing key, network, 4xx/5xx).
+        """
+        if not self.config.has_key():
+            raise MissingApiKeyError()
+
+        import instructor  # noqa: PLC0415  (kept off the hot import path)
+        from instructor.exceptions import InstructorRetryException  # noqa: PLC0415
+        from openai import APIStatusError, OpenAI, OpenAIError  # noqa: PLC0415
+
+        from .assistant_structured import GroundedAnswer as _GroundedAnswer  # noqa: PLC0415
+
+        client = instructor.from_openai(
+            OpenAI(
+                base_url=self.config.base_url,
+                api_key=self.config.api_key,
+                timeout=min(self.config.timeout_seconds, _GROUNDED_TIMEOUT_SECONDS),
+                max_retries=0,  # instructor owns the retry loop; don't let the SDK double it
+            ),
+            mode=instructor.Mode.JSON,
+        )
+        try:
+            return client.chat.completions.create(
+                model=self.config.reasoning_model,
+                # to_dict() yields valid OpenAI message dicts; cast past the SDK's typed union.
+                messages=cast("Any", [m.to_dict() for m in messages]),
+                response_model=_GroundedAnswer,
+                context={"allowed_ids": set(allowed_ids)},
+                max_retries=max_retries,
+                max_tokens=max_tokens,
+            )
+        except InstructorRetryException:
+            # The model could not produce a grounded answer within the retry budget. Degrade
+            # to the honest gap rather than a 502, exactly as a self-declared gap would.
+            return _GroundedAnswer(answerable=False, answer="", facts_used=[])
+        except APIStatusError as exc:
+            raise OpenRouterError(
+                f"OpenRouter returned {exc.status_code}", status_code=exc.status_code
+            ) from exc
+        except OpenAIError as exc:
+            raise OpenRouterError(f"OpenRouter request failed: {exc}") from exc
 
     def stream(
         self,

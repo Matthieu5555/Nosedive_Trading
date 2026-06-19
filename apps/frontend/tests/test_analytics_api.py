@@ -670,39 +670,47 @@ def test_one_sided_or_unmatched_quote_omits_cleanly(
     assert by_band["30dc"]["quote"] == {"bid": None, "ask": None, "volume": None}
 
 
-def test_off_grid_projected_strike_does_not_bind_a_far_listed_quote(
+def test_quote_binds_only_on_exact_listed_strike_not_a_near_one(
     tmp_path: Path, seed: ModuleType
 ) -> None:
-    put_strike = round(seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM), 2)
-    far_put = round(put_strike * (1.0 + 0.05), 2)
-    near_put = round(put_strike * (1.0 + 0.001), 2)
-    snapshots = [
-        _quote_snapshot(seed, strike=far_put, right="P", bid=9.9, ask=10.1, volume=5.0),
-    ]
-    far_ctx = _analytics_store_with_quotes(tmp_path / "far", seed, snapshots)
-    with TestClient(create_app(far_ctx)) as client:
-        far_payload = client.get(
-            "/api/analytics",
-            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
-        ).json()
-    far_band = _points_by_band(far_payload)
-    assert far_band["30dp"]["quote"] == {"bid": None, "ask": None, "volume": None}, (
-        "a listed strike 5% off the projected delta-band strike must not be presented as its quote"
-    )
+    # D1: the quote join is now EXACT (expiry, right, listed strike) identity, not a fuzzy
+    # nearest-within-tolerance match. A listed strike that is merely CLOSE to the row strike (here
+    # 0.1% off, which the old _STRIKE_MATCH_REL_TOL=0.5% would have bound) is a different contract
+    # and must NOT be presented as this row's quote. Only the snapshot at the exact row strike binds.
+    row_strike = seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM)
+    near_strike = round(row_strike * (1.0 + 0.001), 2)  # ~0.1% off: a different contract now
+    far_strike = round(row_strike * (1.0 + 0.05), 2)  # 5% off: also a different contract
 
-    near_ctx = _analytics_store_with_quotes(
-        tmp_path / "near",
+    for label, off_strike in (("near", near_strike), ("far", far_strike)):
+        off_ctx = _analytics_store_with_quotes(
+            tmp_path / label,
+            seed,
+            [_quote_snapshot(seed, strike=off_strike, right="P", bid=9.9, ask=10.1, volume=5.0)],
+        )
+        with TestClient(create_app(off_ctx)) as client:
+            off_payload = client.get(
+                "/api/analytics",
+                params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+            ).json()
+        off_band = _points_by_band(off_payload)
+        assert off_band["30dp"]["quote"] == {"bid": None, "ask": None, "volume": None}, (
+            f"a listed strike {label} the row strike but not equal to it must not bind as its quote"
+        )
+
+    # The snapshot at the EXACT row strike is the legitimate, identity-matched quote.
+    exact_ctx = _analytics_store_with_quotes(
+        tmp_path / "exact",
         seed,
-        [_quote_snapshot(seed, strike=near_put, right="P", bid=4.1, ask=4.4, volume=12.0)],
+        [_quote_snapshot(seed, strike=row_strike, right="P", bid=4.1, ask=4.4, volume=12.0)],
     )
-    with TestClient(create_app(near_ctx)) as client:
-        near_payload = client.get(
+    with TestClient(create_app(exact_ctx)) as client:
+        exact_payload = client.get(
             "/api/analytics",
             params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
         ).json()
-    near_band = _points_by_band(near_payload)
-    assert near_band["30dp"]["quote"]["bid"] == pytest.approx(4.1), (
-        "a listed strike within 0.1% of the projected strike is the legitimate match"
+    exact_band = _points_by_band(exact_payload)
+    assert exact_band["30dp"]["quote"]["bid"] == pytest.approx(4.1), (
+        "the snapshot at the exact listed strike is the identity match and must bind"
     )
 
 
@@ -829,3 +837,161 @@ def test_reading_tenor_with_no_captured_neighbour_stays_unbound(
     assert entry["surface_slice"] is None
     point = entry["points"][0]
     assert point["quote"] == {"bid": None, "ask": None, "volume": None}
+
+
+def test_option_right_for_band_maps_atm_to_call(seed: ModuleType) -> None:
+    # D2: the resolver the BFF uses (canonical when importable, else the matching local fallback)
+    # maps the bare "atm" pillar to the CALL, "atmp" to the put, and ...c/...p to call/put. The old
+    # buggy local copy returned None for "atm", which left the ATM call row permanently quote-less.
+    from algotrading.frontend.routers.analytics import option_right_for_band
+
+    assert option_right_for_band("atm") == "C"
+    assert option_right_for_band("atmp") == "P"
+    assert option_right_for_band("30dc") == "C"
+    assert option_right_for_band("30dp") == "P"
+    assert option_right_for_band("10dc") == "C"
+
+
+def test_atm_call_row_binds_its_quote_by_exact_identity(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # D1+D2 together: an ATM call row (delta_band "atm", right resolves to "C") must bind the listed
+    # call snapshot at its exact strike. Under the old code the "atm" band resolved to None, so the
+    # ATM call could never get a quote, however many calls were captured.
+    from algotrading.frontend.routers.analytics import _group_by_maturity
+
+    atm_strike = seed.AN_FORWARD  # log_moneyness 0 -> strike == forward
+    cells = [
+        seed.analytics_cell(
+            delta_band="atm",
+            target_delta=0.0,
+            log_moneyness=0.0,
+            implied_vol=0.20,
+            delta=0.50,
+            dollar_delta=10.0,
+        ),
+    ]
+    slices = [
+        seed.surface_parameters_row(
+            seed.MEMBER_AAA,
+            SurfaceFitDiagnostics(
+                rmse=0.0008, n_points=9, arb_free=True, bound_hits=(), converged=True
+            ),
+        )
+    ]
+    snapshots = [
+        _quote_snapshot(seed, strike=atm_strike, right="C", bid=8.0, ask=8.4, volume=42.0),
+    ]
+    entry = _group_by_maturity(cells, slices, snapshots, [])[0]
+    point = next(p for p in entry["points"] if p["delta_band"] == "atm")
+    assert point["quote"]["bid"] == pytest.approx(8.0)
+    assert point["quote"]["ask"] == pytest.approx(8.4)
+    assert point["quote"]["volume"] == pytest.approx(42.0)
+
+
+def test_model_price_and_market_mark_are_separate_additive_fields(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # D3: `price` stays the theoretical model price (unchanged name/value); `market_mark` is added as
+    # the mid of a clean two-sided quote; `price_outside_spread` flags when the model price lands
+    # outside [bid, ask] by more than half the spread. Hand oracle (independent of the code):
+    # bid=4.10, ask=4.40 -> mid=4.25, half_spread=0.15, band=[3.95, 4.55]. The seeded model price is
+    # seed.AN_PRICE=4.2, which is INSIDE the band, so the flag must be False here.
+    put_strike = seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM)
+    snapshots = [
+        _quote_snapshot(seed, strike=put_strike, right="P", bid=4.10, ask=4.40, volume=10.0),
+    ]
+    app_ctx = _analytics_store_with_quotes(tmp_path / "data", seed, snapshots)
+    with TestClient(create_app(app_ctx)) as client:
+        payload = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+    by_band = _points_by_band(payload)
+    put = by_band["30dp"]
+    # `price` is untouched (the React contract depends on this field name and value).
+    assert put["price"] == pytest.approx(seed.AN_PRICE)
+    assert put["market_mark"] == pytest.approx(4.25)
+    assert put["price_outside_spread"] is False
+    # The call row has no captured snapshot of its right, so the mark is null and the flag is False.
+    call = by_band["30dc"]
+    assert call["market_mark"] is None
+    assert call["price_outside_spread"] is False
+
+
+def test_price_outside_spread_flag_fires_beyond_half_spread(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # D3 threshold, mirroring the real ASML 2026-06-19 30dp row (model 94.70 vs market 89.2 / 91.8,
+    # half_spread 1.30 -> outside). Scaled-down hand oracle: bid=89.2, ask=91.8 -> half_spread=1.30,
+    # band=[87.9, 93.1]. A model price of 94.70 is > 93.1, so the flag fires. We override the row
+    # price to 94.70 to reproduce the disk-verified out-of-spread instance deterministically.
+    from algotrading.frontend.routers.analytics import (
+        _market_mark,
+        _price_outside_spread,
+        _two_sided,
+    )
+    from algotrading.frontend.serializers import OptionQuote
+
+    quote = OptionQuote(bid=89.2, ask=91.8, volume=10.0)
+    assert _two_sided(quote) == (pytest.approx(89.2), pytest.approx(91.8))
+    assert _market_mark(quote) == pytest.approx(90.5)
+    # Model price 94.70 is one+ half-spread above the ask -> flagged.
+    assert _price_outside_spread(94.70, quote) is True
+    # A model price inside the band is not flagged.
+    assert _price_outside_spread(90.5, quote) is False
+    # Just inside the half-spread cushion (ask + half = 93.1) is not flagged; just outside is.
+    assert _price_outside_spread(93.0, quote) is False
+    assert _price_outside_spread(93.2, quote) is True
+    # A one-sided (ask-only) quote is not a usable market: no mark, never flagged.
+    one_sided = OptionQuote(bid=0.0, ask=2.0, volume=1.0)
+    assert _two_sided(one_sided) is None
+    assert _market_mark(one_sided) is None
+    assert _price_outside_spread(99.0, one_sided) is False
+    # No quote at all: no mark, never flagged.
+    assert _market_mark(None) is None
+    assert _price_outside_spread(99.0, None) is False
+
+
+def test_market_mark_and_flag_null_when_no_quote(
+    seeded_client: TestClient, seed: ModuleType
+) -> None:
+    # Byte-additive-when-absent: the seeded store banks no option snapshots under MEMBER_AAA, so
+    # every row carries market_mark=null and price_outside_spread=False alongside its null quote.
+    points = seeded_client.get(
+        "/api/analytics",
+        params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+    ).json()["maturities"][0]["points"]
+    assert points
+    for point in points:
+        assert point["market_mark"] is None
+        assert point["price_outside_spread"] is False
+
+
+def test_analytics_accepts_optional_run_id_and_defaults_to_latest(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # D6: the read accepts an optional run_id. Lane C adds the store-side addressability; until then
+    # the BFF forwards run_id only when the store can honour it and otherwise reads the latest
+    # capture, so passing run_id must be non-breaking (same payload as omitting it).
+    put_strike = seed.AN_FORWARD * (1.0 + seed.AN_PUT_LOGM)
+    snapshots = [
+        _quote_snapshot(seed, strike=put_strike, right="P", bid=4.10, ask=4.40, volume=10.0),
+    ]
+    app_ctx = _analytics_store_with_quotes(tmp_path / "data", seed, snapshots)
+    with TestClient(create_app(app_ctx)) as client:
+        latest = client.get(
+            "/api/analytics",
+            params={"underlying": seed.MEMBER_AAA, "trade_date": seed.TRADE_DATE.isoformat()},
+        ).json()
+        with_run = client.get(
+            "/api/analytics",
+            params={
+                "underlying": seed.MEMBER_AAA,
+                "trade_date": seed.TRADE_DATE.isoformat(),
+                "run_id": "2026-05-29T15:30:00Z",
+            },
+        ).json()
+    # Non-breaking: run_id present but store has no addressability yet -> identical latest payload.
+    assert with_run["maturities"] == latest["maturities"]
+    assert with_run["n_maturities"] == latest["n_maturities"]

@@ -36,6 +36,29 @@ from algotrading.infra.universe import IndexRegistryError, load_index_registry
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+try:
+    # Canonical right resolver (Lane A): "atm" -> "C", "atmp" -> "P", "...c" -> "C", "...p" -> "P".
+    # Imported when present so the BFF and the projection writer share one definition of the right.
+    from algotrading.infra.surfaces.projection import (  # type: ignore[attr-defined]
+        option_right_for_band,
+    )
+except ImportError:  # pragma: no cover - exercised only before the canonical resolver lands
+
+    def option_right_for_band(label: str) -> str:
+        """Map a delta-band label to its option right, mirroring the canonical projection resolver.
+
+        A fallback that matches the canonical semantics until the shared
+        ``algotrading.infra.surfaces.projection.option_right_for_band`` is importable: a label
+        ending in ``p`` is a put, ending in ``c`` is a call, and the bare ``atm`` pillar is the
+        ATM call (``atmp`` is the ATM put). This replaces the old buggy local copy that returned
+        ``None`` for ``atm``, which left the ATM call row permanently quote-less (D2).
+        """
+        if label.endswith("p"):
+            return "P"
+        if label.endswith("c"):
+            return "C"
+        return "C"
+
 from ..deps import CtxDep, TradeDateDep
 from ..grounding import coverage_from_snapshots, resolve_close_instant
 from ..serializers import (
@@ -51,6 +74,40 @@ from ..store_reads import read_for_underlying
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
+
+def _read_for_underlying(
+    ctx: object,
+    table: str,
+    underlying: str,
+    *,
+    trade_date: date | None,
+    run_id: str | None,
+) -> list[object]:
+    """Read one table for an underlying, addressing a specific capture by ``run_id`` when given.
+
+    ``run_id`` (D6) identifies one capture within a ``trade_date`` (the capture-receipt instant, an
+    ISO-8601 string); ``None`` reads the latest capture, which is the historical default. The
+    store-side addressability is Lane C's; until it lands, ``ParquetStore.read`` does not accept the
+    kwarg, so we forward ``run_id`` only when the store signals it can honour it (a non-breaking,
+    additive read) and otherwise fall back to the latest-capture read unchanged.
+    """
+    if run_id is not None:
+        try:
+            rows = ctx.store.read(  # type: ignore[attr-defined]
+                table, trade_date=trade_date, underlying=underlying, run_id=run_id
+            )
+            return [row for row in rows if row.underlying == underlying]
+        except TypeError:
+            # Store predates run_id addressability (Lane C not yet landed): fall through to latest.
+            pass
+    return read_for_underlying(
+        ctx.store,  # type: ignore[attr-defined]
+        table,
+        underlying,
+        trade_date=trade_date,
+    )
+
+
 _CANONICAL_FIELD_COUNT = 9
 _EXPIRY_SLOT = 6
 _STRIKE_SLOT = 7
@@ -61,18 +118,24 @@ def _maturity_key(maturity_years: float) -> str:
     return f"{maturity_years:.6f}"
 
 
-def _option_right_for_band(delta_band: str) -> str | None:
-    if delta_band.endswith("p"):
-        return "P"
-    if delta_band.endswith("c"):
-        return "C"
-    return None
+# A small float tolerance for the EXACT-key strike match. The row strike and the snapshot strike
+# both originate from the same listed-contract strike (Lane A keys each row to a real listed
+# contract), so this guards only against float round-trip noise through parquet/ISO text, never
+# the old "nearest within 0.5%" fuzzy join that bound a model strike to a different listed strike.
+_STRIKE_IDENTITY_ABS_TOL = 1.0e-6
 
 
-def _listed_options_by_expiry_right(
+def _listed_options_by_expiry_right_strike(
     snapshots: list[MarketStateSnapshot],
-) -> dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]]:
-    index: dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]] = {}
+) -> dict[tuple[date, str, float], MarketStateSnapshot]:
+    """Index the captured option snapshots by EXACT (expiry, right, listed strike) identity.
+
+    The key is parsed straight off each snapshot's canonical instrument key (the same fields Lane A
+    keys each projected row to), so the join is a contract-identity lookup, not a nearest-strike
+    guess. On the rare duplicate key the last snapshot wins (deterministic, and the capture writes
+    one row per contract).
+    """
+    index: dict[tuple[date, str, float], MarketStateSnapshot] = {}
     for snapshot in snapshots:
         fields = snapshot.instrument_key.split("|")
         if len(fields) != _CANONICAL_FIELD_COUNT:
@@ -87,35 +150,129 @@ def _listed_options_by_expiry_right(
             strike = float(strike_text)
         except ValueError:
             continue
-        index.setdefault((expiry, right), []).append((strike, snapshot))
+        index[(expiry, right, strike)] = snapshot
     return index
 
 
-_STRIKE_MATCH_REL_TOL = 0.005
+def _row_expiry(cell: ProjectedOptionAnalytics, fitted_expiry: date | None) -> date | None:
+    """The cell's own listed expiry when Lane A stamped one, else the fitted-slice expiry.
+
+    Lane A emits one row per real listed contract, carrying its own ``expiry`` (read here
+    defensively so the BFF works both before and after that field lands on the contract). When the
+    row has no expiry of its own, we fall back to the maturity-matched fitted slice's expiry, which
+    is the expiry the surrounding grouping already resolved for this maturity.
+    """
+    own = getattr(cell, "expiry", None)
+    if isinstance(own, date):
+        return own
+    return fitted_expiry
 
 
-def _nearest_quote(
-    listed: list[tuple[float, MarketStateSnapshot]], strike: float
-) -> OptionQuote | None:
-    if not listed or strike <= 0.0:
+def _row_right(cell: ProjectedOptionAnalytics) -> str:
+    """The cell's own option right when Lane A stamped one, else the canonical band resolver.
+
+    Lane A keys each row to a listed contract and so carries the right directly; we honour that when
+    present. Otherwise we resolve it from the delta-band label via the canonical resolver (D2),
+    which (unlike the old local copy) correctly maps the bare ``atm`` pillar to the call.
+    """
+    own = getattr(cell, "option_right", None)
+    if own in ("C", "P"):
+        return own
+    return option_right_for_band(cell.delta_band)
+
+
+def _two_sided(quote: OptionQuote | None) -> tuple[float, float] | None:
+    """The (bid, ask) of a clean two-sided quote, or None.
+
+    "Clean two-sided" mirrors the coverage definition: both sides strictly positive and the ask not
+    below the bid. A one-sided (e.g. ask-only, with the missing side coerced to 0.0) or crossed
+    quote is not a usable market, so it yields no mark and never trips the out-of-spread flag.
+    """
+    if quote is None or quote.bid is None or quote.ask is None:
         return None
-    listed_strike, snapshot = min(listed, key=lambda pair: abs(pair[0] - strike))
-    if abs(listed_strike - strike) > _STRIKE_MATCH_REL_TOL * strike:
+    bid, ask = float(quote.bid), float(quote.ask)
+    if bid <= 0.0 or ask <= 0.0 or ask < bid:
         return None
-    return OptionQuote(bid=snapshot.bid, ask=snapshot.ask, volume=snapshot.volume)
+    return bid, ask
+
+
+def _market_mark(quote: OptionQuote | None) -> float | None:
+    """The market mark for a row: the mid of a clean two-sided quote, else None (D3).
+
+    A spread-aware mark could weight by side, but with only top-of-book bid/ask the mid is the
+    honest, symmetric mark. None when there is no clean two-sided quote, so the field degrades to
+    null rather than inventing a mark from a one-sided book.
+    """
+    sides = _two_sided(quote)
+    if sides is None:
+        return None
+    bid, ask = sides
+    return 0.5 * (bid + ask)
+
+
+def _price_outside_spread(model_price: float | None, quote: OptionQuote | None) -> bool:
+    """True when the model price lands outside [bid, ask] by more than half the spread (D3).
+
+    The bound is [bid - half_spread, ask + half_spread] where half_spread = (ask - bid) / 2, so the
+    model price is flagged once it is more than one half-spread beyond the touch on either side.
+    Only fires for a clean two-sided quote (else there is no market to reconcile against) and when
+    the model carries a price. Verified on real ASML 2026-06-19 rows: the 30dp at K=1483 reads model
+    94.70 vs market 89.2 / 91.8 (half-spread 1.30), comfortably outside -> flag fires.
+    """
+    if model_price is None:
+        return False
+    sides = _two_sided(quote)
+    if sides is None:
+        return False
+    bid, ask = sides
+    half_spread = 0.5 * (ask - bid)
+    return model_price < bid - half_spread or model_price > ask + half_spread
+
+
+def _point_with_market_reconciliation(
+    cell: ProjectedOptionAnalytics, quote: OptionQuote | None
+) -> dict[str, object]:
+    """Serialize a row, then ADDITIVELY attach the model-vs-market reconciliation fields (D3).
+
+    `price` (the theoretical Black-76 model price) keeps its name and value untouched. We add
+    `market_mark` (the mid of a clean two-sided quote, else null) and `price_outside_spread` (the QC
+    flag), so the front can show the model price beside a real market mark and badge the rows where
+    the two disagree, without the BFF ever renaming or recomputing `price`.
+    """
+    point = projected_option_analytics_to_dict(cell, quote)
+    point["market_mark"] = _market_mark(quote)
+    point["price_outside_spread"] = _price_outside_spread(cell.price, quote)
+    return point
 
 
 def _quote_for_cell(
     cell: ProjectedOptionAnalytics,
     expiry: date | None,
-    index: dict[tuple[date, str], list[tuple[float, MarketStateSnapshot]]],
+    index: dict[tuple[date, str, float], MarketStateSnapshot],
 ) -> OptionQuote | None:
-    if expiry is None:
+    """Attach the captured quote to a row by EXACT (expiry, right, listed strike) identity.
+
+    No nearest-strike tolerance: the row strike is a real listed strike (Lane A), so we look up the
+    snapshot for that exact contract. A tiny absolute tolerance absorbs float round-trip noise only.
+    Returns None (a fully-null quote block) when no snapshot exists for that exact contract.
+    """
+    if expiry is None or cell.strike <= 0.0:
         return None
-    right = _option_right_for_band(cell.delta_band)
-    if right is None:
+    right = _row_right(cell)
+    snapshot = index.get((expiry, right, cell.strike))
+    if snapshot is None:
+        # Absorb float round-trip noise: match on the one snapshot at this (expiry, right) whose
+        # strike is within an absolute epsilon. This is identity-preserving (epsilon, not a percent
+        # band), so it never binds a different listed strike the way the old fuzzy join could.
+        for (k_expiry, k_right, k_strike), candidate in index.items():
+            if k_expiry != expiry or k_right != right:
+                continue
+            if abs(k_strike - cell.strike) <= _STRIKE_IDENTITY_ABS_TOL:
+                snapshot = candidate
+                break
+    if snapshot is None:
         return None
-    return _nearest_quote(index.get((expiry, right), []), cell.strike)
+    return OptionQuote(bid=snapshot.bid, ask=snapshot.ask, volume=snapshot.volume)
 
 
 # The projected analytics live on a fixed reading-tenor grid (10d / 1m / 3m / 6m / 12m / 18m),
@@ -257,7 +414,7 @@ def _group_by_maturity(
     # exact key still wins when present (the seeded-test case), since it is also the nearest.
     slice_candidates = [(s.maturity_years, s) for s in slices]
     forward_candidates = [(f.maturity_years, f) for f in forwards]
-    quote_index = _listed_options_by_expiry_right(snapshots)
+    quote_index = _listed_options_by_expiry_right_strike(snapshots)
     grouped: dict[str, list[ProjectedOptionAnalytics]] = {}
     for cell in cells:
         if cell.surface_side != surface_side:
@@ -270,10 +427,11 @@ def _group_by_maturity(
         tenor_label = maturity_cells[0].tenor_label
         maturity_years = maturity_cells[0].maturity_years
         fitted = _nearest_by_maturity(maturity_years, slice_candidates)
-        expiry = fitted.expiry_date if fitted is not None else None
+        fitted_expiry = fitted.expiry_date if fitted is not None else None
         points = [
-            projected_option_analytics_to_dict(
-                cell, _quote_for_cell(cell, expiry, quote_index)
+            _point_with_market_reconciliation(
+                cell,
+                _quote_for_cell(cell, _row_expiry(cell, fitted_expiry), quote_index),
             )
             for cell in maturity_cells
         ]
@@ -450,31 +608,40 @@ def get_analytics(
     ctx: CtxDep,
     trade_date: TradeDateDep,
     underlying: str | None = None,
+    run_id: str | None = None,
 ) -> JSONResponse:
+    # `run_id` (D6) addresses ONE capture within `trade_date` (the capture-receipt instant, an
+    # ISO-8601 string). None (the default and the historical behaviour) reads the latest capture.
+    # The store-side addressability is Lane C's; this router forwards run_id additively so the read
+    # narrows to that capture once it lands, and is a no-op latest-read until then.
     resolved_underlying = underlying or ctx.default_underlying
-    cells: list[ProjectedOptionAnalytics] = read_for_underlying(
-        ctx.store,
+    cells: list[ProjectedOptionAnalytics] = _read_for_underlying(
+        ctx,
         "projected_option_analytics",
         resolved_underlying,
         trade_date=trade_date,
+        run_id=run_id,
     )
-    slices: list[SurfaceParameters] = read_for_underlying(
-        ctx.store,
+    slices: list[SurfaceParameters] = _read_for_underlying(
+        ctx,
         "surface_parameters",
         resolved_underlying,
         trade_date=trade_date,
+        run_id=run_id,
     )
-    snapshots: list[MarketStateSnapshot] = read_for_underlying(
-        ctx.store,
+    snapshots: list[MarketStateSnapshot] = _read_for_underlying(
+        ctx,
         "market_state_snapshots",
         resolved_underlying,
         trade_date=trade_date,
+        run_id=run_id,
     )
-    forwards: list[ForwardCurvePoint] = read_for_underlying(
-        ctx.store,
+    forwards: list[ForwardCurvePoint] = _read_for_underlying(
+        ctx,
         "forward_curve",
         resolved_underlying,
         trade_date=trade_date,
+        run_id=run_id,
     )
     rate_context = _load_rate_context(ctx, resolved_underlying, trade_date)
     maturities = _group_by_maturity(
@@ -482,11 +649,12 @@ def get_analytics(
     )
     source = "projected_option_analytics"
     if not maturities:
-        grid: list[SurfaceGrid] = read_for_underlying(
-            ctx.store,
+        grid: list[SurfaceGrid] = _read_for_underlying(
+            ctx,
             "surface_grid",
             resolved_underlying,
             trade_date=trade_date,
+            run_id=run_id,
         )
         maturities = _maturities_from_surface_grid(grid, slices)
         if maturities:

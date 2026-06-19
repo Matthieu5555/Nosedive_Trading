@@ -11,6 +11,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Stack } from "../components/layout";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { tourAnchor } from "../lib/tour";
 
 export function StrategyPage() {
   const indices = useFetch<IndicesResponse>("/api/indices");
@@ -60,7 +61,13 @@ export function StrategyPage() {
         </p>
       )}
 
-      <Card data-tour-id="strategy.setup">
+      <Card
+        {...tourAnchor(
+          "strategy.setup",
+          "Backtest setup",
+          "Set the window and the trading line's rules before you run a backtest.",
+        )}
+      >
         <CardHeader>
           <CardTitle>Backtest setup</CardTitle>
           <CardDescription>

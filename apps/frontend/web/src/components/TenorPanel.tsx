@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { type AnalyticsMaturity, type OptionSide, type SurfaceSide, TENOR_GRID } from "../api";
 import { atmIv, ivAtDelta, RR_DELTA } from "../lib/scorecards";
+import { tourAnchor } from "../lib/tour";
 import { GreekCurve, SmileChart, type SurfaceIdentityProps } from "./charts";
 import { DollarGreeksByMaturity } from "./DollarGreeksByMaturity";
 import { Stack } from "./layout";
@@ -71,7 +72,15 @@ export function TenorPanel({
   const selected = capturedByTenor.get(tenor) ?? null;
 
   return (
-    <article className="panel tenor-panel" aria-label="Tenor view" data-tour-id="market.smile">
+    <article
+      className="panel tenor-panel"
+      aria-label="Tenor view"
+      {...tourAnchor(
+        "market.smile",
+        "Smile and Greeks",
+        "The smile, implied vol across strikes, with the option Greeks beside it.",
+      )}
+    >
       <Stack gap="md">
         <div className="panel-heading">
           <div>

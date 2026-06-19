@@ -1,4 +1,5 @@
 import type { Signal } from "../../api";
+import { tourAnchor } from "../../lib/tour";
 import { AsyncBlock } from "../AsyncBlock";
 import { DispersionStrip } from "../DispersionStrip";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -23,7 +24,15 @@ export function DispersionPanel({
   error: string | null;
 }) {
   return (
-    <article className="panel" aria-label="Dispersion" data-tour-id="market.dispersion">
+    <article
+      className="panel"
+      aria-label="Dispersion"
+      {...tourAnchor(
+        "market.dispersion",
+        "Dispersion strip",
+        "How tightly the index members are expected to move together, the dispersion read.",
+      )}
+    >
       <Stack gap="md">
         <div className="panel-heading">
           <Cluster gap="2xs" align="center">

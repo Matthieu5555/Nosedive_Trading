@@ -1,4 +1,5 @@
 import type { PriceHistoryResponse } from "../../api";
+import { tourAnchor } from "../../lib/tour";
 import { AsyncBlock } from "../AsyncBlock";
 import { PriceChart } from "../charts";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -21,7 +22,15 @@ export function PricePanel({
   error: string | null;
 }) {
   return (
-    <article className="panel" aria-label={`${subject} daily history`} data-tour-id="market.price">
+    <article
+      className="panel"
+      aria-label={`${subject} daily history`}
+      {...tourAnchor(
+        "market.price",
+        "Daily price chart",
+        "The daily open, high, low and close history for the chosen index.",
+      )}
+    >
       <Stack gap="md">
         <div className="panel-heading">
           <h2>Daily price, {subject}</h2>

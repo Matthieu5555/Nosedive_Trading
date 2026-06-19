@@ -26,6 +26,7 @@ import { TickerSelector } from "../components/market/TickerSelector";
 import { TenorPanel } from "../components/TenorPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { tourAnchor } from "../lib/tour";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 import { useMarketTicker } from "./market/useMarketTicker";
@@ -187,7 +188,11 @@ export function MarketPage() {
         <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Index"
-            data-tour-id="market.index-picker"
+            {...tourAnchor(
+              "market.index-picker",
+              "Index picker",
+              "Choose which index you are looking at, like the Euro Stoxx 50.",
+            )}
             value={index}
             disabled={indexOptions.length === 0}
             data-hint={index === "" ? "choose-index" : undefined}

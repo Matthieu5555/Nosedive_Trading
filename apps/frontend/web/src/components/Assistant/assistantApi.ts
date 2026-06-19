@@ -60,12 +60,13 @@ export async function askAssistant(
 // no-jargon steps, one at a time, while visually highlighting the exact on-screen element to act on.
 //
 // The trust contract (the navigation analogue of the facts-block guarantee): the model may NEVER
-// invent a UI element. The front owns the registry of real, highlightable anchors (lib/tour/
-// registry.ts) and POSTs the relevant catalog with every guide request. The BFF grounds the model
-// strictly on that posted catalog and is told it may only reference those ids. The BFF then
-// VALIDATES the returned highlight id against the posted catalog; if the id is not present, the BFF
-// nulls out the highlight (mirrors the ungrounded_numbers guard in assistant_prompt.py). So a
-// non-null `highlight` is always a real anchor id the front can resolve to a data-tour-id node.
+// invent a UI element. The front reads the catalog of real, highlightable anchors off the live DOM
+// (lib/tour, tourCatalog()) and POSTs it with every guide request, so the catalog is exactly what is
+// on screen. The BFF grounds the model strictly on that posted catalog and is told it may only
+// reference those ids. The BFF then VALIDATES the returned highlight id against the posted catalog;
+// if the id is not present, the BFF nulls out the highlight (mirrors the ungrounded_numbers guard in
+// assistant_prompt.py). So a non-null `highlight` is always a real anchor id the front can resolve to
+// a data-tour-id node.
 
 // What action advances the step. "navigate" waits for a route change, "click" waits for a click on
 // the highlighted element, "none" is a terminal or informational step advanced by the manual Next.

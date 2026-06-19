@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { ApiError } from "../../api";
-import { tourCatalog } from "../../lib/tour/registry";
+import { TOUR_ID_ATTR, tourCatalog } from "../../lib/tour";
 import { askGuide, type GuideStep } from "./assistantApi";
 import { useAssistantFrame } from "./AssistantContext";
 import { AssistantPanel, type TourView } from "./AssistantPanel";
@@ -54,8 +54,10 @@ function useGuideTour(): TourView & { spotlightId: string | null } {
       setError(null);
       setThinking(true);
       try {
+        // The catalog is read off the live DOM at request time, so it is exactly the anchors mounted
+        // on the page the user is looking at right now (plus the nav tabs, which live on every page).
         const step = await askGuide(
-          { goal, route: location.pathname, completed, catalog: tourCatalog() },
+          { goal, route: location.pathname, completed, catalog: tourCatalog(location.pathname) },
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -115,7 +117,7 @@ function useGuideTour(): TourView & { spotlightId: string | null } {
     if (!tour.active || tour.step?.expect !== "click") return;
     const id = tour.step.highlight;
     if (!id) return;
-    const node = document.querySelector<HTMLElement>(`[data-tour-id="${id}"]`);
+    const node = document.querySelector<HTMLElement>(`[${TOUR_ID_ATTR}="${id}"]`);
     if (!node) return;
     const onClick = () => advance();
     node.addEventListener("click", onClick, { once: true });

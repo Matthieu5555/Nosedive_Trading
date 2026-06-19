@@ -21,6 +21,7 @@ import { Cluster, Stack } from "../components/layout";
 import { TicketPanel } from "../components/TicketPanel";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { tourAnchor } from "../lib/tour";
 import type { BasketScenariosResponse, ScenariosResponse } from "../stressApi";
 import { AttributionTab } from "./basket/AttributionTab";
 import { BookSection } from "./basket/BookSection";
@@ -210,7 +211,11 @@ export function BasketPage() {
                 Underlying{" "}
                 <select
                   aria-label="underlying"
-                  data-tour-id="basket.underlying"
+                  {...tourAnchor(
+                    "basket.underlying",
+                    "Underlying picker",
+                    "Choose the underlying index the basket is built on.",
+                  )}
                   value={underlying}
                   disabled={indexOptions.length === 0}
                   onChange={(e) => setUnderlying(e.target.value)}
@@ -241,7 +246,16 @@ export function BasketPage() {
               </label>
             </Cluster>
 
-            <Cluster gap="xs" role="group" aria-label="templates" data-tour-id="basket.templates">
+            <Cluster
+              gap="xs"
+              role="group"
+              aria-label="templates"
+              {...tourAnchor(
+                "basket.templates",
+                "Strategy templates",
+                "One click fills the basket with a ready-made shape like a straddle or strangle.",
+              )}
+            >
               {TEMPLATES.map((name) => (
                 <button
                   key={name}
@@ -276,7 +290,14 @@ export function BasketPage() {
 
         <Tabs defaultValue="compose" className="market-tabs">
           <div className="market-tabs__bar max-w-full overflow-x-auto">
-            <TabsList className="market-tabs__list max-w-none" data-tour-id="basket.tabs">
+            <TabsList
+              className="market-tabs__list max-w-none"
+              {...tourAnchor(
+                "basket.tabs",
+                "Basket workflow tabs",
+                "Move between composing the book, reading it, stressing it, and explaining its P&L.",
+              )}
+            >
               {/* Drop the shadcn min-w so each pill hugs its own label; with the list's uniform
                   gap the inter-pill rhythm is then even, instead of short labels (Stress) padding
                   out to the same min-width as long ones and reading as uneven spacing. */}

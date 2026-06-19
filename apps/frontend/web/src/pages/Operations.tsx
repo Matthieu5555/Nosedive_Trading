@@ -14,6 +14,7 @@ import { RunControlPanel } from "../components/operations/RunControlPanel";
 import { SystemHealthPanel } from "../components/operations/SystemHealthPanel";
 import { useHealth, useRecordedDates } from "../hooks/queries";
 import { useFetch } from "../hooks/useFetch";
+import { tourAnchor } from "../lib/tour";
 
 export function OperationsPage() {
   const health = useHealth();
@@ -41,7 +42,13 @@ export function OperationsPage() {
         </div>
       </div>
 
-      <Card data-tour-id="operations.health">
+      <Card
+        {...tourAnchor(
+          "operations.health",
+          "System health panel",
+          "One glance at whether services are up and today's data and risk all completed.",
+        )}
+      >
         <CardHeader>
           <Cluster gap="2xs" align="center">
             <CardTitle>System health</CardTitle>

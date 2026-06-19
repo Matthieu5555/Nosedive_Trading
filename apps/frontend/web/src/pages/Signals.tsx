@@ -6,6 +6,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Cluster, Stack } from "../components/layout";
 import { SignalsView } from "../components/SignalsView";
 import { useFetch } from "../hooks/useFetch";
+import { tourAnchor } from "../lib/tour";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,7 +47,11 @@ export function SignalsPage() {
         <Cluster className="control-row" gap="sm" align="end">
           <select
             aria-label="Underlying"
-            data-tour-id="signals.underlying"
+            {...tourAnchor(
+              "signals.underlying",
+              "Underlying picker",
+              "Choose which underlying's signal readings you want to see.",
+            )}
             value={underlying}
             disabled={underlyingOptions.length === 0}
             onChange={(event) => setUnderlying(event.target.value)}

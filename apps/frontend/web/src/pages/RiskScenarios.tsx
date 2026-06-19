@@ -16,6 +16,7 @@ import {
   useReconciliation,
   useRiskScenarios,
 } from "../hooks/queries";
+import { tourAnchor } from "../lib/tour";
 import type { ScenariosResponse } from "../stressApi";
 
 export function RiskScenariosPage() {
@@ -45,7 +46,11 @@ export function RiskScenariosPage() {
             <select
               id="risk-portfolio"
               aria-label="Portfolio"
-              data-tour-id="risk.portfolio"
+              {...tourAnchor(
+                "risk.portfolio",
+                "Portfolio picker",
+                "Choose which portfolio to scope the scenarios and attribution to.",
+              )}
               value={portfolio}
               onChange={(event) => setPortfolio(event.target.value)}
             >
@@ -76,7 +81,13 @@ export function RiskScenariosPage() {
       </div>
 
       <Grid min="420px" gap="md">
-        <Card data-tour-id="risk.scenarios">
+        <Card
+          {...tourAnchor(
+            "risk.scenarios",
+            "Named scenarios",
+            "Replay labelled crises like 2008 and COVID-2020 against today's book.",
+          )}
+        >
           <CardHeader>
             <CardTitle>Named historical scenarios</CardTitle>
             <CardDescription>

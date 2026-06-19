@@ -1,4 +1,5 @@
 import type { Constituent } from "../../api";
+import { tourAnchor } from "../../lib/tour";
 import { Cluster, Stack } from "../layout";
 
 // The page-driving ticker selector. The universe is the index/ETF itself plus its constituents: the
@@ -29,7 +30,11 @@ export function TickerSelector({
       className="ticker-selector"
       gap="sm"
       aria-label="Ticker"
-      data-tour-id="market.ticker-picker"
+      {...tourAnchor(
+        "market.ticker-picker",
+        "Ticker picker",
+        "Pick the ticker the whole page follows, the index itself or any of its members like ASML.",
+      )}
     >
       <div className="ticker-selector__heading">
         <p className="eyebrow">Pick a ticker to read</p>

@@ -4,6 +4,7 @@ import {
   type SurfaceDense,
   type SurfaceSide,
 } from "../../api";
+import { tourAnchor } from "../../lib/tour";
 import { AsyncBlock } from "../AsyncBlock";
 import {
   type SurfaceCoverage,
@@ -73,7 +74,15 @@ export function SurfacePanel({
   onModeChange: (mode: SurfaceMode) => void;
 }) {
   return (
-    <article className="panel" aria-label={descriptor.subjectHeading} data-tour-id="market.surface">
+    <article
+      className="panel"
+      aria-label={descriptor.subjectHeading}
+      {...tourAnchor(
+        "market.surface",
+        "Volatility surface",
+        "The 3D implied-volatility surface, vol against moneyness and maturity.",
+      )}
+    >
       <Stack gap="md">
         <div className="panel-heading">
           <div>
@@ -246,7 +255,11 @@ function SurfaceSideToggle({
       className="mode-toggle"
       role="group"
       aria-label="Surface side"
-      data-tour-id="market.side-toggle"
+      {...tourAnchor(
+        "market.side-toggle",
+        "Surface side toggle",
+        "Switch the surface between calls, puts, and both sides combined.",
+      )}
     >
       {SURFACE_SIDES_ORDER.map((option) => {
         const captured = available.includes(option);
@@ -330,7 +343,11 @@ function SurfaceModeToggle({
       className="mode-toggle"
       role="group"
       aria-label="Surface mode"
-      data-tour-id="market.mode-toggle"
+      {...tourAnchor(
+        "market.mode-toggle",
+        "Strict and indicative toggle",
+        "Switch the surface between strict, two-sided quotes only, and indicative, which adds one-sided marks as an estimate.",
+      )}
     >
       <button
         type="button"

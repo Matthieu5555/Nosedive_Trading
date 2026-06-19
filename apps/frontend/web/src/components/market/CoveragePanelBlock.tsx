@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { tourAnchor } from "../../lib/tour";
 import { CoveragePanel } from "../CoverageTable";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { Stack } from "../layout";
@@ -19,7 +20,15 @@ export function CoveragePanelBlock({
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <article className="panel" aria-label="Capture coverage" data-tour-id="market.coverage">
+    <article
+      className="panel"
+      aria-label="Capture coverage"
+      {...tourAnchor(
+        "market.coverage",
+        "Capture coverage panel",
+        "Open this to see how much of the option chain the surface actually rests on.",
+      )}
+    >
       <Stack gap="md">
         <div className="panel-heading">
           <h2>Capture coverage</h2>

@@ -16,6 +16,7 @@ import { Cluster, Stack } from "../components/layout";
 import { PositionsTable } from "../components/PositionsTable";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
+import { tourAnchor } from "../lib/tour";
 
 const ALL_DATES = "";
 
@@ -66,7 +67,11 @@ export function PositionsPage() {
         <Cluster className="control-row" gap="sm">
           <select
             aria-label="Underlying"
-            data-tour-id="positions.underlying"
+            {...tourAnchor(
+              "positions.underlying",
+              "Underlying picker",
+              "Choose which underlying's open positions and book summary to show.",
+            )}
             value={index}
             disabled={indexOptions.length === 0}
             onChange={(event) => setIndex(event.target.value)}

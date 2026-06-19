@@ -3,6 +3,8 @@ import "./Spotlight.css";
 import { type JSX, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { TOUR_ID_ATTR } from "../../lib/tour";
+
 /* The Spotlight is the visual half of the guided tour: while the assistant says "Click Basket up
    top", this rings the one real on-screen element it pointed at. It NEVER invents geometry, it reads
    the live `getBoundingClientRect()` of the node the front already registered, so the ring can only
@@ -23,10 +25,10 @@ interface Rect {
 }
 
 function readRect(tourId: string): Rect | null {
-  // The querySelector mirrors agent C's placement contract exactly: one `data-tour-id` per anchor on
+  // The querySelector mirrors the anchor placement contract: tourAnchor(...) puts one data-tour-id on
   // the widget's outermost stable element. Escaping is unnecessary, the ids are kebab/dotted literals
-  // from the frozen registry, never user input.
-  const el = document.querySelector<HTMLElement>(`[data-tour-id="${tourId}"]`);
+  // declared in the components themselves, never user input.
+  const el = document.querySelector<HTMLElement>(`[${TOUR_ID_ATTR}="${tourId}"]`);
   if (!el) return null;
   const r = el.getBoundingClientRect();
   return { top: r.top, left: r.left, width: r.width, height: r.height };
@@ -45,7 +47,7 @@ export function Spotlight({ tourId }: { tourId: string | null }): JSX.Element | 
     // Bring the anchor into view, then keep the ring glued to wherever it lands. The first read can
     // happen before the smooth scroll settles, so we also re-measure on a couple of animation frames
     // and a short timeout, which covers both the scroll animation and any late layout shift.
-    const target = document.querySelector<HTMLElement>(`[data-tour-id="${tourId}"]`);
+    const target = document.querySelector<HTMLElement>(`[${TOUR_ID_ATTR}="${tourId}"]`);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
 
     const measure = () => setRect(readRect(tourId));

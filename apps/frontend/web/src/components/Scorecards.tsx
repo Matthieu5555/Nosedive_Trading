@@ -1,5 +1,6 @@
 import type { AnalyticsMaturity, Signal } from "../api";
 import { computeScorecards } from "../lib/scorecards";
+import { tourAnchor } from "../lib/tour";
 import { InfoDot } from "./InfoDot";
 
 // "as of 2026-06-17 17:30 CET (close)" — the date *and* the close instant, never the bare date that
@@ -163,7 +164,11 @@ export function Scorecards({
     <section
       className="scorecards-band"
       aria-label="Volatility scorecards"
-      data-tour-id="market.scorecard"
+      {...tourAnchor(
+        "market.scorecard",
+        "Indicator scorecards",
+        "The headline indicators at a glance: how rich vol is, the term-structure slope, and more.",
+      )}
     >
       {(asOfLine || underlying) && (
         <p className="scorecards-legend" aria-label="Scorecard provenance">
@@ -195,8 +200,8 @@ export function Scorecards({
         <span className="negative">
           a negative term-structure slope means near-term risk is rising
         </span>
-        . A vol point (vp) is one hundredth of an annualized volatility, so a move from 18% to 19% is
-        one vol point.
+        . A vol point (vp) is one hundredth of an annualized volatility, so a move from 18% to 19%
+        is one vol point.
       </p>
     </section>
   );

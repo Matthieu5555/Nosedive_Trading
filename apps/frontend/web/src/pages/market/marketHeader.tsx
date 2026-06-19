@@ -1,4 +1,5 @@
 import type { AvailableDate, QcVerdict, RecordedDatesResponse } from "../../api";
+import { tourAnchor } from "../../lib/tour";
 
 export function QcBadge({ qc }: { qc: QcVerdict }) {
   const text = qc === "pass" ? "QC pass" : qc === "fail" ? "QC fail" : "QC n/a";
@@ -70,7 +71,11 @@ export function AsOfSelect({
   return (
     <select
       aria-label="As-of fetch"
-      data-tour-id="market.as-of"
+      {...tourAnchor(
+        "market.as-of",
+        "As-of picker",
+        "Choose which captured close you are reading, the date the numbers are taken from.",
+      )}
       value={effective}
       disabled={available.length === 0}
       onChange={(event) => onChange(event.target.value)}

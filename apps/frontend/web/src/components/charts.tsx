@@ -694,12 +694,12 @@ export function SmileChart({
 // dominant choice here, WHICH Greek, becomes a prominent calm-pill selector (the page's "important
 // filters become selectors" idiom); the single chart re-renders centered on the picked Greek with
 // its OWN auto-scaled y-axis and correct unit. Theta and rho, never charted before, are now first
-// class; rho stays deliberately out (the owner's standing rule, ugly in the dollar table).
+// class alongside delta/gamma/vega.
 
-// The first-order Greeks an operator reads first; delta is the natural default. Rho is excluded by
-// the owner's standing rule. Each carries its raw unit (UNITS, the house vocabulary), the trace
-// colour, the tick format for its scale, and a plain how-to-read gloss.
-type FirstOrderGreekName = "delta" | "gamma" | "vega" | "theta";
+// The first-order Greeks an operator reads first; delta is the natural default. Each carries its raw
+// unit (UNITS, the house vocabulary), the trace colour, the tick format for its scale, and a plain
+// how-to-read gloss.
+type FirstOrderGreekName = "delta" | "gamma" | "vega" | "theta" | "rho";
 type SecondOrderGreekName = "vanna" | "volga" | "charm";
 export type GreekName = FirstOrderGreekName | SecondOrderGreekName;
 
@@ -751,6 +751,15 @@ export const GREEK_SPECS: ReadonlyArray<GreekSpec> = [
     howToRead: "theta (time decay) vs strike, most negative around the at-the-money strike",
   },
   {
+    name: "rho",
+    group: "first-order",
+    rawUnit: UNITS.rho,
+    color: CHART_COLORS.muted,
+    tickFormat: ".2g",
+    howToRead:
+      "rho (rate sensitivity) vs strike, how the option value moves as the interest rate moves",
+  },
+  {
     name: "vanna",
     group: "second-order",
     rawUnit: UNITS.vanna,
@@ -785,7 +794,7 @@ export function firstGreekOfGroup(group: GreekGroup): GreekName {
 }
 
 export const GREEK_GROUP_INFO =
-  "First order is delta, gamma, vega, theta, the four read first. Second order is vanna, volga, " +
+  "First order is delta, gamma, vega, theta, rho, the ones read first. Second order is vanna, volga, " +
   "charm, how the first-order Greeks themselves move as volatility or time changes. Second-order " +
   "Greeks are banked on the same projected cell; a close projected before they existed shows them " +
   "as a gap, not a value.";
@@ -837,7 +846,7 @@ function GreekSelector({
           type="button"
           className="mode-toggle__option"
           aria-pressed={group === "first-order"}
-          title="Delta, gamma, vega, theta, the four read first"
+          title="Delta, gamma, vega, theta, rho, the ones read first"
           onClick={() => onGroupChange("first-order")}
         >
           First order

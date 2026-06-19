@@ -47,26 +47,23 @@ const CLEAN_12M: AnalyticsMaturity = {
 };
 
 describe("DollarGreeksByMaturity", () => {
-  test("the First order group shows the four read-first Greeks (delta/gamma/vega/theta), rho gone entirely", () => {
+  test("the First order group shows the five read-first Greeks (delta/gamma/vega/theta/rho)", () => {
     render(<DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />);
     const primaryTable = screen.getByRole("table", { name: /Dollar Greeks, / });
 
-    // Default = First order: the four read-first Greeks, no rho, no second-order table.
-    for (const greek of ["delta", "gamma", "vega", "theta"]) {
+    // Default = First order: the five read-first Greeks, no second-order table.
+    for (const greek of ["delta", "gamma", "vega", "theta", "rho"]) {
       expect(within(primaryTable).getByRole("columnheader", { name: greek })).toBeInTheDocument();
     }
-    expect(
-      within(primaryTable).queryByRole("columnheader", { name: "rho" }),
-    ).not.toBeInTheDocument();
-    expect(within(primaryTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(4);
-    expect(within(primaryTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(4);
+    expect(within(primaryTable).getAllByRole("columnheader", { name: /^raw / }).length).toBe(5);
+    expect(within(primaryTable).getAllByRole("columnheader", { name: /€ value/ }).length).toBe(5);
 
-    // The old "Full first-order" option (the rho-only view) is gone: only two options remain, and
-    // rho never appears in this table.
+    // The First order / Second order toggle, no legacy "Full first-order" option.
     expect(screen.queryByRole("button", { name: "Full first-order" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "First order" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Second order" })).toBeInTheDocument();
-    expect(screen.queryByText("€ per 1% rate")).not.toBeInTheDocument();
+    // Rho's raw unit header renders ($/Rate, currency-substituted to €/Rate).
+    expect(within(primaryTable).getByText("€/Rate")).toBeInTheDocument();
 
     expect(within(primaryTable).getByRole("rowheader", { name: /30dp/ })).toBeInTheDocument();
     expect(within(primaryTable).getByText("€ per 1% move")).toBeInTheDocument();

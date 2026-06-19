@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from statistics import median
 
@@ -776,6 +777,59 @@ def _liquid_span(
     if not maturities:
         return None
     return min(maturities), max(maturities)
+
+
+@dataclass(frozen=True, slots=True)
+class _MonitoredTenorPoint:
+    """A grid point relabelled onto a monitored tenor for the coverage checks."""
+
+    underlying: str
+    tenor_label: str
+    target_delta: float
+    delta: float
+
+
+def bin_points_to_monitored_tenors(
+    points: Sequence[GridPointInput], tenor_grid: Sequence[str]
+) -> list[GridPointInput]:
+    """Relabel each grid point onto its nearest monitored tenor (nearest in log-maturity).
+
+    The listed-chain price grid (D1, the ``listed_contracts`` projection mode) labels every cell
+    by its real listed expiry (e.g. ``2026-06-22|0.008219``), not the canonical monitored tenor
+    (``10d``/``1m``/``3m``/...). The grid coverage checks (``tenor_coverage_floor`` and
+    ``delta_band_completeness``) count support per MONITORED tenor by exact label, so a
+    listed-chain surface reads as zero coverage at every monitored tenor — a false CRITICAL that
+    stayed hidden only while the tradeable index was never captured (the check never ran on it).
+
+    Binning each listed expiry onto the monitored tenor it sits closest to in log-maturity (the
+    grid's natural spacing) restores an honest measure: a monitored tenor with a nearby liquid
+    listed expiry clears its floor, while a tenor out in the extrapolated wing (e.g. ``3y`` when
+    the chain stops near ``2y``) stays an edge NOTICE through the unchanged provenance logic. A
+    point already carrying a monitored tenor (the legacy synthetic-strike grid) maps to itself, so
+    this is a no-op on that path, and a point without a usable ``maturity_years`` is passed through
+    untouched.
+    """
+    grid = list(tenor_grid)
+    if not grid:
+        return list(points)
+    grid_years = [(tenor, tenor_years(tenor)) for tenor in grid]
+    binned: list[GridPointInput] = []
+    for point in points:
+        maturity = getattr(point, "maturity_years", None)
+        if maturity is None or maturity <= 0.0:
+            binned.append(point)
+            continue
+        log_maturity = math.log(maturity)
+        nearest = min(grid_years, key=lambda gy: abs(log_maturity - math.log(gy[1])))[0]
+        binned.append(
+            _MonitoredTenorPoint(
+                underlying=point.underlying,
+                tenor_label=nearest,
+                target_delta=point.target_delta,
+                delta=point.delta,
+            )
+        )
+    return binned
 
 
 def check_tenor_coverage_floor(

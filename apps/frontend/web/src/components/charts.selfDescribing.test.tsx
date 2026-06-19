@@ -564,6 +564,7 @@ describe("GreekCurve, single-Greek chart driven by a Greek selector", () => {
       ["gamma", "gamma (1/$)", "gamma"],
       ["vega", "vega ($/Vol)", "vega"],
       ["theta", "theta ($/Time(y))", "theta"],
+      ["rho", "rho ($/Rate)", "rho"],
     ];
     for (const [pill, axisTitle, hoverName] of cases) {
       fireEvent.click(screen.getByRole("button", { name: pill }));
@@ -577,9 +578,9 @@ describe("GreekCurve, single-Greek chart driven by a Greek selector", () => {
     }
   });
 
-  test("rho is never offered as a selectable Greek", () => {
+  test("rho is offered as a first-order selectable Greek", () => {
     renderCurve();
-    expect(screen.queryByRole("button", { name: "rho" })).toBeNull();
+    expect(screen.getByRole("button", { name: "rho" })).toBeInTheDocument();
   });
 
   test("second-order switch exposes vanna, volga and charm", () => {

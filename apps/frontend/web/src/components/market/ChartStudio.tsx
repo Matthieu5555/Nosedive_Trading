@@ -46,7 +46,7 @@ type StudioView = "smile" | "first-order" | "second-order";
 
 const STUDIO_INFO =
   "One chart, three reads of the same tenor. Smile is implied vol across strikes (pick a wing, calls " +
-  "or puts, or both combined). First order is delta, gamma, vega, theta, the four read first. Second " +
+  "or puts, or both combined). First order is delta, gamma, vega, theta, rho, the ones read first. Second " +
   "order is vanna, volga, charm, how the first-order Greeks themselves move as vol or time changes. " +
   GREEK_GROUP_INFO;
 
@@ -142,7 +142,7 @@ export function ChartStudio({
                   type="button"
                   className="mode-toggle__option"
                   aria-pressed={view === "first-order"}
-                  title="Delta, gamma, vega, theta, the four read first"
+                  title="Delta, gamma, vega, theta, rho, the ones read first"
                   onClick={() => changeView("first-order")}
                 >
                   First order

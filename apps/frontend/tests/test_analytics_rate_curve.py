@@ -105,7 +105,7 @@ def _seed_store(root: Path, *, published_3m: float, implied_rate: float) -> None
     # Publish only the 3m pillar so r(0.25) reads it exactly (the other pillars are a coverage gap).
     points = build_rate_points(
         currency_config=eur,
-        published_levels={"euribor_3m": published_3m},
+        published_levels={"govt_3m": published_3m},
         as_of=_TRADE_DATE,
         snapshot_ts=_AS_OF,
         source_snapshot_ts=_AS_OF,
@@ -141,7 +141,7 @@ def test_top_level_rate_curve_surfaces_the_ingested_pillars(tmp_path: Path) -> N
     assert curve["currency"] == "EUR"
     assert curve["n_pillars"] == 1
     assert curve["pillars"][0]["pillar_tenor"] == "3m"
-    assert curve["pillars"][0]["instrument"] == "euribor_3m"
+    assert curve["pillars"][0]["instrument"] == "govt_3m"
     assert "ACT/365" in curve["rate_unit"]
 
 

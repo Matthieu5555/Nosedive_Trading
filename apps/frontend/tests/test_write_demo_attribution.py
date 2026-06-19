@@ -100,7 +100,7 @@ def test_writer_builds_book_and_position_rows_for_each_day_step(store_root: Path
 
 
 def test_written_rows_are_readable_via_attribution_endpoint(store_root: Path) -> None:
-    _spec_book, rows = writer.build_rows(ParquetStore(store_root))
+    spec_book, rows = writer.build_rows(ParquetStore(store_root))
     ParquetStore(store_root).write("scenario_attributions", rows)
 
     ctx = AppContext(
@@ -112,7 +112,7 @@ def test_written_rows_are_readable_via_attribution_endpoint(store_root: Path) ->
     with TestClient(create_app(ctx)) as client:
         body = client.get(
             "/api/attribution",
-            params={"trade_date": D1.isoformat(), "portfolio_id": "demo-sep-straddle"},
+            params={"trade_date": D1.isoformat(), "portfolio_id": spec_book.portfolio_id},
         ).json()
     assert body["found"] is True
     assert body["level"] == "book"

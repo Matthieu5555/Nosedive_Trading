@@ -25,7 +25,10 @@ export interface FeatureFlag {
 // The single source of truth for which whole tabs/pages are work-in-progress. Keyed by route path
 // (the same paths as routes.ts). Empty == everything ships. Flip one line to grey a tab in the nav
 // and swap its page for a placeholder; flip it back to ship. Nothing is flagged by default.
-export const FEATURE_STATUS: Record<string, FeatureFlag> = {};
+export const FEATURE_STATUS: Record<string, FeatureFlag> = {
+  "/strategy": { status: "wip", reason: "Still being built." },
+  "/signals": { status: "wip", reason: "Still being built." },
+};
 
 const READY: FeatureFlag = { status: "ready" };
 

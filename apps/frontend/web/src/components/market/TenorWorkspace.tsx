@@ -1,11 +1,6 @@
 import { useMemo, useState } from "react";
 
-import {
-  type AnalyticsMaturity,
-  type AnalyticsSides,
-  type SurfaceSide,
-  TENOR_GRID,
-} from "../../api";
+import { type AnalyticsMaturity, type AnalyticsSides, type SurfaceSide } from "../../api";
 import { tourAnchor } from "../../lib/tour";
 import { type SurfaceIdentityProps } from "../charts";
 import { DollarGreeksByMaturity } from "../DollarGreeksByMaturity";
@@ -13,15 +8,15 @@ import { PriceStructure } from "../PriceStructure";
 import { RateDiagnosticsPanel } from "../RateDiagnostics";
 import { ChartStudio } from "./ChartStudio";
 
-// The reference tenor the page opens on (the blueprint signal tenor). When 3m wasn't captured the
-// selector still opens on it and shows the projection gap, so the default is honest rather than
-// silently jumping to whatever tenor happens to exist.
-const DEFAULT_TENOR = "3m";
+// The reference maturity the page opens on (the blueprint signal tenor, ~3 months). We open on the
+// captured maturity nearest this, so the default is a real expiry that exists rather than a fixed
+// label that may not have been captured.
+const REFERENCE_YEARS = 0.25;
 
-// The per-tenor reading workspace, below the Volatility surface. ONE tenor selector (the pinned
-// `tenor_grid`, near → far; a grid tenor the capture didn't reach is offered but resolves to a
-// labelled "not captured" gap, blueprint §4.5) lives in the Charting studio heading and drives FOUR
-// separate, aerated page elements, in this order top to bottom: the Charting studio (one chart,
+// The per-maturity reading workspace, below the Volatility surface. ONE maturity selector lists every
+// captured maturity for this close, near → far, each labelled by its real listed expiry. It lives in
+// the Charting studio heading and drives FOUR separate, aerated page elements, in this order top to
+// bottom: the Charting studio (one chart,
 // switchable between the smile and the first-/second-order Greek-vs-strike curves), the Dollar Greeks
 // numbers for the same tenor, the Price structure order book, and the Rate diagnostics. The smile and
 // the Greek-vs-strike chart used to be two separate panels (and the smile shared a box with the Dollar
@@ -51,39 +46,61 @@ export function TenorWorkspace({
   sidesAvailable?: SurfaceSide[];
   perSideServed?: boolean;
 } & SurfaceIdentityProps) {
-  // Which grid tenors actually have a captured maturity, by tenor_label.
-  const capturedByTenor = useMemo(() => {
-    const map = new Map<string, AnalyticsMaturity>();
-    for (const m of maturities) {
-      if (m.tenor_label && !map.has(m.tenor_label)) map.set(m.tenor_label, m);
+  // Every captured maturity for this close, near → far. The selector lists exactly these, so a PM
+  // only ever picks a maturity that was really captured (keyed by its listed expiry, the unique
+  // `tenor_label`).
+  const ordered = useMemo(
+    () => [...maturities].sort((a, b) => a.maturity_years - b.maturity_years),
+    [maturities],
+  );
+
+  // Open on the captured maturity nearest the reference tenor (~3m). When the active maturity set
+  // changes (a new underlying or close) and the held pick is gone, fall back to that same default
+  // rather than leaving the workspace blank.
+  const defaultTenorLabel = useMemo(() => {
+    if (ordered.length === 0) return null;
+    let best = ordered[0];
+    for (const m of ordered) {
+      if (
+        Math.abs(m.maturity_years - REFERENCE_YEARS) <
+        Math.abs(best.maturity_years - REFERENCE_YEARS)
+      ) {
+        best = m;
+      }
     }
-    return map;
-  }, [maturities]);
+    return best.tenor_label;
+  }, [ordered]);
 
-  const [tenor, setTenor] = useState(DEFAULT_TENOR);
-  const selected = capturedByTenor.get(tenor) ?? null;
+  const [picked, setPicked] = useState<string | null>(null);
+  const selected =
+    ordered.find((m) => m.tenor_label === picked) ??
+    ordered.find((m) => m.tenor_label === defaultTenorLabel) ??
+    null;
 
-  // The one tenor selector, rendered in the Charting studio heading; every panel below reads the same
-  // `selected` maturity from it.
+  // The one maturity selector, rendered in the Charting studio heading; every panel below reads the
+  // same `selected` maturity from it.
   const tenorSelect = (
     <label className="selector-field">
-      <span className="visually-hidden">Tenor</span>
-      <select aria-label="Tenor" value={tenor} onChange={(event) => setTenor(event.target.value)}>
-        {TENOR_GRID.map((label) => (
-          <option key={label} value={label}>
-            {label}
-            {capturedByTenor.has(label) ? "" : " (not captured)"}
+      <span className="visually-hidden">Maturity</span>
+      <select
+        aria-label="Maturity"
+        value={selected?.tenor_label ?? ""}
+        onChange={(event) => setPicked(event.target.value)}
+      >
+        {ordered.map((m) => (
+          <option key={m.tenor_label} value={m.tenor_label}>
+            {m.label}
           </option>
         ))}
       </select>
     </label>
   );
 
-  // A grid tenor beyond the captured span: a labelled projection gap, never a blank or a fabricated
-  // curve. The same note is shown in each panel so every element honestly says why it is empty.
+  // No captured maturity for this close: a labelled gap, never a blank or a fabricated curve. The
+  // same note is shown in each panel so every element honestly says why it is empty.
   const gap = (
     <p className="projection-gap" role="status">
-      {tenor} is not captured for this close, nothing to show for this tenor (projection gap).
+      No maturities were captured for this close, nothing to show (projection gap).
     </p>
   );
 

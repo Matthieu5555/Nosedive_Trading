@@ -34,6 +34,7 @@ from pathlib import Path
 
 from algotrading.core.paths import repo_root
 from algotrading.core.provenance import ProvenanceStamp, source_ref, stamp
+from algotrading.frontend.demo_populate import DEMO_PORTFOLIO_ID
 from algotrading.frontend.realized_attribution import (
     BookSpec,
     RealizedDayStep,
@@ -175,7 +176,11 @@ def _banked_dates(store: ParquetStore) -> list:
 
 
 def build_rows(store: ParquetStore) -> tuple[BookSpec, list[ScenarioAttribution]]:
-    spec = september_straddle_spec()
+    # Seed the book attribution under the same portfolio_id the rest of the demo uses
+    # (risk_aggregates / scenario_results / positions), so the "My book" view shows a populated
+    # waterfall when the operator picks the one portfolio the dropdown offers. Without this the
+    # attribution landed under the spec's own default id and the headline panel emptied on select.
+    spec = september_straddle_spec(portfolio_id=DEMO_PORTFOLIO_ID)
     dates = _banked_dates(store)
     if len(dates) < 2:
         raise SystemExit(

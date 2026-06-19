@@ -191,6 +191,33 @@ def test_long_call_worst_case_is_the_spot_crash():
     assert result.worst_pnl < 0.0
 
 
+def test_atmp_band_reprices_as_a_put_not_a_call():
+    # Regression: the ATM-put band carries target_delta == 0.0, so inferring the option right from
+    # the target-delta sign mislabelled it a call. The right must come from the band label.
+    put = reconstruct_valuation(_row(delta_band="atmp", right="P"), multiplier=_MULT, currency="USD")
+    call = reconstruct_valuation(_row(delta_band="atm", right="C"), multiplier=_MULT, currency="USD")
+    assert put.option_right == "P"
+    assert call.option_right == "C"
+
+
+def test_long_atm_straddle_surface_is_a_symmetric_v():
+    # A long ATM straddle (call + put, same strike) must gain on BOTH a large up and a large down
+    # move; the put-as-call bug made the down-spot wing a loss and pushed the worst case onto the
+    # spot crash. Guard the V-shape at the spot extremes and an interior worst case.
+    result = basket_stress(
+        _basket(_leg("long", 1.0, delta_band="atm"), _leg("long", 1.0, delta_band="atmp")),
+        analytics_rows=[_row(delta_band="atm", right="C"), _row(delta_band="atmp", right="P")],
+        multiplier=_MULT,
+        currency="USD",
+        spot_by_underlying={},
+        config=_config(),
+    )
+    j = result.vol_axis.index(0.0)
+    assert result.pnl_grid[0][j] > 0.0  # deep down-spot: put wing gains
+    assert result.pnl_grid[-1][j] > 0.0  # deep up-spot: call wing gains
+    assert result.worst_spot_shock not in (min(result.spot_axis), max(result.spot_axis))
+
+
 def test_short_leg_flips_the_worst_case_to_an_up_move():
     short_call = _leg("short", -2.0)
     result = basket_stress(

@@ -12,6 +12,7 @@ from algotrading.infra.qc import (
     GridPointInput,
     QcReport,
     QcThresholds,
+    bin_points_to_monitored_tenors,
     build_report,
     check_collector_continuity,
     check_delta_band_completeness,
@@ -71,7 +72,11 @@ def run_qc(
 
     if grid_points is not None:
         for underlying in sorted(grid_points):
-            points = grid_points[underlying]
+            # The listed-chain price grid labels cells by real expiry, not the monitored tenor
+            # grid; bin each point onto its nearest monitored tenor so the coverage checks measure
+            # honest support per tenor instead of reading zero on every exact-label miss. A no-op
+            # for points already on a monitored tenor (the legacy synthetic-strike grid).
+            points = bin_points_to_monitored_tenors(grid_points[underlying], tenor_grid)
             # Scope-aware QC severity (ADR 0060): a grid coverage/band collapse on the tradeable
             # index stays CRITICAL (pages, blocks banking); the same on an illiquid single-name
             # constituent is notice-level. index_symbols=None keeps every underlying strict.

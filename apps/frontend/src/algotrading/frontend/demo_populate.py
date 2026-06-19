@@ -82,6 +82,7 @@ from algotrading.infra.risk.stress_surface import (
 )
 from algotrading.infra.risk.valuation import ContractValuationInput, pricing_state_for
 from algotrading.infra.storage import ParquetStore
+from algotrading.infra.surfaces.projection import option_right_for_band
 
 from .basket_scenarios import reconstruct_valuation
 from .context import AppContext
@@ -163,10 +164,6 @@ def _cells_by_underlying(
     return cells
 
 
-def _option_right(target_delta: float) -> str:
-    return "C" if target_delta >= 0.0 else "P"
-
-
 def _expiry_for(snapshot: datetime, maturity_years: float) -> date:
     return (snapshot + timedelta(days=round(maturity_years * _DAYS_PER_YEAR))).date()
 
@@ -179,7 +176,7 @@ def _contract_key(row: ProjectedOptionAnalytics) -> str:
     from index 4 and strike/expiry/right from indices 6-8.
     """
 
-    right = _option_right(row.target_delta)
+    right = option_right_for_band(row.delta_band)
     expiry = _expiry_for(row.snapshot_ts, row.maturity_years).isoformat()
     strike = f"{row.strike:.2f}"
     broker_id = f"o-{row.tenor_label}-{row.delta_band}-{right}"
@@ -199,7 +196,7 @@ def _contract_key(row: ProjectedOptionAnalytics) -> str:
 
 
 def _broker_contract_id(row: ProjectedOptionAnalytics) -> str:
-    right = _option_right(row.target_delta)
+    right = option_right_for_band(row.delta_band)
     return f"o-{row.tenor_label}-{row.delta_band}-{right}"
 
 

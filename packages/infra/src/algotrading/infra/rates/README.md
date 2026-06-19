@@ -2,8 +2,9 @@
 
 Ingests a per-currency risk-free curve `r(T)` as a daily as-of table, evaluates it at an option's
 maturity, makes it the basis **Rho** is bumped against, and persists the **implied − risk-free
-spread** diagnostic. Pure functions: no I/O, no clock, no randomness — the caller reads/writes the
-store, this package converts, evaluates, and diagnoses.
+spread** diagnostic. The convert/evaluate/diagnose core is pure: no clock, no randomness. The one
+piece that reaches the network, the live ECB feed (`ecb_source`), isolates I/O behind an injectable
+`transport`, so the mapping and parser are unit-tested with fixture CSV and never touch the wire.
 
 The two rates are kept **separate by design**: the per-expiry **parity-implied** rate `−ln(DF)/T`
 (from `infra/forwards`) stays the *pricing-consistency* rate and is never displaced; the **ingested**
@@ -19,10 +20,18 @@ from algotrading.infra.rates import (
 # 1. Ingest: published levels -> canonical continuous/ACT-365 RiskFreeRatePoint rows (stamped).
 points = build_rate_points(
     currency_config=platform_config.rates.for_currency("EUR"),
-    published_levels={"euribor_3m": 0.03, "euribor_12m": 0.035},  # source convention
+    published_levels={"govt_3m": 0.03, "govt_12m": 0.035},  # source convention; ECB labels
     as_of=trade_date, snapshot_ts=ts, source_snapshot_ts=ts, calc_ts=ts,
     config_hashes=cfg_hashes,
 )  # store.write("rates", points)
+
+# 1b. Or pull today's EUR pillars live from the ECB Data Portal (€STR + AAA-govt spot curve)
+#     and build the same rows in one call (network behind an injectable transport):
+from algotrading.infra.rates import ingest_ecb_rates
+points = ingest_ecb_rates(
+    currency_config=platform_config.rates.for_currency("EUR"),
+    config_hashes=cfg_hashes, calc_ts=ts,
+)  # CLI: uv run python scripts/ingest_rates.py
 
 # 2. Evaluate: rebuild the curve from rows published AS-OF the valuation day (no look-ahead).
 curve = curve_from_points("EUR", points)
@@ -46,6 +55,12 @@ diag = implied_riskfree_spread(
 - **`curve.RateCurve`** — immutable zero-rate pillars. `rate_at(T)` interpolates **linearly in the
   zero rate** between pillars and **flat-extrapolates** beyond the ends. `flat()` is the degenerate
   single-pillar curve (the term-structured generalisation of `ForwardConfig.rate`).
+- **`ecb_source.EcbRateSource` / `ingest_ecb_rates`** — the live feed. Maps each EUR pillar
+  `instrument` to one free ECB Data Portal series (€STR for the overnight; the euro-area AAA-government
+  spot yield curve for the term nodes), fetches the latest observation, scales percent→decimal, and
+  hands the levels to `build_rate_points` dated to the ECB observation day. A pillar with no node is a
+  coverage gap. Euribor/OIS are not redistributed free; swap `SERIES_BY_INSTRUMENT` + the
+  `configs/rates.yaml` labels to change source. `scripts/ingest_rates.py` is the one-shot entrypoint.
 - **`ingest.build_rate_points` / `curve_from_points`** — config + levels → stamped
   `RiskFreeRatePoint` rows (unpublished pillars are a coverage gap, not a defect); and rows →
   evaluator. The **as-of filter is the caller's job**: pass only rows published as-of the valuation

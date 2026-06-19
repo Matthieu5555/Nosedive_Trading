@@ -281,8 +281,17 @@ def default_stages_builder(
         # is byte-for-byte idempotent OR intentionally versioned; version= stays the deliberate-
         # replay hatch, never the routine). The admission gate above guarantees this delete can
         # never wipe a banked slice for an empty / closed-market re-fire.
-        for symbol in baskets:
-            store.delete_partition(_RAW_MARKET_EVENTS, trade_date, symbol)
+        #
+        # The slots to replace are every underlying PRESENT in the captured events, not just the
+        # fired index symbols: since constituent capture was re-enabled (ADR 0059) the basket
+        # merged under each fired index spans the index AND its constituent option chains, so each
+        # fire writes raw rows for ~50 underlyings. Clearing only the index slot left the prior
+        # fire's constituent rows in place, and a same-day re-fetch then died on a duplicate raw
+        # primary key (append-only) before anything landed. Deleting exactly the underlyings we are
+        # about to rewrite keeps the per-(trade_date, underlying) last-valid-wins semantics and
+        # never touches a slot this fire did not re-capture.
+        for underlying in {event.underlying for event in events}:
+            store.delete_partition(_RAW_MARKET_EVENTS, trade_date, underlying)
         if events:
             store.write(_RAW_MARKET_EVENTS, events)
         summary = summarize_session(

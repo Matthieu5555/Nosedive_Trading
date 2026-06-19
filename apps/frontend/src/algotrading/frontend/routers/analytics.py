@@ -126,6 +126,36 @@ def _maturity_key(maturity_years: float) -> str:
     return f"{maturity_years:.6f}"
 
 
+# Compact, locale-free month abbreviations for the expiry label (no em dash, commas not dashes).
+_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+
+def _tenor_display(raw_tenor_label: str, maturity_years: float) -> tuple[str, str]:
+    """Map a stored tenor label to the (selector key, human label) the front renders.
+
+    The listed-chain grid (D1) labels each maturity by its real listed expiry as
+    ``"<ISO expiry>|<maturity_years>"`` so two slices on the same calendar day stay distinct. We
+    key the selector on the expiry (stable and unique per maturity here) and show a compact
+    ``"18 Sep 2026 (0.252y)"``. The legacy delta-band grid labels by reading tenor (``"3m"``) with
+    no pipe, so we pass it through unchanged and older captures keep their reading-tenor ladder.
+    """
+    if "|" in raw_tenor_label:
+        expiry_text = raw_tenor_label.split("|", 1)[0]
+        try:
+            expiry = date.fromisoformat(expiry_text)
+        except ValueError:
+            pass
+        else:
+            human = (
+                f"{expiry.day:02d} {_MONTHS[expiry.month - 1]} {expiry.year} "
+                f"({maturity_years:.3f}y)"
+            )
+            return expiry_text, human
+    return raw_tenor_label, f"{raw_tenor_label} ({maturity_years:.3f}y)"
+
+
 # A small float tolerance for the EXACT-key strike match. The row strike and the snapshot strike
 # both originate from the same listed-contract strike (Lane A keys each row to a real listed
 # contract), so this guards only against float round-trip noise through parquet/ISO text, never
@@ -432,8 +462,8 @@ def _group_by_maturity(
     entries: list[dict[str, object]] = []
     for key in sorted(grouped, key=float):
         maturity_cells = sorted(grouped[key], key=lambda c: c.target_delta)
-        tenor_label = maturity_cells[0].tenor_label
         maturity_years = maturity_cells[0].maturity_years
+        tenor_label, display_label = _tenor_display(maturity_cells[0].tenor_label, maturity_years)
         fitted = _nearest_by_maturity(maturity_years, slice_candidates)
         fitted_expiry = fitted.expiry_date if fitted is not None else None
         points = [
@@ -449,7 +479,7 @@ def _group_by_maturity(
             {
                 "maturity_years": maturity_cells[0].maturity_years,
                 "tenor_label": tenor_label,
-                "label": f"{tenor_label} ({maturity_cells[0].maturity_years:.3f}y)",
+                "label": display_label,
                 "smile": {
                     "axis_type": "delta",
                     "deltas": [cell.target_delta for cell in smile_cells],

@@ -138,36 +138,27 @@ test("a scorecard with no data honestly shows '-' (never fabricated)", async () 
   expect(within(skew).getByText("-")).toBeInTheDocument();
 });
 
-test("one tenor selector lists the pinned grid and drives the smile + greeks table", async () => {
+test("one maturity selector lists the captured maturities and drives the smile + greeks table", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
   render(<MarketPage />);
 
-  const tenor = await screen.findByLabelText("Tenor");
-  // The pinned tenor_grid, in reading order.
-  for (const label of ["10d", "1m", "3m", "6m", "12m", "18m", "2y", "3y"]) {
-    expect(
-      within(tenor).getByRole("option", { name: new RegExp(`^${label}`) }),
-    ).toBeInTheDocument();
-  }
-  // The default tenor (3m) is captured, so its smile and Greeks table render.
+  const maturity = await screen.findByLabelText("Maturity");
+  // The selector lists exactly the captured maturities, each labelled by its expiry/tenor.
+  expect(within(maturity).getByRole("option", { name: /3m \(0\.250y\)/ })).toBeInTheDocument();
+  // The default maturity (nearest 3m) is captured, so its smile and Greeks table render.
   expect(await screen.findByLabelText(/smile 3m/i)).toBeInTheDocument();
   expect(await screen.findByRole("table", { name: /Dollar Greeks, 3m/i })).toBeInTheDocument();
 });
 
-test("a tenor beyond the captured span renders as a labelled projection gap", async () => {
-  server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
-  const user = userEvent.setup();
+test("a close with no captured maturities renders a labelled projection gap", async () => {
+  server.use(
+    jsonGet("/api/analytics", { ...ANALYTICS_SCORECARD, n_maturities: 0, maturities: [] }),
+  );
   render(<MarketPage />);
 
-  await screen.findByLabelText(/smile 3m/i);
-  // 12m is offered (pinned grid) but not captured in this fixture.
-  expect(
-    within(screen.getByLabelText("Tenor")).getByRole("option", { name: /12m \(not captured\)/ }),
-  ).toBeInTheDocument();
-  await user.selectOptions(screen.getByLabelText("Tenor"), "12m");
-  // Each split panel (smile/greeks, price book, greek charts, rate diagnostics) honestly shows its
-  // own projection-gap note for the uncaptured tenor, so several appear.
-  const gaps = await screen.findAllByText(/12m is not captured/i);
+  // The selector lists no maturities, so every split panel honestly shows its own projection-gap
+  // note rather than a blank or a fabricated curve.
+  const gaps = await screen.findAllByText(/no maturities were captured/i);
   expect(gaps.length).toBeGreaterThan(0);
   expect(screen.queryByLabelText(/smile 3m/i)).not.toBeInTheDocument();
 });

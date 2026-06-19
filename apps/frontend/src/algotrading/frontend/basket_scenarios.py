@@ -26,6 +26,7 @@ from algotrading.infra.risk.scenarios import (
 )
 from algotrading.infra.risk.stress_surface import stress_surface
 from algotrading.infra.risk.valuation import pricing_state_for
+from algotrading.infra.surfaces.projection import option_right_for_band
 
 _PORTFOLIO_ID = "basket-stress"
 _MIN_PRICE_FOR_DF = 1e-9
@@ -66,17 +67,13 @@ class BasketStressResult:
     rate_sweep: tuple[BasketRateScenario, ...] = ()
 
 
-def _option_right(target_delta: float) -> str:
-    return "C" if target_delta >= 0.0 else "P"
-
-
 def reconstruct_valuation(
     row: ProjectedOptionAnalytics, *, multiplier: float, currency: str
 ) -> ContractValuationInput:
     base = ContractValuationInput(
         contract_key=f"{row.underlying}|{row.tenor_label}|{row.delta_band}",
         underlying=row.underlying,
-        option_right=_option_right(row.target_delta),
+        option_right=option_right_for_band(row.delta_band),
         exercise_style="european",
         strike=row.strike,
         maturity_years=row.maturity_years,

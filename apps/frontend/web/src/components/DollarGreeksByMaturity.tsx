@@ -14,10 +14,9 @@ import { Cluster, Scroll, Stack } from "./layout";
 import { SideToggle } from "./market/SideToggle";
 import { TableExpand } from "./TableExpand";
 
-// The four first-order Greeks an operator reads first. Rate-rho is deliberately excluded: it added a
-// column the PM doesn't read, so the toggle is now just first-order vs second-order. (The second-order
-// set below is additive-nullable and rendered by its own block.)
-type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta";
+// The first-order Greeks an operator reads first, delta/gamma/vega/theta plus rate-rho. (The
+// second-order set below is additive-nullable and rendered by its own block.)
+type FirstOrderGreek = "delta" | "gamma" | "vega" | "theta" | "rho";
 
 type GreekColumn = { name: FirstOrderGreek; rawUnit: string };
 
@@ -26,6 +25,7 @@ const GREEKS: ReadonlyArray<GreekColumn> = [
   { name: "gamma", rawUnit: UNITS.gamma },
   { name: "vega", rawUnit: UNITS.vega },
   { name: "theta", rawUnit: UNITS.theta },
+  { name: "rho", rawUnit: UNITS.rho },
 ];
 
 // The Greek group the segmented control selects. "first-order" is the four-Greek table the page opens
@@ -190,7 +190,7 @@ export function DollarGreeksByMaturity({
               type="button"
               className="mode-toggle__option"
               aria-pressed={group === "first-order"}
-              title="Delta, gamma, vega, theta, the four read first"
+              title="Delta, gamma, vega, theta, rho, the ones read first"
               onClick={() => setGroup("first-order")}
             >
               First order
@@ -209,7 +209,7 @@ export function DollarGreeksByMaturity({
           {!showHigherOrder && rows.length > 0 && (
             <TableExpand
               title={`Dollar Greeks, ${bodyLabel}`}
-              description={`Every delta band at ${bodyLabel}: delta, gamma, vega and theta as raw and ${currency} value.`}
+              description={`Every delta band at ${bodyLabel}: delta, gamma, vega, theta and rho as raw and ${currency} value.`}
               triggerLabel="Open the full Dollar Greeks table"
             >
               <FirstOrderGreeksTable

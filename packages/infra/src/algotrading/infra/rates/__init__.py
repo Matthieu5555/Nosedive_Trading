@@ -13,6 +13,15 @@ from .conventions import (
     to_continuous_act365,
 )
 from .curve import RateCurve, RateCurveError, RatePillar
+from .ecb_source import (
+    SERIES_BY_INSTRUMENT,
+    EcbRateSource,
+    EcbRateSourceError,
+    EcbSeries,
+    FetchedLevels,
+    ingest_ecb_rates,
+    parse_observation_csv,
+)
 from .ingest import (
     CANONICAL_DAY_COUNT,
     RATES_VERSION,
@@ -43,7 +52,12 @@ __all__ = [
     "QC_OK",
     "QC_WARN",
     "RATES_VERSION",
+    "SERIES_BY_INSTRUMENT",
+    "EcbRateSource",
+    "EcbRateSourceError",
+    "EcbSeries",
     "ExternalRhoError",
+    "FetchedLevels",
     "ImpliedRiskfreeSpread",
     "RateConventionError",
     "RateCurve",
@@ -55,5 +69,7 @@ __all__ = [
     "curve_from_points",
     "external_curve_rho",
     "implied_riskfree_spread",
+    "ingest_ecb_rates",
+    "parse_observation_csv",
     "to_continuous_act365",
 ]

@@ -274,6 +274,12 @@ def _persist_signals_and_qc(
         grid_points=dict(grid_cells) or None,
         tenor_grid=config.universe.tenor_grid,
         extra_results=analytics_results,
+        # Mirror the live EOD QC scope (ADR 0060): the configured index symbols stay strictly
+        # CRITICAL, every other captured underlying is a constituent and gets notice-level grid
+        # QC. Omitting this defaulted index_symbols to None, which treated all 50 single names as
+        # the tradeable index and fabricated a critical fail per constituent on every rebuild —
+        # the exact divergence from the live path that ADR 0060 exists to prevent.
+        index_symbols=frozenset(config.universe.indices),
     )
     triage = persist_triage(store, job.report, correlation_id=correlation_id)
     log.info(

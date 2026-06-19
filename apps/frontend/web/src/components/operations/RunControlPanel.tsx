@@ -20,6 +20,14 @@ import { JobProgress } from "./JobProgress";
 const LAUNCH_GLOSS =
   "Replay the last captured day as a new surface, writes nothing to disk until validated.";
 
+// The launch action depends on the selected provider: the offline SAMPLE replay writes nothing,
+// a real provider runs the canonical close-capture and persists to the store. Surface the truth
+// for whichever is selected (the provider's own note) rather than a fixed replay gloss.
+function launchGloss(selected: Provider | undefined): string {
+  if (!selected || selected.provider === "SAMPLE") return LAUNCH_GLOSS;
+  return selected.note;
+}
+
 const JOB_STATE_CLASS: Record<Job["state"], string> = {
   queued: "ops-pill--warn",
   running: "ops-pill--warn",
@@ -123,6 +131,7 @@ export function RunControlPanel() {
   }, [underlyingList, underlying]);
 
   const selected = providerList.find((p) => p.provider === provider);
+  const gloss = launchGloss(selected);
   const canLaunch = Boolean(provider) && selected?.status === "ready" && !launch.isPending;
   const launchError =
     launch.error instanceof ApiError
@@ -171,12 +180,12 @@ export function RunControlPanel() {
               type="button"
               className="ops-launch"
               disabled={!canLaunch}
-              title={LAUNCH_GLOSS}
+              title={gloss}
               onClick={() => launch.mutate({ provider, underlying: underlying || null })}
             >
               {launch.isPending ? "Launching…" : "Launch run"}
             </button>
-            <InfoDot label="What does this button do?" body={LAUNCH_GLOSS} />
+            <InfoDot label="What does this button do?" body={gloss} />
           </Cluster>
         </Cluster>
       </AsyncBlock>

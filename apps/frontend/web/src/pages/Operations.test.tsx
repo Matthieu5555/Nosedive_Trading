@@ -47,8 +47,8 @@ const PROVIDERS: ProvidersResponse = {
       asset_class: "equity",
       auth_required: false,
       data_latency: "delayed",
-      status: "unavailable",
-      note: "Live IBKR needs an authenticated CP gateway.",
+      status: "ready",
+      note: "Runs the canonical close-capture (scripts/eod_run.py) and writes to the platform store.",
     },
   ],
 };
@@ -151,13 +151,13 @@ test("run control launches a SAMPLE run and the job appears in the list", async 
   });
 });
 
-test("an unavailable provider is offered disabled, never silently runnable", async () => {
+test("a runnable provider is offered enabled, both SAMPLE and the real IBKR capture", async () => {
   mockOps();
   renderWithClient(<OperationsPage />);
 
   const providerSelect = (await screen.findByLabelText("Data provider")) as HTMLSelectElement;
   const ibkr = within(providerSelect).getByRole("option", { name: /IBKR/ }) as HTMLOptionElement;
-  expect(ibkr.disabled).toBe(true);
+  expect(ibkr.disabled).toBe(false);
   const sample = within(providerSelect).getByRole("option", {
     name: "SAMPLE",
   }) as HTMLOptionElement;
@@ -209,15 +209,24 @@ test("a running job row shows a determinate step tracker, not a frozen pill", as
   expect(bar).toHaveAttribute("aria-valuenow", "50");
 });
 
-test("the launch button carries a back-end gloss, reachable via the ⓘ", async () => {
+test("the launch button carries a provider-aware gloss, reachable via the ⓘ", async () => {
   mockOps();
   renderWithClient(<OperationsPage />);
 
   const launch = await screen.findByRole("button", { name: /Launch run/i });
-  // The intent is legible before the click: the hover title states the back-end action.
+  // SAMPLE (the default runnable) is an offline replay: the gloss says so.
   expect(launch).toHaveAttribute("title", expect.stringMatching(/Replay the last captured day/));
 
   const info = screen.getByRole("button", { name: "What does this button do?" });
   await userEvent.hover(info);
   expect(screen.getByRole("tooltip")).toHaveTextContent(/writes nothing to disk until validated/);
+
+  // Switching to the real IBKR capture must not keep claiming "writes nothing": the gloss tracks
+  // the selected provider and states that it runs the canonical close-capture.
+  const providerSelect = (await screen.findByLabelText("Data provider")) as HTMLSelectElement;
+  await userEvent.selectOptions(providerSelect, "IBKR");
+  expect(await screen.findByRole("button", { name: /Launch run/i })).toHaveAttribute(
+    "title",
+    expect.stringMatching(/canonical close-capture/),
+  );
 });

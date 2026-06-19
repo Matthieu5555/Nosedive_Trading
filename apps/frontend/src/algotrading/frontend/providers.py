@@ -40,9 +40,11 @@ _CAPABILITIES: tuple[ProviderCapability, ...] = (
         asset_class="equity",
         auth_required=False,
         data_latency="delayed",
-        status="unavailable",
-        note="Live IBKR rides the Client-Portal REST adapter (packages/infra-ibkr); "
-        "needs an authenticated CP gateway.",
+        status="ready",
+        note="Runs the canonical end-of-day close-capture (scripts/eod_run.py) for the selected "
+        "index, the same one-shot the systemd timer fires. Captures the live index and "
+        "constituent option chains when the Client-Portal gateway is authenticated, else records "
+        "a clean empty day. Writes to the platform store.",
     ),
 )
 

@@ -22,11 +22,13 @@ def test_liveness_is_ok(infra_client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_providers_lists_sample_as_ready(infra_client: TestClient) -> None:
+def test_providers_lists_sample_and_ibkr_as_ready(infra_client: TestClient) -> None:
     payload = infra_client.get("/api/providers").json()
     by_name = {p["provider"]: p for p in payload["providers"]}
     assert by_name["SAMPLE"]["status"] == "ready"
-    assert by_name["IBKR"]["status"] == "unavailable"
+    # IBKR is runnable: launching it shells out to the canonical close-capture (eod_run.py).
+    assert by_name["IBKR"]["status"] == "ready"
+    assert "eod_run.py" in by_name["IBKR"]["note"]
     assert "SAXO" not in by_name
     assert "DERIBIT" not in by_name
 
@@ -35,13 +37,6 @@ def test_run_rejects_unknown_provider(infra_client: TestClient) -> None:
     response = infra_client.post("/api/run", json={"provider": "NOPE"})
     assert response.status_code == 400
     assert response.json()["error"] == "unknown_provider"
-
-
-def test_run_rejects_unavailable_provider(infra_client: TestClient) -> None:
-    response = infra_client.post("/api/run", json={"provider": "IBKR"})
-    assert response.status_code == 409
-    assert response.json()["error"] == "provider_unavailable"
-    assert "note" in response.json()
 
 
 def test_run_launch_returns_202_queued_job(infra_client: TestClient) -> None:
@@ -220,3 +215,98 @@ def test_sample_run_errors_when_the_store_has_no_committed_day(ctx: AppContext) 
     assert job.state == runner.JobState.ERROR
     assert "no committed sample day" in job.message
     assert job.finished_at is not None
+
+
+def test_ibkr_run_routes_to_the_close_capture_seam(ctx: AppContext) -> None:
+    # A real provider runs through the injectable capture seam (the production default shells out
+    # to scripts/eod_run.py; here a stub stands in so no subprocess is spawned). A truthy result
+    # marks the job DONE and the summary is passed through verbatim.
+    calls: list[tuple[str, str]] = []
+
+    def fake_capture(_ctx: AppContext, job: runner.JobStatus) -> dict[str, object]:
+        calls.append((job.provider, job.underlying))
+        return {"ok": True, "message": "captured", "exit_code": 0}
+
+    pipeline = runner.PipelineRunner(capture=fake_capture)
+    job = pipeline.new_job("IBKR", "SX5E")
+    pipeline.run_now(ctx, job)
+
+    assert calls == [("IBKR", "SX5E")]
+    assert job.state == runner.JobState.DONE
+    assert job.message == "captured"
+    assert job.summary["exit_code"] == 0
+
+
+def test_ibkr_run_marks_error_on_a_failed_capture(ctx: AppContext) -> None:
+    def failed_capture(_ctx: AppContext, _job: runner.JobStatus) -> dict[str, object]:
+        return {"ok": False, "message": "exit 1: QC paged", "exit_code": 1}
+
+    pipeline = runner.PipelineRunner(capture=failed_capture)
+    job = pipeline.new_job("IBKR", "SX5E")
+    pipeline.run_now(ctx, job)
+
+    assert job.state == runner.JobState.ERROR
+    assert "QC paged" in job.message
+
+
+def test_capture_command_mirrors_the_systemd_one_shot() -> None:
+    # The web launch must drive the same entrypoint the timer fires, scoped to the index.
+    assert runner._capture_command("SX5E") == [
+        "uv",
+        "run",
+        "python",
+        "scripts/eod_run.py",
+        "--index",
+        "SX5E",
+    ]
+
+
+def test_capture_progress_tracks_stage_and_counts_from_log_lines() -> None:
+    # The subprocess's structured logs drive a live step tracker (which stage) and a legible
+    # message (which ticker, how many events), without spawning anything.
+    job = runner.JobStatus(job_id="j1", provider="IBKR", underlying="SX5E")
+    job.start_capture_progress()
+    assert job.stage_index == 0
+    assert job.stage_total == 5
+
+    progress: dict[str, object] = {}
+    runner._apply_capture_progress(
+        job, '{"message": "orchestration.eod.stage.start", "stage": "collection"}', progress
+    )
+    assert job.stage == "Capturing the option chains"
+    assert job.stage_index == 2
+
+    runner._apply_capture_progress(
+        job,
+        '{"message": "orchestration.eod_run.collection_landed", '
+        '"raw_events_landed": 12345, "captured_indices": ["SX5E"]}',
+        progress,
+    )
+    assert progress["captured_events"] == 12345
+    assert "12,345 market events" in job.message
+
+    runner._apply_capture_progress(
+        job, '{"message": "orchestration.eod.stage.start", "stage": "qc"}', progress
+    )
+    assert job.stage_index == 5
+    assert job.stage == "Quality control"
+
+    outcome = runner._capture_outcome_message(0, "SX5E", progress)
+    assert "12,345 market events banked" in outcome
+
+
+def test_capture_progress_ignores_non_json_and_unknown_lines() -> None:
+    job = runner.JobStatus(job_id="j2", provider="IBKR", underlying="SX5E")
+    job.start_capture_progress()
+    before = (job.stage, job.stage_index, job.message)
+    progress: dict[str, object] = {}
+    runner._apply_capture_progress(job, "not json at all", progress)
+    runner._apply_capture_progress(job, '{"message": "some.other.event"}', progress)
+    assert (job.stage, job.stage_index, job.message) == before
+    assert progress == {}
+
+
+def test_capture_outcome_message_reports_empty_day_and_escalation() -> None:
+    assert "clean empty day" in runner._capture_outcome_message(0, "SX5E", {})
+    assert "exit 1" in runner._capture_outcome_message(1, "SX5E", {})
+    assert "exit 2" in runner._capture_outcome_message(2, "SX5E", {})

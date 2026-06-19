@@ -4,5 +4,5 @@
   "established": false,
   "competing": false,
   "account": null,
-  "detail": "Gateway is up but there is no SSO session. Run ! scripts/ibkr_login.py from a shell to log in."
+  "detail": "Gateway is up but there is no SSO session. Click Log in to IBKR to authenticate."
 }

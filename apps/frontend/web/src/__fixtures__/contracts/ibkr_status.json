@@ -1,8 +1,8 @@
 {
   "configured": true,
-  "authenticated": false,
-  "established": false,
+  "authenticated": true,
+  "established": true,
   "competing": false,
-  "account": null,
-  "detail": "Gateway is up but there is no SSO session. Click Log in to IBKR to authenticate."
+  "account": "DUQ574355",
+  "detail": "Session ready: authenticated and brokerage session established."
 }

@@ -101,17 +101,17 @@ export function ConstituentsWorkspace({
                 </p>
               ) : (
                 <Stack gap="md">
-                  <IndexTickerRow
-                    indexSymbol={indexSymbol}
-                    indexName={indexName}
-                    active={activeTicker === indexSymbol}
-                    onSelect={onSelectIndex}
-                  />
                   <UnderlyingDataSummary
                     batch={histories.data}
                     loading={histories.loading}
                     error={histories.error}
                     constituents={constituents.constituents}
+                  />
+                  <IndexTickerRow
+                    indexSymbol={indexSymbol}
+                    indexName={indexName}
+                    active={activeTicker === indexSymbol}
+                    onSelect={onSelectIndex}
                   />
                   <ConstituentTable
                     constituents={constituents.constituents}
@@ -145,9 +145,11 @@ export function ConstituentsWorkspace({
   );
 }
 
-// The index/ETF as a selectable ticker, at the top of the Constituents block. It is the canonical way
-// to return the whole page to the index from this surface: clicking it makes the index the active
-// ticker, exactly as the chip selector does. Reads active when the index is the page-driving ticker.
+// The index/ETF as a selectable ticker, sitting directly above the member table so it reads as the
+// first, whole-basket row of that same list (a PM scrolling to the members finds it right there). It
+// is the canonical way to return the whole page to the index from this surface: clicking it makes the
+// index the active ticker, exactly as the chip selector does. Reads active when the index is the
+// page-driving ticker.
 function IndexTickerRow({
   indexSymbol,
   indexName,

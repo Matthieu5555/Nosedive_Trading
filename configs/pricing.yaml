@@ -71,6 +71,23 @@ surface:                       # SVI calibration (SurfaceConfig)
                                      # projected/persisted onto (one grid cell per bucket). Strictly
                                      # increasing + symmetric about 0.0 (the ATM forward) so the
                                      # persisted grid is comparable across underlyings.
+  calendar_variance_repair: false    # ADR 0062 — monotone total-variance floor on the served grid.
+                                     # Each expiry's smile is fit independently, so in the
+                                     # EXTRAPOLATED wings (outside observed strikes) two smiles can
+                                     # cross, giving w(k,T_long) < w(k,T_short) — a calendar
+                                     # arbitrage between two model-invented numbers. ON, the served
+                                     # surface_grid (and the matching calendar QC) floors each
+                                     # extrapolated wing up to the shorter expiry so total variance
+                                     # never falls with maturity. NEVER touches a mark inside
+                                     # observed support: a genuine in-data inversion is left as-is
+                                     # and still pages (ADR 0061). Default OFF: flipping it changes
+                                     # served IV values, so it is a hashed config behaviour, not a
+                                     # silent flip. Repairs the discrete grid only; the continuous
+                                     # SVI params (off-grid risk) stay raw — calendar-coupled SVI is
+                                     # the deferred deeper fix.
+  calendar_repair_support_epsilon: 1.0e-6   # tolerance bracketing the observed [k_min, k_max] when
+                                     # deciding "inside support" for the repair above. Only read
+                                     # when calendar_variance_repair is ON.
 
 forward:                       # parity forward-estimate confidence heuristics (ForwardConfig)
   version: "2026.05.31"

@@ -55,10 +55,12 @@ from algotrading.infra.surfaces import (
     METHOD_INSUFFICIENT,
     CalendarSlice,
     CalendarViolation,
+    RepairSlice,
     SliceFit,
     calendar_violations,
     fit_slice,
     project_surface_fit,
+    repair_overrides_from_slices,
 )
 from algotrading.infra.surfaces.projection import (
     ProjectionConfig,
@@ -186,7 +188,14 @@ def run_analytics_with_qc(
         config_hashes=config_hashes,
     )
 
-    slice_fits, put_slice_fits, call_slice_fits, surface_params, surface_cells = _build_surfaces(
+    (
+        slice_fits,
+        put_slice_fits,
+        call_slice_fits,
+        surface_params,
+        surface_cells,
+        calendar_overrides,
+    ) = _build_surfaces(
         iv_points,
         masters_by_key,
         as_of_date,
@@ -245,6 +254,7 @@ def run_analytics_with_qc(
         moneyness_buckets=moneyness_buckets,
         risk=risk,
         portfolio_id=_portfolio_of(positions) if positions else "",
+        calendar_overrides=calendar_overrides,
     )
     return AnalyticsRun(outputs=outputs, qc_inputs=qc_inputs)
 
@@ -260,6 +270,7 @@ def _build_qc_inputs(
     moneyness_buckets: tuple[float, ...],
     risk: _RiskOutputs,
     portfolio_id: str,
+    calendar_overrides: Mapping[tuple[str, float], dict[float, float]] | None = None,
 ) -> QcInputs:
     underlying_keys = tuple(
         sorted(key for key in masters if _is_underlying_key(key))
@@ -278,7 +289,9 @@ def _build_qc_inputs(
         if estimate.is_usable
     )
 
-    calendar = _calendar_violations_by_underlying(slice_fits, moneyness_buckets)
+    calendar = _calendar_violations_by_underlying(
+        slice_fits, moneyness_buckets, calendar_overrides
+    )
     iv_by_underlying = _iv_results_by_underlying(iv_results, masters)
 
     return QcInputs(
@@ -324,7 +337,9 @@ def _parity_line_of(estimate: ForwardEstimate) -> ParityLine:
 def _calendar_violations_by_underlying(
     slice_fits: Sequence[SliceFit],
     moneyness_buckets: tuple[float, ...],
+    overrides: Mapping[tuple[str, float], dict[float, float]] | None = None,
 ) -> tuple[tuple[str, tuple[CalendarViolation, ...]], ...]:
+    overrides = overrides or {}
     by_underlying: dict[str, list[SliceFit]] = {}
     for fit in slice_fits:
         if fit.method == METHOD_INSUFFICIENT:
@@ -333,18 +348,31 @@ def _calendar_violations_by_underlying(
     out: list[tuple[str, tuple[CalendarViolation, ...]]] = []
     for underlying in sorted(by_underlying):
         fits = by_underlying[underlying]
-        curves = [_calendar_slice_of(fit) for fit in fits]
+        curves = [
+            _calendar_slice_of(fit, overrides.get((fit.underlying, fit.maturity_years)))
+            for fit in fits
+        ]
         out.append((underlying, calendar_violations(curves, moneyness_buckets)))
     return tuple(out)
 
 
-def _calendar_slice_of(fit: SliceFit) -> CalendarSlice:
-    observed_ks = [point.log_moneyness for point in fit.raw_points]
-    observed_min = min(observed_ks) if observed_ks else None
-    observed_max = max(observed_ks) if observed_ks else None
+def _calendar_slice_of(
+    fit: SliceFit, override: Mapping[float, float] | None = None
+) -> CalendarSlice:
+    observed_min, observed_max = _observed_support(fit)
+    if override is None:
+        total_variance = fit.total_variance
+    else:
+        # The calendar QC evaluates total_variance only on the moneyness grid the repair covers, so
+        # the override fully determines the QC's view; the raw fit is the safety fallback for any
+        # off-grid query. This keeps the served grid and its check in lockstep (ADR 0062).
+        def total_variance(k: float, _o: Mapping[float, float] = override) -> float:
+            repaired = _o.get(k)
+            return repaired if repaired is not None else fit.total_variance(k)
+
     return CalendarSlice(
         maturity_years=fit.maturity_years,
-        total_variance=fit.total_variance,
+        total_variance=total_variance,
         observed_k_min=observed_min,
         observed_k_max=observed_max,
     )
@@ -546,7 +574,12 @@ def _build_surfaces(
     surface: SurfaceConfig,
     moneyness_buckets: tuple[float, ...],
 ) -> tuple[
-    list[SliceFit], list[SliceFit], list[SliceFit], list[SurfaceParameters], list[SurfaceGrid]
+    list[SliceFit],
+    list[SliceFit],
+    list[SliceFit],
+    list[SurfaceParameters],
+    list[SurfaceGrid],
+    Mapping[tuple[str, float], dict[float, float]],
 ]:
     by_maturity: dict[tuple[str, float, date], list[IvPoint]] = {}
     for point in iv_points:
@@ -560,8 +593,6 @@ def _build_surfaces(
     slice_fits: list[SliceFit] = []
     put_slice_fits: list[SliceFit] = []
     call_slice_fits: list[SliceFit] = []
-    params: list[SurfaceParameters] = []
-    cells: list[SurfaceGrid] = []
     for (underlying, maturity_years, expiry) in sorted(by_maturity, key=lambda k: (k[0], k[1])):
         points = tuple(by_maturity[(underlying, maturity_years, expiry)])
         fit = fit_slice(
@@ -583,6 +614,16 @@ def _build_surfaces(
                 expiry_date=expiry, day_count=DAY_COUNT, config=surface,
             ))
 
+    # Calendar-arbitrage repair (ADR 0062): a per-(underlying, maturity) total-variance override
+    # that floors the extrapolated wings so w(k, T) cannot fall with maturity. Default OFF, in which
+    # case `overrides` is empty and both the served grid and the calendar QC read the raw fit
+    # unchanged. The same override feeds the grid projection (below) and the QC (in
+    # `_calendar_violations_by_underlying`) so the stored surface and its check agree.
+    overrides = _calendar_repair_overrides(slice_fits, moneyness_buckets, surface)
+
+    params: list[SurfaceParameters] = []
+    cells: list[SurfaceGrid] = []
+    for fit in slice_fits:
         projection = project_surface_fit(
             fit,
             moneyness_buckets,
@@ -590,11 +631,44 @@ def _build_surfaces(
             source_snapshot_ts=as_of,
             calc_ts=calc_ts,
             config_hashes=config_hashes,
+            total_variance_by_bucket=overrides.get((fit.underlying, fit.maturity_years)),
         )
         if projection.parameters is not None:
             params.append(projection.parameters)
         cells.extend(projection.grid_cells)
-    return slice_fits, put_slice_fits, call_slice_fits, params, cells
+    return slice_fits, put_slice_fits, call_slice_fits, params, cells, overrides
+
+
+def _observed_support(fit: SliceFit) -> tuple[float | None, float | None]:
+    observed_ks = [point.log_moneyness for point in fit.raw_points]
+    if not observed_ks:
+        return None, None
+    return min(observed_ks), max(observed_ks)
+
+
+def _calendar_repair_overrides(
+    slice_fits: Sequence[SliceFit],
+    moneyness_buckets: tuple[float, ...],
+    surface: SurfaceConfig,
+) -> Mapping[tuple[str, float], dict[float, float]]:
+    repair_slices = [
+        RepairSlice(
+            underlying=fit.underlying,
+            maturity_years=fit.maturity_years,
+            total_variance=fit.total_variance,
+            observed_k_min=support[0],
+            observed_k_max=support[1],
+        )
+        for fit in slice_fits
+        if fit.method != METHOD_INSUFFICIENT
+        for support in (_observed_support(fit),)
+    ]
+    return repair_overrides_from_slices(
+        repair_slices,
+        moneyness_buckets,
+        enabled=surface.calendar_variance_repair,
+        support_epsilon=surface.calendar_repair_support_epsilon,
+    )
 
 
 def _point_right(masters: Mapping[str, InstrumentKey], point: IvPoint) -> str | None:

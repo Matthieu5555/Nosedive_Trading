@@ -387,7 +387,16 @@ def surface_grid_cells(
     source_snapshot_ts: datetime,
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
+    total_variance_by_bucket: Mapping[float, float] | None = None,
 ) -> tuple[SurfaceGrid, ...]:
+    """Project a slice onto the moneyness grid.
+
+    ``total_variance_by_bucket`` is the optional calendar-arbitrage repair (ADR 0062): a per-bucket
+    total-variance override computed across the underlying's expiries. When ``None`` (the default,
+    repair off) the served mark is the raw fit ``fit.total_variance(bucket)`` exactly as before; a
+    bucket missing from the map also falls back to the raw fit, so the override only ever lifts the
+    extrapolated wings it was built to repair.
+    """
     if fit.method == METHOD_INSUFFICIENT:
         raise ValueError("cannot build a grid for an insufficient slice")
     provenance = _slice_stamp(
@@ -395,6 +404,10 @@ def surface_grid_cells(
     )
     cells: list[SurfaceGrid] = []
     for bucket in moneyness_buckets:
+        if total_variance_by_bucket is not None and bucket in total_variance_by_bucket:
+            total_variance = total_variance_by_bucket[bucket]
+        else:
+            total_variance = fit.total_variance(bucket)
         cells.append(
             SurfaceGrid(
                 snapshot_ts=snapshot_ts,
@@ -402,7 +415,7 @@ def surface_grid_cells(
                 maturity_years=fit.maturity_years,
                 moneyness_bucket=bucket,
                 model_version=SURFACE_VERSION,
-                total_variance=max(fit.total_variance(bucket), 0.0),
+                total_variance=max(total_variance, 0.0),
                 source_snapshot_ts=source_snapshot_ts,
                 provenance=provenance,
             )
@@ -425,6 +438,7 @@ def project_surface_fit(
     source_snapshot_ts: datetime,
     calc_ts: datetime,
     config_hashes: Mapping[str, str],
+    total_variance_by_bucket: Mapping[float, float] | None = None,
 ) -> SurfaceProjection:
     if fit.method == METHOD_INSUFFICIENT:
         return SurfaceProjection(parameters=None, grid_cells=())
@@ -446,5 +460,6 @@ def project_surface_fit(
         source_snapshot_ts=source_snapshot_ts,
         calc_ts=calc_ts,
         config_hashes=config_hashes,
+        total_variance_by_bucket=total_variance_by_bucket,
     )
     return SurfaceProjection(parameters=parameters, grid_cells=cells)

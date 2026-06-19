@@ -82,14 +82,15 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "30ca9d4e20067f0d1968763b304f16002a0b3f622e80c7334b12f102c4d6a989"
+        "600d99ac155142332f922c2c236676dd4c5879649aef4dc0d911203be8761324"
     )
-    # ADR 0061 adds the support-aware calendar-materiality knobs (calendar_support_aware,
-    # calendar_support_epsilon) to the grid block of the qc bundle, so the qc hash and the
-    # whole-config config_hash move; pricing/scenarios/rates/universe are unchanged. (ADR 0059
-    # previously moved the universe hash for the constituent-capture knobs.)
+    # ADR 0062 adds the calendar-arbitrage repair knobs (calendar_variance_repair,
+    # calendar_repair_support_epsilon) to the surface block of the pricing bundle, so the pricing
+    # hash and the whole-config config_hash move; qc/scenarios/rates/universe are unchanged. (ADR
+    # 0061 previously moved the qc hash for the support-aware calendar-materiality knobs; ADR 0059
+    # the universe hash for the constituent-capture knobs.)
     assert config_hashes(config) == {
-        "pricing": "9083222ce26b63f5a935f8ad1667b5e0bcbb91c8cedb14b195941bdeeeb4b31e",
+        "pricing": "7634548811b908c8a642841b894dff246dc0e252fe6a76c7a7286699bd649800",
         "qc": "e469d8ade77fdc0b111b89183b19d01f3f2f903ce96b395d266a2cb447a6466b",
         "rates": "64e037b5a52f570f50003137a061f7e741c7805d4dfe695ac65ae48dfd8ec69f",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
@@ -208,6 +209,21 @@ def test_lane3_reroute_knob_defaults_off_and_folds_into_the_pricing_hash() -> No
     assert _surface().reroute_railed_dense_slice is False  # shipped default is OFF
     base = _config()
     flipped_surface = base.surface.model_copy(update={"reroute_railed_dense_slice": True})
+    moved = base.model_copy(update={"surface": flipped_surface})
+    base_h, moved_h = config_hashes(base), config_hashes(moved)
+    assert moved_h["pricing"] != base_h["pricing"]  # flipping it moves the pricing hash
+    assert {k: moved_h[k] for k in ("universe", "qc", "scenarios")} == {
+        k: base_h[k] for k in ("universe", "qc", "scenarios")
+    }
+
+
+def test_calendar_variance_repair_knob_defaults_off_and_folds_into_the_pricing_hash() -> None:
+    """ADR 0062: the calendar-arbitrage floor ships OFF and is a hashed config behaviour, not a flip."""
+    surface = _surface()
+    assert surface.calendar_variance_repair is False  # shipped default is OFF
+    assert surface.calendar_repair_support_epsilon == 1e-6
+    base = _config()
+    flipped_surface = base.surface.model_copy(update={"calendar_variance_repair": True})
     moved = base.model_copy(update={"surface": flipped_surface})
     base_h, moved_h = config_hashes(base), config_hashes(moved)
     assert moved_h["pricing"] != base_h["pricing"]  # flipping it moves the pricing hash

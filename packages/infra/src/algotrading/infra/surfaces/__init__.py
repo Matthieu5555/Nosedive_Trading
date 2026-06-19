@@ -46,6 +46,12 @@ from .projection import (
     tenor_provenance_map,
     tenor_years,
 )
+from .repair import (
+    DEFAULT_SUPPORT_EPSILON,
+    RepairSlice,
+    monotone_variance_floor,
+    repair_overrides_from_slices,
+)
 from .reporting import (
     DenseSurface,
     SurfaceSliceSummary,
@@ -74,6 +80,10 @@ __all__ = [
     "SURFACE_VERSION",
     "CalendarSlice",
     "CalendarViolation",
+    "DEFAULT_SUPPORT_EPSILON",
+    "RepairSlice",
+    "monotone_variance_floor",
+    "repair_overrides_from_slices",
     "DenseSurface",
     "IvSpaceFitError",
     "IvSpreadPoint",

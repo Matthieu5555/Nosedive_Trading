@@ -333,6 +333,8 @@ class SurfaceConfig(_ConfigModel):
     reroute_railed_dense_slice: bool = False
     reroute_min_points: int | None = Field(default=None, ge=5)
     moneyness_buckets: _FloatTuple = (-0.2, -0.1, 0.0, 0.1, 0.2)
+    calendar_variance_repair: bool = False
+    calendar_repair_support_epsilon: float = Field(default=1e-6, ge=0.0)
 
     @property
     def reroute_point_floor(self) -> int:

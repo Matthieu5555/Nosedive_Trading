@@ -4,13 +4,18 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+import structlog
+
 from ..connectivity.cp_rest_transport import SupportsRestGet
 from .cp_rest_wire import SNAPSHOT_FIELD_TAGS, SnapshotRow, parse_snapshot_rows
 
 SNAPSHOT_PATH = "/iserver/marketdata/snapshot"
 
-_WARMUP_ATTEMPTS = 8
+_LOGGER = structlog.get_logger("ibkr.snapshot")
+
+_WARMUP_ATTEMPTS = 15
 _WARMUP_SLEEP_S = 1.0
+_WARMUP_SKIP_DEAD_AFTER = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,7 +23,7 @@ class WarmupConfig:
 
     attempts: int = _WARMUP_ATTEMPTS
     sleep_s: float = _WARMUP_SLEEP_S
-    skip_dead_after: int | None = 2
+    skip_dead_after: int | None = _WARMUP_SKIP_DEAD_AFTER
 
     def __post_init__(self) -> None:
         if self.attempts < 1:
@@ -61,14 +66,16 @@ def _warmup_poll_batch(
 
     rows = _poll()
     populated = _populated_conids(rows, requested)
+    attempts_used = 1
     stalled_polls = 0
     for _attempt in range(config.attempts - 1):
         if populated == requested:
             break
         sleep(config.sleep_s)
         rows = _poll()
+        attempts_used += 1
         next_populated = _populated_conids(rows, requested)
-        if next_populated and next_populated <= populated:
+        if next_populated < populated:
             break
         if next_populated == populated:
             stalled_polls += 1
@@ -77,6 +84,20 @@ def _warmup_poll_batch(
         else:
             stalled_polls = 0
         populated = next_populated
+
+    unpopulated = requested - _populated_conids(rows, requested)
+    if unpopulated:
+        _LOGGER.warning(
+            "ibkr.snapshot.warmup_incomplete",
+            reason="snapshot warm-up gave up with contracts still unpopulated; "
+            "captured chain is thinned for this batch",
+            requested_count=len(requested),
+            unpopulated_count=len(unpopulated),
+            unpopulated_conids=sorted(unpopulated),
+            attempts_used=attempts_used,
+            attempts_max=config.attempts,
+            skip_dead_after=config.skip_dead_after,
+        )
     return rows
 
 

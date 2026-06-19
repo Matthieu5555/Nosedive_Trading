@@ -71,6 +71,7 @@ def _market() -> SnapshotMarketState:
         underlying="AAPL", provider="IBKR", spot=SPOT,
         discount_factors={tenor_years(t): 1.0 for t in PINNED_TENORS},
         default_discount_factor=1.0,
+        spot_is_forward=True,
     )
 
 

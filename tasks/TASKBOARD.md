@@ -23,8 +23,10 @@ underlying", **the index-only pivot wins** — do not resurrect it. The gate (th
 > **⛔ Standing guardrails.**
 > 1. **Ground in the reference:** every design/scope decision traces to `docs/blueprint/` + the
 >    course transcripts `docs/transcripts/`. Read them first; don't ask the owner what they specify.
-> 2. **Do NOT revert recent owner+Claude decisions:** **ADR 0051** (index + constituent *prices*
->    only, realized-vol ρ̄) and the page-1 reading model are load-bearing.
+> 2. **Full-membership constituent option capture is ON; Matthieu's multi-page front is canonical.**
+>    The owner reversed the old prices-only move (former ADR 0051) on 2026-06-19 — constituent option
+>    chains are captured again (full membership) and the multi-tab cockpit is the right direction. Do
+>    not re-introduce prices-only capture, the `top_n` gate, realized-vol-only ρ̄, or page-reduction.
 > 3. **The frontend is owner-owned.** `apps/frontend/web/**` is Matthieu's lane — do not edit it.
 >    Backend/BFF analytics may add *additive read-only* serializer fields, never web/React files.
 
@@ -32,7 +34,8 @@ underlying", **the index-only pivot wins** — do not resurrect it. The gate (th
 
 | Who | Area / files | Claimed | Note |
 |-----|--------------|---------|------|
-| Matthieu (frontend) | `apps/frontend/web/**` + `tasks/frontend-design-language-2026.md` | 2026-06-17 | Owner-owned frontend lane (cockpit-ux / design-language). Off-limits to the fleet — see archived [frontend-cockpit-ux-overhaul](archive/frontend-cockpit-ux-overhaul.md) for prior context. |
+| Matthieu (frontend) | `apps/frontend/web/**` | 2026-06-17 | Owner-owned frontend lane (cockpit-ux / design-language). Off-limits to the fleet — see archived [frontend-cockpit-ux-overhaul](archive/frontend-cockpit-ux-overhaul.md) for prior context. |
+| Claude (surfaces) | `surfaces/projection.py`, `surfaces/market_state.py`, `actor/driver.py` (projection wiring), projection tests | 2026-06-19 | Defect 5 (forward=spot ignores carry) + Defect 4 (per-side ATM parity violation): carry-implied forward + one-vol-per-strike + parity QC. |
 
 ## Ready queue — unclaimed, pick one and claim a row above
 

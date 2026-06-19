@@ -53,12 +53,11 @@ Do not search blind. The map exists so you don't have to.
    in `docs/transcripts/` (especially `AlgoTradingCourse2-Conseils-front-end.txt` and
    `AlgoTradingCourse2-Greeks-et-strategies-vol.md`) — read them *before* deciding;
    never ask the owner to rule what they already specify. And **do not re-open or revert
-   the recent owner+Claude decisions**: **ADR 0051** (index-options + constituent
-   *prices* only; ρ̄ from *realized* vol; no constituent-option capture, no `top_n`
-   capture gate), the **page-1 reading model** (`tasks/frontend-page1-reading-model.md`),
-   and the 2026-06-16 task/board hygiene. These are load-bearing and intentional. This is
-   **distinct from Matthieu's `c665614` page-1 rebuild**, which is being *corrected*
-   (see the page-1 tasks), not preserved.
+   the recent owner decisions**: the owner reversed the old prices-only move (former
+   ADR 0051) on 2026-06-19 — **full-membership constituent option capture is ON** and
+   **Matthieu's multi-page cockpit front is the canonical direction**. Do not re-introduce
+   constituent-*prices*-only capture, the `top_n` capture gate, realized-vol-only ρ̄, or
+   page-reduction. The 2026-06-16 task/board hygiene still stands.
 
 ## Conventions
 

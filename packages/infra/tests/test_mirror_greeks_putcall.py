@@ -61,6 +61,7 @@ def _market(term: SyntheticTermSurface) -> SnapshotMarketState:
             tenor_years(t): math.exp(-term.rate * tenor_years(t)) for t in PINNED_TENORS
         },
         default_discount_factor=1.0,
+        spot_is_forward=True,
     )
 
 

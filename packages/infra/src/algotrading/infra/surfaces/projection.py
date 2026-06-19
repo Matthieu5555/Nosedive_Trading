@@ -480,7 +480,10 @@ def _band_label_for_listed_delta(
     if not math.isfinite(call_nd1):
         return "off"
     if abs(log_moneyness) < 1e-9:
-        return "atmf"
+        # At the forward a call and a put share the strike, so they must carry distinct labels
+        # or they collide on the projected primary key. Follow the atm/atmp convention: the call
+        # pillar is "atmf", the put pillar "atmfp".
+        return "atmf" if option_right == "C" else "atmfp"
     if option_right == "C":
         mag = call_nd1  # call delta, in (0, 1)
         suffix = "dc"

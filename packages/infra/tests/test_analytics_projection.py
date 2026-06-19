@@ -91,6 +91,7 @@ def _market(term: SyntheticTermSurface, underlying: str = "AAPL",
         underlying=underlying, provider=provider, spot=term.forward,
         discount_factors={t: math.exp(-term.rate * t) for t in PINNED_TENORS_YEARS()},
         default_discount_factor=1.0,
+        spot_is_forward=True,
     )
 
 
@@ -602,6 +603,7 @@ def _listed_expiry_market(term: SyntheticTermSurface) -> SnapshotMarketState:
             round(t, 9): math.exp(-term.rate * t) for t in term.maturities
         },
         default_discount_factor=1.0,
+        spot_is_forward=True,
     )
 
 
@@ -686,6 +688,7 @@ def test_projection_prices_with_the_listed_expiry_curve_not_rate_free() -> None:
         slices,
         SnapshotMarketState(
             underlying="AAPL", provider="DERIBIT", spot=term.forward, discount_factors={},
+            spot_is_forward=True,
         ),
         **kwargs,
     )
@@ -921,3 +924,218 @@ def test_second_order_greeks_match_finite_difference_of_the_public_pricer() -> N
         "projected charm must equal -dDelta/dMaturity (decay as calendar time passes) "
         "by central difference, holding the implied rate fixed as the analytic charm does"
     )
+
+
+# ---------------------------------------------------------------------------
+# D1 / D4 / D5: listed-contract rows, captured forward curve, honest atmf label,
+# and the canonical band->right resolver. (Reconciled: the forward is sourced
+# from market.forward_for, not the dropped resolve_forward/forwards= param.)
+# ---------------------------------------------------------------------------
+
+from algotrading.infra.surfaces.projection import (  # noqa: E402
+    ListedContract,
+    option_right_for_band,
+)
+
+
+def _listed_market(
+    term: SyntheticTermSurface,
+    *,
+    forwards: dict[float, float] | None,
+    underlying: str = "AAPL",
+    provider: str = "DERIBIT",
+) -> SnapshotMarketState:
+    """A market state carrying the captured forward curve (D4).
+
+    `forwards` maps maturity-years -> forward. When None the caller opts out of the curve and
+    declares spot==forward (legacy/synthetic), matching the old resolve_forward(None) fallback.
+    """
+    return SnapshotMarketState(
+        underlying=underlying,
+        provider=provider,
+        spot=term.forward,
+        discount_factors={t: math.exp(-term.rate * t) for t in PINNED_TENORS_YEARS()},
+        default_discount_factor=1.0,
+        forwards=dict(forwards) if forwards is not None else {},
+        spot_is_forward=forwards is None,
+    )
+
+
+def _project_listed(
+    term: SyntheticTermSurface,
+    contracts: tuple[ListedContract, ...],
+    *,
+    forwards: dict[float, float] | None = None,
+) -> Any:
+    slices = _fit_term_surface(term)
+    return project_grid(
+        slices, _listed_market(term, forwards=forwards),
+        snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
+        projection=ProjectionConfig(version="proj-test"),
+        monetization=MonetizationConfig(version="mon-test"),
+        config_hashes=CONFIG_HASHES,
+        listed_contracts=contracts,
+    )
+
+
+def test_resolver_maps_every_band_label_to_a_right() -> None:
+    # The canonical resolver the BFF imports: atm->C, atmp->P, suffix ...c->C, ...p->P.
+    assert option_right_for_band("atm") == "C"
+    assert option_right_for_band("atmf") == "C"  # at-the-money-forward call leg
+    assert option_right_for_band("atmp") == "P"
+    assert option_right_for_band("30dc") == "C"
+    assert option_right_for_band("30dp") == "P"
+    assert option_right_for_band("02dc") == "C"
+
+
+def test_resolver_rejects_an_unparseable_label() -> None:
+    with pytest.raises(ProjectionConfigError):
+        option_right_for_band("garbage")
+
+
+def test_market_forward_for_uses_the_curve_then_flags_a_missing_maturity() -> None:
+    # Reconciled D4: the per-maturity forward is the captured curve value (interpolated in
+    # log-space), not spot. A maturity below/inside the curve resolves; with no curve at all
+    # and spot_is_forward, spot stands in. This is the carrier the projection now reads.
+    market = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0,
+        forwards={1.0: 105.5, 2.0: 108.0},
+    )
+    assert market.forward_for("12m", 1.0) == 105.5
+    assert market.forward_for("2y", 2.0) == 108.0
+    # Inside the knots, log-linear interpolation lands strictly between them.
+    mid = market.forward_for("18m", 1.5)
+    assert mid is not None and 105.5 < mid < 108.0
+    # No curve and spot not declared a forward -> no anchor (honest miss, never a spot guess).
+    bare = SnapshotMarketState(underlying="AAPL", provider="DERIBIT", spot=100.0)
+    assert bare.forward_for("12m", 1.0) is None
+    # No curve but spot IS the forward (legacy/synthetic) -> spot stands in.
+    legacy = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=100.0, spot_is_forward=True
+    )
+    assert legacy.forward_for("12m", 1.0) == 100.0
+
+
+def test_listed_grid_emits_one_row_per_listed_contract_at_the_listed_strike() -> None:
+    term = build_synthetic_term_surface()  # forward == spot == 100.0, fitted at T=1.0 (12m)
+    contracts = (
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=95.0),
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="P", strike=95.0),
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=105.0),
+    )
+    result = _project_listed(term, contracts, forwards={1.0: 100.0})
+    # One combined-side cell per listed contract (no per-side wings supplied here).
+    assert len(result.cells) == 3
+    # The (strike, right) keys round-trip exactly: rows ARE the listed contracts.
+    emitted_keys = {
+        (c.strike, "C" if c.delta >= 0.0 else "P") for c in result.cells
+    }
+    assert emitted_keys == {(95.0, "C"), (95.0, "P"), (105.0, "C")}
+    # Each cell sits at exactly the LISTED strike, and log-moneyness is against the forward.
+    for c in result.cells:
+        assert c.strike in (95.0, 105.0)
+        assert c.log_moneyness == pytest.approx(math.log(c.strike / c.forward_price), rel=1e-12)
+
+
+def test_listed_row_price_matches_independent_black_at_the_listed_strike() -> None:
+    # Independent oracle: price the listed strike with Black-76 off the FITTED iv and the
+    # captured forward, derived here without calling project_grid's pricer path.
+    term = build_synthetic_term_surface()
+    forward = 100.0  # equals the fitted forward, so log-moneyness lines up with the fit
+    rate = term.rate
+    maturity = 1.0
+    strike = 110.0
+    df = math.exp(-rate * maturity)
+    slices = _fit_term_surface(term)
+    k = math.log(strike / forward)
+    expected_iv = math.sqrt(max(interpolate_total_variance(slices, k, maturity), 0.0) / maturity)
+    expected = price_european(
+        from_forward(
+            forward=forward, strike=strike, maturity_years=maturity, volatility=expected_iv,
+            discount_factor=df, option_right="C", spot=forward,
+        )
+    )
+    result = _project_listed(
+        term,
+        (ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=strike),),
+        forwards={1.0: forward},
+    )
+    cell = next(c for c in result.cells if c.surface_side == "combined")
+    assert cell.implied_vol == pytest.approx(expected_iv, rel=1e-12)
+    assert cell.price == pytest.approx(expected.price, rel=1e-12)
+    assert cell.delta == pytest.approx(expected.delta, rel=1e-12)
+    assert cell.forward_price == pytest.approx(forward, rel=1e-12)
+
+
+def test_listed_grid_uses_the_captured_forward_not_spot() -> None:
+    # D4: spot is 100, but the captured 12m forward is 105. The atm-forward strike must
+    # follow the captured forward, so a strike of 105 (= forward) is the at-the-money-forward
+    # row and a strike of 100 (= spot) is now in-the-money for a call (delta > 0.5).
+    term = build_synthetic_term_surface()  # spot == 100
+    contracts = (
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=105.0),
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=100.0),
+    )
+    result = _project_listed(term, contracts, forwards={1.0: 105.0})
+    at_fwd = next(c for c in result.cells if c.strike == 105.0)
+    at_spot = next(c for c in result.cells if c.strike == 100.0)
+    assert at_fwd.forward_price == pytest.approx(105.0)
+    # k=0 at the forward -> N(d1) ~ 0.5 -> honest at-the-money-forward label (D5).
+    assert at_fwd.log_moneyness == pytest.approx(0.0, abs=1e-12)
+    assert at_fwd.delta_band == "atmf"
+    # the spot strike (below the forward) is a call wing above 0.5 delta, not labeled atm.
+    assert at_spot.delta_band != "atmf"
+    assert at_spot.delta > at_fwd.delta
+
+
+def test_listed_grid_flags_a_maturity_with_no_captured_forward() -> None:
+    # D4 honesty: when no forward can be anchored (empty curve, spot not declared a forward),
+    # every listed contract is a labeled no_forward gap, never a silent spot substitution.
+    term = build_synthetic_term_surface()
+    contracts = (
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=100.0),
+        ListedContract(tenor_label="2y", maturity_years=2.0, right="C", strike=100.0),
+    )
+    # forwards=None alone would let spot stand in (spot_is_forward); to exercise a genuine miss
+    # we hand the projection a market with no curve and spot NOT declared a forward.
+    slices = _fit_term_surface(term)
+    bare = SnapshotMarketState(
+        underlying="AAPL", provider="DERIBIT", spot=term.forward,
+        discount_factors={t: math.exp(-term.rate * t) for t in PINNED_TENORS_YEARS()},
+        default_discount_factor=1.0,
+    )
+    result = project_grid(
+        slices, bare,
+        snapshot_ts=TS, source_snapshot_ts=TS, calc_ts=TS,
+        projection=ProjectionConfig(version="proj-test"),
+        monetization=MonetizationConfig(version="mon-test"),
+        config_hashes=CONFIG_HASHES,
+        listed_contracts=contracts,
+    )
+    assert not result.cells
+    no_fwd = [g for g in result.gaps if g.reason_code == "no_forward"]
+    assert {g.tenor_label for g in no_fwd} == {"12m", "2y"}
+
+
+def test_listed_band_label_groups_by_model_delta() -> None:
+    # The display band is derived from the MODEL delta at the listed strike (for grouping),
+    # keeping the existing "..dc"/"..dp" vocabulary. A deep call wing -> "..dc"; a put -> "..dp".
+    term = build_synthetic_term_surface()
+    contracts = (
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="C", strike=130.0),
+        ListedContract(tenor_label="12m", maturity_years=1.0, right="P", strike=70.0),
+    )
+    result = _project_listed(term, contracts, forwards={1.0: 100.0})
+    deep_call = next(c for c in result.cells if c.strike == 130.0)
+    deep_put = next(c for c in result.cells if c.strike == 70.0)
+    # High strike -> low call delta -> small "..dc" magnitude.
+    assert deep_call.delta_band.endswith("dc")
+    assert deep_put.delta_band.endswith("dp")
+
+
+def test_listed_grid_legacy_callers_still_get_the_delta_band_grid() -> None:
+    # Passing no listed_contracts keeps the original delta-band emission untouched.
+    result = _project(build_synthetic_term_surface())
+    assert {"30dp", "atm", "atmp", "30dc"} <= {
+        c.delta_band for c in result.cells if c.tenor_label == "12m"
+    }

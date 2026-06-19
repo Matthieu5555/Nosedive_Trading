@@ -196,6 +196,7 @@ REGISTRY: dict[str, TableSpec] = {
         contract=ProjectedOptionAnalytics,
         primary_key=(
             "provider", "snapshot_ts", "underlying", "tenor_label", "delta_band", "surface_side",
+            "strike",
         ),
         layer="analytics",
         append_only=False,

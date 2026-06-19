@@ -93,6 +93,7 @@ def _market(term: SyntheticTermSurface, underlying: str = "AAPL") -> SnapshotMar
         discount_factors={tenor_years(label): math.exp(-term.rate * tenor_years(label))
                           for label in PINNED_TENORS},
         default_discount_factor=1.0,
+        spot_is_forward=True,
     )
 
 

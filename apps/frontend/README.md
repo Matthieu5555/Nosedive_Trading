@@ -73,8 +73,8 @@ Scenarios + Positions; Ordres absorbs Orders + Strategy; Signals was dropped (it
 the Données scorecards + ρ̄ strip). Legacy paths (`/market`, `/basket`, `/risk`, `/positions`,
 `/orders`, `/strategy`, `/signals`) redirect to their new home.
 
-- **Données** (`/`, `src/pages/Market.tsx`) — the index-analytics reading page, INDEX-KEYED (ADR
-  0051): a scorecard strip (ATM · skew · convexity · RV−IV), the price block (index candlestick +
+- **Données** (`/`, `src/pages/Market.tsx`) — the index-analytics reading page, INDEX-KEYED:
+  a scorecard strip (ATM · skew · convexity · RV−IV), the price block (index candlestick +
   the master-detail constituents — weighted list + the selected member's candlestick), the 3D vol
   nappe, one tenor selector driving the put/call smile + the per-strike price structure
   (bid/ask/volume) + the Greeks (profile curves + magnitude table), and the ρ̄ dispersion strip.

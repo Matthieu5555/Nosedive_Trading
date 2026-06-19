@@ -8,12 +8,11 @@ import { FloatingAssistant } from "./components/Assistant/FloatingAssistant";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { featureStatus, WipPlaceholder, WipTag } from "./components/wip";
 import { tourAnchor } from "./lib/tour";
-import { BasketPage } from "./pages/Basket";
 import { MarketPage } from "./pages/Market";
 import { OperationsPage } from "./pages/Operations";
 import { PositionsPage } from "./pages/Positions";
-import { RiskScenariosPage } from "./pages/RiskScenarios";
 import { SignalsPage } from "./pages/Signals";
+import { SimulatePage } from "./pages/Simulate";
 import { StrategyPage } from "./pages/Strategy";
 import { ROUTES } from "./routes";
 
@@ -37,10 +36,11 @@ const NAV_ANCHORS: Record<string, { id: string; label: string; description: stri
     label: "Market tab",
     description: "Opens the Market page, where you read what the market is pricing today.",
   },
-  "/basket": {
-    id: "nav.basket",
-    label: "Basket tab",
-    description: "Opens the Basket Builder, where you compose a book of option legs and shock it.",
+  "/simulate": {
+    id: "nav.simulate",
+    label: "Simulate tab",
+    description:
+      "Opens Simulate, where you shock the book you hold or a basket you compose on the spot.",
   },
   "/signals": {
     id: "nav.signals",
@@ -52,16 +52,11 @@ const NAV_ANCHORS: Record<string, { id: string; label: string; description: stri
     label: "Strategy tab",
     description: "Opens the Strategy page, where you backtest a trading line over captured days.",
   },
-  "/risk": {
-    id: "nav.risk",
-    label: "Risk Scenarios tab",
-    description:
-      "Opens Risk Scenarios, where you shock the book and reconcile it against the broker.",
-  },
   "/positions": {
     id: "nav.positions",
     label: "Positions tab",
-    description: "Opens the Positions page, what you own, what it is worth, and your risk.",
+    description:
+      "Opens the Positions page, what you own, what it is worth, your risk, and the broker reconciliation.",
   },
 };
 
@@ -73,10 +68,9 @@ function navAnchorProps(path: string) {
 const PAGES: Record<string, ReactNode> = {
   "/": <OperationsPage />,
   "/market": <MarketPage />,
-  "/basket": <BasketPage />,
+  "/simulate": <SimulatePage />,
   "/signals": <SignalsPage />,
   "/strategy": <StrategyPage />,
-  "/risk": <RiskScenariosPage />,
   "/positions": <PositionsPage />,
 };
 
@@ -140,10 +134,12 @@ function AppShell() {
               />
             );
           })}
-          {/* The short-lived 3-tab consolidation used French paths; forward them to their 7-tab
-              homes so any open bookmark still lands somewhere sensible. Orders folded into Strategy.
+          {/* Old paths forward to their current homes so any open bookmark still lands somewhere
+              sensible. Basket and Risk Scenarios folded into Simulate; Orders into Strategy;
               "/operations" forwards to "/" since Operations now owns the index route. */}
-          <Route path="/risque" element={<Navigate to="/basket" replace />} />
+          <Route path="/basket" element={<Navigate to="/simulate" replace />} />
+          <Route path="/risk" element={<Navigate to="/simulate" replace />} />
+          <Route path="/risque" element={<Navigate to="/simulate" replace />} />
           <Route path="/ordres" element={<Navigate to="/strategy" replace />} />
           <Route path="/orders" element={<Navigate to="/strategy" replace />} />
           <Route path="/operations" element={<Navigate to="/" replace />} />

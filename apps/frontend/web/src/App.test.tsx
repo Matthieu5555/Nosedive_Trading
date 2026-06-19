@@ -26,7 +26,7 @@ function mainNav() {
   return screen.getByRole("navigation", { name: "Main" });
 }
 
-test("the top nav is exactly the seven English tabs, Operations active on load", async () => {
+test("the top nav is exactly the six English tabs, Operations active on load", async () => {
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Operations", level: 1 })).toBeInTheDocument();
@@ -34,15 +34,7 @@ test("the top nav is exactly the seven English tabs, Operations active on load",
   const links = within(mainNav())
     .getAllByRole("link")
     .map((link) => link.textContent);
-  expect(links).toEqual([
-    "Operations",
-    "Market",
-    "Positions",
-    "Basket",
-    "Risk Scenarios",
-    "Strategy",
-    "Signals",
-  ]);
+  expect(links).toEqual(["Operations", "Market", "Positions", "Simulate", "Strategy", "Signals"]);
   expect(within(mainNav()).getByRole("link", { name: "Operations" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -60,8 +52,7 @@ test("the French 3-tab labels are gone from the main nav", () => {
 const TABS = [
   { label: "Market", path: "/market", heading: "Market" },
   { label: "Positions", path: "/positions", heading: "Positions" },
-  { label: "Basket", path: "/basket", heading: "Basket Builder" },
-  { label: "Risk Scenarios", path: "/risk", heading: "Risk Scenarios" },
+  { label: "Simulate", path: "/simulate", heading: "Simulate" },
   { label: "Strategy", path: "/strategy", heading: "Strategy" },
   { label: "Signals", path: "/signals", heading: "Signals" },
 ] as const;
@@ -79,8 +70,10 @@ for (const tab of TABS) {
 }
 
 const REDIRECTS = [
-  // The retired French 3-tab paths forward to their 7-tab homes.
-  { from: "/risque", to: "/basket", heading: "Basket Builder" },
+  // Basket and Risk Scenarios folded into Simulate; their old paths forward there.
+  { from: "/basket", to: "/simulate", heading: "Simulate" },
+  { from: "/risk", to: "/simulate", heading: "Simulate" },
+  { from: "/risque", to: "/simulate", heading: "Simulate" },
   { from: "/ordres", to: "/strategy", heading: "Strategy" },
   { from: "/orders", to: "/strategy", heading: "Strategy" },
   // Operations now owns the index route, so its old path forwards home.

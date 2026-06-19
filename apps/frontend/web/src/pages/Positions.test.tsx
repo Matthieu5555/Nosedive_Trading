@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
-import { http } from "msw";
+import { screen, waitFor, within } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { expect, test } from "vitest";
 
 import type { FillsResponse, PositionsResponse } from "../api";
+import { renderWithClient as render } from "../test/renderWithClient";
 import { jsonGet, notMocked, server } from "../test/server";
 import { PositionsPage } from "./Positions";
 
@@ -107,4 +108,25 @@ test("a positions fetch error renders through AsyncBlock, not a blank page", asy
   expect(
     screen.getAllByRole("alert").some((el) => /error|failed|500/i.test(el.textContent ?? "")),
   ).toBe(true);
+});
+
+// Broker reconciliation moved here from the old Risk Scenarios page: it is an account-wide integrity
+// check on the real book (broker snapshot vs our fills-based book), so it belongs next to the book.
+
+test("the broker reconciliation panel reads back the default agreeing snapshot", async () => {
+  render(<PositionsPage />);
+  expect(await screen.findByText(/Does the broker agree with our book/i)).toBeInTheDocument();
+  expect(await screen.findByText("In agreement")).toBeInTheDocument();
+});
+
+test("no broker account captured is a plain empty state, not an error alert", async () => {
+  server.use(
+    http.get("/api/reconciliation", () =>
+      HttpResponse.json({ error: "no_broker_account", detail: "none" }, { status: 400 }),
+    ),
+  );
+  render(<PositionsPage />);
+  expect(
+    await screen.findByText(/No broker account snapshot has been captured yet/i),
+  ).toBeInTheDocument();
 });

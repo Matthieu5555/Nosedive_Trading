@@ -3,14 +3,14 @@ import { expect, test } from "@playwright/test";
 import { collectPageErrors } from "./helpers";
 import { mockBff } from "./mock-bff";
 
-// The seven top-level tabs, in workflow order (see src/routes.ts). All English; the short-lived
-// 3-tab French consolidation (Données/Risque/Ordres) and the standalone Orders page are retired.
+// The six top-level tabs, in workflow order (see src/routes.ts). All English; Basket and Risk
+// Scenarios folded into Simulate, the standalone Orders page and the French 3-tab consolidation
+// (Données/Risque/Ordres) are retired.
 const TABS = [
   { button: "Market", heading: "Market", path: "/" },
-  { button: "Basket", heading: "Basket Builder", path: "/basket" },
+  { button: "Simulate", heading: "Simulate", path: "/simulate" },
   { button: "Signals", heading: "Signals", path: "/signals" },
   { button: "Strategy", heading: "Strategy", path: "/strategy" },
-  { button: "Risk Scenarios", heading: "Risk Scenarios", path: "/risk" },
   { button: "Positions", heading: "Positions", path: "/positions" },
   { button: "Operations", heading: "Operations", path: "/operations" },
 ] as const;
@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
   await mockBff(page);
 });
 
-test("the nav is exactly the seven tabs and Market is active on load", async ({ page }) => {
+test("the nav is exactly the six tabs and Market is active on load", async ({ page }) => {
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
   for (const tab of TABS) {
@@ -65,7 +65,9 @@ for (const tab of TABS) {
 // 7-tab homes so any open bookmark still lands somewhere sensible.
 const REDIRECTS = [
   { from: "/market", to: "/", heading: "Market" },
-  { from: "/risque", to: "/basket", heading: "Basket Builder" },
+  { from: "/basket", to: "/simulate", heading: "Simulate" },
+  { from: "/risk", to: "/simulate", heading: "Simulate" },
+  { from: "/risque", to: "/simulate", heading: "Simulate" },
   { from: "/ordres", to: "/strategy", heading: "Strategy" },
   { from: "/orders", to: "/strategy", heading: "Strategy" },
   { from: "/does-not-exist", to: "/", heading: "Market" },

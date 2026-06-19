@@ -27,15 +27,20 @@ test("Market: index and as-of selectors are present and switchable", async ({ pa
   await expect(page.getByText("failed to render", { exact: false })).toHaveCount(0);
 });
 
-test("Basket: the compose → book → stress → attribution tabs over a shared composer", async ({
+test("Simulate › Build a basket: the compose → stress → attribution tabs over a shared composer", async ({
   page,
 }) => {
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
+  await page.goto("/simulate");
+  await expect(page.getByRole("heading", { level: 1, name: "Simulate" })).toBeVisible();
 
-  for (const name of [/Compose/, /The Book/, /Stress/, /Attribution/]) {
+  // Default book source is "My book"; switch to the build-a-basket what-if.
+  await page.getByRole("button", { name: "Build a basket" }).click();
+
+  for (const name of [/Compose/, /Stress/, /Attribution/]) {
     await expect(page.getByRole("tab", { name })).toBeVisible();
   }
+  // The retired "The Book" clone of Positions is gone.
+  await expect(page.getByRole("tab", { name: /The Book/ })).toHaveCount(0);
 
   // The shared composer is above the tabs.
   await expect(page.getByLabel("underlying", { exact: true })).toBeVisible();
@@ -54,11 +59,13 @@ test("Basket: the compose → book → stress → attribution tabs over a shared
   await expect(page.getByRole("button", { name: "Stress basket" })).toBeVisible();
 });
 
-test("Basket › The Book folds in the booked book (the former Positions page)", async ({ page }) => {
-  await page.goto("/basket");
-  await page.getByRole("tab", { name: /The Book/ }).click();
-  await expect(page.getByText("Book summary", { exact: true })).toBeVisible();
-  await expect(page.getByText("Fills ledger", { exact: true })).toBeVisible();
+test("Simulate › My book: the held-portfolio stress carries a portfolio picker", async ({
+  page,
+}) => {
+  await page.goto("/simulate");
+  // "My book" is the default book source: the named crises + persisted surface over a portfolio.
+  await expect(page.getByLabel("Portfolio", { exact: true })).toBeVisible();
+  await expect(page.getByText("Named historical scenarios", { exact: true })).toBeVisible();
 });
 
 test("Strategy: the folded backtest setup renders", async ({ page }) => {
@@ -67,16 +74,17 @@ test("Strategy: the folded backtest setup renders", async ({ page }) => {
   await expect(page.getByText("Backtest setup", { exact: true })).toBeVisible();
 });
 
-test("Risk Scenarios: broker reconciliation account input is present", async ({ page }) => {
-  await page.goto("/risk");
-  await expect(page.getByRole("heading", { level: 1, name: "Risk Scenarios" })).toBeVisible();
+test("Positions: the broker reconciliation account input is present", async ({ page }) => {
+  await page.goto("/positions");
+  await expect(page.getByRole("heading", { level: 1, name: "Positions" })).toBeVisible();
   await expect(page.getByLabel("Broker account")).toBeVisible();
 });
 
-test("Basket: the Attribution tab carries the by-Greek waterfall over a portfolio input", async ({
+test("Simulate › Build a basket: the Attribution tab carries the by-Greek waterfall over a portfolio input", async ({
   page,
 }) => {
-  await page.goto("/basket");
+  await page.goto("/simulate");
+  await page.getByRole("button", { name: "Build a basket" }).click();
   await page.getByRole("tab", { name: /Attribution/ }).click();
   await expect(page.getByRole("button", { name: "P&L attribution" })).toBeVisible();
   await expect(page.getByLabel("portfolio", { exact: true })).toBeVisible();

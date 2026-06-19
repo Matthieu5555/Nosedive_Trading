@@ -3,12 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
-vi.mock("../components/Plot", async () => await import("../test/plotMock"));
+vi.mock("../../components/Plot", async () => await import("../../test/plotMock"));
 
-import type { OrderTicketResponse } from "../api";
-import { BASKET_RISK_AAA } from "../test/fixtures";
-import { jsonPost, server } from "../test/server";
-import { BasketPage } from "./Basket";
+import type { OrderTicketResponse } from "../../api";
+import { BASKET_RISK_AAA } from "../../test/fixtures";
+import { jsonPost, server } from "../../test/server";
+import { BuildBasket } from "./BuildBasket";
 
 function badBasket(path: string) {
   return http.post(path, () =>
@@ -18,7 +18,7 @@ function badBasket(path: string) {
 
 test("the strangle template pre-fills the ±30Δ wing legs in the grid", async () => {
   const user = userEvent.setup();
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
   const legs = screen.getByRole("table", { name: /composed legs/i });
 
@@ -28,7 +28,7 @@ test("the strangle template pre-fills the ±30Δ wing legs in the grid", async (
 
 test("the straddle template pre-fills the two ATM legs (atm call + atmp put)", async () => {
   const user = userEvent.setup();
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   const legs = screen.getByRole("table", { name: /composed legs/i });
   expect(within(legs).getByText("atm")).toBeInTheDocument();
@@ -40,7 +40,7 @@ test("the straddle template pre-fills the two ATM legs (atm call + atmp put)", a
 test("pricing a composed basket renders the totals with unit strings visible", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: /price basket/i }));
   await waitFor(() =>
@@ -53,7 +53,7 @@ test("pricing a composed basket renders the totals with unit strings visible", a
 });
 
 test("the leg band selector is wired to the platform band axis (>8 options)", async () => {
-  render(<BasketPage />);
+  render(<BuildBasket />);
 
   const bandSelect = await screen.findByLabelText("leg band");
   await waitFor(() => expect(within(bandSelect).getAllByRole("option").length).toBeGreaterThan(8));
@@ -65,7 +65,7 @@ test("the leg band selector is wired to the platform band axis (>8 options)", as
 test("selecting the EUR-quoted index renders monetized values in € (not $)", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/basket/risk", BASKET_RISK_AAA));
-  render(<BasketPage />);
+  render(<BuildBasket />);
 
   const underlying = await screen.findByLabelText("underlying");
   await user.selectOptions(underlying, "SX5E");
@@ -83,7 +83,7 @@ test("selecting the EUR-quoted index renders monetized values in € (not $)", a
 test("a pricing error renders a labelled alert carrying the BFF's typed detail", async () => {
   const user = userEvent.setup();
   server.use(badBasket("/api/basket/risk"));
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
   await user.click(screen.getByRole("button", { name: /price basket/i }));
   await waitFor(() =>
@@ -121,7 +121,7 @@ const BASKET_STRESS_AAA = {
 test("stressing a composed basket renders the worst case and the PnL surface", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/basket/scenarios", BASKET_STRESS_AAA));
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("tab", { name: /stress/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
@@ -141,7 +141,7 @@ test("stressing a composed basket renders the worst case and the PnL surface", a
 test("a stress error renders a labelled alert carrying the BFF's typed detail", async () => {
   const user = userEvent.setup();
   server.use(badBasket("/api/basket/scenarios"));
-  render(<BasketPage />);
+  render(<BuildBasket />);
   await user.click(screen.getByRole("button", { name: /template strangle/i }));
   await user.click(screen.getByRole("tab", { name: /stress/i }));
   await user.click(screen.getByRole("button", { name: /stress basket/i }));
@@ -185,7 +185,7 @@ const TICKET: OrderTicketResponse = {
 test("the single booking home builds the real ticket and self-labels it as preview-only", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/ticket/preview", TICKET));
-  render(<BasketPage />);
+  render(<BuildBasket />);
 
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   const ticketPanel = screen.getByRole("region", { name: /order ticket/i });
@@ -201,7 +201,7 @@ test("the single booking home builds the real ticket and self-labels it as previ
 test("the booking home's send affordance is disabled and 3B-gated; nothing can transmit", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/ticket/preview", TICKET));
-  render(<BasketPage />);
+  render(<BuildBasket />);
 
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: "Build ticket" }));
@@ -215,7 +215,7 @@ test("the booking home's send affordance is disabled and 3B-gated; nothing can t
 test("the retired Orders sketch renders nowhere, no hardcoded strike 5350, no Submit (sketch)", async () => {
   const user = userEvent.setup();
   server.use(jsonPost("/api/ticket/preview", TICKET));
-  render(<BasketPage />);
+  render(<BuildBasket />);
 
   await user.click(screen.getByRole("button", { name: /template straddle/i }));
   await user.click(screen.getByRole("button", { name: "Build ticket" }));

@@ -13,25 +13,27 @@ import type {
   DeltaBandsResponse,
   IndicesResponse,
   SubStrategiesResponse,
-} from "../api";
-import { composeBook, fetchAttribution, priceBasket, stressBasket } from "../api";
-import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../basketTemplates";
-import { BasketLegGrid } from "../components/BasketLegGrid";
-import { Cluster, Stack } from "../components/layout";
-import { TicketPanel } from "../components/TicketPanel";
-import { useFetch } from "../hooks/useFetch";
-import { currencySymbol } from "../lib/format";
-import { tourAnchor } from "../lib/tour";
-import type { BasketScenariosResponse, ScenariosResponse } from "../stressApi";
-import { AttributionTab } from "./basket/AttributionTab";
-import { BookSection } from "./basket/BookSection";
-import { BuildPriceTab } from "./basket/BuildPriceTab";
-import { ComposeTab } from "./basket/ComposeTab";
-import { StressTab } from "./basket/StressTab";
+} from "../../api";
+import { composeBook, fetchAttribution, priceBasket, stressBasket } from "../../api";
+import { buildTemplate, TEMPLATE_LABELS, type TemplateName } from "../../basketTemplates";
+import { BasketLegGrid } from "../../components/BasketLegGrid";
+import { Cluster, Stack } from "../../components/layout";
+import { TicketPanel } from "../../components/TicketPanel";
+import { useFetch } from "../../hooks/useFetch";
+import { currencySymbol } from "../../lib/format";
+import { tourAnchor } from "../../lib/tour";
+import type { BasketScenariosResponse, ScenariosResponse } from "../../stressApi";
+import { AttributionTab } from "../basket/AttributionTab";
+import { BuildPriceTab } from "../basket/BuildPriceTab";
+import { ComposeTab } from "../basket/ComposeTab";
+import { StressTab } from "../basket/StressTab";
 
 const TEMPLATES: TemplateName[] = ["straddle", "strangle", "risk_reversal"];
 
-export function BasketPage() {
+// Simulate / "Build a basket" mode: compose a hypothetical book of option legs on the spot and
+// shock it on demand. This is the old Basket Builder, with the "The Book" sub-tab removed (it was a
+// verbatim clone of the Positions page); to read the real book, use the Positions tab.
+export function BuildBasket() {
   const indices = useFetch<IndicesResponse>("/api/indices");
   const indexOptions = useMemo(() => indices.data?.indices ?? [], [indices.data]);
   const [underlying, setUnderlying] = useState("");
@@ -68,8 +70,8 @@ export function BasketPage() {
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeLoading, setComposeLoading] = useState(false);
 
-  // ③ Stress — named historical crises, folded in from the standalone Risk Scenarios page as
-  // shock presets. The persisted Risk path serves the named scenarios; the basket reuses them.
+  // ② Stress — named historical crises, served by the persisted Risk path as shock presets so the
+  // composed basket replays the same labelled crises the held-book view stresses against.
   const namedScenarios = useFetch<ScenariosResponse>("/api/risk/scenarios");
 
   function addLeg(leg: BasketLegInput) {
@@ -171,17 +173,11 @@ export function BasketPage() {
   }
 
   return (
-    <Stack as="section" className="page" gap="md">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Compose a book, then shock it</p>
-          <h1>Basket Builder</h1>
-        </div>
-      </div>
+    <Stack gap="md">
       <p>
-        Compose a book, legs and layered sub-strategies, read it, shock it across spot/vol/rate and
-        the named crises, then explain its P&amp;L by Greek. The underlying and date below are
-        shared across every block.
+        Compose a hypothetical book, legs and layered sub-strategies, read it, shock it across
+        spot/vol/rate and the named crises, then explain its P&amp;L by Greek. The underlying and
+        date below are shared across every block.
       </p>
 
       {indices.error !== null && (
@@ -295,7 +291,7 @@ export function BasketPage() {
               {...tourAnchor(
                 "basket.tabs",
                 "Basket workflow tabs",
-                "Move between composing the book, reading it, stressing it, and explaining its P&L.",
+                "Move between composing the book, stressing it, and explaining its P&L.",
               )}
             >
               {/* Drop the shadcn min-w so each pill hugs its own label; with the list's uniform
@@ -304,14 +300,11 @@ export function BasketPage() {
               <TabsTrigger value="compose" className="min-w-0">
                 ① Compose
               </TabsTrigger>
-              <TabsTrigger value="book" className="min-w-0">
-                ② The Book
-              </TabsTrigger>
               <TabsTrigger value="stress" className="min-w-0">
-                ③ Stress
+                ② Stress
               </TabsTrigger>
               <TabsTrigger value="attribution" className="min-w-0">
-                ④ Attribution
+                ③ Attribution
               </TabsTrigger>
             </TabsList>
           </div>
@@ -345,10 +338,6 @@ export function BasketPage() {
                 onCompose={runCompose}
               />
             </Stack>
-          </TabsContent>
-
-          <TabsContent value="book">
-            <BookSection underlying={underlying} tradeDate={tradeDate} currency={currency} />
           </TabsContent>
 
           <TabsContent value="stress">

@@ -1,13 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { http } from "msw";
 import { expect, test, vi } from "vitest";
 
-vi.mock("../components/Plot", async () => await import("../test/plotMock"));
+vi.mock("../../components/Plot", async () => await import("../../test/plotMock"));
 
-import type { NamedScenario, RateScenario, ScenariosResponse } from "../stressApi";
-import { renderWithClient } from "../test/renderWithClient";
-import { jsonGet, notMocked, server } from "../test/server";
-import { RiskScenariosPage } from "./RiskScenarios";
+import type { NamedScenario, RateScenario, ScenariosResponse } from "../../stressApi";
+import { renderWithClient } from "../../test/renderWithClient";
+import { jsonGet, notMocked, server } from "../../test/server";
+import { PortfolioStress } from "./PortfolioStress";
 
 const NAMED: NamedScenario[] = [
   {
@@ -94,7 +94,7 @@ const SCENARIOS_WITH_HOLE: ScenariosResponse = {
 
 test("renders the stress summary with max gain/loss and a portfolio selector", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
 
   expect(screen.getByText("1.5 × 10³ $ (full-reprice PnL)")).toBeInTheDocument();
@@ -104,7 +104,7 @@ test("renders the stress summary with max gain/loss and a portfolio selector", a
 
 test("renders the PnL surface and heatmap as Plotly traces", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   const surface = await screen.findByLabelText(/Stress PnL surface/i);
   expect(within(surface).getByTestId("plot-types")).toHaveTextContent("surface");
   const heatmap = await screen.findByLabelText(/Stress PnL heatmap/i);
@@ -113,7 +113,7 @@ test("renders the PnL surface and heatmap as Plotly traces", async () => {
 
 test("a missing cell is reported as missing and excluded from the gain/loss stats", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS_WITH_HOLE));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
 
   expect(screen.getByText(/8 cells, 1 missing/)).toBeInTheDocument();
@@ -123,13 +123,13 @@ test("a missing cell is reported as missing and excluded from the gain/loss stat
 });
 
 test("renders a labeled empty state when no surface is persisted", async () => {
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   expect(await screen.findByText(/No stress surface persisted yet/i)).toBeInTheDocument();
 });
 
 test("a fetch error renders through AsyncBlock, not a blank page", async () => {
   server.use(http.get("/api/risk/scenarios", notMocked));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   await waitFor(() => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts.length).toBeGreaterThan(0);
@@ -139,7 +139,7 @@ test("a fetch error renders through AsyncBlock, not a blank page", async () => {
 
 test("named historical scenarios surface their label and stressed P&L", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
 
   expect(await screen.findByText(/Worst case: 2008/)).toBeInTheDocument();
   expect(screen.getAllByText("-2 × 10³ $ (full-reprice PnL)").length).toBeGreaterThan(0);
@@ -147,7 +147,7 @@ test("named historical scenarios surface their label and stressed P&L", async ()
 
 test("the rate-shock sweep renders beside the surface when the grid carries a rate family", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS_WITH_RATE));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
 
   expect(await screen.findByRole("heading", { name: "Rate-shock sweep" })).toBeInTheDocument();
   const table = await screen.findByRole("table", { name: /Rate-shock sweep/i });
@@ -157,32 +157,17 @@ test("the rate-shock sweep renders beside the surface when the grid carries a ra
 
 test("no rate family means no rate panel, the surface render stays as it was", async () => {
   server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
 
   expect(await screen.findByText("Stress summary")).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "Rate-shock sweep" })).not.toBeInTheDocument();
 });
 
-test("the broker reconciliation panel reads back the default agreeing snapshot", async () => {
-  renderWithClient(<RiskScenariosPage />);
-  expect(await screen.findByText(/Does the broker agree with our book/i)).toBeInTheDocument();
-  expect(await screen.findByText("In agreement")).toBeInTheDocument();
-});
-
-test("no broker account captured is a plain empty state, not an error alert", async () => {
-  server.use(
-    http.get("/api/reconciliation", () =>
-      HttpResponse.json({ error: "no_broker_account", detail: "none" }, { status: 400 }),
-    ),
-  );
-  renderWithClient(<RiskScenariosPage />);
-  expect(
-    await screen.findByText(/No broker account snapshot has been captured yet/i),
-  ).toBeInTheDocument();
-});
+// Broker reconciliation moved off this view to the Positions page (it is an integrity check on the
+// real book, not a what-if), so its coverage now lives in Positions.test.tsx.
 
 test("the book P&L attribution panel renders its labelled-empty state by default", async () => {
-  renderWithClient(<RiskScenariosPage />);
+  renderWithClient(<PortfolioStress />);
   expect(await screen.findByText("Where the P&L came from")).toBeInTheDocument();
   expect(await screen.findByText(/No P&L attribution for this selection yet/i)).toBeInTheDocument();
 });

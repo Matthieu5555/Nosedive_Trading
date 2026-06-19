@@ -130,7 +130,12 @@ function realizedStep(start: string, end: string, dSpot: number) {
     approx_pnl: { dollars: 228.94, unit: TERM_UNIT_PNL },
     full_reprice_pnl: { dollars: 225.56, unit: RESIDUAL_UNIT_REPRICE },
     residual: { dollars: -3.38, unit: RESIDUAL_UNIT_REPRICE },
-    verdict: { within_tolerance: true, diagnostic: "", residual_abs_tol: 1.0, residual_rel_tol: 0.05 },
+    verdict: {
+      within_tolerance: true,
+      diagnostic: "",
+      residual_abs_tol: 1.0,
+      residual_rel_tol: 0.05,
+    },
     move: { d_spot: dSpot, d_vol: 0.0011, d_time: 0.00274, d_rate: 0.0 },
   };
 }
@@ -181,7 +186,7 @@ test("realized: an empty payload renders an honest empty state, not a waterfall"
   expect(screen.queryByTestId("plot-types")).not.toBeInTheDocument();
 });
 
-import { BasketPage } from "../pages/Basket";
+import { BuildBasket } from "../pages/simulate/BuildBasket";
 
 test("a fetch error renders a labelled alert on the page, not a blank page", async () => {
   const user = userEvent.setup();
@@ -196,9 +201,9 @@ test("a fetch error renders a labelled alert on the page, not a blank page", asy
       } as Response),
     ),
   );
-  // BasketPage's ④ Attribution tab now fires a react-query hook (the realized waterfall), so the
+  // BuildBasket's ③ Attribution tab now fires a react-query hook (the realized waterfall), so the
   // page needs a QueryClient in scope; the stubbed-failing fetch still drives the assertion.
-  renderWithClient(<BasketPage />);
+  renderWithClient(<BuildBasket />);
   await user.click(screen.getByRole("tab", { name: /attribution/i }));
   await user.click(screen.getByRole("button", { name: /P&L attribution/i }));
   // With every fetch stubbed to fail, the page now surfaces each failure as its own alert (the

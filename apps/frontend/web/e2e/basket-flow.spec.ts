@@ -188,13 +188,15 @@ async function routeBasket(page: Page): Promise<void> {
   );
 }
 
-test("Basket: compose a 2-layer book, shock it (spot/vol + rate), read the attribution", async ({
+test("Simulate › Build a basket: compose a 2-layer book, shock it (spot/vol + rate), read the attribution", async ({
   page,
 }) => {
   const { pageErrors } = collectPageErrors(page);
   await routeBasket(page);
-  await page.goto("/basket");
-  await expect(page.getByRole("heading", { level: 1, name: "Basket Builder" })).toBeVisible();
+  await page.goto("/simulate");
+  await expect(page.getByRole("heading", { level: 1, name: "Simulate" })).toBeVisible();
+  // Switch the book source from the default "My book" to the composed-basket what-if.
+  await page.getByRole("button", { name: "Build a basket" }).click();
 
   // ── ① Compose: build a 2-layer book ─────────────────────────────────────────────────────
   // Two legs in the shared composer (a straddle template seeds two legs → "can stress").

@@ -27,8 +27,7 @@ rules have exactly one home.
   catalog, replay/backtest engine, actor host), QuantLib + `py_vollib` (pricing,
   Greeks, IV), SciPy/NumPy, DuckDB/PyArrow. The bar is depth: the wrapper must hide
   real complexity, never be a thin shim that only adds a dependency. Hand-write only
-  the bespoke vol math no library provides. See
-  [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md).
+  the bespoke vol math no library provides.
 
 ## Python
 
@@ -54,14 +53,14 @@ or conda. The backend targets Python 3.13.
   that carry the value that triggered them. Define expected variants out of
   existence (deletion is idempotent, search returns empty) rather than raising.
 - **Configuration** centralized in a validated config object, hydrated from versioned YAML —
-  **no business/compute parameter is a `.py` literal** (the binding standard is ADR 0028). Only genuine internal
+  **no business/compute parameter is a `.py` literal** (this is the binding standard). Only genuine internal
   invariants (math constants, separators) stay in code, named so their meaning is self-evident.
 - **Dependency injection.** Functions accept their dependencies as parameters
   rather than constructing clients internally.
 - **No comments, no docstrings.** Code is the only statement of *what* it does;
   make names, types, and structure carry the meaning. Cross-cutting *why* —
-  rationale, design decisions, domain context — lives in `.agent/`, the ADRs, and
-  per-directory `README.md`, never inline. Do not write `#` comments, module /
+  rationale, design decisions, domain context — lives in `.agent/`, `TARGET.md`,
+  per-directory `README.md`, and git history, never inline. Do not write `#` comments, module /
   class / function docstrings, or JSDoc/`/* */`. The **only** exception is
   functional directives the toolchain reads and acts on — `# type: ignore`,
   `# noqa`, `# pragma: no cover`, `# fmt: off/on`, shebangs, `// eslint-disable`,

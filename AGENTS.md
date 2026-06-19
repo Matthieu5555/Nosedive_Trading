@@ -77,17 +77,19 @@ on quant/finance terms propagate into wrong code.
 
 ## Decisions
 
-Non-obvious choices are recorded in `.agent/decisions/` as append-only ADRs.
-Read the relevant one before re-litigating a design; add a new one when you make
-a choice the next agent would otherwise have to reverse-engineer.
+There is no decision ledger. Read `TARGET.md` and the relevant `README.md` for
+what is true *now*; that is the source of truth, and it is kept current in place.
+Do not reconstruct the current design by replaying a chain of past decisions —
+that chain is exactly what goes stale and invites re-litigation. The *why* behind
+a choice lives in git history (commit messages); reach for it only when you need
+the reasoning, never as the statement of current state.
 
-Choices that are *not yet ruled on* live in `.agent/open-questions.md` — a living
-register of decisions awaiting an owner/domain ruling. When you hit a fork that is
-not yours to settle, record it there rather than guessing; when it is ruled it
-becomes an ADR. The merge/convergence is closed. The **plan of record** — the end-state
-capability map *and* the ordered build sequence — is `TARGET.md` (repo root); it is the single
-roadmap. The live task board (`tasks/TASKBOARD.md`) tracks who is touching what and the ready
-queue of open specs.
+The **plan of record** — the end-state capability map *and* the ordered build
+sequence — is `TARGET.md` (repo root); it is the single roadmap and the domain
+authority on any formula/contract conflict. The live task board
+(`tasks/TASKBOARD.md`) tracks who is touching what and the ready queue of open
+specs. When you hit a fork that is not yours to settle, ask the owner rather than
+guessing or burying a silent pick in code.
 
 ## Verify before you declare done
 
@@ -182,8 +184,7 @@ the code is part of the change, not a follow-up.
   a library's job in-house is a defect to be removed, not a style choice. The one
   sanctioned exception is the bespoke vol math no library provides. The bar for a
   wrapper is depth: it must hide real complexity, never be a thin shim that only
-  adds a dependency. See `.agent/conventions.md` and
-  [ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md).
+  adds a dependency. See `.agent/conventions.md`.
 - **Prove the environment before you believe it — measure, don't read.** A label
   in a task file, a docstring, an ADR, a prior agent's summary, or your own earlier
   claim is a *hypothesis*, not a fact. Before asserting that something is blocked,

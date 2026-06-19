@@ -35,8 +35,7 @@ The book is accounted **from fills, never from intentions**. The pieces:
 `concretization.py` is the transform WS 3A deferred and the booking commit consumes: from an
 abstract grid-cell [order-ticket leg](../infra/src/algotrading/infra/orders/README.md)
 (`underlying, tenor_label, delta_band`) to a concrete, priced **`ConcreteFill`**
-(`contract_key`, `(strike, expiry, right)`, a paper `fill_price`). It is ruled by
-[ADR 0043](../../.agent/decisions/0043-fills-are-concrete-contracts-resolved-at-booking.md):
+(`contract_key`, `(strike, expiry, right)`, a paper `fill_price`). The rule:
 *a booked fill is a concrete contract, resolved at booking time.*
 
 - **`concretize(ticket_leg, as_of, chain)`** — a **pure, as-of** resolver: no I/O, no clock, no

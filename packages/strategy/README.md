@@ -58,8 +58,7 @@ into both:
 - **per-strategy attribution** (TARGET §7.2) — P&L grouped by strategy and checked against
   `intended_greeks`.
 
-`infra` reads the stamp as an opaque label; it never reads strategy *logic*. See
-[ADR 0046](../../.agent/decisions/0046-strategy-spine-contract-protocol-and-identity-stamp.md).
+`infra` reads the stamp as an opaque label; it never reads strategy *logic*.
 
 ## Quickstart
 

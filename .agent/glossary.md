@@ -24,8 +24,7 @@ lives in `TARGET.md` — not duplicated here.
 - **Config hash** — SHA-256 of a config bundle's canonical JSON, stamped onto derived
   records (per-bundle `config_hashes`, not one global hash). Environment settings stay out.
 - **Config bundle** — one of the six YAML files under `configs/`; the unit of config
-  authoring, validation, and hashing. The four economic bundles hash independently
-  (C7 / [ADR 0028](decisions/0028-configuration-and-reproducibility-standard.md)).
+  authoring, validation, and hashing. The four economic bundles hash independently (C7).
 - **Table family / contract** — one of the twelve frozen `contracts.tables`
   dataclasses that may cross a workstream seam; metadata lives in the registry `TableSpec`.
 
@@ -45,8 +44,7 @@ lives in `TARGET.md` — not duplicated here.
   (e.g. `__gap__`) recording an *absence* of data; downstream filters it via `is_observation`.
 - **Session id** — the collector's idempotency scope, stable across restarts (typically
   derived from the trade date) so a restart recognizes already-written events.
-- **Push collection seam / `RawCollector`** — the push-canonical boundary
-  ([ADR 0027](decisions/0027-collection-seam-push-canonical.md)) where a broker feed
+- **Push collection seam / `RawCollector`** — the push-canonical boundary where a broker feed
   *pushes* events through a `MarketDataAdapter` into the broker-agnostic `RawCollector`,
   normalized into the append-only `RawMarketEvent` table. (The old pull model is retired.)
 
@@ -79,8 +77,7 @@ lives in `TARGET.md` — not duplicated here.
 ## Integration and operations (Workstream E)
 
 - **Actor** — the driver that transports market state into C/D's pure functions and
-  stamps/persists their outputs; it holds no math. A thin Nautilus `Actor`
-  ([ADR 0023](decisions/0023-nautilus-runtime-spine-and-library-leverage.md)) in
+  stamps/persists their outputs; it holds no math. A thin Nautilus `Actor` in
   `packages/infra/.../infra/actor`. Same actor runs live and replay.
 - **Same-code-path replay** — the invariant that a live run and a replay of the same trade
   date call the identical `run_analytics`, differing only in who populated raw first.
@@ -101,8 +98,7 @@ lives in `TARGET.md` — not duplicated here.
   logged and counted, **never** written into the observation stream.
 - **`ProviderFlow`** — a Protocol implemented by each broker leaf (`open_session`,
   `discover`, `make_adapter`, `resolve_config`), registered in the app layer (ADR 0017).
-  Under [ADR 0042](decisions/0042-index-options-only-scope-ibkr-sole-broker.md) IBKR is the
-  sole live broker; the seam stays generic so another could rejoin.
+  IBKR is the sole live broker; the seam stays generic so another could rejoin.
 - **Provider vs exchange** — *provider* is the data-source leaf that supplied the data
   (today only `IBKR`); *exchange* is the listing venue (`EUREX`, `CBOE`, `XPAR`). They differ —
   provider `IBKR` with exchange `EUREX` for SX5E. Both are first-class partition segments.

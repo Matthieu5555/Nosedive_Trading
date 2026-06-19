@@ -186,8 +186,8 @@ run with no destination.
 ## Deployment shape — systemd on the shared box (compose dropped)
 
 The chosen deployment is **per-user systemd on the shared server**, as installed above. The deferred
-`docker-compose.yml` + headless `ib-gateway-docker` service is **dropped, on the record** — see
-[`.agent/decisions/0055-deploy-via-systemd-compose-dropped.md`](../../.agent/decisions/0055-deploy-via-systemd-compose-dropped.md).
+`docker-compose.yml` + headless `ib-gateway-docker` service is **dropped, on the record** (the why
+is in git history).
 In short: the systemd stack already runs the unattended week and is green; the gateway is driven
 headless by `scripts/ibkr_login.py` (no container needed); and the close-capture is a per-close
 one-shot, not a long-running service a container would supervise. If a future need (multi-host, a

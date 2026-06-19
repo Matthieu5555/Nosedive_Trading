@@ -95,12 +95,11 @@ analytics never reach up into strategy code.
 
 ## Status (2026-06-13)
 
-This plan is the active direction, reaffirmed by
-[ADR 0023](.agent/decisions/0023-nautilus-runtime-spine-and-library-leverage.md): **Nautilus is
+This plan is the active direction: **Nautilus is
 the runtime spine**, and the platform leans on every well-built library it can. An interim decision
-to drop the Nautilus dependency (ADRs 0007/0020) was reversed by 0023.
+to drop the Nautilus dependency was reversed.
 
-**Scope** ([ADR 0042](.agent/decisions/0042-index-options-only-scope-ibkr-sole-broker.md)): the
+**Scope:** the
 platform is **index-options-only**, **IBKR is the sole live broker**, and **EuroStoxx-50 (SX5E) is
 the sole live index** (SPX parked). Single names are index *constituents*, never standalone
 underlyings. The earlier multi-broker sketch (Saxo + Deribit adapters) was retired with that pivot

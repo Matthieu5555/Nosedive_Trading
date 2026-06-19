@@ -6,18 +6,16 @@ when done.** It is advisory, not enforced — it only works if everyone reads an
 The real safety is branch discipline: one branch per task, merge small and often, so
 collisions surface as merge conflicts, never silent overwrites.
 
-What was *built* and *why* lives in the code, the per-directory `README.md`s, and the ADRs
-in [`.agent/decisions/`](../.agent/decisions/) — not here. This board is only "who is
-touching what right now" and "what is open to pick up." Finished specs move to
-[`tasks/archive/`](archive/); the changelog is git history.
+What was *built* lives in the code, the per-directory `README.md`s, and `TARGET.md`; the *why*
+is in git history — not here. This board is only "who is touching what right now" and "what is
+open to pick up." Finished specs move to [`tasks/archive/`](archive/); the changelog is git history.
 
 > **▶ The destination is [`TARGET.md`](../TARGET.md)** — the single roadmap: the end-state
 > capability map and the ordered build sequence (§7 is the pre-ordered gap list).
 
 ## Scope guardrail
 
-Scope + universe model live in ADR [0042](../.agent/decisions/0042-index-options-only-scope-ibkr-sole-broker.md)
-and [`TARGET.md §0`](../TARGET.md) — **index-options-only, IBKR sole broker, SX5E sole live index**.
+Scope + universe model live in [`TARGET.md §0`](../TARGET.md) — **index-options-only, IBKR sole broker, SX5E sole live index**.
 If any older spec, ADR, or README still says "Saxo", "Deribit", "three brokers", or "equity
 underlying", **the index-only pivot wins** — do not resurrect it. The gate (the only one) is in
 `AGENTS.md`; **green 2026-06-17** after the post-fleet cleanup pass (`uv run pytest -q`: 2998 passed, 12 skipped; frontend `npm test`: 376 passed).

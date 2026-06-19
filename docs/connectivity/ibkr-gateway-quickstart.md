@@ -35,7 +35,7 @@ IBKR ships **two** different "gateways"; only one serves the REST API our code u
 This guide is the **Client Portal Gateway** (`:5000`) — the path that matches
 `infra_ibkr.session_factory.build_gateway_session` and the `IBKR_CP_GATEWAY` flag. The TWS-socket
 `gnzsnz/ib-gateway-docker` image is the *other* one and is not part of the deployment — compose was
-dropped (see [`.agent/decisions/0055-deploy-via-systemd-compose-dropped.md`](../../.agent/decisions/0055-deploy-via-systemd-compose-dropped.md)).
+dropped in favor of per-user systemd (see `scripts/systemd/README.md`).
 How the box runs the unattended week lives in [`scripts/systemd/README.md`](../../scripts/systemd/README.md).
 
 ## 1. Prerequisites

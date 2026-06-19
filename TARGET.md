@@ -449,5 +449,4 @@ with least code) stays separate by design; the **domain contract stays in the li
 (`docs/blueprint/`, amendable per ADR 0011) — this file references it and keeps convenience copies,
 it does not replace it. When a
 target item lands, update its *state* line here in the same change — a stale target is worse than
-none. When the owner moves the goal, this file moves first. Resolved open-questions live in
-`.agent/open-questions.md`; per-workstream tactics live in `tasks/`.
+none. When the owner moves the goal, this file moves first. Per-workstream tactics live in `tasks/`.

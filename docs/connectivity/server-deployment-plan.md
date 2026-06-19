@@ -8,8 +8,7 @@
 The live deployment contract — install, what fires when, the three CP-gateway session clocks, exit
 codes, and the operator action for each alarm — is:
 
-- **[`scripts/systemd/README.md`](../../scripts/systemd/README.md)** — the operating contract.
-- **[`.agent/decisions/0055-deploy-via-systemd-compose-dropped.md`](../../.agent/decisions/0055-deploy-via-systemd-compose-dropped.md)** — why systemd, why compose is dropped.
+- **[`scripts/systemd/README.md`](../../scripts/systemd/README.md)** — the operating contract, and why systemd (compose dropped).
 - **`scripts/eod_healthcheck.py`** — the single "is this box ready for a close?" probe.
 
 The `collector_run.py` continuous-collector entrypoint this draft anticipated was not built either;

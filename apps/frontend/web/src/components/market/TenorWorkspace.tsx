@@ -6,37 +6,12 @@ import {
   type SurfaceSide,
   TENOR_GRID,
 } from "../../api";
-import { atmIv, ivAtDelta, RR_DELTA } from "../../lib/scorecards";
 import { tourAnchor } from "../../lib/tour";
-import { GreekCurve, SmileChart, type SurfaceIdentityProps } from "../charts";
+import { type SurfaceIdentityProps } from "../charts";
 import { DollarGreeksByMaturity } from "../DollarGreeksByMaturity";
-import { Grid, Stack } from "../layout";
 import { PriceStructure } from "../PriceStructure";
 import { RateDiagnosticsPanel } from "../RateDiagnostics";
-
-// The 25Δ butterfly (curvature) for one slice, in vol points: IV(25Δp) + IV(25Δc) − 2·ATM. It lives
-// beside the smile, where curvature is the natural read (blueprint §3.2: niveau/pente/courbure
-// résument le smile). Null where the wings don't bracket.
-function ConvexityReadout({ maturity }: { maturity: AnalyticsMaturity }) {
-  const atm = atmIv(maturity);
-  const ivPut = ivAtDelta(maturity, -RR_DELTA);
-  const ivCall = ivAtDelta(maturity, RR_DELTA);
-  const convexity =
-    atm !== null && ivPut !== null && ivCall !== null ? ivPut + ivCall - 2 * atm : null;
-  const value =
-    convexity === null
-      ? "-"
-      : `${convexity * 100 > 0 ? "+" : ""}${(convexity * 100).toFixed(1)} vp`;
-  return (
-    <p className="smile-convexity" aria-label="Convexity 25Δ">
-      <span className="smile-convexity__label">Convexity 25Δ</span>
-      <span className="smile-convexity__value">{value}</span>
-      <span className="smile-convexity__hint">
-        butterfly: IV(25Δp) + IV(25Δc) − 2·ATM (vp = vol point = 0.01 IV)
-      </span>
-    </p>
-  );
-}
+import { ChartStudio } from "./ChartStudio";
 
 // The reference tenor the page opens on (the blueprint signal tenor). When 3m wasn't captured the
 // selector still opens on it and shows the projection gap, so the default is honest rather than
@@ -45,11 +20,13 @@ const DEFAULT_TENOR = "3m";
 
 // The per-tenor reading workspace, below the Volatility surface. ONE tenor selector (the pinned
 // `tenor_grid`, near → far; a grid tenor the capture didn't reach is offered but resolves to a
-// labelled "not captured" gap, blueprint §4.5) drives FOUR separate, aerated page elements, in this
-// order top to bottom: the Smile & Greeks (the smile curve beside the Dollar Greeks numbers for the
-// same tenor), the Price structure order book, the Greek-vs-strike shape chart, and the Rate
-// diagnostics. The old single "Smile & Greeks" card that crammed all of these into one box is gone;
-// each is its own panel so a PM reads them with room to breathe, not stacked inside one surface.
+// labelled "not captured" gap, blueprint §4.5) lives in the Charting studio heading and drives FOUR
+// separate, aerated page elements, in this order top to bottom: the Charting studio (one chart,
+// switchable between the smile and the first-/second-order Greek-vs-strike curves), the Dollar Greeks
+// numbers for the same tenor, the Price structure order book, and the Rate diagnostics. The smile and
+// the Greek-vs-strike chart used to be two separate panels (and the smile shared a box with the Dollar
+// Greeks); they are folded into the one studio, and the Dollar Greeks are now their own element below
+// it, so a PM reads each with room to breathe.
 export function TenorWorkspace({
   maturities,
   currency,
@@ -86,7 +63,7 @@ export function TenorWorkspace({
   const [tenor, setTenor] = useState(DEFAULT_TENOR);
   const selected = capturedByTenor.get(tenor) ?? null;
 
-  // The one tenor selector, rendered in the Smile & Greeks heading; every panel below reads the same
+  // The one tenor selector, rendered in the Charting studio heading; every panel below reads the same
   // `selected` maturity from it.
   const tenorSelect = (
     <label className="selector-field">
@@ -112,52 +89,43 @@ export function TenorWorkspace({
 
   return (
     <>
+      <ChartStudio
+        selected={selected}
+        maturities={maturities}
+        currency={currency}
+        subject={subject}
+        asOf={asOf}
+        closeInstant={closeInstant}
+        mode={mode}
+        coverage={coverage}
+        side={side}
+        sidesAvailable={sidesAvailable}
+        perSideServed={perSideServed}
+        tenorControl={tenorSelect}
+        gap={gap}
+      />
+
       <article
-        className="panel tenor-panel"
-        aria-label="Smile and Greeks"
+        className="panel"
+        aria-label="Dollar Greeks"
         {...tourAnchor(
-          "market.smile",
-          "Smile and Greeks",
-          "The smile, implied vol across strikes, with the option Greeks beside it.",
+          "market.dollar-greeks",
+          "Dollar Greeks",
+          "The option Greeks for this tenor as numbers, raw and in currency, by delta band.",
         )}
       >
-        <Stack gap="md">
-          <div className="panel-heading">
-            <div>
-              <p className="panel-kicker">tenor</p>
-              <h2>Smile &amp; Greeks</h2>
-            </div>
-            {tenorSelect}
-          </div>
-
-          {selected === null ? (
-            gap
-          ) : (
-            <Grid min="420px" gap="lg">
-              <Stack className="tenor-panel__smile" gap="2xs">
-                <SmileChart
-                  maturities={maturities}
-                  maturityLabel={selected.label}
-                  subject={subject}
-                  asOf={asOf}
-                  closeInstant={closeInstant}
-                  mode={mode}
-                  coverage={coverage}
-                  side={side}
-                />
-                <ConvexityReadout maturity={selected} />
-              </Stack>
-              <DollarGreeksByMaturity
-                maturities={maturities}
-                maturityLabel={selected.label}
-                currency={currency}
-                sides={sides}
-                sidesAvailable={sidesAvailable}
-                perSideServed={perSideServed}
-              />
-            </Grid>
-          )}
-        </Stack>
+        {selected === null ? (
+          gap
+        ) : (
+          <DollarGreeksByMaturity
+            maturities={maturities}
+            maturityLabel={selected.label}
+            currency={currency}
+            sides={sides}
+            sidesAvailable={sidesAvailable}
+            perSideServed={perSideServed}
+          />
+        )}
       </article>
 
       <article
@@ -179,31 +147,6 @@ export function TenorWorkspace({
             sides={sides}
             sidesAvailable={sidesAvailable}
             perSideServed={perSideServed}
-          />
-        )}
-      </article>
-
-      <article
-        className="panel"
-        aria-label="Greek charts"
-        {...tourAnchor(
-          "market.greek-charts",
-          "Greek charts",
-          "How each Greek moves across strikes, delta, gamma, vega and theta as a curve.",
-        )}
-      >
-        {selected === null ? (
-          gap
-        ) : (
-          <GreekCurve
-            maturities={maturities}
-            maturityLabel={selected.label}
-            subject={subject}
-            asOf={asOf}
-            closeInstant={closeInstant}
-            mode={mode}
-            coverage={coverage}
-            currency={currency}
           />
         )}
       </article>

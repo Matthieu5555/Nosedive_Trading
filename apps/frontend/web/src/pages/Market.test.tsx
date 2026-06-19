@@ -243,7 +243,7 @@ test("the maturity control is a floor, and applying it keeps the 3D surface (nev
   expect((floor as HTMLSelectElement).textContent).not.toMatch(/2d smile/i);
 
   // Apply a floor (the first "min … and up") -> the surface panel STILL renders a 3D surface, not
-  // a 2D smile slice. The single-tenor smile lives in the Smile & Greeks panel below.
+  // a 2D smile slice. The single-tenor smile lives in the Charting studio panel below.
   const floorOption = within(floor as HTMLSelectElement)
     .getAllByRole("option")
     .find((o) => /min .* and up/i.test(o.textContent ?? "")) as HTMLOptionElement;
@@ -427,13 +427,18 @@ test("a strike with no quotes shows '-' for bid/ask/volume (honest gap, no fabri
   expect(within(noQuoteRow).getAllByText("-").length).toBeGreaterThanOrEqual(3);
 });
 
-test("the tenor panel shows a single-Greek chart beside the Greeks table (complementary)", async () => {
+test("the charting studio shows a single-Greek chart, with the Dollar Greeks table its own panel", async () => {
   server.use(jsonGet("/api/analytics", ANALYTICS_SCORECARD));
+  const user = userEvent.setup();
   render(<MarketPage />);
 
-  // The §3.6 profile, alongside the raw/$ table: one chart for one selected Greek, opening on the
-  // delta S-curve. A Greek selector drives which Greek is shown (no more three crammed onto one chart).
+  // The Dollar Greeks numbers are their own panel now (below the studio); the §3.6 Greek profile lives
+  // in the Charting studio's "First order" view: one chart for one selected Greek, opening on delta.
   expect(await screen.findByRole("table", { name: /Dollar Greeks, 3m/i })).toBeInTheDocument();
+  // The studio opens on the smile; switch to First order to reveal the single-Greek delta S-curve.
+  // The toggle is scoped to the Charting studio panel (the Dollar Greeks panel has its own).
+  const studio = await screen.findByRole("article", { name: "Charting studio" });
+  await user.click(within(studio).getByRole("button", { name: "First order" }));
   const curves = await screen.findByLabelText(/delta 3m/i);
   expect(within(curves).getByTestId("plot-types").textContent).toBe("scatter");
 });

@@ -238,7 +238,7 @@ function CleanSurfaceToggle({
 
 // The Maturity FLOOR selector, a lower bound on maturity, not a single point. It keeps every tenor at
 // or above the chosen floor ("min 1m and up", "min 1y and up", ...) so a real 3D surface always
-// renders; the single-tenor 2D smile lives in the Smile & Greeks panel below. Each option's `years`
+// renders; the single-tenor 2D smile lives in the Charting studio panel below. Each option's `years`
 // is the threshold (0 = no floor); the threshold, not the label, is the value, so two tenors that
 // share a label can never collide.
 export interface MaturityFloorOption {

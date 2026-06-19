@@ -701,11 +701,11 @@ export function SmileChart({
 // colour, the tick format for its scale, and a plain how-to-read gloss.
 type FirstOrderGreekName = "delta" | "gamma" | "vega" | "theta";
 type SecondOrderGreekName = "vanna" | "volga" | "charm";
-type GreekName = FirstOrderGreekName | SecondOrderGreekName;
+export type GreekName = FirstOrderGreekName | SecondOrderGreekName;
 
-type GreekGroup = "first-order" | "second-order";
+export type GreekGroup = "first-order" | "second-order";
 
-interface GreekSpec {
+export interface GreekSpec {
   name: GreekName;
   group: GreekGroup;
   rawUnit: string;
@@ -716,7 +716,7 @@ interface GreekSpec {
   howToRead: string;
 }
 
-const GREEK_SPECS: ReadonlyArray<GreekSpec> = [
+export const GREEK_SPECS: ReadonlyArray<GreekSpec> = [
   {
     name: "delta",
     group: "first-order",
@@ -776,15 +776,21 @@ const GREEK_SPECS: ReadonlyArray<GreekSpec> = [
   },
 ];
 
-const DEFAULT_GREEK: GreekName = "delta";
+export const DEFAULT_GREEK: GreekName = "delta";
 
-const GREEK_GROUP_INFO =
+// The first Greek of a group, used to land the selection on a sensible default whenever the active
+// group changes (first-order → delta, second-order → vanna). Falls back to delta if a group is empty.
+export function firstGreekOfGroup(group: GreekGroup): GreekName {
+  return GREEK_SPECS.find((s) => s.group === group)?.name ?? DEFAULT_GREEK;
+}
+
+export const GREEK_GROUP_INFO =
   "First order is delta, gamma, vega, theta, the four read first. Second order is vanna, volga, " +
   "charm, how the first-order Greeks themselves move as volatility or time changes. Second-order " +
   "Greeks are banked on the same projected cell; a close projected before they existed shows them " +
   "as a gap, not a value.";
 
-function specFor(name: GreekName): GreekSpec {
+export function specFor(name: GreekName): GreekSpec {
   return GREEK_SPECS.find((s) => s.name === name) ?? GREEK_SPECS[0];
 }
 
@@ -865,9 +871,14 @@ function GreekSelector({
   );
 }
 
-export function GreekCurve({
+// The presentational single-Greek figure: the plot (or its honest empty/gap state) for ONE Greek at
+// one tenor, with NO heading and NO selector — the caller owns those. Extracted from GreekCurve so the
+// Charting studio can drive the same figure from its own Smile / first-order / second-order toggle,
+// while the standalone GreekCurve keeps its own "Greeks shape" heading and group pills.
+export function GreekFigure({
   maturities,
   maturityLabel,
+  greek,
   subject,
   asOf,
   closeInstant,
@@ -877,48 +888,18 @@ export function GreekCurve({
 }: {
   maturities: AnalyticsMaturity[];
   maturityLabel?: string;
+  greek: GreekName;
 } & SurfaceIdentityProps) {
-  // Local selection, mirroring TenorPanel's `tenor` / DollarGreeksByMaturity's `group` useState
-  // pattern. Opens on delta (the natural default, the continuous S-curve), first-order group.
-  const [group, setGroup] = useState<GreekGroup>("first-order");
-  const [greek, setGreek] = useState<GreekName>(DEFAULT_GREEK);
   const spec = specFor(greek);
-
-  // Switching group moves the selection to the first Greek of the group it lands on, so the chart is
-  // never left on a Greek that is no longer in the visible pill row.
-  const changeGroup = (next: GreekGroup) => {
-    if (next === group) return;
-    setGroup(next);
-    const first = GREEK_SPECS.find((s) => s.group === next);
-    if (first) setGreek(first.name);
-  };
-
   const baseDescriptor = describeSurface({ subject, asOf, closeInstant, mode, coverage });
-  const heading = (
-    <div className="panel-heading">
-      <div>
-        <p className="panel-kicker">Greeks shape</p>
-        <h3>Greek vs strike</h3>
-      </div>
-      <GreekSelector
-        group={group}
-        greek={greek}
-        onGroupChange={changeGroup}
-        onGreekChange={setGreek}
-      />
-    </div>
-  );
 
   if (maturities.length === 0) {
     const label = `${baseDescriptor.title}, ${spec.name}, ${spec.howToRead}`;
     return (
-      <Stack as="section" aria-label="Greek vs strike" gap="sm">
-        {heading}
-        <figure aria-label={label} className="plot">
-          <figcaption>{label}</figcaption>
-          <p role="status">{baseDescriptor.emptyCopy}</p>
-        </figure>
-      </Stack>
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p role="status">{baseDescriptor.emptyCopy}</p>
+      </figure>
     );
   }
 
@@ -952,13 +933,10 @@ export function GreekCurve({
         ? `${spec.name} was not banked for this close, nothing to chart (older projection).`
         : baseDescriptor.emptyCopy;
     return (
-      <Stack as="section" aria-label="Greek vs strike" gap="sm">
-        {heading}
-        <figure aria-label={label} className="plot">
-          <figcaption>{label}</figcaption>
-          <p role="status">{gapCopy}</p>
-        </figure>
-      </Stack>
+      <figure aria-label={label} className="plot">
+        <figcaption>{label}</figcaption>
+        <p role="status">{gapCopy}</p>
+      </figure>
     );
   }
 
@@ -1004,10 +982,60 @@ export function GreekCurve({
     hovermode: "closest",
   };
 
+  return <Plot label={label} height={360} data={[trace]} layout={layout} />;
+}
+
+export function GreekCurve({
+  maturities,
+  maturityLabel,
+  subject,
+  asOf,
+  closeInstant,
+  mode,
+  coverage,
+  currency,
+}: {
+  maturities: AnalyticsMaturity[];
+  maturityLabel?: string;
+} & SurfaceIdentityProps) {
+  // Local selection, mirroring TenorPanel's `tenor` / DollarGreeksByMaturity's `group` useState
+  // pattern. Opens on delta (the natural default, the continuous S-curve), first-order group.
+  const [group, setGroup] = useState<GreekGroup>("first-order");
+  const [greek, setGreek] = useState<GreekName>(DEFAULT_GREEK);
+
+  // Switching group moves the selection to the first Greek of the group it lands on, so the chart is
+  // never left on a Greek that is no longer in the visible pill row.
+  const changeGroup = (next: GreekGroup) => {
+    if (next === group) return;
+    setGroup(next);
+    setGreek(firstGreekOfGroup(next));
+  };
+
   return (
     <Stack as="section" aria-label="Greek vs strike" gap="sm">
-      {heading}
-      <Plot label={label} height={360} data={[trace]} layout={layout} />
+      <div className="panel-heading">
+        <div>
+          <p className="panel-kicker">Greeks shape</p>
+          <h3>Greek vs strike</h3>
+        </div>
+        <GreekSelector
+          group={group}
+          greek={greek}
+          onGroupChange={changeGroup}
+          onGreekChange={setGreek}
+        />
+      </div>
+      <GreekFigure
+        maturities={maturities}
+        maturityLabel={maturityLabel}
+        greek={greek}
+        subject={subject}
+        asOf={asOf}
+        closeInstant={closeInstant}
+        mode={mode}
+        coverage={coverage}
+        currency={currency}
+      />
     </Stack>
   );
 }

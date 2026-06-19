@@ -201,7 +201,7 @@ export type OptionSide = "put" | "call";
 
 // The surface maturity control is a FLOOR, not a single point: it keeps every captured tenor at or
 // above the chosen lower bound, so the 3D surface always renders (a surface needs several tenors; a
-// single tenor is a 2D smile, which already lives in the Smile & Greeks panel below). This sentinel
+// single tenor is a 2D smile, which already lives in the Charting studio panel below). This sentinel
 // is the "no floor" reading, every captured tenor in view. A floor reads as "min {tenor} and up".
 export const ALL_MATURITIES = "All maturities";
 

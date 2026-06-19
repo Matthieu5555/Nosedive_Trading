@@ -766,14 +766,15 @@ h3 {
 /* The surface-fit read sits beside the caption as a small, quiet chip, proportionate to the other
    compact chips in the heading (not the full-size .status pill). Muted when the fit is unavailable
    so the honest gap reads as a gap, not a number. Overrides the inherited .status pill sizing so
-   it never dominates the heading. */
+   it never dominates the heading, but keeps the fully-round pill shape so it reads as a sibling of
+   the close-quotes status pill beside it. */
 .surface-fit {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3xs);
-  padding: 2px var(--space-2xs);
+  padding: 2px var(--space-xs);
   font-size: 11px;
-  border-radius: 8px;
+  border-radius: 999px;
   border-color: var(--border);
 }
 /* The segmented surface controls (Combined/Call/Put, Clean/Raw, Strict/Indicative). A calm pill: a

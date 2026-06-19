@@ -87,25 +87,27 @@ describe("DollarGreeksByMaturity", () => {
     expect(screen.queryByRole("table", { name: /Dollar Greeks, 3m/ })).not.toBeInTheDocument();
   });
 
-  test("the put/call switch keeps one wing (ATM shared) and highlights the ATM row", () => {
-    const threeSided: AnalyticsMaturity = {
+  test("the Combined/Calls/Puts toggle drives the table off the served per-side capture", () => {
+    const mkMaturity = (
+      bands: Array<[string, number]>,
+    ): AnalyticsMaturity => ({
       maturity_years: 1.0,
       tenor_label: "12m",
       label: "12m (1.000y)",
       smile: {
         axis_type: "delta",
-        deltas: [-0.25, 0.0, 0.25],
-        implied_vols: [0.24, 0.21, 0.22],
-        log_moneyness: [-0.1, 0.0, 0.1],
+        deltas: bands.map(([, d]) => d),
+        implied_vols: bands.map(() => 0.22),
+        log_moneyness: bands.map(() => 0.0),
       },
       surface_slice: null,
-      points: [-0.25, 0.0, 0.25].map((target, i) => ({
-        delta_band: ["25dp", "atm", "25dc"][i],
+      points: bands.map(([band, target]) => ({
+        delta_band: band,
         target_delta: target,
-        log_moneyness: [-0.1, 0.0, 0.1][i],
+        log_moneyness: 0.0,
         strike: 175.0,
         forward_price: 195.0,
-        implied_vol: [0.24, 0.21, 0.22][i],
+        implied_vol: 0.22,
         total_variance: 0.05,
         price: 6.0,
         metrics: {
@@ -117,25 +119,58 @@ describe("DollarGreeksByMaturity", () => {
         },
         provenance: PROV,
       })),
-    };
+    });
+
+    // Real per-side capture: each side carries only its own bands (the surface dimension).
+    const combined = mkMaturity([
+      ["25dp", -0.25],
+      ["atm", 0.0],
+      ["25dc", 0.25],
+    ]);
+    const call = mkMaturity([
+      ["atm", 0.0],
+      ["25dc", 0.25],
+    ]);
+    const put = mkMaturity([
+      ["25dp", -0.25],
+      ["atm", 0.0],
+    ]);
 
     render(
       <DollarGreeksByMaturity
-        maturities={[threeSided]}
+        maturities={[combined]}
         maturityLabel="12m (1.000y)"
-        side="call"
         currency="€"
+        sides={{ combined: [combined], call: [call], put: [put] }}
+        sidesAvailable={["combined", "call", "put"]}
+        perSideServed
       />,
     );
-    const table = screen.getByRole("table", { name: /Dollar Greeks, 12m/ });
 
-    // Calls + ATM survive; the put band is filtered out.
+    // Opens on Combined: both wings + ATM.
+    let table = screen.getByRole("table", { name: /Dollar Greeks, 12m/ });
+    expect(within(table).getByRole("rowheader", { name: /25dp/ })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: /25dc/ })).toBeInTheDocument();
+
+    // Switching to Calls reads the served call side: call + ATM, no put band.
+    fireEvent.click(screen.getByRole("button", { name: "Calls" }));
+    table = screen.getByRole("table", { name: /Dollar Greeks, 12m/ });
     expect(within(table).getByRole("rowheader", { name: /atm/i })).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /25dc/ })).toBeInTheDocument();
     expect(within(table).queryByRole("rowheader", { name: /25dp/ })).not.toBeInTheDocument();
 
-    // The ATM row carries the highlight class (selective, not the whole grid).
+    // The ATM row keeps its highlight class (selective, not the whole grid).
     expect(within(table).getByRole("row", { name: /atm/i })).toHaveClass("greeks-row--atm");
+  });
+
+  test("Calls / Puts render disabled when the per-side views are not served (honest fallback)", () => {
+    render(
+      <DollarGreeksByMaturity maturities={ANALYTICS_AAA.maturities} currency="€" />,
+    );
+    // Default sidesAvailable is combined-only: Combined is live, Calls / Puts are offered disabled.
+    expect(screen.getByRole("button", { name: "Combined" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Calls" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Puts" })).toBeDisabled();
   });
 
   test("a railed-slice row is rendered (values intact) and flagged, never dropped or blown", () => {

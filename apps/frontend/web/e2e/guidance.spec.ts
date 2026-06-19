@@ -76,45 +76,6 @@ async function gotoMarketResolved(page: Page): Promise<void> {
 // hotspots that open a NON-MODAL tooltip (never a front-loaded tour / dialog).
 // ---------------------------------------------------------------------------------------------------
 
-test("guidance: the unconfigured index selector flags the next step on first load, then goes quiet once chosen", async ({
-  page,
-}) => {
-  const errors = collectPageErrors(page);
-  // Hold /api/indices open briefly so the first-load `index === ""` window is observable before the
-  // auto-select trips. The cue (data-hint + the role=status prompt) is what a first-time PM sees.
-  await mockBff(page);
-  await page.route("**/api/analytics**", (route) => route.fulfill({ json: ANALYTICS_AAA }));
-  let releaseIndices = (): void => {};
-  await page.route("**/api/indices**", async (route) => {
-    await new Promise<void>((resolve) => {
-      releaseIndices = resolve;
-    });
-    return route.fulfill({
-      json: {
-        indices: [
-          { symbol: "SPX", name: "S&P 500", currency: "USD" },
-          { symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" },
-        ],
-      },
-    });
-  });
-
-  await page.goto("/");
-  const index = page.getByLabel("Index", { exact: true });
-  // Before any index is chosen: the selector carries the next-step hint and the prompt cue is shown,
-  // in plain PM words, NOT a modal — assert no dialog overlay exists.
-  await expect(index).toHaveAttribute("data-hint", "choose-index");
-  await expect(page.getByText("Choose an index to begin")).toBeVisible();
-  expect(await page.getByRole("dialog").count()).toBe(0);
-
-  // The PM acts (the auto-select resolves the index). The hint must die — never re-fire.
-  releaseIndices();
-  await expect(index).toHaveValue("SPX");
-  await expect(index).not.toHaveAttribute("data-hint", "choose-index");
-  await expect(page.getByText("Choose an index to begin")).toHaveCount(0);
-
-  expect(errors.pageErrors, errors.pageErrors.join("\n")).toEqual([]);
-});
 
 test("guidance: an info-dot hotspot opens a non-modal what-is-this tooltip the page stays usable behind", async ({
   page,

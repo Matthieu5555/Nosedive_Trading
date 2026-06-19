@@ -4,12 +4,15 @@ import {
   ALL_MATURITIES,
   type AnalyticsMaturity,
   type AnalyticsPoint,
-  type OptionSide,
+  type AnalyticsSides,
+  type SurfaceSide,
 } from "../api";
 import { sci, UNITS, withCurrency } from "../lib/format";
 import { isSaneIv } from "../lib/volRobust";
 import { InfoDot } from "./InfoDot";
-import { Scroll, Stack } from "./layout";
+import { Cluster, Scroll, Stack } from "./layout";
+import { SideToggle } from "./market/SideToggle";
+import { TableExpand } from "./TableExpand";
 
 // The four first-order Greeks an operator reads first. Rate-rho is deliberately excluded: it added a
 // column the PM doesn't read, so the toggle is now just first-order vs second-order. (The second-order
@@ -80,21 +83,35 @@ function rawSign(value: number): -1 | 0 | 1 {
 export function DollarGreeksByMaturity({
   maturities,
   maturityLabel,
-  side,
   currency = "$",
+  sides,
+  sidesAvailable = ["combined"],
+  perSideServed = false,
 }: {
   maturities: AnalyticsMaturity[];
   // The maturity in view, driven by the shared selector strip (no longer a per-panel dropdown).
   maturityLabel?: string;
-  // The put/call switch keeps only the matching delta bands (ATM shared).
-  side?: OptionSide;
   currency?: string;
+  // The per-side captured maturities (combined / call / put), the SAME dimension the surface reads.
+  // When absent (older payload, or BFF not serving per-side), the toggle falls back to combined and
+  // Calls / Puts render disabled, never a fabricated split.
+  sides?: AnalyticsSides;
+  sidesAvailable?: SurfaceSide[];
+  perSideServed?: boolean;
 }) {
   const label = "Dollar Greeks by delta band (Greeks as columns, delta bands as rows)";
 
   // Local group selection, mirroring TenorPanel's `tenor` useState pattern. Opens on "first-order"
   // (four Greeks), so the view never mounts all the second-order columns at once.
   const [group, setGroup] = useState<GreekGroup>(DEFAULT_GROUP);
+  // Local side selection, owned by this table, mirroring the surface's Combined / Calls / Puts
+  // control. Opens on Combined (both wings). A side the close did not capture is offered disabled.
+  const [side, setSide] = useState<SurfaceSide>("combined");
+  const effectiveSide: SurfaceSide = sidesAvailable.includes(side) ? side : "combined";
+  // The maturities for the selected side: the real per-side capture when served, else the combined
+  // set passed in (the back-compat top-level `maturities`).
+  const sideMaturities: AnalyticsMaturity[] =
+    sides && effectiveSide in sides ? sides[effectiveSide] : maturities;
 
   if (maturities.length === 0) {
     return (
@@ -108,15 +125,25 @@ export function DollarGreeksByMaturity({
   // The table is inherently one tenor. "All maturities" has no single column, so it reads the
   // front (shortest) tenor and says so — the term-structure curves above already span every tenor.
   const isAll = maturityLabel === ALL_MATURITIES || maturityLabel === undefined;
-  const frontMaturity = [...maturities].sort((a, b) => a.maturity_years - b.maturity_years)[0];
-  const maturity = isAll
-    ? frontMaturity
-    : (maturities.find((m) => m.label === maturityLabel) ?? frontMaturity);
+  const pickMaturity = (list: AnalyticsMaturity[]): AnalyticsMaturity | null => {
+    if (list.length === 0) return null;
+    const front = [...list].sort((a, b) => a.maturity_years - b.maturity_years)[0];
+    return isAll ? front : (list.find((m) => m.label === maturityLabel) ?? front);
+  };
+  // The heading tenor follows the combined set so it stays stable as the side toggles; the body
+  // reads the selected side's matching maturity.
+  const headingMaturity = pickMaturity(maturities) ?? maturities[0];
+  const maturity = pickMaturity(sideMaturities);
 
-  const rows = [...maturity.points]
+  // When the per-side views aren't served, a single-side selection falls back to filtering the
+  // combined points by the sign of their target delta (puts ≤ 0, calls ≥ 0, ATM shared). With the
+  // per-side views served, each side already carries only its own bands, so no sign filter is needed.
+  const rawRows = maturity ? maturity.points : [];
+  const rows = [...rawRows]
     .filter((p) => {
-      if (side === "put") return p.target_delta <= 0;
-      if (side === "call") return p.target_delta >= 0;
+      if (sides) return true;
+      if (effectiveSide === "put") return p.target_delta <= 0;
+      if (effectiveSide === "call") return p.target_delta >= 0;
       return true;
     })
     .sort((a, b) => a.target_delta - b.target_delta);
@@ -141,17 +168,23 @@ export function DollarGreeksByMaturity({
     if (flipped) flipRows.add(point.delta_band);
   }
 
+  const bodyLabel = maturity?.label ?? headingMaturity.label;
+
   return (
     <Stack as="section" aria-label={label} className="greeks-by-maturity" gap="sm">
       <div className="greeks-by-maturity-heading">
         <h3>
-          Dollar Greeks, {maturity.label}
+          Dollar Greeks, {headingMaturity.label}
           {isAll ? " (front month)" : ""}
         </h3>
-        <div
-          className="panel-heading__controls"
-          style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-xs)" }}
-        >
+        <Cluster gap="xs" align="center">
+          <SideToggle
+            side={side}
+            available={sidesAvailable}
+            perSideServed={perSideServed}
+            onChange={setSide}
+            ariaLabel="Dollar Greeks side"
+          />
           <div className="mode-toggle" role="group" aria-label="Greek group">
             <button
               type="button"
@@ -173,79 +206,117 @@ export function DollarGreeksByMaturity({
             </button>
           </div>
           <InfoDot label="About second-order Greeks" body={HIGHER_ORDER_INFO} />
-        </div>
+          {!showHigherOrder && rows.length > 0 && (
+            <TableExpand
+              title={`Dollar Greeks, ${bodyLabel}`}
+              description={`Every delta band at ${bodyLabel}: delta, gamma, vega and theta as raw and ${currency} value.`}
+              triggerLabel="Open the full Dollar Greeks table"
+            >
+              <FirstOrderGreeksTable
+                rows={rows}
+                maturityLabel={bodyLabel}
+                currency={currency}
+                flipRows={flipRows}
+              />
+            </TableExpand>
+          )}
+        </Cluster>
       </div>
       {rows.length === 0 ? (
-        <p>No projected analytics for {maturity.label} yet.</p>
+        <p>No projected analytics for {bodyLabel} yet.</p>
       ) : showHigherOrder ? (
-        <SecondOrderGreeks rows={rows} maturityLabel={maturity.label} currency={currency} />
+        <SecondOrderGreeks rows={rows} maturityLabel={bodyLabel} currency={currency} />
       ) : (
-        <Scroll className="greeks-by-maturity-scroll" label={`Dollar Greeks, ${maturity.label}`}>
-          <table aria-label={`Dollar Greeks, ${maturity.label}`}>
-            <caption className="visually-hidden">
-              Dollar Greeks for {maturity.label}: each Greek as raw and {currency} value, one row
-              per delta band. ATM and sign-flip rows highlighted.
-            </caption>
-            <thead>
-              <tr>
-                <th rowSpan={2} scope="col">
-                  delta band
-                </th>
-                {firstOrderColumns.map((greek) => (
-                  <th key={greek.name} colSpan={2} scope="colgroup" className="greek-group">
-                    {greek.name}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {firstOrderColumns.map((greek) => [
-                  <th key={`${greek.name}-raw`} scope="col">
-                    raw <span className="unit">{withCurrency(greek.rawUnit, currency)}</span>
-                  </th>,
-                  <th key={`${greek.name}-ccy`} scope="col">
-                    {currency} value
-                    <span className="unit">{currencyUnitFor(rows, greek.name, currency)}</span>
-                  </th>,
-                ])}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((point) => {
-                // A row on a railed slice (IV outside the sane band) is rendered with its served
-                // values intact but flagged, so a reader doesn't mistake it for a clean fit.
-                const flagged = !isSaneIv(point.implied_vol);
-                const atm = isAtmBand(point.delta_band);
-                const flip = flipRows.has(point.delta_band);
-                const className = [
-                  flagged ? "flagged-row" : "",
-                  atm ? "greeks-row--atm" : "",
-                  flip ? "greeks-row--flip" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-                return (
-                  <tr key={point.delta_band} className={className || undefined}>
-                    <th scope="row">
-                      {point.delta_band}
-                      {atm ? <span title="at-the-money"> ●</span> : null}
-                      {flip ? <span title="sign flip"> ±</span> : null}
-                      {flagged ? <span title="railed slice, IV outside sane band"> ⚠</span> : null}
-                    </th>
-                    {firstOrderColumns.map((greek) => {
-                      const metric = point.metrics[greek.name];
-                      return [
-                        <td key={`${greek.name}-raw`}>{sci(metric.raw)}</td>,
-                        <td key={`${greek.name}-ccy`}>{sci(metric.dollar)}</td>,
-                      ];
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <Scroll className="greeks-by-maturity-scroll" label={`Dollar Greeks, ${bodyLabel}`}>
+          <FirstOrderGreeksTable
+            rows={rows}
+            maturityLabel={bodyLabel}
+            currency={currency}
+            flipRows={flipRows}
+          />
         </Scroll>
       )}
     </Stack>
+  );
+}
+
+// The first-order Greeks table proper (delta/gamma/vega/theta, each raw + currency value). Rendered
+// both inline and inside the full-screen dialog, so the two reads are byte-for-byte identical.
+function FirstOrderGreeksTable({
+  rows,
+  maturityLabel,
+  currency,
+  flipRows,
+}: {
+  rows: AnalyticsPoint[];
+  maturityLabel: string;
+  currency: string;
+  flipRows: Set<string>;
+}) {
+  const firstOrderColumns = GREEKS;
+  return (
+    <table aria-label={`Dollar Greeks, ${maturityLabel}`}>
+      <caption className="visually-hidden">
+        Dollar Greeks for {maturityLabel}: each Greek as raw and {currency} value, one row per delta
+        band. ATM and sign-flip rows highlighted.
+      </caption>
+      <thead>
+        <tr>
+          <th rowSpan={2} scope="col">
+            delta band
+          </th>
+          {firstOrderColumns.map((greek) => (
+            <th key={greek.name} colSpan={2} scope="colgroup" className="greek-group">
+              {greek.name}
+            </th>
+          ))}
+        </tr>
+        <tr>
+          {firstOrderColumns.map((greek) => [
+            <th key={`${greek.name}-raw`} scope="col">
+              raw <span className="unit">{withCurrency(greek.rawUnit, currency)}</span>
+            </th>,
+            <th key={`${greek.name}-ccy`} scope="col">
+              {currency} value
+              <span className="unit">{currencyUnitFor(rows, greek.name, currency)}</span>
+            </th>,
+          ])}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((point) => {
+          // A row on a railed slice (IV outside the sane band) is rendered with its served
+          // values intact but flagged, so a reader doesn't mistake it for a clean fit.
+          const flagged = !isSaneIv(point.implied_vol);
+          const atm = isAtmBand(point.delta_band);
+          const flip = flipRows.has(point.delta_band);
+          const className = [
+            flagged ? "flagged-row" : "",
+            atm ? "greeks-row--atm" : "",
+            flip ? "greeks-row--flip" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            <tr key={point.delta_band} className={className || undefined}>
+              <th scope="row">
+                {point.delta_band}
+                {atm ? <span title="at-the-money"> ●</span> : null}
+                {flip ? <span title="sign flip"> ±</span> : null}
+                {flagged ? <span title="railed slice, IV outside sane band"> ⚠</span> : null}
+              </th>
+              {firstOrderColumns.map((greek) => {
+                const metric = point.metrics[greek.name];
+                return [
+                  <td key={`${greek.name}-raw`}>{sci(metric.raw)}</td>,
+                  <td key={`${greek.name}-ccy`}>{sci(metric.dollar)}</td>,
+                ];
+              })}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 

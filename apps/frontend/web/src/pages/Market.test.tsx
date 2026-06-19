@@ -17,19 +17,21 @@ import {
   ANALYTICS_PER_SIDE,
   ANALYTICS_QUOTED,
   ANALYTICS_SCORECARD,
-  INDICES_SPX_SX5E,
   RECORDED_EMPTY,
-  RECORDED_TWO_DATES,
   SIGNALS_SX5E,
 } from "../test/fixtures";
 import { jsonGet, notMocked, server } from "../test/server";
 import { MarketPage } from "./Market";
 
-test("leads with the index selector and an as-of dropdown, no entity/side/maturity strip", async () => {
+test("leads with an as-of dropdown and the Constituents-block ticker selector, no header index dropdown or entity/side strip", async () => {
   render(<MarketPage />);
 
-  expect(await screen.findByLabelText("Index")).toBeInTheDocument();
-  expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument();
+  expect(await screen.findByLabelText("As-of fetch")).toBeInTheDocument();
+  // The Constituents block is the single ticker selector now: the index/ETF sits at its top as a
+  // selectable ticker. The redundant tile-grid picker and the header index dropdown are both gone.
+  expect(await screen.findByRole("radiogroup", { name: "Index ticker" })).toBeInTheDocument();
+  expect(screen.queryByRole("radiogroup", { name: "Ticker" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Index")).not.toBeInTheDocument();
   // The ADR-0051 amputation removes the constituent "Entity" axis and the put/call switch.
   expect(screen.queryByLabelText("Entity")).not.toBeInTheDocument();
   expect(screen.queryByRole("radiogroup", { name: /option side/i })).not.toBeInTheDocument();
@@ -163,7 +165,10 @@ test("a tenor beyond the captured span renders as a labelled projection gap", as
     within(screen.getByLabelText("Tenor")).getByRole("option", { name: /12m \(not captured\)/ }),
   ).toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Tenor"), "12m");
-  expect(await screen.findByText(/12m is not captured/i)).toBeInTheDocument();
+  // Each split panel (smile/greeks, price book, greek charts, rate diagnostics) honestly shows its
+  // own projection-gap note for the uncaptured tenor, so several appear.
+  const gaps = await screen.findAllByText(/12m is not captured/i);
+  expect(gaps.length).toBeGreaterThan(0);
   expect(screen.queryByLabelText(/smile 3m/i)).not.toBeInTheDocument();
 });
 
@@ -537,47 +542,42 @@ test("an SX5E surface carries the registry-resolved close instant, never 22:00",
   expect(within(surface).queryByText(/22:00/)).not.toBeInTheDocument();
 });
 
-test("switching the index rewrites the heading and the caption together (no stale label)", async () => {
-  // Two indices offered; SPX selected first (date-only), then switch to SX5E (17:30 CET instant).
+test("switching the active ticker rewrites the heading and the caption together (no stale label)", async () => {
+  // The index lands first (date-only close), then the user picks a member (AAA) that resolves a
+  // 17:30 CET instant. The heading and caption must both follow the new active ticker in one paint.
   server.use(
-    jsonGet("/api/indices", {
-      indices: [
-        { symbol: "SPX", name: "S&P 500", currency: "USD" },
-        { symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" },
-      ],
-    }),
-    http.get("/api/recorded-dates", ({ request }) => {
-      const idx = new URL(request.url).searchParams.get("index");
-      return HttpResponse.json(idx === "SX5E" ? SX5E_RECORDED : RECORDED_TWO_DATES);
-    }),
+    jsonGet("/api/indices", SX5E_INDICES),
+    jsonGet("/api/recorded-dates", SX5E_RECORDED),
     http.get("/api/analytics", ({ request }) => {
       const u = new URL(request.url).searchParams.get("underlying");
-      // The BFF resolves the close instant per underlying; SPX has none registered (date-only),
-      // SX5E resolves to the 17:30 venue close. The front renders whichever the payload carries.
+      // The BFF resolves the close instant per underlying; the index has none registered (date-only),
+      // the member resolves to the 17:30 venue close. The front renders whichever the payload carries.
       return HttpResponse.json({
         ...ANALYTICS_SCORECARD,
         underlying: u,
-        close_instant: u === "SX5E" ? "17:30 CET" : null,
+        close_instant: u === "AAA" ? "17:30 CET" : null,
       });
     }),
   );
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  await screen.findByRole("heading", { name: "Volatility surface, SPX" });
-  await user.selectOptions(screen.getByLabelText("Index"), "SX5E");
+  await screen.findByRole("heading", { name: "Volatility surface, SX5E" });
+  // The member is picked from the Constituents block (the page's sole ticker selector).
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  await user.click(await within(constituents).findByRole("button", { name: "AAA" }));
 
   // The heading AND the caption both follow the new state in the same paint.
-  const surface = await screen.findByLabelText("Volatility surface, SX5E");
+  const surface = await screen.findByLabelText("Volatility surface, AAA");
   expect(
-    await screen.findByRole("heading", { name: "Volatility surface, SX5E" }),
+    await screen.findByRole("heading", { name: "Volatility surface, AAA" }),
   ).toBeInTheDocument();
   expect(
     (await within(surface).findAllByText(/close 2026-06-17 17:30 CET/)).length,
   ).toBeGreaterThan(0);
   // The old subject left every label — no contradiction lingers.
   expect(
-    screen.queryByRole("heading", { name: "Volatility surface, SPX" }),
+    screen.queryByRole("heading", { name: "Volatility surface, SX5E" }),
   ).not.toBeInTheDocument();
 });
 
@@ -605,38 +605,12 @@ test("a market-closed surface (no maturities) names its subject and reads as sta
   expect(within(surface).queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("the empty index selector anchors a next-step guidance hint that clears once chosen", async () => {
-  // Slow indices so the selector is empty on first paint → the hint is anchored.
-  let release = () => {};
-  const gate = new Promise<void>((r) => {
-    release = r;
-  });
-  server.use(
-    http.get("/api/indices", async () => {
-      await gate;
-      return HttpResponse.json(INDICES_SPX_SX5E);
-    }),
-  );
+test("the Constituents block leads with the index from /api/indices, a parked index is not offered", async () => {
+  server.use(jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50" }] }));
   render(<MarketPage />);
-  const select = await screen.findByLabelText("Index");
-  expect(select).toHaveAttribute("data-hint", "choose-index");
-  expect(screen.getByText(/Choose an index to begin/i)).toBeInTheDocument();
-
-  release();
-  // Once an index resolves and is auto-selected, the hint dies (it isn't the noise P5 forbids).
-  await waitFor(() => expect(select).not.toHaveAttribute("data-hint"));
-  expect(screen.queryByText(/Choose an index to begin/i)).not.toBeInTheDocument();
-});
-
-test("the index selector is driven by /api/indices, a parked index is not offered", async () => {
-  server.use(
-    jsonGet("/api/indices", { indices: [{ symbol: "SX5E", name: "EURO STOXX 50" }] }),
-    jsonGet("/api/recorded-dates", { index: "SX5E", count: 0, dates: [], available: [] }),
-  );
-  render(<MarketPage />);
-  const select = await screen.findByLabelText("Index");
-  expect(
-    within(select).getByRole("option", { name: /EURO STOXX 50 \(SX5E\)/ }),
-  ).toBeInTheDocument();
-  expect(within(select).queryByRole("option", { name: /SPX/ })).not.toBeInTheDocument();
+  // The redundant header index dropdown is gone; the resolved index leads the Constituents block as
+  // its selectable index ticker, and a parked index (SPX) is never surfaced as the index ticker.
+  const indexPick = await screen.findByRole("radiogroup", { name: "Index ticker" });
+  expect(within(indexPick).getByRole("radio", { name: "SX5E" })).toBeInTheDocument();
+  expect(screen.queryByRole("radio", { name: "SPX" })).not.toBeInTheDocument();
 });

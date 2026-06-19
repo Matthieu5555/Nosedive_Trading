@@ -9,8 +9,8 @@ vi.mock(
 );
 
 // A crash deep in one panel of the scroll (here the scorecards) must be contained by the boundary
-// around it — the page chrome (index selector, as-of picker) keeps rendering, so the page is never
-// blanked by a single panel choking on a degenerate value.
+// around it — the page chrome (the as-of picker) keeps rendering, so the page is never blanked by a
+// single panel choking on a degenerate value.
 vi.mock("../components/Scorecards", () => ({
   Scorecards: () => {
     throw new Error("scorecard math choked on a degenerate vol-surface cell");
@@ -32,7 +32,6 @@ test("a crash in one scroll panel is contained, the page chrome still renders", 
 
   expect(await screen.findByText(/Scorecards failed to render\./i)).toBeInTheDocument();
 
-  // The index selector is page chrome, outside the panel boundary, so it survives.
-  await waitFor(() => expect(screen.getByLabelText("Index")).toBeInTheDocument());
-  expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument();
+  // The as-of picker is page chrome, outside the panel boundary, so it survives.
+  await waitFor(() => expect(screen.getByLabelText("As-of fetch")).toBeInTheDocument());
 });

@@ -1,9 +1,4 @@
-import {
-  type AnalyticsMaturity,
-  SURFACE_SIDE_LABELS,
-  type SurfaceDense,
-  type SurfaceSide,
-} from "../../api";
+import { type AnalyticsMaturity, type SurfaceDense, type SurfaceSide } from "../../api";
 import { tourAnchor } from "../../lib/tour";
 import { AsyncBlock } from "../AsyncBlock";
 import {
@@ -15,6 +10,7 @@ import {
 import { ErrorBoundary } from "../ErrorBoundary";
 import { InfoDot } from "../InfoDot";
 import { Cluster, Stack } from "../layout";
+import { SideToggle } from "./SideToggle";
 
 // The Volatility surface element: the 3D surface plus the four first-class surface controls (side,
 // maturity floor, clean/raw fill, strict/indicative). Self-contained, with its own heading, async +
@@ -107,11 +103,17 @@ export function SurfacePanel({
               <SurfaceFitPill maturities={surfaceSideMaturities} />
             </Cluster>
             <Cluster className="panel-heading__toggles" gap="xs" align="center">
-              <SurfaceSideToggle
+              <SideToggle
                 side={surfaceSide}
                 available={sidesAvailable}
                 perSideServed={perSideServed}
                 onChange={onSideChange}
+                ariaLabel="Surface side"
+                anchor={{
+                  id: "market.side-toggle",
+                  title: "Surface side toggle",
+                  body: "Switch the surface between calls, puts, and both sides combined.",
+                }}
               />
               <MaturityFloorSelect
                 value={maturityFloorYears}
@@ -230,62 +232,6 @@ function CleanSurfaceToggle({
       >
         Raw, with gaps
       </button>
-    </div>
-  );
-}
-
-// The Call / Put / Combined selector, a first-class control. Calls and puts carry genuinely different
-// skew, so each is its own surface; combined is the union the page opens on. A side the close did not
-// capture is offered DISABLED (the honest "not captured" state), never silently swapped.
-const SURFACE_SIDES_ORDER: SurfaceSide[] = ["combined", "call", "put"];
-
-function SurfaceSideToggle({
-  side,
-  available,
-  perSideServed,
-  onChange,
-}: {
-  side: SurfaceSide;
-  available: SurfaceSide[];
-  perSideServed: boolean;
-  onChange: (side: SurfaceSide) => void;
-}) {
-  return (
-    <div
-      className="mode-toggle"
-      role="group"
-      aria-label="Surface side"
-      {...tourAnchor(
-        "market.side-toggle",
-        "Surface side toggle",
-        "Switch the surface between calls, puts, and both sides combined.",
-      )}
-    >
-      {SURFACE_SIDES_ORDER.map((option) => {
-        const captured = available.includes(option);
-        const disabledTitle = perSideServed
-          ? `${SURFACE_SIDE_LABELS[option]} not captured for this close`
-          : `${SURFACE_SIDE_LABELS[option]} needs the per-side surfaces, restart the BFF to enable`;
-        return (
-          <button
-            key={option}
-            type="button"
-            className="mode-toggle__option"
-            aria-pressed={side === option}
-            disabled={!captured}
-            title={
-              captured
-                ? option === "combined"
-                  ? "Both wings together, the union read"
-                  : `The ${SURFACE_SIDE_LABELS[option].toLowerCase()} wing on its own`
-                : disabledTitle
-            }
-            onClick={() => onChange(option)}
-          >
-            {SURFACE_SIDE_LABELS[option]}
-          </button>
-        );
-      })}
     </div>
   );
 }

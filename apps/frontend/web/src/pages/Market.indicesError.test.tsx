@@ -28,13 +28,14 @@ test("a failing /api/indices fronts a visible error tile, not a silent blank pag
   expect(alert).toHaveTextContent(/not mocked/);
 });
 
-test("the index selector is disabled when the index list cannot load", async () => {
+test("no ticker selector is offered when the index list cannot load", async () => {
   server.use(http.get("/api/indices", () => notMocked()));
 
   render(<MarketPage />);
 
-  // Wait for the failure to surface, then confirm the dropdown is disabled — but now ALONGSIDE the
-  // explanation, not in lonely silence.
+  // Wait for the failure to surface, then confirm the page offers no ticker selector to click into a
+  // dead universe, the error tile stands alone, never a control over a blank body. (The Constituents
+  // block is the page's only ticker selector now, and it never renders without an index.)
   await screen.findByRole("alert");
-  expect(screen.getByRole("combobox", { name: "Index" })).toBeDisabled();
+  expect(screen.queryByRole("radiogroup", { name: "Index ticker" })).not.toBeInTheDocument();
 });

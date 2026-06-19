@@ -9,27 +9,35 @@ import type {
 import { AsyncBlock } from "../../components/AsyncBlock";
 import { PriceChart } from "../../components/charts";
 import { ConstituentTable } from "../../components/ConstituentTable";
-import { Scroll, Stack } from "../../components/layout";
+import { Cluster, Scroll, Stack } from "../../components/layout";
 import { useFetch } from "../../hooks/useFetch";
 import { useConstituentHistoryBatch } from "./constituentHistory";
 
 // The Constituents element. It is both a read (index members, weights, latest close, plus a
-// master-detail candle for one member) AND the page's secondary selection surface: clicking a row
-// makes that constituent the active ticker every panel above re-renders for. The constituents data is
-// lifted to the page (so the top ticker selector and this table share one fetch); this component owns
-// the per-member history batch and the detail candle.
+// master-detail candle for one member) AND the page's canonical selection surface: the index/ETF
+// itself sits at the top as a selectable ticker, and clicking any constituent row makes that member
+// the active ticker every panel above re-renders for. The constituents data is lifted to the page
+// (so the top ticker selector and this table share one fetch); this component owns the per-member
+// history batch and the detail candle.
 export function ConstituentsWorkspace({
   asOf,
   currency,
+  indexSymbol,
+  indexName,
   constituents,
   loading,
   error,
   activeTicker,
+  onSelectIndex,
   onSelectConstituent,
 }: {
   asOf: string;
   // The index quote-currency ISO code (EUR/USD/...), so latest close reads "€1,624.00".
   currency: string | null;
+  // The index/ETF symbol + display name. The index is a first-class, selectable ticker here, sitting
+  // above its members so a PM can return the whole page to the index from the same surface.
+  indexSymbol: string;
+  indexName: string | null;
   constituents: ConstituentsResponse | null;
   loading: boolean;
   error: string | null;
@@ -37,6 +45,7 @@ export function ConstituentsWorkspace({
   // highlight follow it; when it is the index, the candle defaults to the heaviest member so the
   // member comparison still reads, without changing the active ticker.
   activeTicker: string;
+  onSelectIndex: () => void;
   onSelectConstituent: (symbol: string) => void;
 }) {
   const symbols = useMemo(
@@ -92,6 +101,12 @@ export function ConstituentsWorkspace({
                 </p>
               ) : (
                 <Stack gap="md">
+                  <IndexTickerRow
+                    indexSymbol={indexSymbol}
+                    indexName={indexName}
+                    active={activeTicker === indexSymbol}
+                    onSelect={onSelectIndex}
+                  />
                   <UnderlyingDataSummary
                     batch={histories.data}
                     loading={histories.loading}
@@ -127,6 +142,46 @@ export function ConstituentsWorkspace({
         </Stack>
       </article>
     </div>
+  );
+}
+
+// The index/ETF as a selectable ticker, at the top of the Constituents block. It is the canonical way
+// to return the whole page to the index from this surface: clicking it makes the index the active
+// ticker, exactly as the chip selector does. Reads active when the index is the page-driving ticker.
+function IndexTickerRow({
+  indexSymbol,
+  indexName,
+  active,
+  onSelect,
+}: {
+  indexSymbol: string;
+  indexName: string | null;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <Cluster
+      className="constituents-index-pick"
+      gap="sm"
+      align="center"
+      role="radiogroup"
+      aria-label="Index ticker"
+    >
+      <button
+        type="button"
+        role="radio"
+        aria-checked={active}
+        aria-label={indexSymbol}
+        className="ticker-chip"
+        data-tone="index"
+        data-active={active ? "" : undefined}
+        onClick={onSelect}
+      >
+        <span className="ticker-chip__symbol">{indexSymbol}</span>
+        <span className="ticker-chip__detail">{indexName ?? "index"}</span>
+      </button>
+      <span className="status">The index itself, the whole basket, as a ticker.</span>
+    </Cluster>
   );
 }
 

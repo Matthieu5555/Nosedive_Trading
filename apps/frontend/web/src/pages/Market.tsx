@@ -22,11 +22,9 @@ import { DispersionPanel } from "../components/market/DispersionPanel";
 import { PricePanel } from "../components/market/PricePanel";
 import { ScorecardsPanel } from "../components/market/ScorecardsPanel";
 import { type MaturityFloorOption, SurfacePanel } from "../components/market/SurfacePanel";
-import { TickerSelector } from "../components/market/TickerSelector";
-import { TenorPanel } from "../components/TenorPanel";
+import { TenorWorkspace } from "../components/market/TenorWorkspace";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
-import { tourAnchor } from "../lib/tour";
 import { ConstituentsWorkspace } from "./market/ConstituentsWorkspace";
 import { AsOfSelect, QcBadge } from "./market/marketHeader";
 import { useMarketTicker } from "./market/useMarketTicker";
@@ -126,6 +124,11 @@ export function MarketPage() {
     [analytics.data],
   );
   const perSideServed = analytics.data?.sides_available !== undefined;
+  // The per-side captured maturities (combined / call / put). Passed straight to the Dollar Greeks
+  // table and the Price-structure order book so their own Combined / Calls / Puts toggles read the
+  // real per-side capture, the same dimension the surface reads. Absent on an older payload, in which
+  // case the tables fall back to the combined `maturities` and disable Calls / Puts.
+  const sides = analytics.data?.sides;
   const effectiveSide: SurfaceSide = sidesAvailable.includes(surfaceSide)
     ? surfaceSide
     : "combined";
@@ -186,32 +189,6 @@ export function MarketPage() {
           <h1>Market</h1>
         </div>
         <Cluster className="control-row" gap="sm" align="end">
-          <select
-            aria-label="Index"
-            {...tourAnchor(
-              "market.index-picker",
-              "Index picker",
-              "Choose which index you are looking at, like the Euro Stoxx 50.",
-            )}
-            value={index}
-            disabled={indexOptions.length === 0}
-            data-hint={index === "" ? "choose-index" : undefined}
-            onChange={(event) => {
-              setIndex(event.target.value);
-              setSelectedKey(null);
-            }}
-          >
-            {indexOptions.map((item) => (
-              <option key={item.symbol} value={item.symbol}>
-                {item.name} ({item.symbol})
-              </option>
-            ))}
-          </select>
-          {index === "" && (
-            <span className="status" role="status" data-hint-for="choose-index">
-              Choose an index to begin
-            </span>
-          )}
           <AsOfSelect
             recorded={recorded.data}
             value={selectedFetchKey}
@@ -219,18 +196,6 @@ export function MarketPage() {
           />
         </Cluster>
       </div>
-
-      {index !== "" && (
-        <TickerSelector
-          indexSymbol={index}
-          indexName={indexOptions.find((o) => o.symbol === index)?.name ?? null}
-          constituents={constituents.data?.constituents ?? []}
-          activeTicker={subject}
-          onSelectIndex={ticker.selectIndex}
-          onSelectConstituent={ticker.selectConstituent}
-          disabled={indexOptions.length === 0}
-        />
-      )}
 
       <AsyncBlock
         loading={indices.loading || recorded.loading}
@@ -307,10 +272,13 @@ export function MarketPage() {
                   <ConstituentsWorkspace
                     asOf={effectiveAsOf}
                     currency={currencyCode}
+                    indexSymbol={index}
+                    indexName={indexOptions.find((o) => o.symbol === index)?.name ?? null}
                     constituents={constituents.data}
                     loading={constituents.loading}
                     error={constituents.error}
                     activeTicker={subject}
+                    onSelectIndex={ticker.selectIndex}
                     onSelectConstituent={ticker.selectConstituent}
                   />
                 </ErrorBoundary>
@@ -342,15 +310,15 @@ export function MarketPage() {
                   onModeChange={setSurfaceMode}
                 />
 
-                <ErrorBoundary label="Tenor view">
+                <ErrorBoundary label="Tenor workspace">
                   <AsyncBlock
                     loading={analytics.loading}
                     error={analytics.error}
                     height={360}
-                    subject={`the ${subject} smile and Greeks`}
+                    subject={`the ${subject} smile, Greeks, price book and rates`}
                   >
                     {analytics.data && (
-                      <TenorPanel
+                      <TenorWorkspace
                         maturities={surfaceMaturities}
                         currency={currency}
                         subject={subject}
@@ -359,6 +327,9 @@ export function MarketPage() {
                         mode={surfaceMode}
                         coverage={surfaceCoverage}
                         side={effectiveSide}
+                        sides={sides}
+                        sidesAvailable={sidesAvailable}
+                        perSideServed={perSideServed}
                       />
                     )}
                   </AsyncBlock>

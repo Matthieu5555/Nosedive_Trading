@@ -14,26 +14,26 @@ import { ANALYTICS_SCORECARD } from "../test/fixtures";
 import { jsonGet, server } from "../test/server";
 import { MarketPage } from "./Market";
 
-// The prominent ticker selector leads the page: the index/ETF itself plus each constituent, as a
-// radiogroup, with the index the landing pick. This is the dominant filter promoted to a selector.
-test("a prominent ticker selector leads with the index plus each constituent", async () => {
+// The Constituents block is the page's one ticker selector: the index/ETF sits at its top as a
+// selectable ticker (the landing pick), each member is a clickable row beside it. The old tile-grid
+// picker is gone, the Constituents block is the only way to choose the underlying.
+test("the Constituents block is the only ticker selector, leading with the index plus each member", async () => {
   render(<MarketPage />);
 
-  const selector = await screen.findByRole("radiogroup", { name: "Ticker" });
-  // The index/ETF (SPX) is selectable as a ticker, alongside the members AAA / BBB (which arrive with
-  // the constituents fetch, so await them).
-  expect(within(selector).getByRole("radio", { name: "SPX" })).toBeInTheDocument();
-  expect(await within(selector).findByRole("radio", { name: "AAA" })).toBeInTheDocument();
-  expect(within(selector).getByRole("radio", { name: "BBB" })).toBeInTheDocument();
-  // The index is the landing read (the page opens on the ETF, not a member).
-  expect(within(selector).getByRole("radio", { name: "SPX" })).toHaveAttribute(
+  // The index/ETF (SPX) is selectable, at the top of the Constituents block, and is the landing read.
+  const indexPick = await screen.findByRole("radiogroup", { name: "Index ticker" });
+  expect(within(indexPick).getByRole("radio", { name: "SPX" })).toHaveAttribute(
     "aria-checked",
     "true",
   );
-  expect(within(selector).getByRole("radio", { name: "AAA" })).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
+
+  // Each member (AAA / BBB, from the constituents fetch) is a clickable row in the Constituents table.
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  expect(await within(constituents).findByRole("button", { name: "AAA" })).toBeInTheDocument();
+  expect(within(constituents).getByRole("button", { name: "BBB" })).toBeInTheDocument();
+
+  // The redundant tile-grid ticker picker is gone.
+  expect(screen.queryByRole("radiogroup", { name: "Ticker" })).not.toBeInTheDocument();
 });
 
 // The core mechanism: picking a constituent makes it the active underlying that the analytics panels
@@ -51,28 +51,24 @@ test("picking a constituent drives the analytics panels to that ticker's own sur
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  const selector = await screen.findByRole("radiogroup", { name: "Ticker" });
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
   // Landing: only the index (SPX) is requested.
   await waitFor(() => expect(requested).toContain("SPX"));
   expect(requested).not.toContain("AAA");
 
-  await user.click(within(selector).getByRole("radio", { name: "AAA" }));
+  await user.click(await within(constituents).findByRole("button", { name: "AAA" }));
 
-  // After selecting AAA, the analytics fetch is keyed to AAA, and the chip reads active.
+  // After selecting AAA, the analytics fetch is keyed to AAA, and the surface heading self-describes
+  // the active ticker, not the index.
   await waitFor(() => expect(requested).toContain("AAA"));
-  expect(within(selector).getByRole("radio", { name: "AAA" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  // The surface heading self-describes the active ticker, not the index.
   expect(
     await screen.findByRole("heading", { name: "Volatility surface, AAA" }),
   ).toBeInTheDocument();
 });
 
-// The active ticker re-renders the surface heading, then returns to the index when the index chip is
-// picked again (the index is selectable as a ticker too).
-test("selecting the index chip returns the active ticker to the index/ETF", async () => {
+// The active ticker re-renders the surface heading, then returns to the index when the index pick at
+// the top of the Constituents block is clicked again (the index is selectable as a ticker too).
+test("selecting the index pick returns the active ticker to the index/ETF", async () => {
   server.use(
     jsonGet("/api/analytics", ANALYTICS_SCORECARD),
     http.get("/api/analytics", ({ request }) => {
@@ -83,32 +79,28 @@ test("selecting the index chip returns the active ticker to the index/ETF", asyn
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  const selector = await screen.findByRole("radiogroup", { name: "Ticker" });
-  await user.click(await within(selector).findByRole("radio", { name: "BBB" }));
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  await user.click(await within(constituents).findByRole("button", { name: "BBB" }));
   expect(
     await screen.findByRole("heading", { name: "Volatility surface, BBB" }),
   ).toBeInTheDocument();
 
-  await user.click(within(selector).getByRole("radio", { name: "SPX" }));
+  const indexPick = await screen.findByRole("radiogroup", { name: "Index ticker" });
+  await user.click(within(indexPick).getByRole("radio", { name: "SPX" }));
   expect(
     await screen.findByRole("heading", { name: "Volatility surface, SPX" }),
   ).toBeInTheDocument();
-  expect(within(selector).getByRole("radio", { name: "SPX" })).toHaveAttribute(
+  expect(within(indexPick).getByRole("radio", { name: "SPX" })).toHaveAttribute(
     "aria-checked",
     "true",
   );
 });
 
-// Switching the index re-lands the active ticker on the new index, so a member picked under one index
-// can never linger as the active ticker for another.
-test("switching the index re-lands the active ticker on the new index", async () => {
+// The index is selectable from the Constituents block too (the canonical selection surface): clicking
+// the index pick there returns the whole page to the index, the same as the top chip. The index is the
+// landing ticker, so first pick a member, then select the index from the Constituents block.
+test("selecting the index from the Constituents block returns the active ticker to the index", async () => {
   server.use(
-    jsonGet("/api/indices", {
-      indices: [
-        { symbol: "SPX", name: "S&P 500", currency: "USD" },
-        { symbol: "SX5E", name: "EURO STOXX 50", currency: "EUR" },
-      ],
-    }),
     http.get("/api/analytics", ({ request }) => {
       const u = new URL(request.url).searchParams.get("underlying");
       return HttpResponse.json({ ...ANALYTICS_SCORECARD, underlying: u });
@@ -117,17 +109,22 @@ test("switching the index re-lands the active ticker on the new index", async ()
   const user = userEvent.setup();
   render(<MarketPage />);
 
-  const selector = await screen.findByRole("radiogroup", { name: "Ticker" });
-  await user.click(await within(selector).findByRole("radio", { name: "AAA" }));
+  const constituents = await screen.findByRole("region", { name: /constituents/i });
+  await user.click(await within(constituents).findByRole("button", { name: "AAA" }));
   await screen.findByRole("heading", { name: "Volatility surface, AAA" });
 
-  // Switch the index to SX5E: the active ticker re-lands on SX5E, dropping the stale member.
-  await user.selectOptions(screen.getByLabelText("Index"), "SX5E");
+  // The index/ETF (SPX) sits at the top of the Constituents block as a selectable ticker.
+  const indexPick = await screen.findByRole("radiogroup", { name: "Index ticker" });
+  await user.click(within(indexPick).getByRole("radio", { name: "SPX" }));
+
   expect(
-    await screen.findByRole("heading", { name: "Volatility surface, SX5E" }),
+    await screen.findByRole("heading", { name: "Volatility surface, SPX" }),
   ).toBeInTheDocument();
   await waitFor(() =>
-    expect(screen.getByRole("radio", { name: "SX5E" })).toHaveAttribute("aria-checked", "true"),
+    expect(within(indexPick).getByRole("radio", { name: "SPX" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    ),
   );
 });
 
@@ -149,9 +146,7 @@ test("clicking a constituent row in the table also drives the active ticker", as
   expect(
     await screen.findByRole("heading", { name: "Volatility surface, BBB" }),
   ).toBeInTheDocument();
-  const selector = screen.getByRole("radiogroup", { name: "Ticker" });
-  expect(within(selector).getByRole("radio", { name: "BBB" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  // The clicked row reads as the selected one in the Constituents table.
+  const selectedRow = within(constituents).getByRole("row", { selected: true });
+  expect(within(selectedRow).getByRole("button", { name: "BBB" })).toBeInTheDocument();
 });

@@ -33,7 +33,8 @@ from algotrading.infra.surfaces.reporting import (
 )
 from algotrading.infra.surfaces.svi import SviParams, fit_svi
 from algotrading.infra.universe import IndexRegistryError, load_index_registry
-from fastapi import APIRouter
+from algotrading.infra.storage import StaleRunError, StorageError
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 try:
@@ -100,6 +101,13 @@ def _read_for_underlying(
         except TypeError:
             # Store predates run_id addressability (Lane C not yet landed): fall through to latest.
             pass
+        except StaleRunError as exc:
+            # The requested capture was overwritten by a newer one. Do NOT silently serve the
+            # latest under the wrong identity (that is the staleness D6 fixes): tell the caller.
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except StorageError as exc:
+            # run_id supplied without a trade_date to resolve it against, etc.: a client error.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     return read_for_underlying(
         ctx.store,  # type: ignore[attr-defined]
         table,

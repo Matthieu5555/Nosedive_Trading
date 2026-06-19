@@ -63,6 +63,7 @@ from algotrading.infra.surfaces import (
     repair_overrides_from_slices,
 )
 from algotrading.infra.surfaces.projection import (
+    ListedContract,
     ProjectionConfig,
     SnapshotMarketState,
     project_grid,
@@ -225,6 +226,7 @@ def run_analytics_with_qc(
         call_slice_fits=call_slice_fits,
         batch=batch,
         forwards=forward_estimates,
+        masters=masters_by_key,
         provider=provider,
         config=config,
         config_hashes=config_hashes,
@@ -676,6 +678,55 @@ def _point_right(masters: Mapping[str, InstrumentKey], point: IvPoint) -> str | 
     return None if instrument is None else instrument.option_right
 
 
+def _listed_contracts_by_underlying(
+    slices_by_underlying: Mapping[str, Sequence[SliceFit]],
+    masters: Mapping[str, InstrumentKey],
+) -> dict[str, list[ListedContract]]:
+    """Real exchange-listed option contracts to drive the price table (D1 activation).
+
+    The captured chain that the surface was fit from already carries every listed strike: each
+    fitted slice's ``raw_points`` reference a captured contract by its canonical key, and the
+    instrument master resolves that key to the real listed (expiry, strike, right). We project
+    one row per distinct listed (maturity, strike, right) per underlying, labeling the tenor by
+    the slice's listed expiry so each expiry stays addressable.
+    """
+    by_underlying: dict[str, list[ListedContract]] = {}
+    for underlying, slices in slices_by_underlying.items():
+        seen: set[tuple[float, float, str]] = set()
+        contracts: list[ListedContract] = []
+        for fit in slices:
+            if fit.method == METHOD_INSUFFICIENT:
+                continue
+            # Label the tenor by the listed expiry, keeping the maturity unique even when two
+            # fitted slices happen to share a calendar expiry (a degenerate case, but the PK and
+            # the dedupe below must stay collision-free). The BFF matches a quote by the row's
+            # maturity-resolved expiry and exact (right, strike), not this label string.
+            tenor_label = f"{fit.expiry_date.isoformat()}|{fit.maturity_years:.6f}"
+            for point in fit.raw_points:
+                instrument = masters.get(point.contract_key)
+                if instrument is None or not instrument.is_option():
+                    continue
+                strike = instrument.strike
+                right = instrument.option_right
+                if strike is None or right not in ("C", "P") or strike <= 0.0:
+                    continue
+                dedupe_key = (
+                    round(fit.maturity_years, _MATURITY_MATCH_DECIMALS), strike, right,
+                )
+                if dedupe_key in seen:
+                    continue
+                seen.add(dedupe_key)
+                contracts.append(ListedContract(
+                    tenor_label=tenor_label,
+                    maturity_years=fit.maturity_years,
+                    right=right,
+                    strike=strike,
+                ))
+        if contracts:
+            by_underlying[underlying] = contracts
+    return by_underlying
+
+
 def _build_projected_analytics(
     slice_fits: Sequence[SliceFit],
     *,
@@ -683,6 +734,7 @@ def _build_projected_analytics(
     call_slice_fits: Sequence[SliceFit] = (),
     batch: SnapshotBatch,
     forwards: Sequence[ForwardEstimate],
+    masters: Mapping[str, InstrumentKey],
     provider: str | None,
     config: PlatformConfig,
     config_hashes: Mapping[str, str],
@@ -702,12 +754,18 @@ def _build_projected_analytics(
     )
     spot_by_underlying = _usable_spot_by_underlying(batch)
     discounts_by_underlying: dict[str, dict[float, float]] = {}
+    forwards_by_underlying: dict[str, dict[float, float]] = {}
     for estimate in forwards:
         if not estimate.is_usable or estimate.discount_factor is None:
             continue
+        maturity_key = round(estimate.maturity_years, _MATURITY_MATCH_DECIMALS)
         discounts_by_underlying.setdefault(estimate.underlying, {})[
-            round(estimate.maturity_years, _MATURITY_MATCH_DECIMALS)
+            maturity_key
         ] = estimate.discount_factor
+        if estimate.forward is not None:
+            forwards_by_underlying.setdefault(estimate.underlying, {})[
+                maturity_key
+            ] = estimate.forward
 
     def _by_underlying(fits: Sequence[SliceFit]) -> dict[str, list[SliceFit]]:
         grouped: dict[str, list[SliceFit]] = {}
@@ -718,6 +776,7 @@ def _build_projected_analytics(
     slices_by_underlying = _by_underlying(slice_fits)
     put_by_underlying = _by_underlying(put_slice_fits)
     call_by_underlying = _by_underlying(call_slice_fits)
+    listed_by_underlying = _listed_contracts_by_underlying(slices_by_underlying, masters)
 
     cells: list[ProjectedOptionAnalytics] = []
     for underlying in sorted(slices_by_underlying):
@@ -729,6 +788,7 @@ def _build_projected_analytics(
             provider=provider,
             spot=spot,
             discount_factors=discounts_by_underlying.get(underlying, {}),
+            forwards=forwards_by_underlying.get(underlying, {}),
         )
         result = project_grid(
             slices_by_underlying[underlying],
@@ -741,6 +801,7 @@ def _build_projected_analytics(
             projection=axes,
             monetization=config.monetization,
             config_hashes=config_hashes,
+            listed_contracts=listed_by_underlying.get(underlying),
         )
         cells.extend(result.cells)
     return tuple(cells)

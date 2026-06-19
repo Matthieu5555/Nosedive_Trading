@@ -61,6 +61,7 @@ def analytics_qc_results(
     run_id: str,
     run_ts: datetime,
     broker_greeks: Mapping[str, BrokerGreeks] | None = None,
+    index_symbol: str | None = None,
 ) -> tuple[QcResult, ...]:
     from algotrading.infra.qc import (
         check_calendar_sanity,
@@ -73,6 +74,15 @@ def analytics_qc_results(
         check_surface_fit_error,
         check_underlying_quote_health,
     )
+
+    # Scope-aware QC severity (ADR 0060): the strict CRITICAL gates are calibrated for the one
+    # tradeable index. A basket run mixes the index with its illiquid single-name constituents into
+    # one QcInputs, so each CRITICAL check decides is_index by its own underlying. When
+    # index_symbol is None (every pre-existing caller) is_index is True for everyone, preserving the
+    # old strict behaviour exactly. Only the CRITICAL gates take the flag; the WARNING-severity
+    # checks (surface fit, forward, parity, iv-solver, chain coverage) are unaffected by scope.
+    def _is_index(underlying: str) -> bool:
+        return index_symbol is None or underlying == index_symbol
 
     brokers = dict(broker_greeks) if broker_greeks is not None else {}
     results: list[QcResult] = []
@@ -112,10 +122,13 @@ def analytics_qc_results(
             check_calendar_sanity(
                 violations, underlying,
                 thresholds=thresholds, run_id=run_id, run_ts=run_ts,
+                is_index=_is_index(underlying),
             )
         )
 
     if qc_inputs.batch is not None:
+        # Anchor-quote health spans the whole captured batch (the index anchor included), so it
+        # stays index-strict regardless of scope: a dead index anchor must still page.
         results.append(
             check_underlying_quote_health(
                 qc_inputs.batch, qc_inputs.underlying_keys,
@@ -136,6 +149,7 @@ def analytics_qc_results(
                 risk_line,
                 broker=brokers.get(risk_line.contract_key),
                 thresholds=thresholds, run_id=run_id, run_ts=run_ts,
+                is_index=_is_index(risk_line.valuation.underlying),
             )
         )
 
@@ -318,6 +332,7 @@ def default_stages_builder(
                 analytics_qc_results(
                     outputs, run.qc_inputs,
                     thresholds=thresholds, run_id=correlation_id, run_ts=qc_ts,
+                    index_symbol=fired_index.entry.symbol,
                 )
             )
 
@@ -371,6 +386,9 @@ def default_stages_builder(
             grid_points=dict(grid_cells) or None,
             tenor_grid=config.universe.tenor_grid,
             extra_results=tuple(analytics_results),
+            # The basket keys are exactly the fired index symbols; every other captured underlying
+            # is a constituent and gets notice-level grid QC (ADR 0060).
+            index_symbols=frozenset(baskets),
         )
         triage = persist_triage(store, job.report, correlation_id=correlation_id)
         log.info(

@@ -1022,3 +1022,153 @@ def test_concurrent_record_stage_keeps_every_record(tmp_path: Path) -> None:
     assert len(runs) == len(EOD_STAGES)
     assert {run.stage for run in runs} == expected_stages
     assert {run.run_id for run in runs} == {f"r-{stage}" for stage in EOD_STAGES}
+
+
+# --- ADR 0060: scope-aware QC severity, index strict / constituents notice-only ----------------
+
+
+def _scoped_grid_points() -> dict[str, list[_GridCell]]:
+    """A clean index (SX5E) plus a constituent (SAP) with a liquid-core coverage collapse.
+
+    SAP's 1m sits strictly inside the liquid range [10d, 3m] with a single point — the same
+    partial-interior breach that pages CRITICAL on the index (test_coverage_breach_alert...).
+    """
+    sx5e = _full_cells("SX5E", "10d") + _full_cells("SX5E", "1m") + _full_cells("SX5E", "3m")
+    sap = (
+        _full_cells("SAP", "10d") + _full_cells("SAP", "3m") + [_GridCell("SAP", "1m", -0.30)]
+    )
+    return {"SX5E": sx5e, "SAP": sap}
+
+
+def test_constituent_only_critical_breach_is_notice_and_banks_healthy(tmp_path: Path) -> None:
+    # A CRITICAL-gate failure on a CONSTITUENT (SAP) with a clean index (SX5E): notice-level, no
+    # page, and the QC report's worst-of overall_status is at most WARN, never FAIL.
+    store = ParquetStore(tmp_path)
+    thresholds = thresholds_from_config(_grid_config().qc_threshold)
+    job = run_qc(
+        store=store, thresholds=thresholds, collector_summary=None,
+        trade_date=TRADE_DATE, run_id="qc-scope-constituent", run_ts=CALC_TS,
+        correlation_id="corr-scope-constituent",
+        grid_points=_scoped_grid_points(), tenor_grid=_GRID_TENORS,
+        index_symbols={"SX5E"},
+    )
+    assert job.escalation == "notice"
+    assert job.report.overall_status == "warn"
+    assert job.report.fail_count == 0
+    # The constituent breach is still recorded (a downgraded WARNING), not silently dropped.
+    sap_rows = [
+        r for r in job.report.results
+        if r.target_key == "SAP" and r.check_name == CHECK_TENOR_COVERAGE_FLOOR
+    ]
+    assert len(sap_rows) == 1
+    assert sap_rows[0].qc_status == "warn" and sap_rows[0].severity == "warning"
+    # No qc_fail page-alert fires on a notice-level report.
+    assert qc_fail_alert(job.report) is None
+
+
+def test_same_breach_on_index_pages(tmp_path: Path) -> None:
+    # The IDENTICAL breach attributed to the INDEX stays CRITICAL: page, and overall_status FAIL.
+    store = ParquetStore(tmp_path)
+    thresholds = thresholds_from_config(_grid_config().qc_threshold)
+    index_breach = (
+        _full_cells("SX5E", "10d") + _full_cells("SX5E", "3m") + [_GridCell("SX5E", "1m", -0.30)]
+    )
+    job = run_qc(
+        store=store, thresholds=thresholds, collector_summary=None,
+        trade_date=TRADE_DATE, run_id="qc-scope-index", run_ts=CALC_TS,
+        correlation_id="corr-scope-index",
+        grid_points={"SX5E": index_breach}, tenor_grid=_GRID_TENORS,
+        index_symbols={"SX5E"},
+    )
+    assert job.escalation == "page"
+    assert job.report.overall_status == "fail"
+    assert qc_fail_alert(job.report) is not None
+
+
+def _passthrough_stages(qc_closure):  # type: ignore[no-untyped-def]
+    from algotrading.infra.collectors import summarize_session
+    from algotrading.infra.orchestration.jobs import (
+        AnalyticsResult,
+        CollectionResult,
+        ReconciliationResult,
+        UniverseRefreshResult,
+    )
+
+    def _universe() -> UniverseRefreshResult:
+        return UniverseRefreshResult(
+            correlation_id="corr", trade_date=TRADE_DATE, master_count=0, masters=()
+        )
+
+    def _collection() -> CollectionResult:
+        summary = summarize_session(
+            [], session_id="sess", trade_date=TRADE_DATE, subscribed_keys=(), reconnect_count=0
+        )
+        return CollectionResult(correlation_id="corr", session_id="sess", summary=summary)
+
+    def _analytics() -> AnalyticsResult:
+        return AnalyticsResult(
+            correlation_id="corr", trade_date=TRADE_DATE, outputs=None, run_seconds=0.0  # type: ignore[arg-type]
+        )
+
+    def _reconciliation() -> ReconciliationResult:
+        return reconcile_end_of_day(
+            lines=[], broker_greeks=[], trade_date=TRADE_DATE, correlation_id="corr"
+        )
+
+    return EodStages(
+        universe_refresh=_universe,
+        collection=_collection,
+        analytics=_analytics,
+        reconciliation=_reconciliation,
+        qc=qc_closure,
+    )
+
+
+def test_banking_path_constituent_breach_banks_index_breach_blocks(tmp_path: Path) -> None:
+    # End to end through run_end_of_day + the run-state ledger: a constituent-only CRITICAL-gate
+    # failure must let the date bank healthy (empty backlog, last_healthy set), while an index
+    # CRITICAL-gate failure must block it (qc stage FAILED, qc in backlog).
+    thresholds = thresholds_from_config(_grid_config().qc_threshold)
+
+    constituent_store = ParquetStore(tmp_path / "constituent")
+    clock = ManualClock(start=CALC_TS)
+
+    def _constituent_qc():  # type: ignore[no-untyped-def]
+        return run_qc(
+            store=constituent_store, thresholds=thresholds, collector_summary=None,
+            trade_date=TRADE_DATE, run_id="corr-bank-c", run_ts=CALC_TS,
+            correlation_id="corr-bank-c", grid_points=_scoped_grid_points(),
+            tenor_grid=_GRID_TENORS, index_symbols={"SX5E"}, persist=False,
+        )
+
+    result = run_end_of_day(
+        constituent_store, trade_date=TRADE_DATE, correlation_id="corr-bank-c",
+        clock=clock, stages=_passthrough_stages(_constituent_qc),
+    )
+    assert result.escalation == "notice"
+    croot = Path(constituent_store.root)
+    assert backlog_stages(croot, TRADE_DATE) == []
+    assert last_healthy_trade_date(croot) == TRADE_DATE
+
+    index_store = ParquetStore(tmp_path / "index")
+    iclock = ManualClock(start=CALC_TS)
+    index_breach = (
+        _full_cells("SX5E", "10d") + _full_cells("SX5E", "3m") + [_GridCell("SX5E", "1m", -0.30)]
+    )
+
+    def _index_qc():  # type: ignore[no-untyped-def]
+        return run_qc(
+            store=index_store, thresholds=thresholds, collector_summary=None,
+            trade_date=TRADE_DATE, run_id="corr-bank-i", run_ts=CALC_TS,
+            correlation_id="corr-bank-i", grid_points={"SX5E": index_breach},
+            tenor_grid=_GRID_TENORS, index_symbols={"SX5E"}, persist=False,
+        )
+
+    iresult = run_end_of_day(
+        index_store, trade_date=TRADE_DATE, correlation_id="corr-bank-i",
+        clock=iclock, stages=_passthrough_stages(_index_qc),
+    )
+    assert iresult.escalation == "page"
+    iroot = Path(index_store.root)
+    assert "qc" in backlog_stages(iroot, TRADE_DATE)
+    assert last_healthy_trade_date(iroot) is None

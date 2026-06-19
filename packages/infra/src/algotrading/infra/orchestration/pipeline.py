@@ -6,6 +6,7 @@ from datetime import date
 
 import structlog
 from algotrading.infra.connectivity import Clock
+from algotrading.infra.qc import ESCALATION_PAGE
 from algotrading.infra.storage import ParquetStore
 
 from .jobs import (
@@ -117,9 +118,16 @@ def run_end_of_day(
     log.info("orchestration.eod.stage.start", stage=STAGE_QC)
     qc = stages.qc()
     escalation = qc.escalation
+    # Banking keys off the PAGING escalation, not the raw worst-of overall_status (ADR 0060). A
+    # genuinely-blocking QC failure is one that pages: a CRITICAL-severity fail, which since ADR
+    # 0060 means an INDEX defect (a constituent's CRITICAL-gate fail is downgraded to a WARNING ->
+    # NOTICE). So a date banks healthy when only constituents fail and the index is clean, while an
+    # index CRITICAL fail (escalation PAGE) still blocks the date from banking. The intraday cap in
+    # eod_stages also lowers a provisional PAGE to NOTICE, so an intraday fire likewise banks -- the
+    # pre-existing intent that intraday is informational, now expressed through the same gate.
     _commit(
         STAGE_QC,
-        OUTCOME_OK if qc.report.overall_status == "pass" else OUTCOME_FAILED,
+        OUTCOME_FAILED if escalation == ESCALATION_PAGE else OUTCOME_OK,
     )
 
     log.info("orchestration.eod.done", ran=ran, escalation=escalation)

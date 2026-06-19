@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -53,6 +53,7 @@ def run_qc(
     tenor_grid: Sequence[str] = (),
     extra_results: Sequence[QcResult] = (),
     persist: bool = True,
+    index_symbols: Collection[str] | None = None,
 ) -> QcJobResult:
     log = _LOGGER.bind(
         correlation_id=correlation_id,
@@ -71,16 +72,22 @@ def run_qc(
     if grid_points is not None:
         for underlying in sorted(grid_points):
             points = grid_points[underlying]
+            # Scope-aware QC severity (ADR 0060): a grid coverage/band collapse on the tradeable
+            # index stays CRITICAL (pages, blocks banking); the same on an illiquid single-name
+            # constituent is notice-level. index_symbols=None keeps every underlying strict.
+            is_index = index_symbols is None or underlying in index_symbols
             results.append(
                 check_tenor_coverage_floor(
                     points, underlying, tenor_grid,
                     thresholds=thresholds, run_id=run_id, run_ts=run_ts,
+                    is_index=is_index,
                 )
             )
             results.append(
                 check_delta_band_completeness(
                     points, underlying, tenor_grid,
                     thresholds=thresholds, run_id=run_id, run_ts=run_ts,
+                    is_index=is_index,
                 )
             )
 

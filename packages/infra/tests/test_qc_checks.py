@@ -930,6 +930,80 @@ def test_calendar_sanity_single_violation() -> None:
     assert deserialize_context(result.context)["failing_maturity_short"] == 0.25
 
 
+def _material_calendar_violation() -> CalendarViolation:
+    # A gross inversion well inside the liquid range (mirrors
+    # test_calendar_sanity_material_inversion_is_critical): a 0.03 total-variance gap at 6m vs 12m,
+    # far above the absolute (5e-4) and relative tolerances and clear of the ultra-short floor.
+    return CalendarViolation(
+        k=0.1, maturity_short=0.5, maturity_long=1.0, w_short=0.05, w_long=0.02,
+    )
+
+
+def test_calendar_sanity_constituent_material_inversion_downgrades_to_warning() -> None:
+    # ADR 0060: the SAME material inversion that pages on the index is notice-level on a
+    # constituent — qc_status WARN and severity WARNING — so it never pages and never blocks the
+    # date from banking. The underlying defect is real (material_count stays 1), only its
+    # consequence changes with scope.
+    result = check_calendar_sanity(
+        [_material_calendar_violation()], "SAP",
+        thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=False,
+    )
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
+    assert deserialize_context(result.context)["material_count"] == 1
+
+
+def test_calendar_sanity_index_material_inversion_stays_critical() -> None:
+    # The index keeps the strict verdict (the 2026-06-18 SX5E inversion still pages).
+    index_result = check_calendar_sanity(
+        [_material_calendar_violation()], "SX5E",
+        thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert index_result.qc_status == STATUS_FAIL
+    assert index_result.severity == SEVERITY_CRITICAL
+    # The default (no flag) is index-strict, so every pre-existing caller is unchanged.
+    default_result = check_calendar_sanity(
+        [_material_calendar_violation()], "SX5E",
+        thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+    )
+    assert default_result.qc_status == STATUS_FAIL
+    assert default_result.severity == SEVERITY_CRITICAL
+
+
+def test_calendar_sanity_scope_flag_does_not_touch_a_warning_or_a_pass() -> None:
+    # The flag only ever demotes a CRITICAL fail. A short-end-noise WARNING and a clean PASS are
+    # identical for index and constituent — scope cannot upgrade or change them.
+    wiggle = CalendarViolation(
+        k=0.0, maturity_short=10.0 / 365.0, maturity_long=1.0 / 12.0,
+        w_short=1.87e-3, w_long=1.62e-3,
+    )
+    for is_index in (True, False):
+        warn = check_calendar_sanity(
+            [wiggle], "X", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS,
+            is_index=is_index,
+        )
+        assert (warn.qc_status, warn.severity) == (STATUS_WARN, SEVERITY_WARNING)
+        clean = check_calendar_sanity(
+            [], "X", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=is_index,
+        )
+        assert clean.qc_status == STATUS_PASS
+
+
+def test_greek_sanity_constituent_breach_downgrades_to_warning() -> None:
+    # A negative-gamma breach pages on the index but is notice-level on a constituent (ADR 0060).
+    clean = _position(CALL_100)
+    bad = dataclasses.replace(clean.greeks, gamma=-0.01)
+    line = _position(CALL_100, greeks=bad)
+    constituent = check_greek_sanity(
+        line, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=False,
+    )
+    assert (constituent.qc_status, constituent.severity) == (STATUS_WARN, SEVERITY_WARNING)
+    index = check_greek_sanity(
+        line, thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert (index.qc_status, index.severity) == (STATUS_FAIL, SEVERITY_CRITICAL)
+
+
 def test_greek_sanity_passes_clean_line() -> None:
     result = check_greek_sanity(
         _position(CALL_100), thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS
@@ -1256,6 +1330,53 @@ def test_tenor_coverage_floor_partial_interior_is_a_critical_breach() -> None:
     named = {b["tenor"] for b in breaches}
     assert "10d" not in named and "3m" not in named
     assert result.measured_value == pytest.approx(-1.0)
+
+
+def _partial_interior_breach_points() -> list[_GridPoint]:
+    # The same liquid-core collapse used by the CRITICAL test above: 1m sits inside [10d, 3m]
+    # with only 2/3 points.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", d) for d in (-0.30, 0.30)]
+    return points
+
+
+def test_tenor_coverage_floor_constituent_breach_downgrades_to_warning() -> None:
+    # ADR 0060: the same partial-interior collapse that pages CRITICAL on the index is notice-level
+    # on a constituent. The breach is still detected (breach_count stays 1); only the verdict
+    # severity/status is scoped down.
+    result = check_tenor_coverage_floor(
+        _partial_interior_breach_points(), "SAP", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=False,
+    )
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
+    assert deserialize_context(result.context)["breach_count"] == 1
+
+
+def test_tenor_coverage_floor_index_breach_stays_critical() -> None:
+    result = check_tenor_coverage_floor(
+        _partial_interior_breach_points(), "SX5E", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+
+
+def test_delta_band_constituent_gap_downgrades_to_warning() -> None:
+    # An interior delta-band gap that is CRITICAL on the index is notice-level on a constituent.
+    # 10d and 3m carry a full band (liquid); 1m sits inside but is missing its low edge.
+    points = _full_tenor("SPX", "10d") + _full_tenor("SPX", "3m")
+    points += [_GridPoint("SPX", "1m", d) for d in (0.0, 0.30)]
+    constituent = check_delta_band_completeness(
+        points, "SAP", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=False,
+    )
+    assert (constituent.qc_status, constituent.severity) == (STATUS_WARN, SEVERITY_WARNING)
+    index = check_delta_band_completeness(
+        points, "SX5E", GRID_TENORS,
+        thresholds=GRID_THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert (index.qc_status, index.severity) == (STATUS_FAIL, SEVERITY_CRITICAL)
 
 
 def test_tenor_coverage_floor_interior_zero_is_interpolated_not_a_breach() -> None:

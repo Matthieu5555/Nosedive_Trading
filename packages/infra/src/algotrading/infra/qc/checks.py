@@ -72,12 +72,37 @@ _USABLE_QUOTE_STATUS = "usable"
 _NO_TWO_SIDED_REASONS = frozenset({"non_positive_bid", "crossed"})
 
 
+def _scope_critical(
+    *, status: str, severity: str, is_index: bool
+) -> tuple[str, str]:
+    """Scope a would-be CRITICAL verdict to the underlying's role (ADR 0060).
+
+    The strict CRITICAL gates were calibrated for the one tradeable index (SX5E). When the same
+    gate runs on an illiquid single-name constituent surface, a genuine-on-the-index defect is
+    expected noise on the constituent, so it must NOTICE, never PAGE, and never block the date from
+    banking. We downgrade a constituent's CRITICAL fail to a WARNING in BOTH dimensions:
+
+    - ``severity`` CRITICAL -> WARNING so ``escalation_level`` yields NOTICE, not PAGE.
+    - ``qc_status`` FAIL -> WARN so the report's worst-of ``overall_status`` is at worst WARN, not
+      FAIL, on a constituent-only failure (banking keys off the paging escalation, not the raw
+      status, but keeping the two aligned keeps the report honest).
+
+    ``is_index=True`` (the default for every pre-existing caller) is a no-op: the index stays
+    strictly CRITICAL/FAIL. Only the severity-CRITICAL verdict is touched; a WARNING or a PASS the
+    check already produced is returned unchanged regardless of role.
+    """
+    if is_index or severity != SEVERITY_CRITICAL or status != STATUS_FAIL:
+        return status, severity
+    return STATUS_WARN, SEVERITY_WARNING
+
+
 def check_collector_continuity(
     summary: CollectorContinuityInput,
     *,
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     gap_count = summary.gap_count
     subscribed = summary.subscribed_count
@@ -111,11 +136,14 @@ def check_collector_continuity(
                 "coverage_ratio": coverage_ratio,
             },
         )
+    status, severity = _scope_critical(
+        status=status, severity=SEVERITY_CRITICAL, is_index=is_index
+    )
     return build_result(
         check_name=CHECK_COLLECTOR_CONTINUITY,
         target_key=summary.session_id,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=float(gap_count),
         threshold_version=thresholds.version,
         context=context,
@@ -131,6 +159,7 @@ def check_underlying_quote_health(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     anchors = set(underlying_instrument_keys)
     worst_key = ""
@@ -176,11 +205,14 @@ def check_underlying_quote_health(
         "option_leg_count": option_seen,
         "two_sided_option_count": two_sided_option_count,
     }
+    status, severity = _scope_critical(
+        status=status, severity=SEVERITY_CRITICAL, is_index=is_index
+    )
     return build_result(
         check_name=CHECK_UNDERLYING_QUOTE_HEALTH,
         target_key=target,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=worst_spread,
         threshold_version=thresholds.version,
         context=context,
@@ -489,6 +521,7 @@ def check_calendar_sanity(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     abs_tol = thresholds.grid.calendar_abs_variance_tol
     rel_tol = thresholds.grid.calendar_rel_variance_tol
@@ -544,6 +577,7 @@ def check_calendar_sanity(
             }
         )
     measured = float(len(material)) if material else float(count)
+    status, severity = _scope_critical(status=status, severity=severity, is_index=is_index)
     return build_result(
         check_name=CHECK_CALENDAR_SANITY,
         target_key=underlying,
@@ -588,6 +622,7 @@ def check_greek_sanity(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     contract_key = line.valuation.contract_key
     greeks = line.greeks
@@ -641,11 +676,14 @@ def check_greek_sanity(
         "breach_count": len(breaches),
         "breaches": breaches,
     }
+    status, severity = _scope_critical(
+        status=status, severity=SEVERITY_CRITICAL, is_index=is_index
+    )
     return build_result(
         check_name=CHECK_GREEK_SANITY,
         target_key=contract_key,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=float(len(breaches)),
         threshold_version=thresholds.version,
         context=context,
@@ -662,6 +700,7 @@ def check_scenario_completeness(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     produced = set(produced_cells)
     expected = set(expected_cells)
@@ -677,11 +716,14 @@ def check_scenario_completeness(
             for scenario_id, contract_key in missing
         ],
     }
+    status, severity = _scope_critical(
+        status=status, severity=SEVERITY_CRITICAL, is_index=is_index
+    )
     return build_result(
         check_name=CHECK_SCENARIO_COMPLETENESS,
         target_key=portfolio_id,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=float(len(missing)),
         threshold_version=thresholds.version,
         context=context,
@@ -713,6 +755,7 @@ def check_tenor_coverage_floor(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     counts: dict[str, int] = {tenor: 0 for tenor in tenor_grid}
     for point in points:
@@ -806,6 +849,7 @@ def check_tenor_coverage_floor(
                 "coverage_ratio": coverage_ratio,
             },
         )
+    status, severity = _scope_critical(status=status, severity=severity, is_index=is_index)
     return build_result(
         check_name=CHECK_TENOR_COVERAGE_FLOOR,
         target_key=underlying,
@@ -827,6 +871,7 @@ def check_delta_band_completeness(
     thresholds: QcThresholdConfig,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     by_tenor: dict[str, list[float]] = {tenor: [] for tenor in tenor_grid}
     for point in points:
@@ -900,6 +945,7 @@ def check_delta_band_completeness(
             len(critical_gaps),
             extra={"underlying": underlying, "band_gaps": critical_gaps},
         )
+    status, severity = _scope_critical(status=status, severity=severity, is_index=is_index)
     return build_result(
         check_name=CHECK_DELTA_BAND_COMPLETENESS,
         target_key=underlying,
@@ -921,6 +967,7 @@ def check_put_call_iv_spread(
     threshold_version: str,
     run_id: str,
     run_ts: datetime,
+    is_index: bool = True,
 ) -> QcResult:
     breaches = [
         {
@@ -947,11 +994,14 @@ def check_put_call_iv_spread(
             max_abs_spread,
             extra={"underlying": underlying, "breaches": breaches},
         )
+    status, severity = _scope_critical(
+        status=status, severity=SEVERITY_CRITICAL, is_index=is_index
+    )
     return build_result(
         check_name=CHECK_PUT_CALL_IV_SPREAD,
         target_key=underlying,
         status=status,
-        severity=SEVERITY_CRITICAL,
+        severity=severity,
         measured_value=float(len(breaches)),
         threshold_version=threshold_version,
         context=context,

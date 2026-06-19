@@ -5,17 +5,18 @@ import { Label } from "@/ui/label";
 
 import { AsyncBlock } from "../../components/AsyncBlock";
 import { AttributionWaterfall } from "../../components/AttributionWaterfall";
-import { Cluster, Grid, Stack } from "../../components/layout";
+import { Cluster, Stack } from "../../components/layout";
 import { NamedScenarios } from "../../components/NamedScenarios";
 import { RateSweep, StressSurface } from "../../components/StressSurface";
 import { useBookAttribution, usePortfolios, useRiskScenarios } from "../../hooks/queries";
 import { tourAnchor } from "../../lib/tour";
 import type { ScenariosResponse } from "../../stressApi";
 
-// Simulate / "My book" mode: stress the real, held portfolio. The named historical crises, the
-// persisted ±spot × ±vol surface, and the by-Greek attribution all read the cron-written Risk path
-// for the chosen portfolio. Reconciliation does NOT live here, it is an integrity check on the real
-// book and now sits on the Positions page; this view is purely the what-if on what you hold.
+// Simulate / "My book" mode: stress the real, held portfolio. The by-Greek attribution ("where the
+// P&L came from") leads the view, front and centre, full-width; the named historical crises and the
+// persisted ±spot × ±vol surface follow. All read the cron-written Risk path for the chosen
+// portfolio. Reconciliation does NOT live here, it is an integrity check on the real book and now
+// sits on the Positions page; this view is purely the what-if on what you hold.
 export function PortfolioStress() {
   const [portfolio, setPortfolio] = useState<string>("");
 
@@ -59,59 +60,56 @@ export function PortfolioStress() {
         </Stack>
       </Cluster>
 
-      <Grid min="420px" gap="md">
-        <Card
-          {...tourAnchor(
-            "simulate.scenarios",
-            "Named scenarios",
-            "Replay labelled crises like 2008 and COVID-2020 against the book you hold.",
-          )}
-        >
-          <CardHeader>
-            <CardTitle>Named historical scenarios</CardTitle>
-            <CardDescription>
-              Replay labelled crises (2008, COVID-2020, …) against the book you hold, one compound
-              spot/vol/rate shock each, full-repriced. Empty until a scenario catalogue is
-              configured.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AsyncBlock
-              loading={scenarios.isPending}
-              error={scenarios.isError ? scenarios.error.message : null}
-            >
-              {scenarios.data && <NamedScenarios scenarios={scenarios.data.named ?? []} />}
-            </AsyncBlock>
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Where the P&amp;L came from</CardTitle>
+          <CardDescription>
+            The book&apos;s realized/scenario P&amp;L split by Greek, with the leftover residual
+            shown as its own honesty bar. This leads the view: it is the first thing to read off the
+            book you hold. Empty until a scenario attribution lands for this selection.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AsyncBlock
+            loading={attribution.isPending}
+            error={attribution.isError ? attribution.error.message : null}
+            height={180}
+            subject="the P&L attribution"
+          >
+            {attribution.data && (
+              <AttributionWaterfall
+                attribution={attribution.data}
+                kicker={attributionScope}
+                embedded
+              />
+            )}
+          </AsyncBlock>
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Where the P&amp;L came from</CardTitle>
-            <CardDescription>
-              The book&apos;s realized/scenario P&amp;L split by Greek, with the leftover residual
-              shown as its own honesty bar. Empty until a scenario attribution lands for this
-              selection.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AsyncBlock
-              loading={attribution.isPending}
-              error={attribution.isError ? attribution.error.message : null}
-              height={180}
-              subject="the P&L attribution"
-            >
-              {attribution.data && (
-                <AttributionWaterfall
-                  attribution={attribution.data}
-                  kicker={attributionScope}
-                  embedded
-                />
-              )}
-            </AsyncBlock>
-          </CardContent>
-        </Card>
-      </Grid>
+      <Card
+        {...tourAnchor(
+          "simulate.scenarios",
+          "Named scenarios",
+          "Replay labelled crises like 2008 and COVID-2020 against the book you hold.",
+        )}
+      >
+        <CardHeader>
+          <CardTitle>Named historical scenarios</CardTitle>
+          <CardDescription>
+            Replay labelled crises (2008, COVID-2020, …) against the book you hold, one compound
+            spot/vol/rate shock each, full-repriced. Empty until a scenario catalogue is configured.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AsyncBlock
+            loading={scenarios.isPending}
+            error={scenarios.isError ? scenarios.error.message : null}
+          >
+            {scenarios.data && <NamedScenarios scenarios={scenarios.data.named ?? []} />}
+          </AsyncBlock>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

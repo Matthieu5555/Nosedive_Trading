@@ -11,13 +11,14 @@ import type {
 } from "../api";
 import { ApiError } from "../api";
 import { AsyncBlock } from "../components/AsyncBlock";
+import { AttributionWaterfall } from "../components/AttributionWaterfall";
 import { BookSummary } from "../components/BookSummary";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { FillsLedger } from "../components/FillsLedger";
 import { Cluster, Stack } from "../components/layout";
 import { PositionsTable } from "../components/PositionsTable";
 import { Reconciliation } from "../components/Reconciliation";
-import { useReconciliation } from "../hooks/queries";
+import { useBookAttribution, useReconciliation } from "../hooks/queries";
 import { useFetch } from "../hooks/useFetch";
 import { currencySymbol } from "../lib/format";
 import { tourAnchor } from "../lib/tour";
@@ -67,6 +68,12 @@ export function PositionsPage() {
   const [account, setAccount] = useState<string>("");
   const reconciliation = useReconciliation(account);
 
+  // Where the P&L came from, by Greek. This is the whole book's attribution (every portfolio), not
+  // the per-underlying slice selected above, so it is labelled book-wide just like the reconciliation
+  // panel is labelled account-wide. It leads the page because "what did my risk actually pay or cost"
+  // is the first question a PM asks of a book.
+  const attribution = useBookAttribution("");
+
   return (
     <Stack as="section" className="page" gap="md">
       <div className="page-header">
@@ -109,6 +116,41 @@ export function PositionsPage() {
 
       <AsyncBlock loading={indices.loading} error={indices.error}>
         <Stack gap="md">
+          <ErrorBoundary label="P&L decomposition">
+            <Card
+              {...tourAnchor(
+                "positions.attribution",
+                "Where the P&L came from",
+                "Splits the book's P&L by Greek, with the leftover residual shown as its own honesty bar.",
+              )}
+            >
+              <CardHeader>
+                <CardTitle>Where the P&amp;L came from</CardTitle>
+                <CardDescription>
+                  The book&apos;s P&amp;L split by Greek, with the leftover residual shown as its
+                  own honesty bar. This is the whole book, every portfolio, not just the underlying
+                  selected above. Empty until an attribution lands.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AsyncBlock
+                  loading={attribution.isPending}
+                  error={attribution.isError ? attribution.error.message : null}
+                  height={180}
+                  subject="the P&L attribution"
+                >
+                  {attribution.data && (
+                    <AttributionWaterfall
+                      attribution={attribution.data}
+                      kicker="Whole book"
+                      embedded
+                    />
+                  )}
+                </AsyncBlock>
+              </CardContent>
+            </Card>
+          </ErrorBoundary>
+
           <ErrorBoundary label="Book summary">
             <Card>
               <CardHeader>

@@ -1,11 +1,32 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
-import type { FillsResponse, PositionsResponse } from "../api";
+vi.mock("../components/Plot", async () => await import("../test/plotMock"));
+
+import type { AttributionResponse, FillsResponse, PositionsResponse } from "../api";
 import { renderWithClient as render } from "../test/renderWithClient";
 import { jsonGet, notMocked, server } from "../test/server";
 import { PositionsPage } from "./Positions";
+
+const ATTRIBUTION_POPULATED: AttributionResponse = {
+  trade_date: "2026-06-15",
+  portfolio_id: null,
+  level: "book",
+  contract_key: "__book__",
+  found: true,
+  terms: [
+    { name: "Delta", dollars: 1200, unit: "$" },
+    { name: "Gamma", dollars: -300, unit: "$" },
+    { name: "Vega", dollars: 450, unit: "$" },
+  ],
+  residual: { dollars: 25, unit: "$ (residual vs full reprice)" },
+  verdict: {
+    within_tolerance: true,
+    residual_abs_tol: 100,
+    residual_rel_tol: 0.05,
+  },
+};
 
 const POSITIONS: PositionsResponse = {
   source: "fills",
@@ -129,4 +150,40 @@ test("no broker account captured is a plain empty state, not an error alert", as
   expect(
     await screen.findByText(/No broker account snapshot has been captured yet/i),
   ).toBeInTheDocument();
+});
+
+// The P&L decomposition leads the page (front and centre): it answers "what did my risk pay or
+// cost, by Greek" before the book summary or the positions table.
+
+test("the P&L decomposition panel renders its labelled-empty state by default", async () => {
+  server.use(jsonGet("/api/positions", POSITIONS), jsonGet("/api/positions/fills", FILLS));
+  render(<PositionsPage />);
+  expect(await screen.findByText("Where the P&L came from")).toBeInTheDocument();
+  expect(await screen.findByText(/No P&L attribution for this selection yet/i)).toBeInTheDocument();
+});
+
+test("the P&L decomposition leads the page, ahead of the book summary", async () => {
+  server.use(jsonGet("/api/positions", POSITIONS), jsonGet("/api/positions/fills", FILLS));
+  render(<PositionsPage />);
+
+  const attribution = await screen.findByText("Where the P&L came from");
+  const summary = await screen.findByText("Book summary");
+  // front-and-centre: the attribution heading precedes the book summary heading in document order.
+  expect(attribution.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});
+
+test("the P&L decomposition draws its by-Greek waterfall when an attribution lands", async () => {
+  server.use(
+    jsonGet("/api/positions", POSITIONS),
+    jsonGet("/api/positions/fills", FILLS),
+    jsonGet("/api/attribution", ATTRIBUTION_POPULATED),
+  );
+  render(<PositionsPage />);
+
+  const panel = await screen.findByRole("article", { name: "P&L attribution" });
+  expect(within(panel).getByText("within tolerance")).toBeInTheDocument();
+  const chart = await screen.findByLabelText(/P&L attribution waterfall, Whole book/i);
+  expect(within(chart).getByTestId("plot-types")).toHaveTextContent("waterfall");
 });

@@ -171,3 +171,15 @@ test("the book P&L attribution panel renders its labelled-empty state by default
   expect(await screen.findByText("Where the P&L came from")).toBeInTheDocument();
   expect(await screen.findByText(/No P&L attribution for this selection yet/i)).toBeInTheDocument();
 });
+
+test("the P&L decomposition leads the view, ahead of the named scenarios", async () => {
+  server.use(jsonGet("/api/risk/scenarios", SCENARIOS));
+  renderWithClient(<PortfolioStress />);
+
+  const attribution = await screen.findByText("Where the P&L came from");
+  const named = await screen.findByText("Named historical scenarios");
+  // front-and-centre: the attribution heading precedes the named-scenarios heading in document order.
+  expect(attribution.compareDocumentPosition(named) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+});

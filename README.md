@@ -1,64 +1,111 @@
-# Shared workspace (/srv/project)
+# Nosedive — Index Volatility Trading Platform
 
-Everyone in the `devs` group can read/write here.
+Nosedive turns raw Interactive Brokers market data into trustworthy options
+analytics and a trading cockpit for **index options** — today on the EuroStoxx 50
+(SX5E). It captures the option chain at the close, reconstructs an honest
+volatility surface, measures where the market is rich or cheap, lets you compose
+and stress a position, and books it on paper — then tells you whether the P&L
+came from the risk you meant to hold.
 
-**Agents and humans: read [`AGENTS.md`](AGENTS.md) first.** It is the canonical
-guide for working in this workspace. To find where something lives, start at
-[`.agent/map.md`](.agent/map.md), then read the relevant directory's `README.md`.
+The platform is built around one economic idea: **options markets quote
+expectations, and the money is in the measured gap between what is implied and
+what actually realizes** — implied vol vs realized vol, index vol vs the vol of
+its basket, front-month vs back-month, put-side vs call-side. Each gap is a
+premium someone pays for protection, and each can be harvested *if you can measure
+it precisely and verify you were paid by the gap you targeted, not by luck.* The
+differentiator is not order entry — it is **measurement and attribution**.
 
-## Layout
+---
 
-The system is one layered uv-workspace monorepo under `packages/` + `apps/` (the merge
-that unified the original flat `backend/` build with Vincent's monorepo is complete; the
-flat tree is retired). The single gate runs from the repo root:
-`uv run ruff check . && uv run mypy . && uv run lint-imports && uv run pytest -q`.
+## What it does
 
-The gate and the operator entrypoints are encoded as recipes in the root
-`justfile` — `just gate`, `just smoke` (offline end-to-end walk incl. the
-byte-identical-replay check), `just eod [CAL]`, `just backfill`, `just login
-[live|paper]`, `just web-test` — run `just --list` for the full set, or
-`uv tool run --from rust-just just <recipe>` if `just` isn't installed. CI
-(`.github/workflows/gate.yml`) fires the same gate, the offline smoke, and the
-web app's lint+tests on every push and pull request.
+The platform is a pipeline, from raw ticks to attributed P&L:
 
-- `packages/`             The single tree: `core` (`algotrading.core` — config/log/manifest/
-  provenance), `infra` (`algotrading.infra` — the contract seam plus market-data, analytics,
-  risk, QC/validation, the Nautilus-hosted actor, orchestration, observability, replay),
-  `infra-ibkr` (the broker leaf adapter — IBKR is the sole live broker, index-only per ADR 0042),
-  and `strategy`/`execution` (upper layers). See each `packages/<pkg>/README.md`. Layering is
-  enforced by import-linter.
-- `apps/frontend/`        Python BFF + React/Vite web app, wired to the real `infra` seams.
-- `TARGET.md`             The single roadmap and domain authority — what we build, why, in what
-  order. **Read this before touching any analytics code.** `BIG_PICTURE.md` is the system overview.
-- `notebooks/`            Demo pipelines (IBKR), pricing/Greeks, surface fit.
-- `research/`             Research notes and experiments. As-of reproducibility rules apply.
-- `data/`                 Shared datasets (parquet/duckdb). Keep large/secret data out of git.
-- `.agent/`               Agent instruction layer: routing map, conventions, glossary,
-  decisions (ADRs).
-- `tasks/`                `TASKBOARD.md` — claim your work before you start (collision guard).
+1. **Capture** — a self-healing IBKR connection records the index option chain
+   (and its constituents' prices) at the close, exactly as it arrived. The raw
+   record is immutable: every later number can be recomputed from it.
+2. **Market state** — junk quotes are discarded, sensible prices are picked, and
+   everything is lined up by time into a clean, point-in-time snapshot.
+3. **Analytics** — the real math: reconstruct the forward, back out implied
+   volatility, fit the volatility surface, price the options, and compute the
+   Greeks. A quality gate flags any surface the data can't honestly support.
+4. **Signals** — the gaps the strategy book trades: implied vs realized vol, term
+   slope, put–call skew, index-vs-basket dispersion, IV rank.
+5. **Composition, risk & booking** — compose a multi-leg position, see its
+   combined Greeks, shock it against named or custom scenarios, and book it on
+   paper behind a write barrier.
+6. **Attribution & reconciliation** — decompose realized P&L by Greek (a
+   delta/gamma/vega/theta waterfall), and reconcile the book against the broker
+   account.
 
-## Git and secrets
+Two rules make every number trustworthy: **determinism** (same inputs → identical
+outputs) and **provenance** (every value knows which ticks, which code version,
+and which config produced it). Re-running yesterday uses the *same* code path as
+today's live run, so there are no "worked in backtest, broke in live" surprises.
 
-The workspace root is a git repository (the umbrella that version-controls the
-shared instruction layer). Use branches: one per task, merge small and often.
+## The cockpit
 
-Your AI CLIs (`claude`, `codex`) authenticate with YOUR own account — config
-lives in your personal `$HOME`, not here. Don't commit secrets; put per-person
-tokens in your `$HOME`, project config in a local `.env` (gitignored).
+The web app is a four-tab operator cockpit:
 
-**Secret scan.** A pre-commit hook catches credentials before they reach a commit.
-Install it once per checkout:
+- **Données** — the reading page. Scorecards (ATM vol, skew, convexity, realized−
+  implied), the index price chart with its constituents, the 3D volatility surface,
+  one tenor selector driving the put/call smile, the per-strike price structure and
+  the Greeks, and the dispersion strip.
+- **Risque** — compose → see → shock → explain: a position composer, the booked
+  book, on-demand and historical stress scenarios, and the by-Greek attribution
+  waterfall.
+- **Ordres** — the order ticket (paper booking behind a password barrier; live
+  transmission stays disarmed), broker reconciliation, and the backtester.
+- **Operations** — the operator dashboard: system health, run control, and data
+  freshness.
 
+## Quick start
+
+You need **Python 3.12+** with [`uv`](https://docs.astral.sh/uv/), **Node.js 20+**,
+and (for live capture) Interactive Brokers credentials. Analytics and the cockpit
+run on the bundled sample data without any broker login.
+
+```bash
+# 1. Install the Python workspace (creates .venv at the repo root)
+uv sync
+
+# 2. Install the web app's dependencies
+cd apps/frontend/web
+npm install
+
+# 3. Launch the whole stack — API backend + web UI, one command
+./start.sh
 ```
-uv run pre-commit install
+
+Then open **http://127.0.0.1:5173**. `./start.sh status` shows what's running,
+`./start.sh restart` brings it back up fresh, and `./start.sh stop` shuts it down.
+
+To capture a fresh end-of-day close from Interactive Brokers (instead of the
+bundled sample), log in and run the close from the repo root:
+
+```bash
+just login          # headless IBKR gateway login (SMS 2FA)
+just eod            # capture every enabled index for today
 ```
 
-The same scanner runs in CI (`.github/workflows/scan.yml`, `secret-scan` job).
-The baseline of known false-positives (test fixtures, hash digests) lives in
-`.secrets.baseline`. To add a reviewed non-secret to the baseline, run
-`uv run detect-secrets scan --update .secrets.baseline` and commit the updated
-baseline alongside the change.
+## How it's built
 
-CI also runs `pip-audit` on every push to catch dependency advisories (`dep-vuln`
-job), and a grep guard to block the abandoned `pycrypto` package (`pycrypto-guard`
-job, ADR 0031).
+- **Backend** — Python, on top of [Nautilus Trader](https://nautilustrader.io/)
+  for the runtime spine and Interactive Brokers as the sole live broker. Captured
+  data lands in columnar Parquet/DuckDB tables; the pricing, surface and risk
+  engines are pure functions over those tables.
+- **API** — a FastAPI backend-for-frontend that reads the analytics tables and
+  serializes them to JSON; it never writes (only the end-of-day capture does).
+- **Web** — a React + Vite single-page app. Charts use Plotly (3D surface, smile,
+  heatmaps) and TradingView Lightweight Charts (candlesticks).
+
+## Scope
+
+Index options only, EuroStoxx-50-first; Interactive Brokers is the sole live
+broker. Adding or parking an index is configuration, not code.
+
+---
+
+*Internals and the build roadmap live in [`TARGET.md`](TARGET.md) and
+[`BIG_PICTURE.md`](BIG_PICTURE.md); contributor process is in
+[`AGENTS.md`](AGENTS.md).*

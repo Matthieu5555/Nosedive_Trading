@@ -15,7 +15,13 @@ from algotrading.infra.contracts.registry import TableSpec, spec_for_table
 from algotrading.infra.contracts.validation import validate_record
 
 from .compaction import is_compacted_file
-from .errors import AppendOnlyViolation, DuplicateKeyInBatch, VersionedWriteNotAllowed
+from .errors import (
+    AppendOnlyViolation,
+    DuplicateKeyInBatch,
+    StaleRunError,
+    StorageError,
+    VersionedWriteNotAllowed,
+)
 from .partitioning import (
     partition_dir,
     partition_file,
@@ -24,6 +30,7 @@ from .partitioning import (
     trade_date_of,
     underlying_of,
 )
+from .run_ledger import latest_run_id_for
 from .schema import arrow_schema
 from .serialization import from_row, to_row
 
@@ -391,6 +398,15 @@ class ParquetStore:
             return sorted(set(hot_files + cold_files))
         return hot_files
 
+    def _guard_run_id(self, table: str, trade_date: date | None, run_id: str) -> None:
+        if trade_date is None:
+            raise StorageError(
+                f"table {table!r}: run_id={run_id!r} requires a trade_date to resolve against"
+            )
+        latest = latest_run_id_for(self.root, trade_date)
+        if run_id != latest:
+            raise StaleRunError(table, trade_date.isoformat(), run_id, latest)
+
     def read(
         self,
         table: str,
@@ -401,7 +417,27 @@ class ParquetStore:
         provider: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
+        run_id: str | None = None,
     ) -> list[Any]:
+        """Read rows from a table.
+
+        ``run_id`` addresses a specific capture (the receipt identity emitted by
+        the pipeline, an ISO-8601-style id) within a ``trade_date``. It is purely
+        additive:
+
+        * ``run_id=None`` (the default, and every existing caller) resolves to the
+          LATEST capture for the date — the data physically on disk. Nothing about
+          the existing behaviour or the ``trade_date`` partition contract changes.
+        * a non-``None`` ``run_id`` is honoured only when it is the capture
+          currently persisted for that ``trade_date`` (looked up in the run ledger
+          under the store root). Because the store overwrites a day's data in place
+          on re-capture, an older ``run_id`` is a valid *identity* but its rows are
+          gone; the store raises :class:`StaleRunError` rather than silently
+          returning the latest under the wrong identity. ``run_id`` requires
+          ``trade_date`` (there is nothing to resolve it against otherwise).
+        """
+        if run_id is not None:
+            self._guard_run_id(table, trade_date, run_id)
         spec = spec_for_table(table)
         files = self._partition_files(
             table, trade_date, underlying, version, provider, start_date, end_date

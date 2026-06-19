@@ -9,6 +9,7 @@ from .errors import (
     AppendOnlyViolation,
     DuplicateKeyInBatch,
     SchemaCompatibilityError,
+    StaleRunError,
     StorageError,
     VersionedWriteNotAllowed,
 )
@@ -20,6 +21,7 @@ from .profiles import (
     build_profile_version,
     platform_config_from_profile,
 )
+from .run_ledger import latest_run_id_for
 from .runs import RunRecord, RunRegistry, RunStatus
 from .schema import arrow_schema
 from .serialization import from_row, to_row
@@ -30,8 +32,10 @@ __all__ = [
     "DuplicateKeyInBatch",
     "ParquetStore",
     "SchemaCompatibilityError",
+    "StaleRunError",
     "StorageError",
     "VersionedWriteNotAllowed",
+    "latest_run_id_for",
     "arrow_schema",
     "from_row",
     "primary_key_of",

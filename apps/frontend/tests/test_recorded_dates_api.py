@@ -90,6 +90,74 @@ def test_a_re_fetched_date_overwrites_to_one_canonical_close(
     assert on_date[0]["qc"] == "pass"
 
 
+def test_recorded_dates_emits_the_capture_run_id_for_each_day(
+    ledger_client: TestClient, seed: ModuleType
+) -> None:
+    # Additive: each completed day now carries the capture IDENTITY (run_id) so the
+    # read path can address the exact capture, not just the date. The seeded ledger
+    # banks one run per day, run-<date>.
+    available = ledger_client.get(
+        "/api/recorded-dates", params={"index": seed.INDEX}
+    ).json()["available"]
+    by_date = {e["date"]: e for e in available}
+    entry = by_date[seed.COMPLETE_DATE_2.isoformat()]
+    assert entry["run_id"] == f"run-{seed.COMPLETE_DATE_2.isoformat()}"
+    assert entry["runs"] == [
+        {"run_id": entry["run_id"], "recorded_ts": entry["recorded_ts"]}
+    ]
+
+
+def test_recorded_dates_lists_every_same_day_capture_newest_first(
+    tmp_path: Path, seed: ModuleType
+) -> None:
+    # Two same-day re-fetches: the date stays ONE canonical close, but `runs` now
+    # exposes both capture identities (newest first) so the frontend can offer a
+    # real per-capture selector instead of a date-only URL the cache never refetches.
+    root = tmp_path / "data"
+    store = ParquetStore(root)
+    store.write(
+        "projected_option_analytics",
+        [
+            seed.analytics_cell(
+                delta_band="30dp",
+                target_delta=seed.AN_PUT_DELTA,
+                log_moneyness=seed.AN_PUT_LOGM,
+                implied_vol=seed.AN_PUT_IV,
+                delta=seed.AN_PUT_DELTA,
+                dollar_delta=seed.AN_PUT_DOLLAR_DELTA,
+            )
+        ],
+    )
+    ts_a = datetime(2026, 5, 29, 8, 24, tzinfo=UTC)
+    ts_b = datetime(2026, 5, 29, 13, 22, tzinfo=UTC)
+    for landed, rid in ((ts_a, "run-early"), (ts_b, "run-late")):
+        for stage in EOD_STAGES:
+            record_stage(
+                root,
+                StageRun(
+                    trade_date=seed.TRADE_DATE,
+                    stage=stage,
+                    outcome=OUTCOME_OK,
+                    run_id=rid,
+                    recorded_ts=landed,
+                ),
+            )
+    ctx = AppContext(
+        store_root=root,
+        configs_dir=tmp_path / "configs",
+        store=ParquetStore(root),
+        default_underlying=seed.UNDERLYING,
+    )
+    with TestClient(create_app(ctx)) as client:
+        available = client.get(
+            "/api/recorded-dates", params={"index": seed.INDEX}
+        ).json()["available"]
+
+    entry = next(e for e in available if e["date"] == seed.TRADE_DATE.isoformat())
+    assert entry["run_id"] == "run-late"  # latest capture is the canonical one
+    assert [r["run_id"] for r in entry["runs"]] == ["run-late", "run-early"]
+
+
 def test_recorded_dates_empty_ledger_is_count_zero(
     seeded_client: TestClient, seed: ModuleType
 ) -> None:

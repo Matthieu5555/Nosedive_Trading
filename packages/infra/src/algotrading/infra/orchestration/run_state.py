@@ -134,6 +134,45 @@ def backlog_stages(root: Path, trade_date: date) -> list[str]:
     return [stage for stage in EOD_STAGES if stage not in done]
 
 
+@dataclass(frozen=True, slots=True)
+class CaptureRun:
+    """One addressable capture for a ``trade_date``: its ``run_id`` (the receipt
+    identity) and the latest stage timestamp banked for that run."""
+
+    run_id: str
+    recorded_ts: datetime
+
+
+def runs_for(root: Path, trade_date: date) -> list[CaptureRun]:
+    """Every distinct capture banked for ``trade_date``, newest first.
+
+    Each capture is keyed by its ``run_id`` (the receipt identity emitted by the
+    pipeline as ``correlation_id``). Two same-day re-fetches are two ``CaptureRun``s
+    here even though the parquet store keeps only the latest run's *data*
+    (overwrite-last-wins). This is the identity that lets a reader address a
+    specific capture; resolving it to data is the caller's job (see
+    ``ParquetStore.read(run_id=...)``). ``recorded_ts`` is the latest stage time
+    for the run.
+    """
+    latest_ts: dict[str, datetime] = {}
+    for run in read_stage_runs(root):
+        if run.trade_date != trade_date:
+            continue
+        current = latest_ts.get(run.run_id)
+        if current is None or run.recorded_ts > current:
+            latest_ts[run.run_id] = run.recorded_ts
+    runs = [CaptureRun(run_id=rid, recorded_ts=ts) for rid, ts in latest_ts.items()]
+    runs.sort(key=lambda r: r.recorded_ts, reverse=True)
+    return runs
+
+
+def latest_run_id(root: Path, trade_date: date) -> str | None:
+    """The ``run_id`` of the most recent capture for ``trade_date`` (the one whose
+    data the store currently serves), or ``None`` if no run is banked."""
+    runs = runs_for(root, trade_date)
+    return runs[0].run_id if runs else None
+
+
 def last_healthy_trade_date(root: Path) -> date | None:
     runs = read_stage_runs(root)
     dates = sorted({run.trade_date for run in runs}, reverse=True)

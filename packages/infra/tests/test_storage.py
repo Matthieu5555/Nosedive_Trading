@@ -469,3 +469,100 @@ def test_live_only_read_excludes_restatement_via_date_range_direct(tmp_path: Pat
         f"{[r.forward_price for r in result]}"
     )
     assert result[0].forward_price == 5050.0
+
+
+# ── run_id: addressing a capture by its receipt identity (additive, non-breaking) ───────────────
+
+
+def _bank_run(store: ParquetStore, run_id: str, recorded_ts: datetime) -> None:
+    """Record a full set of EOD stages for one capture into the run ledger that
+    lives under the store root (the same JSONL the storage layer reads)."""
+    from algotrading.infra.orchestration.run_state import (
+        EOD_STAGES,
+        OUTCOME_OK,
+        StageRun,
+        record_stage,
+    )
+
+    for stage in EOD_STAGES:
+        record_stage(
+            store.root,
+            StageRun(
+                trade_date=_TD,
+                stage=stage,
+                outcome=OUTCOME_OK,
+                run_id=run_id,
+                recorded_ts=recorded_ts,
+            ),
+        )
+
+
+def test_run_id_none_reads_the_latest_capture_unchanged(tmp_path: Path) -> None:
+    # The default (every existing caller) is untouched: no run_id resolves to the
+    # latest data on disk, exactly as a date-only read always did.
+    store = _store(tmp_path)
+    store.write("forward_curve", [_forward(5050.0)])
+    _bank_run(store, "run-A", datetime(2026, 6, 5, 9, 54, tzinfo=UTC))
+    store.write("forward_curve", [_forward(5060.0)])  # same-day re-capture overwrites in place
+    _bank_run(store, "run-B", datetime(2026, 6, 5, 13, 22, tzinfo=UTC))
+
+    latest = store.read("forward_curve", trade_date=_TD)
+    assert len(latest) == 1
+    assert latest[0].forward_price == 5060.0
+
+
+def test_run_id_latest_resolves_to_the_persisted_data(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.write("forward_curve", [_forward(5050.0)])
+    _bank_run(store, "run-A", datetime(2026, 6, 5, 9, 54, tzinfo=UTC))
+    store.write("forward_curve", [_forward(5060.0)])
+    _bank_run(store, "run-B", datetime(2026, 6, 5, 13, 22, tzinfo=UTC))
+
+    rows = store.read("forward_curve", trade_date=_TD, run_id="run-B")
+    assert len(rows) == 1
+    assert rows[0].forward_price == 5060.0
+
+
+def test_run_id_for_a_stale_capture_raises_rather_than_returning_the_wrong_one(
+    tmp_path: Path,
+) -> None:
+    # run-A's data was overwritten by run-B. run-A is still a valid IDENTITY (it is
+    # in the ledger) but its rows are gone, so the store refuses to serve run-B's
+    # data under run-A's name.
+    from algotrading.infra.storage import StaleRunError
+
+    store = _store(tmp_path)
+    store.write("forward_curve", [_forward(5050.0)])
+    _bank_run(store, "run-A", datetime(2026, 6, 5, 9, 54, tzinfo=UTC))
+    store.write("forward_curve", [_forward(5060.0)])
+    _bank_run(store, "run-B", datetime(2026, 6, 5, 13, 22, tzinfo=UTC))
+
+    with pytest.raises(StaleRunError) as excinfo:
+        store.read("forward_curve", trade_date=_TD, run_id="run-A")
+    assert excinfo.value.run_id == "run-A"
+    assert excinfo.value.latest == "run-B"
+
+
+def test_run_id_without_a_trade_date_is_refused(tmp_path: Path) -> None:
+    from algotrading.infra.storage import StorageError
+
+    store = _store(tmp_path)
+    store.write("forward_curve", [_forward(5050.0)])
+    _bank_run(store, "run-A", datetime(2026, 6, 5, 9, 54, tzinfo=UTC))
+    with pytest.raises(StorageError):
+        store.read("forward_curve", run_id="run-A")
+
+
+def test_ledger_resolver_reports_runs_newest_first(tmp_path: Path) -> None:
+    from algotrading.infra.orchestration.run_state import latest_run_id, runs_for
+    from algotrading.infra.storage import latest_run_id_for
+
+    store = _store(tmp_path)
+    _bank_run(store, "run-A", datetime(2026, 6, 5, 9, 54, tzinfo=UTC))
+    _bank_run(store, "run-B", datetime(2026, 6, 5, 13, 22, tzinfo=UTC))
+
+    runs = runs_for(store.root, _TD)
+    assert [r.run_id for r in runs] == ["run-B", "run-A"]
+    assert latest_run_id(store.root, _TD) == "run-B"
+    assert latest_run_id_for(store.root, _TD) == "run-B"
+    assert latest_run_id_for(store.root, date(1999, 1, 1)) is None

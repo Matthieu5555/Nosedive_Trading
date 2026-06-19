@@ -87,7 +87,7 @@ the spine.
 ## S1 — the dispersion strategy (the first strategy on the spine)
 
 `s1_dispersion.py` is the flagship strategy object (TARGET §3 S1) — the first thing to
-implement the `Strategy` protocol for real, and the first consumer of the ADR-0048 per-side
+implement the `Strategy` protocol for real, and the first consumer of the per-side
 vol surfaces. It harvests the **correlation premium**: when index ATM IV is rich relative to
 the constituent ATM IVs on the same tenor (high implied correlation ρ̄), a book that is long
 single-name vol and short the index monetises the gap as the names decorrelate.
@@ -97,12 +97,12 @@ single-name vol and short the index monetises the gap as the names decorrelate.
   never `.py` literals) and a `DispersionMarketData` (the as-of I/O seam). Entry fires when ρ̄ ≥
   the threshold; `construct` builds a long ATM straddle on each **point-in-time top-N
   constituent** (resolved through `top_n_by_weight` — never a hand-set list), routing the
-  **call leg to the call wing and the put leg to the put wing** (ADR 0048), plus a **synthetic
+  **call leg to the call wing and the put leg to the put wing**, plus a **synthetic
   short-forward index leg-pair** (short ATM call + long ATM put, `combined` wing) sized to
   flatten the straddles' net dollar delta. A negligible hedge is omitted; an unpriceable leg is
   refused (`DispersionConstructionError`), never silently dropped. Exit fires the §3 kill when
   net dollar-vega collapses (the long-vol thesis gone); `rebalance` re-flattens net delta by
-delegating to the shared `decide_delta_hedge` band rule (S1 is delta-flat, so its band targets 0).
+  delegating to the shared `decide_delta_hedge` band rule (S1 is delta-flat, so its band targets 0).
 - **`StoreBackedDispersionData`** (`dispersion_data.py`) — the store-backed implementor of
   `DispersionMarketData` for paper/live: it composes the as-of membership resolver and the pure
   `basket_risk` over a `trade_date`-narrowed grid read; it adds no risk math. Build a ready-to-run
@@ -137,7 +137,7 @@ that sells one ~25Δ, ~30-day index put per day collects that premium as theta.
     `ENTER` only when the premium is on offer (`decide_entry`: index `RV − IV ≤ max_rv_minus_iv`,
     i.e. implied richer than realized) **and** the line is under capacity (`line_at_capacity`).
     `construct` then emits the one short put to add, at the steered `put_delta_band` / `put_tenor`,
-    routed to the **put wing** (ADR 0048). `decide_entry` (the protocol method the §6 harness
+    routed to the **put wing**. `decide_entry` (the protocol method the §6 harness
     calls) is the signal half alone, so it stays pure of position state.
   - **Capacity** — `line_at_capacity(open_contracts)` is the pure cap rule (course: 30 open,
     rolling so one expires daily); at the cap the line stops adding even with the signal open.
@@ -170,7 +170,7 @@ with theta.
   never `.py` literals) and a `GammaMarketData` (the as-of I/O seam). Entry fires when the
   **cheapest** name's **IV rank** is at or below the threshold — the course ranking's "low IV
   expected to rise" (the opposite sense to S1's "ρ̄ rich → high triggers"); `construct` builds a
-  **long ATM call** on that single name (routed to the call wing, ADR 0048) plus a **short stock
+  **long ATM call** on that single name (routed to the call wing) plus a **short stock
   leg** sized to flatten the call's net dollar delta (Δ=0). A negligible hedge is omitted; an
   unresolvable cheap name / call delta / spot is refused (`GammaConstructionError`), never a
   naked directional call. Exit fires the §3 kill when **net dollar-gamma collapses** (the
@@ -340,11 +340,11 @@ no-look-ahead guarantee by a recording-seam audit (not a claim).
 
 ## Known limitations / out of scope
 
-- **S1, S2 and S3 live here; S4/S5 do not yet.** The spine
+- **S1, S2, S3 and S5 live here; S4 does not yet.** The spine
   (`contract`/`signals`/`strategy`/`harness`) is strategy-agnostic; `s1_dispersion.py` +
-  `dispersion_data.py` (S1), `s2_put_line.py` (S2, config-only), and `s3_gamma.py` +
-  `gamma_data.py` (S3) are the concrete strategies so far. S4/S5's construction/entry/exit rules
-  are still owned by their S-tasks. The research backtester (`backtest/`) replays any of them; its
+  `dispersion_data.py` (S1), `s2_put_line.py` (S2, config-only), `s3_gamma.py` +
+  `gamma_data.py` (S3), and `s5_calendar_carry.py` (S5) are the concrete strategies so far. S4's
+  construction/entry/exit rules are still owned by its S-task. The research backtester (`backtest/`) replays any of them; its
   first target is S2.
 - **Backtester now covers research *and* production-shadow** — the store-backed data adapter
   (`StoreBackedBacktestData`), the explicit `TransactionCostModel`, the `reconcile_shadow`

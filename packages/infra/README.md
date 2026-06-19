@@ -22,7 +22,7 @@ read that for the detail.
 - **`universe/`** — resolve broker chains → canonical `InstrumentMaster` rows, the
   `ChainSelection` selection policy, the read-side `UniverseService`.
 - **`collectors/`** — the one push `RawCollector` that normalizes each broker tick into
-  the canonical `contracts.RawMarketEvent` and persists it idempotently (ADR 0027).
+  the canonical `contracts.RawMarketEvent` and persists it idempotently.
 
 ## Analytics core (pure functions)
 
@@ -31,12 +31,13 @@ events to a quality-labeled market state, the parity forward, the IV solve, the 
 surface fit with no-arb checks, and Black-76/American pricing + Greeks. All pure — no I/O,
 no clock, no RNG; everything is injected and stamped. Read `iv/README.md` and
 `surfaces/README.md` before touching them. `utils/` holds shared
-numeric helpers.
+numeric helpers. `rates/` ingests the external per-currency risk-rate curve `r(T)`
+that dollar-Rho is bumped against, kept distinct from the parity-implied pricing rate.
 
 ## Risk
 
 - **`risk/`** — portfolio Greeks, monetized (dollar) sensitivities, aggregation,
-  broker reconciliation, and the versioned scenario grid (ADR 0006). It never prices — it
+  broker reconciliation, and the versioned scenario grid. It never prices — it
   calls the frozen pricer.
 
 ## Signals
@@ -49,27 +50,27 @@ numeric helpers.
 
 ## QC and validation
 
-- **`qc/`** — the ten named checks + anomaly detection; a failure names the exact failing
+- **`qc/`** — the named static checks plus anomaly detection; a failure names the exact failing
   object (maturity / quote / underlying / solver).
 - **`validation/`** — the anomaly/triage plane; qc/validation/anomaly all feed one
-  persisted `triage_records` table (ADR 0010).
+  persisted `triage_records` table.
 
 ## The operable layer
 
 - **`actor/`** — the thin Nautilus `Actor` that drives the pure `run_analytics` over a
-  `RawMarketEvent` stream, live and replay, on Nautilus's clock (ADR 0023/0025). The
+  `RawMarketEvent` stream, live and replay, on Nautilus's clock. The
   byte-identical-replay invariant lives here.
 - **`orchestration/`** — jobs (`collect_live`, `build_surface`, the EOD `pipeline`),
-  `qc_job`, the five metrics, four alerts, the dashboard, the run-state ledger, and the
+  `qc_job`, the five metrics, seven alerts, the dashboard, the run-state ledger, and the
   `reconstruction/` subpackage (replay/backfill over the same compute path).
 - **`observability/`** — run-lineage over the `RunRegistry`.
 - **`storage/`** — `ParquetStore` and the tiered `StorageRepository` backends (SQLite /
-  Postgres run registry) behind the M0 port (ADR 0015).
+  Postgres run registry) behind the M0 port.
 
-## Broker leaves
+## Broker leaf
 
-The per-broker adapters live in sibling packages, not here:
-`packages/infra-{ibkr,saxo,deribit}`. They import `infra` (+ `core`) and emit
+The per-broker adapter lives in a sibling package, not here: `packages/infra-ibkr`
+(IBKR is the sole live broker). It imports `infra` (+ `core`) and emits
 `collectors.BrokerTick` onto the unified seam.
 
 ## Verify

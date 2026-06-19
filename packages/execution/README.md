@@ -30,7 +30,7 @@ The book is accounted **from fills, never from intentions**. The pieces:
   where its book came from; this is the source `risk.positions.hypothetical_positions` flagged
   as "the seam a live broker-positions source will later mirror".
 
-## Fill concretization (ADR 0043) — grid cell → concrete priced fill
+## Fill concretization — grid cell → concrete priced fill
 
 `concretization.py` is the transform WS 3A deferred and the booking commit consumes: from an
 abstract grid-cell [order-ticket leg](../infra/src/algotrading/infra/orders/README.md)
@@ -48,7 +48,7 @@ abstract grid-cell [order-ticket leg](../infra/src/algotrading/infra/orders/READ
   `option_right_for_band` (the public twin of `surfaces.projection._option_right_for_band`,
   pinned equal by a test). The `(strike, right)` is then bound to a real listed contract off the
   chain at the **soonest listed expiry on/after `as_of`** — the same `contract_key` a live
-  broker-send would bind (ADR 0043: no re-keying at the live boundary).
+  broker-send would bind(no re-keying at the live boundary).
 - **Paper mark (the pinned rule).** `fill_price` is the **mid of the as-of `MarketStateSnapshot`**
   (`(bid + ask) / 2`) for the resolved contract when a finite two-sided positive quote exists,
   else the analytics row's model `price`. The rule that set it is recorded on
@@ -87,7 +87,7 @@ store above ingests — but only when the gate verifies. Fail-closed by construc
   one immutable, provenance-stamped record; no mutate/delete verb; duplicate `audit_id` rejected;
   the stamp is order-independent so a replay of the decision sequence is reorder-stable (§6).
 - **The concretization seam** (`booking/concretization_seam.py`) — `ResolvedLeg` + the
-  `LegResolver` protocol the commit calls (ADR 0043: a booked fill is a concrete contract
+  `LegResolver` protocol the commit calls(a booked fill is a concrete contract
   resolved as-of the booking date). The pure resolver itself is owned by the
   `execution-fill-concretization` task (built in parallel, not yet merged); this module is the
   commit's *interface view* of it, so the commit depends on the shape, not the
@@ -109,8 +109,6 @@ The BFF exposes this as `POST /api/booking/commit` (the ticket-preview body plus
 the React Ticket panel adds the password prompt + **Book (paper)** affordance. The 3B sign-and-send
 affordance stays disabled and labelled. **No broker bytes leave the process.**
 
-## Read side — the fills ledger and the booked book over HTTP
-
 ## The owner-gated sign-and-send path (`transmit/`, 3B — gated OFF by default)
 
 The one seam that could ever move real money — and by default it cannot. A built
@@ -130,8 +128,8 @@ named blocked decision. This lands the page-3 scaffold; transmission ships **off
 - **The owner gate** (`transmit/gate.py`) — one flag, `EXECUTION_TRANSMIT_ENABLED`, read from the
   environment (`$HOME/.env`). Absent/blank → `absent` (fail-closed); unrecognized →
   `GateUnparseable` (fail-closed); `paper`/`live` synonyms map explicitly. Live additionally
-  requires `EXECUTION_SECURITY_REVIEW=green` — the owner records this only after the
-  [security review](../../tasks/archive/platform-security-review-2026-06-17.md) passes; it is the single source of
+  requires `EXECUTION_SECURITY_REVIEW=green` — the owner records this only after a recorded
+  platform security review passes; it is the single source of
   truth for the recorded-green handshake, not a second one.
 - **The decision function** (`transmit/decision.py`) — one pure
   `decide_transmission(SignedTicket, gate, now) -> TransmissionDecision`. It returns `SENT_LIVE`
@@ -146,7 +144,7 @@ named blocked decision. This lands the page-3 scaffold; transmission ships **off
   path and wired with a broker submitter, and it submits only on `SENT_LIVE`. The broker submit
   verb is a **new, separate** method on the IBKR leaf
   (`infra_ibkr.connectivity.CpRestOrderSubmit`), never folded into the read-only ingestion
-  transport (ADR 0024 §4 invariant preserved and tested).
+  transport (read-only invariant preserved and tested).
 - **The transmit audit log** (`transmit/audit.py`) — every event (gate evaluated, decision,
   transmit attempt) is one immutable, provenance-stamped `TransmitAudit` record in an append-only
   log (`InMemory…` / `Jsonl…`); no mutate/delete; duplicate id rejected; `replay` is

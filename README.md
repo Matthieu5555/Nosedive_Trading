@@ -45,19 +45,22 @@ today's live run, so there are no "worked in backtest, broke in live" surprises.
 
 ## The cockpit
 
-The web app is a four-tab operator cockpit:
+The web app is a six-tab operator cockpit, in daily-operator order:
 
-- **Données** — the reading page. Scorecards (ATM vol, skew, convexity, realized−
+- **Operations** — the landing page: system health, run control, and data freshness.
+- **Market** — the reading page. Scorecards (ATM vol, skew, convexity, realized−
   implied), the index price chart with its constituents, the 3D volatility surface,
   one tenor selector driving the put/call smile, the per-strike price structure and
   the Greeks, and the dispersion strip.
-- **Risque** — compose → see → shock → explain: a position composer, the booked
-  book, on-demand and historical stress scenarios, and the by-Greek attribution
+- **Positions** — the booked book accounted from fills: per-leg and book Greeks, and
+  the broker reconciliation.
+- **Simulate** — compose → shock → explain: stress the book you hold or a hypothetical
+  basket you compose, over one shared stress engine, plus the by-Greek attribution
   waterfall.
-- **Ordres** — the order ticket (paper booking behind a password barrier; live
-  transmission stays disarmed), broker reconciliation, and the backtester.
-- **Operations** — the operator dashboard: system health, run control, and data
-  freshness.
+- **Strategy** — the order ticket (paper booking behind a password barrier; live
+  transmission stays disarmed) and the store-backed backtester.
+- **Signals** — the raw signal layer: implied vs realized vol, IV rank, term slope, and
+  dispersion (ρ̄).
 
 ## Quick start
 

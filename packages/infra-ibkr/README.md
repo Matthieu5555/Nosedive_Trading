@@ -23,19 +23,17 @@ session just went idle — `session.reauthenticate()` revives it with **no SMS /
 "log in" blocker; the browser login is `scripts/ibkr_gateway_login.py`. The session lifecycle
 itself lives in `connectivity/cp_rest_session.py`.
 
-## Two ingestion paths, one `RawMarketEvent` (ADR 0023/0024/0025)
+## Two ingestion paths, one `RawMarketEvent`
 
 IBKR has **two** market-data paths; both normalize into our immutable `RawMarketEvent` (the system
-of record — ADR 0025), so the actor host replays either identically. The path is chosen by config
-(`select_ibkr_transport`); **REST is preferred**, Nautilus-TWS is the manual-flip fallback (ADR
-0024 §2, no automatic failover). Both build events through the shared `collectors/market_fields.py`
+of record), so the actor host replays either identically. The path is chosen by config
+(`select_ibkr_transport`); **REST is preferred**, Nautilus-TWS is the manual-flip fallback (no automatic failover). Both build events through the shared `collectors/market_fields.py`
 helper, so they emit **byte-identical** rows for the same observation — the equivalence bar proven
 in `tests/test_cp_rest_equivalence.py`.
 
-### Client Portal REST/WebSocket (preferred — the course requirement, ADR 0024)
+### Client Portal REST/WebSocket (preferred — the course requirement)
 
-A custom adapter over IBKR's Client Portal Web API (the Saxo/Deribit pattern — `httpx`/`websockets`,
-real deps):
+A custom adapter over IBKR's Client Portal Web API (`httpx`/`websockets`, real deps):
 
 - `connectivity/cp_rest_transport.py` — `CpRestTransport`: REST verbs + the WS URL over the local
   CP Gateway (`https://localhost:5000`, self-signed cert). `_client` injectable for tests. The
@@ -44,11 +42,11 @@ real deps):
   `CpRestTransportError` carrying `status_code` directly (no `__cause__` reach). The
   transport-seam protocol (`SupportsRestGet` / `SupportsRest`) every collector types its injected
   transport with is re-exported here; its one definition lives in
-  `algotrading.infra.collectors.transport_seam` (audit M40, shared with the Saxo leaf).
+  `algotrading.infra.collectors.transport_seam` (audit M40).
 - `connectivity/cp_rest_order_submit.py` — `CpRestOrderSubmit`: the **separate, gated order-submit
   verb** (`submit` POSTs `/iserver/account/{id}/orders`). It is a *new, explicit* class, deliberately
   **not** a method on the read-only ingestion transport or the market-data adapter — folding order
-  submission into the read path would break the ADR 0024 §4 read-only invariant. Reached only by the
+  submission into the read path would break the read-only invariant. Reached only by the
   3B execution send path (`algotrading.execution.transmit`) behind its owner gate; nothing wires it
   by default (`test_cp_rest_order_submit.py` pins both the order POST and that the ingestion adapter
   still never touches an order endpoint).
@@ -75,7 +73,7 @@ real deps):
   **Read-only** — only `/iserver/marketdata/*` is ever touched, never an order endpoint (asserted
   in `test_cp_rest_adapter.py`).
 
-### Historical daily-OHLC backfill (ADR 0031) — unattended, OAuth 1.0a
+### Historical daily-OHLC backfill — unattended, OAuth 1.0a
 
 The history path the live snapshot path lacks: years of underlying daily OHLC into the immutable,
 provider-partitioned `DailyBar` table (WS 1C, Part C). Runs unattended over the hosted CP Web API
@@ -89,7 +87,7 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   clock/nonce read (both injected) → a hand-computed known-answer vector pins it
   (`test_cp_rest_oauth.py`). A missing/expired token raises a labeled `CpOAuthError`.
 - `connectivity/cp_rest_lst.py` — **Live Session Token acquisition** on **pycryptodome** (the half
-  the signer leaves out, ADR 0031 §2): the RSA-SHA256-signed `oauth/request_token`, the
+  the signer leaves out): the RSA-SHA256-signed `oauth/request_token`, the
   Diffie–Hellman exchange (`oauth/live_session_token`), and the LST derivation
   (`K = B^a mod p`; LST = base64(HMAC-SHA1(K, prepend))), validated against IBKR's returned
   signature. `build_signed_cp_rest_transport` is the **production entry point**: it runs the
@@ -100,7 +98,7 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   (`test_cp_rest_lst_production.py`). The network is never opened in pytest.
 - `connectivity/cp_rest_transport.py` — extended with an optional `oauth_signer`: when set, every
   request carries the `Authorization: OAuth …` header (the hosted-endpoint path); left `None` it is
-  the unchanged ADR 0024 local-Gateway cookie path.
+  the unchanged local-Gateway cookie path.
 - `connectivity/cp_rest_session.py` — extended with the brokerage-session open: `open_brokerage_
   session` (POST `ssodh/init`) and `wait_until_established` — blocks (injected sleep, no real wait)
   until the session reports `established: true`, raising `SessionNotEstablishedError` otherwise, so
@@ -109,8 +107,7 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   payload → `DailyBar` rows; each bar's `trade_date` is read from its **own** epoch-ms timestamp
   (no look-ahead). Malformed rows (`high < low`, close out of range, negative volume, NaN, missing
   field) are rejected with a labeled error at the normalize door.
-- `collectors/cp_rest_history.py` — `CpRestHistoryCollector`: fetch + normalize + persist, hardened
-  per ADR 0031 §5 — established-gated, warmup call, 5-concurrent cap, exponential-with-cap retry
+- `collectors/cp_rest_history.py` — `CpRestHistoryCollector`: fetch + normalize + persist, hardened — established-gated, warmup call, 5-concurrent cap, exponential-with-cap retry
   around maintenance windows, and **resumable** (`backfill` re-fetches only the missing tail;
   idempotent on `(provider, underlying, trade_date)`). **Read-only** — only
   `/iserver/marketdata/history`, never an order endpoint (`test_cp_rest_history.py`). Use a
@@ -122,7 +119,7 @@ with **in-house OAuth 1.0a** (no TWS/IB Gateway, no daily interactive login).
   Secrets (consumer key/secret, the Live Session Token) stay in `.env`, never here (C7
   discipline).
 
-### Live EOD close capture — `collect_live` (WS 1C, ADR 0024/0031)
+### Live EOD close capture — `collect_live` (WS 1C)
 
 The source that closes the broker→raw-event seam: the EOD runner (`algotrading.infra`, a layer
 *below* this one) exposes a transport-agnostic `BasketSource` and a `basket_source` parameter on
@@ -159,7 +156,7 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
     (`httpx.Client` is thread-safe) instead of strictly sequentially — a latency-bound walk (each
     call is ~all network wait) that, serial, smears a "close" across 30–60 min on the full basket.
     The pool width is **typed config** (`StrikeSelectionConfig.discovery_pool_size`, default 6,
-    `universe.yaml` / ADR 0028 — never a `.py` literal); a width of 1 is the sequential walk. The
+    `universe.yaml` — never a `.py` literal); a width of 1 is the sequential walk. The
     discovery calls are independent and the assembled chain is order-independent (sorted-set
     expirations/strikes, a token-keyed conid dict), so the concurrent walk is **byte-identical** to
     the sequential one — the same calls, faster, never fewer (the strike window is untouched: an
@@ -200,7 +197,7 @@ lives only in the `scripts/eod_run.py` shim, which is outside the root gate.
   fire); the N constituents then capture **concurrently**, not one after another. The lever is one
   shared bounded budget: the injected transport is wrapped once in a single `threading.BoundedSemaphore`
   (`connectivity.cp_rest_transport.bounded_transport`) of width `StrikeSelectionConfig.capture_pool_size`
-  (typed config, `universe.yaml` / ADR 0028, default 6), and **every** gateway `.get` — the spine, the
+  (typed config, `universe.yaml`, default 6), and **every** gateway `.get` — the spine, the
   per-name conid resolution, and each name's within-underlying `/secdef/info` walk — draws a permit from
   it. So total in-flight gateway calls are bounded by that one number regardless of how the work
   decomposes: `discovery_pool_size` **composes into** the budget (shares its permits), it is **never
@@ -275,7 +272,7 @@ transport.
   orders, persist, or run recon — it hands back the typed snapshot. Lives in CI against a fake
   transport; live bring-up is a smoke run, not pytest.
 
-### Nautilus TWS (fallback, ADR 0025)
+### Nautilus TWS (fallback)
 
 - `connectivity/nautilus_ibkr.py` — `build_data_client_config(...)`: the Nautilus
   `InteractiveBrokersDataClientConfig`, import-guarded on the `ibkr` extra
@@ -306,10 +303,9 @@ The gate is **broker-free**: no live CP Gateway, no TWS Gateway, no live socket,
 ## Superseded (deleted)
 
 The hand-rolled `ib_async` modules (`connectivity/ibkr_transport.py`,
-`collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored per ADR 0022) were
-superseded by the two live transports (CP-REST + Nautilus-TWS, ADR 0023/0024) and have been
+`collectors/ibkr_adapter.py`, `collectors/ibkr_discovery.py`, vendored) were
+superseded by the two live transports (CP-REST + Nautilus-TWS) and have been
 **deleted** along with their `importorskip("ib_async")` tests (2026-06 maintainability audit,
-M21). The cross-broker shape test (`infra-deribit/tests/test_broker_agnostic.py`) now exercises
-IBKR through the SDK-free `snapshot_to_events`, so it runs unconditionally in the gate. Real
-captured samples for the gate's SDK-free replay test:
-`samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.
+M21). The SDK-free replay test (`tests/test_real_sample_reconstruct.py`) exercises
+IBKR through `snapshot_to_events`, so it runs unconditionally in the gate, against real
+captured samples: `samples/{spy_real_2026-06-04,asml_real_2026-06-05}.json`.

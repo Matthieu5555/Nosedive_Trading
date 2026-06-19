@@ -11,8 +11,7 @@ The BFF is the only place infra meets HTTP. Its routers read the real
 `surfaces`/`risk` engines, the as-of `universe.members` resolver, the `run_state` ledger,
 and `orchestration.build_dashboard` — and serialize the result to JSON-primitive payloads.
 No business logic lives in the routers; they call infra and serialize, and surface errors
-as typed payloads rather than 500s. The store opens read-only — only the EOD cron writes
-(ADR 0034 §1). The web app is the only consumer above this layer.
+as typed payloads rather than 500s. The store opens read-only — only the EOD cron writes. The web app is the only consumer above this layer.
 
 Run the BFF:
 
@@ -64,29 +63,32 @@ guarantee the surface is never a silent blank.
 
 ## Pages
 
-Three top-level onglets over `react-router`, wrapped in the shared top-bar shell: **Données →
-Risque → Ordres** (`frontend-3onglets-target-ux.md`, owner-locked). Each onglet is one row in
-`src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in `src/App.tsx`; the nav and the route
-table both render from `ROUTES`. **Operations** is a secondary utility (a quiet topbar link to
-`/operations`), not a top-level onglet. The 7-tab era collapsed here: Risque absorbs Basket + Risk
-Scenarios + Positions; Ordres absorbs Orders + Strategy; Signals was dropped (its content lives in
-the Données scorecards + ρ̄ strip). Legacy paths (`/market`, `/basket`, `/risk`, `/positions`,
-`/orders`, `/strategy`, `/signals`) redirect to their new home.
+Six top-level tabs over `react-router`, wrapped in the shared top-bar shell, in
+daily-operator order: **Operations → Market → Positions → Simulate → Strategy → Signals**.
+Each tab is one row in `src/routes.ts` (`ROUTES`) and one entry in the `PAGES` map in
+`src/App.tsx`; the nav and the route table both render from `ROUTES`. Operations owns the
+index route `/` so the app opens on system status. The earlier French 3-onglet era
+(Données / Risque / Ordres) collapsed: its `/risque` and `/ordres` paths now redirect to
+`/simulate` and `/strategy`.
 
-- **Données** (`/`, `src/pages/Market.tsx`) — the index-analytics reading page, INDEX-KEYED:
-  a scorecard strip (ATM · skew · convexity · RV−IV), the price block (index candlestick +
-  the master-detail constituents — weighted list + the selected member's candlestick), the 3D vol
-  nappe, one tenor selector driving the put/call smile + the per-strike price structure
-  (bid/ask/volume) + the Greeks (profile curves + magnitude table), and the ρ̄ dispersion strip.
-- **Risque** (`/risque`, `src/pages/Basket.tsx`) — compose → see → shock → explain, over a shared
-  composer and four sub-tabs: **① Composer**, **② Le book** (the booked book folded in from the
-  former Positions page), **③ Choquer** (on-demand stress + the named historical / persisted
-  scenarios folded in from Risk Scenarios), **④ Attribution** (by-Greek waterfall).
-- **Ordres** (`/ordres`, `src/pages/Ordres.tsx`) — the order home: the ticket (gated; live transmit
-  is 3B-gated, the send button disarmed, commit paper-only behind the password barrier), the broker
-  reconciliation (moved here from Risk), and the folded backtest (the former Strategy page).
-- **Operations** (`/operations`, `src/pages/Operations.tsx`) — the operator dashboard (system
-  health, run control, freshness), kept as a secondary utility rather than a product onglet.
+- **Operations** (`/`, `src/pages/Operations.tsx`) — the operator dashboard: system health,
+  run control, data freshness.
+- **Market** (`/market`, `src/pages/Market.tsx`) — the index-analytics reading page,
+  INDEX-KEYED: a scorecard strip (ATM · skew · convexity · RV−IV), the price block (index
+  candlestick + the master-detail constituents — weighted list + the selected member's
+  candlestick), the 3D vol nappe, one tenor selector driving the put/call smile + the
+  per-strike price structure (bid/ask/volume) + the Greeks (profile curves + magnitude
+  table), and the ρ̄ dispersion strip.
+- **Positions** (`/positions`, `src/pages/Positions.tsx`) — the booked book accounted from
+  fills (fills ledger + book summary), per-leg and book Greeks, and the account-wide broker
+  reconciliation.
+- **Simulate** (`/simulate`, `src/pages/Simulate.tsx`) — compose → shock → explain over one
+  shared stress engine: stress the book you hold or a composed basket, plus the by-Greek
+  attribution waterfall.
+- **Strategy** (`/strategy`, `src/pages/Strategy.tsx`) — the order ticket (paper-only behind
+  the password barrier, live transmit disarmed) and the store-backed backtester.
+- **Signals** (`/signals`, `src/pages/Signals.tsx`) — the persisted signal layer: IV rank,
+  IV-vs-realized spread, term-structure slope, and implied correlation (ρ̄).
 
 ## API
 
@@ -165,7 +167,7 @@ The BFF exposes (all under `/api` except the liveness probe):
 - `GET /api/attribution[?trade_date=&portfolio_id=&level=&contract_key=]` — the by-Greek P&L
   decomposition for one persisted `scenario_attributions` record (TARGET §2 #5 / §7 #2). Projects
   the frozen `ScenarioAttribution` seam **verbatim** (the BFF re-decomposes nothing): `terms` are
-  the per-Greek dollar contributions in the ADR-0030 dPnL order (Δ → Γ → Vega → Θ; Rho/Vanna/Volga
+  the per-Greek dollar contributions in the dPnL order (Δ → Γ → Vega → Θ; Rho/Vanna/Volga
   appended by the second-order-greeks lane as the seam grows), each a labelled `{name, dollars,
   unit}`; `residual` is the honesty meter against the full reprice carried as its **own** bar
   (never folded into a term); `verdict` is the engine's `within_tolerance` ruling against its
@@ -243,8 +245,6 @@ The BFF exposes (all under `/api` except the liveness probe):
   account on the latest broker positions; **no broker positions captured** is a `400`
   (`no_broker_account`). Margin forecasting, kill switch, and recon-break alert delivery (§7.9) are
   deferred follow-ups — not wired by this endpoint.
-- `POST /api/oauth/saxo/start`, `GET /api/oauth/saxo/callback`,
-  `GET /api/oauth/saxo/status`, `DELETE /api/oauth/saxo`.
 - `POST /api/assistant` — the **grounded screen-aware assistant** (P6 / MAT-LEGIBILITY-assistant).
   Body: `{question, underlying?, trade_date?, mode?, element_id?, gloss?}`. The BFF builds a typed
   **grounding context** from the *same* store reads `/api/analytics` and the coverage notion serve
@@ -265,10 +265,6 @@ The BFF exposes (all under `/api` except the liveness probe):
   one-line element gloss to the cheaper model; the default reasoning route is `claude-opus-4-8`.
   `POST /api/assistant/stream` relays the model's tokens as `text/plain` for a typing UI.
 
-The OAuth flow's verifiable half (single-use CSRF state, authorize-URL construction,
-replay/forgery rejection) is real; the token exchange fails closed with a typed `501`
-until `packages/infra-saxo` lands.
-
 ## Assistant configuration (OpenRouter)
 
 The assistant calls OpenRouter (OpenAI-compatible base `https://openrouter.ai/api/v1`) from the BFF.
@@ -286,7 +282,7 @@ is **never** committed:
 ## The live-run build path (SAMPLE)
 
 A surface build runs the unified collection seam (`orchestration.build_surface` over
-`collect_live`, ADR 0027) end to end. The `SAMPLE` provider drives it deterministically:
+`collect_live`) end to end. The `SAMPLE` provider drives it deterministically:
 `runner.py` reads the store's most recent committed day, replays it through the **exact**
 actor pipeline into a **throwaway temp store** (`persist=False`, so a SAMPLE run never
 writes back into `data/` — re-capturing the same content-addressed events would be a
@@ -305,9 +301,9 @@ front falls back to an honest indeterminate bar rather than a fabricated percent
 reporting can never throw into the job boundary. State is per-process (`PipelineRunner.jobs`
 is an in-memory dict); progress lives only as long as the BFF process.
 
-Live broker providers (Saxo/Deribit/IBKR) capture through the same `build_surface` seam;
-the broker-session → `RawMarketEvent` normalization lives in the
-`packages/infra-{saxo,deribit,ibkr}` adapters. See `runner.py` and `infra/orchestration`.
+The live IBKR provider captures through the same `build_surface` seam; the broker-session →
+`RawMarketEvent` normalization lives in the `packages/infra-ibkr` adapter. See `runner.py`
+and `infra/orchestration`.
 
 ## Verify
 

@@ -15,17 +15,16 @@ import-linter enforces that this is the bottom of the stack.
   `core.hashing`). The
   config standard this implements (typed, hashed, YAML-hydrated config; no business
   parameter as a `.py` literal) is the house standard in `.agent/conventions.md`.
-  `UniverseConfig.indices` carries the raw, *unvalidated* index-registry block (ADR 0035)
+  `UniverseConfig.indices` carries the raw, *unvalidated* index-registry block
   so it folds into `config_hashes["universe"]` with no separate hash; the typed parse +
   calendar-code validation deliberately lives one layer up (`algotrading.infra.universe`,
   which owns the `exchange_calendars` dependency core stays blind to). The loader
-  special-cases that one nested-map field via `build_dataclass`'s `caller_supplied` escape
-  hatch — every flat economic field still goes through the no-silent-default reflective seam.
+  special-cases that one nested-map field so it passes through unvalidated — every flat
+  economic field still goes through the no-silent-default reflective seam.
 - **`hashing.py`** — the canonical-JSON + SHA-256 primitives every content hash is built
-  from (M25): `canonical_dumps` (the *bare* convention — sorted keys, compact separators,
-  values verbatim) and `sha256_hex`. The repo deliberately keeps three named canonical-JSON
-  conventions because they feed persisted hashes (see the module docstring); the encoding
-  and digest now have one reviewed home, gated by golden-hash pins in the test suites.
+  from (M25): `canonical_dumps` (sorted keys, compact separators, values verbatim) and
+  `sha256_hex`. Higher-layer hashes (`config_hash`, `object_config_hash`,
+  `composite_config_hash` in `config/platform_config.py`) are built on these.
 - **`provenance.py`** — the `ProvenanceStamp` every derived record carries (which inputs,
   which code version, which config hash) and the stamp helpers, including `snapshot_stamp`
   for the common one-snapshot emission shape (every source row shares one observation

@@ -48,7 +48,13 @@ from algotrading.infra.risk import (
     position_risk,
 )
 from algotrading.infra.snapshots import AssessedSnapshot, QuoteAssessment, SnapshotBatch
-from algotrading.infra.surfaces import CalendarViolation, SliceFit, SviParams
+from algotrading.infra.surfaces import (
+    CalendarSlice,
+    CalendarViolation,
+    SliceFit,
+    SviParams,
+    calendar_violations,
+)
 from fixtures.positions import CALL_100, PUT_100
 from fixtures.records import make_record
 
@@ -987,6 +993,125 @@ def test_calendar_sanity_scope_flag_does_not_touch_a_warning_or_a_pass() -> None
             [], "X", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=is_index,
         )
         assert clean.qc_status == STATUS_PASS
+
+
+_SUPPORT_MIN = -0.107
+_SUPPORT_MAX = 0.081
+
+
+def _support_aware_violation(k: float) -> CalendarViolation:
+    # The real SX5E 19d-vs-28d call wing (T_short 19/365, T_long 28/365, both above the ultra-short
+    # floor of 14/365). A GROSS inversion by magnitude: w_short 0.05 vs w_long 0.02 -> gap 0.03,
+    # which clears both the 5e-4 absolute and the 5% * 0.02 = 1e-3 relative tolerance. Observed
+    # log-moneyness support intersection is [-0.107, +0.081]; only k decides material vs extrapolated.
+    return CalendarViolation(
+        k=k,
+        maturity_short=19.0 / 365.0,
+        maturity_long=28.0 / 365.0,
+        w_short=0.05,
+        w_long=0.02,
+        support_min=_SUPPORT_MIN,
+        support_max=_SUPPORT_MAX,
+    )
+
+
+def test_calendar_sanity_gross_inversion_inside_support_is_critical() -> None:
+    # ADR 0061: a gross total-variance inversion at k = +0.05, comfortably inside the observed
+    # support [-0.107, +0.081] of both slices, is a real traded-region defect -> CRITICAL, pages.
+    inside = _support_aware_violation(k=0.05)
+    result = check_calendar_sanity(
+        [inside], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+    context = deserialize_context(result.context)
+    assert context["material_count"] == 1
+    assert context["extrapolated_count"] == 0
+    assert context["calendar_support_aware"] is True
+
+
+def test_calendar_sanity_same_gross_inversion_outside_support_downgrades() -> None:
+    # The SAME-magnitude inversion at k = +0.20, OUTSIDE the observed support max of +0.081, is
+    # arbitrage between extrapolated marks -> WARNING, never pages, never blocks (even on the index).
+    outside = _support_aware_violation(k=0.20)
+    result = check_calendar_sanity(
+        [outside], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert result.qc_status == STATUS_WARN
+    assert result.severity == SEVERITY_WARNING
+    context = deserialize_context(result.context)
+    assert context["material_count"] == 0
+    assert context["extrapolated_count"] == 1
+    # WARNING severity is what keeps it below the PAGE escalation that gates paging/banking
+    # (escalation_level reads severity; a non-CRITICAL severity cannot escalate to PAGE).
+    assert result.severity != SEVERITY_CRITICAL
+
+
+def test_calendar_sanity_support_boundary_is_inclusive_within_epsilon() -> None:
+    # ADR 0061 boundary behaviour. k exactly at the support max (+0.081) is INSIDE (the boundary
+    # strike is observed) -> material/CRITICAL. A k one epsilon-decade beyond (+0.0810011, past the
+    # 1e-6 edge tolerance) tips into the extrapolation region -> WARNING.
+    at_boundary = _support_aware_violation(k=_SUPPORT_MAX)
+    on = check_calendar_sanity(
+        [at_boundary], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert on.qc_status == STATUS_FAIL
+    assert deserialize_context(on.context)["material_count"] == 1
+
+    just_outside = _support_aware_violation(k=_SUPPORT_MAX + 1.1e-6)
+    off = check_calendar_sanity(
+        [just_outside], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert off.qc_status == STATUS_WARN
+    assert deserialize_context(off.context)["extrapolated_count"] == 1
+
+
+def test_calendar_sanity_missing_support_bounds_stay_material() -> None:
+    # A violation with no observed bounds (support unknown) degrades to the pre-0061 all-buckets
+    # behaviour: support cannot be ruled out, so a gross inversion stays material/CRITICAL.
+    no_bounds = CalendarViolation(
+        k=0.20, maturity_short=0.5, maturity_long=1.0, w_short=0.05, w_long=0.02,
+    )
+    result = check_calendar_sanity(
+        [no_bounds], "SX5E", thresholds=THRESHOLDS, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+    assert deserialize_context(result.context)["material_count"] == 1
+
+
+def test_calendar_sanity_support_aware_toggle_off_restores_all_buckets() -> None:
+    # With calendar_support_aware=False the support test is skipped: the same outside-support gross
+    # inversion pages again (the reversible escape hatch back to pre-0061 behaviour).
+    grid_off = THRESHOLDS.grid.model_copy(update={"calendar_support_aware": False})
+    thresholds_off = THRESHOLDS.model_copy(update={"grid": grid_off})
+    outside = _support_aware_violation(k=0.20)
+    result = check_calendar_sanity(
+        [outside], "SX5E", thresholds=thresholds_off, run_id=RUN_ID, run_ts=RUN_TS, is_index=True,
+    )
+    assert result.qc_status == STATUS_FAIL
+    assert result.severity == SEVERITY_CRITICAL
+    assert deserialize_context(result.context)["material_count"] == 1
+
+
+def test_calendar_violations_stamps_support_intersection() -> None:
+    # The arbitrage builder threads the per-slice observed envelope onto each violation as the
+    # INTERSECTION of the two slices' envelopes. Two flat total-variance curves with an inversion
+    # at every k: short observed [-0.10, +0.08], long observed [-0.12, +0.05] -> intersection
+    # [-0.10, +0.05]. (w_short 0.05 > w_long 0.02 everywhere, so each grid k is a violation.)
+    short = CalendarSlice(
+        maturity_years=0.05, total_variance=lambda _k: 0.05,
+        observed_k_min=-0.10, observed_k_max=0.08,
+    )
+    long = CalendarSlice(
+        maturity_years=0.08, total_variance=lambda _k: 0.02,
+        observed_k_min=-0.12, observed_k_max=0.05,
+    )
+    violations = calendar_violations([short, long], (-0.05, 0.0, 0.10))
+    assert len(violations) == 3
+    for violation in violations:
+        assert violation.support_min == pytest.approx(-0.10)
+        assert violation.support_max == pytest.approx(0.05)
 
 
 def test_greek_sanity_constituent_breach_downgrades_to_warning() -> None:

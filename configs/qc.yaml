@@ -63,6 +63,18 @@ grid:
   # are numerically noisy, so a calendar inversion that touches them is at most a WARNING
   # (blueprint 05-math-notes: low-confidence / mark-unusable, never a hard fail).
   ultra_short_maturity_years: 0.038356164383561646
+  # Support-aware materiality (ADR 0061). A material calendar inversion pages CRITICAL only when
+  # its moneyness k sits INSIDE the observed log-moneyness support of BOTH slices involved
+  # (the intersection of their observed strike envelopes). An inversion in the EXTRAPOLATED region
+  # — k outside that intersection, where the SVI fit invented marks with no market quotes — is
+  # arbitrage between fabricated numbers and is downgraded to a WARNING, never a page. This is what
+  # was making SX5E page nightly on the +0.10/+0.20 buckets, which sit outside the ~[-0.107,+0.081]
+  # observed envelope of the 19d/28d call wing. A genuine WITHIN-support inversion still pages.
+  # Default ON (the more-correct behaviour); set false to restore the pre-0061 all-buckets gate.
+  calendar_support_aware: true
+  # Log-moneyness edge tolerance: a k within this epsilon of a support boundary counts as INSIDE,
+  # so a bucket landing exactly on the last observed strike is not spuriously demoted.
+  calendar_support_epsilon: 0.000001
 
 # Collector-continuity cut-offs (C7 increment 2). Economic — they decide whether a capture
 # session is continuous enough to trust — so hashed here, never `.py` literals (ADR 0028).

@@ -168,6 +168,17 @@ class GridQcConfig(_ConfigModel):
     # Maturities below this (years) are ultra-short: their variances are numerically noisy, so
     # a calendar inversion involving them is at most a WARNING (blueprint 05-math-notes).
     ultra_short_maturity_years: float = Field(default=14.0 / 365.0, ge=0.0)
+    # Support-aware materiality (ADR 0061). A material inversion pages CRITICAL only when its
+    # moneyness k sits INSIDE the observed log-moneyness support of BOTH slices; an inversion in
+    # the extrapolated region (k outside the intersection of the two slices' observed envelopes) is
+    # arbitrage between fabricated marks and is downgraded to a WARNING, never a page. Default ON.
+    # When a violation carries no observed bounds the gate degrades to the pre-0061 behaviour
+    # (support unknown -> material-eligible), so it is a strict additive refinement.
+    calendar_support_aware: bool = Field(default=True)
+    # Edge tolerance (log-moneyness) folded into the support envelope: k within this epsilon of a
+    # support boundary still counts as INSIDE, so a bucket landing exactly on the last observed
+    # strike is not spuriously demoted by floating-point edge effects.
+    calendar_support_epsilon: float = Field(default=1e-6, ge=0.0)
 
     @model_validator(mode="after")
     def _check_band(self) -> GridQcConfig:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .arbitrage import (
+    CalendarSlice,
     CalendarViolation,
     butterfly_g,
     butterfly_violations,
@@ -71,6 +72,7 @@ __all__ = [
     "PROVENANCE_EXTRAPOLATED",
     "PROVENANCE_INTERPOLATED",
     "SURFACE_VERSION",
+    "CalendarSlice",
     "CalendarViolation",
     "DenseSurface",
     "IvSpaceFitError",

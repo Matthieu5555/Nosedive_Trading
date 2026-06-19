@@ -53,6 +53,7 @@ from algotrading.infra.snapshots import SnapshotBatch, build_snapshots
 from algotrading.infra.storage import ParquetStore
 from algotrading.infra.surfaces import (
     METHOD_INSUFFICIENT,
+    CalendarSlice,
     CalendarViolation,
     SliceFit,
     calendar_violations,
@@ -332,9 +333,21 @@ def _calendar_violations_by_underlying(
     out: list[tuple[str, tuple[CalendarViolation, ...]]] = []
     for underlying in sorted(by_underlying):
         fits = by_underlying[underlying]
-        curves = [(fit.maturity_years, fit.total_variance) for fit in fits]
+        curves = [_calendar_slice_of(fit) for fit in fits]
         out.append((underlying, calendar_violations(curves, moneyness_buckets)))
     return tuple(out)
+
+
+def _calendar_slice_of(fit: SliceFit) -> CalendarSlice:
+    observed_ks = [point.log_moneyness for point in fit.raw_points]
+    observed_min = min(observed_ks) if observed_ks else None
+    observed_max = max(observed_ks) if observed_ks else None
+    return CalendarSlice(
+        maturity_years=fit.maturity_years,
+        total_variance=fit.total_variance,
+        observed_k_min=observed_min,
+        observed_k_max=observed_max,
+    )
 
 
 def _has_two_sided_option_quote(snapshot: MarketStateSnapshot) -> bool:

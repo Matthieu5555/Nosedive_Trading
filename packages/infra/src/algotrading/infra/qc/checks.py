@@ -526,10 +526,13 @@ def check_calendar_sanity(
     abs_tol = thresholds.grid.calendar_abs_variance_tol
     rel_tol = thresholds.grid.calendar_rel_variance_tol
     ultra_short = thresholds.grid.ultra_short_maturity_years
+    support_aware = thresholds.grid.calendar_support_aware
+    support_epsilon = thresholds.grid.calendar_support_epsilon
 
     count = len(violations)
     material: list[CalendarViolation] = []
     noise: list[CalendarViolation] = []
+    extrapolated: list[CalendarViolation] = []
     worst = None
     worst_gap = 0.0
     for violation in violations:
@@ -537,19 +540,26 @@ def check_calendar_sanity(
         if worst is None or gap > worst_gap:
             worst = violation
             worst_gap = gap
-        if _is_material_calendar_violation(
+        if not _is_gross_calendar_violation(
             violation, abs_tol=abs_tol, rel_tol=rel_tol, ultra_short=ultra_short
         ):
-            material.append(violation)
-        else:
             noise.append(violation)
+        elif support_aware and not _is_within_observed_support(
+            violation, epsilon=support_epsilon
+        ):
+            # Gross in magnitude, but the inversion sits in the EXTRAPOLATED region of at least one
+            # slice (ADR 0061) — arbitrage between fabricated marks, not a traded-region defect.
+            extrapolated.append(violation)
+        else:
+            material.append(violation)
 
-    # Page CRITICAL only on a MATERIAL/GROSS inversion (blueprint 02-math-framework); a
-    # sub-threshold or ultra-short-maturity wiggle is at most a WARNING (ADR 0052).
+    # Page CRITICAL only on a MATERIAL/GROSS inversion that sits WITHIN observed market support
+    # (blueprint 02-math-framework; ADR 0061). A sub-threshold/ultra-short wiggle (ADR 0052) or an
+    # extrapolation-region inversion (ADR 0061) is at most a WARNING, never a page.
     if material:
         status = STATUS_FAIL
         severity = SEVERITY_CRITICAL
-    elif noise:
+    elif noise or extrapolated:
         status = STATUS_WARN
         severity = SEVERITY_WARNING
     else:
@@ -561,9 +571,11 @@ def check_calendar_sanity(
         "violation_count": count,
         "material_count": len(material),
         "noise_count": len(noise),
+        "extrapolated_count": len(extrapolated),
         "calendar_abs_variance_tol": abs_tol,
         "calendar_rel_variance_tol": rel_tol,
         "ultra_short_maturity_years": ultra_short,
+        "calendar_support_aware": support_aware,
     }
     if worst is not None:
         context.update(
@@ -574,6 +586,8 @@ def check_calendar_sanity(
                 "w_short": worst.w_short,
                 "w_long": worst.w_long,
                 "worst_variance_gap": worst_gap,
+                "support_min": worst.support_min,
+                "support_max": worst.support_max,
             }
         )
     measured = float(len(material)) if material else float(count)
@@ -591,18 +605,19 @@ def check_calendar_sanity(
     )
 
 
-def _is_material_calendar_violation(
+def _is_gross_calendar_violation(
     violation: CalendarViolation,
     *,
     abs_tol: float,
     rel_tol: float,
     ultra_short: float,
 ) -> bool:
-    """A calendar inversion is material only when it is GROSS (blueprint Eq. 21 diagnostic).
+    """A calendar inversion is GROSS in magnitude (blueprint Eq. 21 diagnostic).
 
     Gross means the short-minus-long total-variance gap clears BOTH an absolute tolerance and a
     fraction of the long-leg variance, AND the short leg is not an ultra-short (numerically
-    noisy) maturity. Anything below is sub-threshold noise — a WARNING, never a page.
+    noisy) maturity. Anything below is sub-threshold noise — a WARNING, never a page. This is the
+    pre-existing magnitude gate; ADR 0061 layers an orthogonal support test on top of it.
     """
     gap = violation.w_short - violation.w_long
     if gap <= 0.0:
@@ -613,6 +628,22 @@ def _is_material_calendar_violation(
         return False
     reference = abs(violation.w_long)
     return not (reference > 0.0 and gap <= rel_tol * reference)
+
+
+def _is_within_observed_support(violation: CalendarViolation, *, epsilon: float) -> bool:
+    """The inversion's k sits inside the observed strike support of BOTH slices (ADR 0061).
+
+    The support is the intersection of the two slices' observed log-moneyness envelopes, carried on
+    the violation as ``[support_min, support_max]``. ``k`` is within support when
+    ``support_min - epsilon <= k <= support_max + epsilon``. A missing bound (``None``) means the
+    observed envelope was not supplied for at least one slice, so support cannot be ruled out and
+    the inversion is treated as within support (degrades to the pre-0061, all-buckets behaviour).
+    """
+    lower = violation.support_min
+    upper = violation.support_max
+    below = lower is not None and violation.k < lower - epsilon
+    above = upper is not None and violation.k > upper + epsilon
+    return not (below or above)
 
 
 def check_greek_sanity(

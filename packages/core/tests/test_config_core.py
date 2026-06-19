@@ -82,14 +82,15 @@ def test_config_hash_is_deterministic() -> None:
 def test_config_hashes_are_byte_identical_to_the_pinned_oracle() -> None:
     config = _config()
     assert config_hash(config) == (
-        "b60a06eda40a62fa572ff87d07c209a2fc6b728969ba78ccdd7af521b09c52a2"
+        "30ca9d4e20067f0d1968763b304f16002a0b3f622e80c7334b12f102c4d6a989"
     )
-    # ADR 0059 re-adds the constituent-option-capture knobs (capture_constituents,
-    # constituent_top_n) and the capture_pool_size pacing field to the universe bundle, so the
-    # universe hash and the whole-config config_hash move; qc/pricing/scenarios/rates are unchanged.
+    # ADR 0061 adds the support-aware calendar-materiality knobs (calendar_support_aware,
+    # calendar_support_epsilon) to the grid block of the qc bundle, so the qc hash and the
+    # whole-config config_hash move; pricing/scenarios/rates/universe are unchanged. (ADR 0059
+    # previously moved the universe hash for the constituent-capture knobs.)
     assert config_hashes(config) == {
         "pricing": "9083222ce26b63f5a935f8ad1667b5e0bcbb91c8cedb14b195941bdeeeb4b31e",
-        "qc": "0d3205df691370eb2b01e9d65cd3cb4aa9e8ed1c742ad58bc0831e39c8f18961",
+        "qc": "e469d8ade77fdc0b111b89183b19d01f3f2f903ce96b395d266a2cb447a6466b",
         "rates": "64e037b5a52f570f50003137a061f7e741c7805d4dfe695ac65ae48dfd8ec69f",
         "scenarios": "fc6d41e7a26e7ae36b80a8542118139082db9df572a82bb0a5e2945a06e392b8",
         "universe": "ca74c508b03f7fd5b84899ddfdec37e69c3b923494fc6cf929afde2f30be52aa",
@@ -109,6 +110,8 @@ def test_supplementary_qc_cutoffs_fold_into_the_qc_bundle_hash() -> None:
         ("grid", "calendar_abs_variance_tol", 0.001),
         ("grid", "calendar_rel_variance_tol", 0.10),
         ("grid", "ultra_short_maturity_years", 0.05),
+        ("grid", "calendar_support_aware", False),
+        ("grid", "calendar_support_epsilon", 0.001),
     ):
         nested = getattr(base.qc_threshold, block).model_copy(update={field: new_value})
         moved = base.model_copy(

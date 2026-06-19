@@ -17,21 +17,55 @@ class CalendarViolation:
     maturity_long: float
     w_short: float
     w_long: float
+    support_min: float | None = None
+    support_max: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarSlice:
+
+    maturity_years: float
+    total_variance: Callable[[float], float]
+    observed_k_min: float | None = None
+    observed_k_max: float | None = None
+
+
+def _support_intersection(
+    short: CalendarSlice, long: CalendarSlice
+) -> tuple[float | None, float | None]:
+    mins = [b for b in (short.observed_k_min, long.observed_k_min) if b is not None]
+    maxs = [b for b in (short.observed_k_max, long.observed_k_max) if b is not None]
+    support_min = max(mins) if len(mins) == 2 else None
+    support_max = min(maxs) if len(maxs) == 2 else None
+    return support_min, support_max
 
 
 def calendar_violations(
-    slices: Sequence[tuple[float, Callable[[float], float]]],
+    slices: Sequence[tuple[float, Callable[[float], float]] | CalendarSlice],
     k_grid: tuple[float, ...],
 ) -> tuple[CalendarViolation, ...]:
-    ordered = sorted(slices, key=lambda item: item[0])
+    normalized = [
+        item if isinstance(item, CalendarSlice) else CalendarSlice(item[0], item[1])
+        for item in slices
+    ]
+    ordered = sorted(normalized, key=lambda item: item.maturity_years)
     violations: list[CalendarViolation] = []
-    for (t_short, w_short_fn), (t_long, w_long_fn) in zip(ordered, ordered[1:], strict=False):
+    for short, long in zip(ordered, ordered[1:], strict=False):
+        support_min, support_max = _support_intersection(short, long)
         for k in k_grid:
-            w_short = w_short_fn(k)
-            w_long = w_long_fn(k)
+            w_short = short.total_variance(k)
+            w_long = long.total_variance(k)
             if w_long < w_short - _CALENDAR_TOL:
                 violations.append(
-                    CalendarViolation(k, t_short, t_long, w_short, w_long)
+                    CalendarViolation(
+                        k=k,
+                        maturity_short=short.maturity_years,
+                        maturity_long=long.maturity_years,
+                        w_short=w_short,
+                        w_long=w_long,
+                        support_min=support_min,
+                        support_max=support_max,
+                    )
                 )
     return tuple(violations)
 

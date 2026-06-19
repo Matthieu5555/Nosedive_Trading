@@ -44,33 +44,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("a populated payload mounts the waterfall with one labelled bar per term + residual", () => {
+test("a populated payload mounts the waterfall, one bar per term plus the residual as its own bar", () => {
   render(<AttributionWaterfall attribution={POPULATED} kicker="pf-attribution 2026-05-29" />);
 
   const plot = screen.getByLabelText(/P&L attribution waterfall/i);
   expect(within(plot).getByTestId("plot-types")).toHaveTextContent("waterfall");
-
-  const legend = screen.getByRole("list", { name: /attribution terms/i });
-  expect(within(legend).getByText(/Delta:/)).toBeInTheDocument();
-  expect(within(legend).getByText("4.2 × 10⁴")).toBeInTheDocument();
-  expect(within(legend).getByText("-3.5 × 10³")).toBeInTheDocument();
-  expect(within(legend).getByText("1.25 × 10⁴")).toBeInTheDocument();
-  expect(within(legend).getByText("-1.2 × 10³")).toBeInTheDocument();
-
-  expect(within(legend).getAllByText(new RegExp(TERM_UNIT.replace(/[()$]/g, "\\$&"))).length).toBe(
-    POPULATED.terms.length,
+  // One bar per Greek term, plus the residual as its own bar (never folded into a term). The bar
+  // values + units live on the chart itself, so there is no separate legend duplicating them.
+  expect(within(plot).getByTestId("plot-points")).toHaveTextContent(
+    String(POPULATED.terms.length + 1),
   );
 });
 
-test("the residual is its own labelled bar, never folded into a term", () => {
+test("no legend duplicates the chart: the by-Greek numbers are not re-printed as a list", () => {
   render(<AttributionWaterfall attribution={POPULATED} kicker="pf-attribution 2026-05-29" />);
-  const legend = screen.getByRole("list", { name: /attribution terms/i });
-
-  expect(within(legend).getByText(/Residual:/)).toBeInTheDocument();
-  expect(within(legend).getByText("4.5 × 10²")).toBeInTheDocument();
-  expect(
-    within(legend).getByText(new RegExp(RESIDUAL_UNIT.replace(/[()$]/g, "\\$&"))),
-  ).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: /attribution terms/i })).not.toBeInTheDocument();
 });
 
 test("the tolerance verdict is surfaced (residual exceeds tolerance here)", () => {
@@ -93,7 +81,7 @@ test("standalone (default): renders its own 'P&L attribution' heading + kicker",
 
 test("embedded: suppresses the inner heading + kicker so a titled card never doubles the title", () => {
   // RiskScenarios / CombinedBookView drop this inside an already-titled card. `embedded` removes the
-  // panel's own <h2> + kicker; the chart, legend, and verdict still render.
+  // panel's own <h2> + kicker; the chart and verdict still render.
   render(
     <AttributionWaterfall attribution={POPULATED} kicker="pf-attribution 2026-05-29" embedded />,
   );
@@ -155,18 +143,19 @@ const REALIZED: RealizedAttributionResponse = {
   ],
 };
 
-test("realized: one day card per step, each with the seven Greek terms + a residual bar", () => {
+test("realized: one day card per step, each a waterfall of the seven Greeks + a residual bar", () => {
   render(<RealizedAttributionWaterfall realized={REALIZED} />);
 
   // One waterfall plot per held day.
-  expect(screen.getAllByLabelText(/Realized P&L attribution/i)).toHaveLength(REALIZED.steps.length);
+  const plots = screen.getAllByLabelText(/Realized P&L attribution/i);
+  expect(plots).toHaveLength(REALIZED.steps.length);
 
-  const dayOne = screen.getByRole("list", { name: /day 1 attribution terms/i });
-  for (const term of ["Delta", "Gamma", "Vega", "Theta", "Rho", "Vanna", "Volga"]) {
-    expect(within(dayOne).getByText(new RegExp(`^${term}:`))).toBeInTheDocument();
+  // Each day plots the seven Greek bars plus the residual as its own bar (never folded into a
+  // term): eight bars, with no legend re-printing the same numbers beside the chart.
+  for (const plot of plots) {
+    expect(within(plot).getByTestId("plot-points")).toHaveTextContent("8");
   }
-  // The residual is its own labelled bar, never folded into a term.
-  expect(within(dayOne).getByText(/^Residual:/)).toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: /attribution terms/i })).not.toBeInTheDocument();
 });
 
 test("realized: the per-day move drives a plain-language sentence (direction from d_spot sign)", () => {

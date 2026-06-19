@@ -83,23 +83,6 @@ export function AttributionWaterfall({
           </span>
         )}
       </div>
-      <p>
-        Each bar is one Greek&apos;s dollar contribution to the scenario P&amp;L; the{" "}
-        <strong>residual</strong> is the leftover against the full reprice (the honesty meter), its
-        own bar, never folded into a term. Bars in dollars: <strong>{termUnit}</strong>; residual:{" "}
-        <strong>{residualUnit}</strong>.
-      </p>
-      <ul className="attribution-legend" aria-label="attribution terms">
-        {attribution.terms.map((term) => (
-          <li key={term.name}>
-            {term.name}: <strong>{sci(term.dollars ?? 0)}</strong> ({term.unit})
-          </li>
-        ))}
-        <li>
-          {RESIDUAL_NAME}: <strong>{sci(attribution.residual.dollars ?? 0)}</strong> ({residualUnit}
-          )
-        </li>
-      </ul>
       <Plot label={label} data={[waterfall]} layout={layout} height={360} />
     </article>
   );
@@ -129,13 +112,7 @@ type RealizedAttributionStep = RealizedAttributionResponse["steps"][number];
 
 // One day's waterfall: the seven by-Greek contributions, the residual as its own honesty bar, plus
 // the approximate-vs-full-reprice line so the reader sees the approximation error in dollars.
-function RealizedStepCard({
-  step,
-  index,
-}: {
-  step: RealizedAttributionStep;
-  index: number;
-}) {
+function RealizedStepCard({ step, index }: { step: RealizedAttributionStep; index: number }) {
   const termUnit = step.terms[0]?.unit ?? step.approx_pnl.unit ?? "$";
   const residualUnit = step.residual.unit;
 
@@ -165,14 +142,18 @@ function RealizedStepCard({
   };
 
   return (
-    <article className="panel attribution-panel" aria-label={`Realized attribution day ${index + 1}`}>
+    <article
+      className="panel attribution-panel"
+      aria-label={`Realized attribution day ${index + 1}`}
+    >
       <div className="panel-heading">
         <div>
           <p className="panel-kicker">
             {step.start_date} → {step.end_date}
           </p>
           <h3>
-            Day {index + 1}: {sci(step.full_reprice_pnl.dollars ?? 0)} {termUnit} of realized P&amp;L
+            Day {index + 1}: {sci(step.full_reprice_pnl.dollars ?? 0)} {termUnit} of realized
+            P&amp;L
           </h3>
         </div>
         <span className={within ? "status" : "status negative"}>
@@ -180,16 +161,6 @@ function RealizedStepCard({
         </span>
       </div>
       <p>{moveSummary(step.move)}</p>
-      <ul className="attribution-legend" aria-label={`day ${index + 1} attribution terms`}>
-        {step.terms.map((term) => (
-          <li key={term.name}>
-            {term.name}: <strong>{sci(term.dollars ?? 0)}</strong> ({term.unit})
-          </li>
-        ))}
-        <li>
-          {RESIDUAL_NAME}: <strong>{sci(step.residual.dollars ?? 0)}</strong> ({residualUnit})
-        </li>
-      </ul>
       <p>
         These seven Greek contributions sum to an approximate{" "}
         <strong>{sci(step.approx_pnl.dollars ?? 0)}</strong>; the day actually re-priced to{" "}
